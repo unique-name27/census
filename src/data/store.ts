@@ -34,6 +34,8 @@ export type ThemePref = 'system' | 'light' | 'dark'
 
 interface CensusState {
   ready: boolean
+  /** Browser storage did not answer at start-up; uploads from earlier sessions are not loaded. */
+  storageUnavailable: boolean
   data: Datasets
   sources: Record<DatasetKey, SourceMeta>
   asOfOverride: ISODate | null
@@ -101,6 +103,23 @@ export function parseHash(hash: string): Route | null {
   return { view: view as RouteView, tab: tab ?? '' }
 }
 
+/** Resolves to the value, or null if it takes longer than ms. */
+function withTimeout<T>(p: Promise<T>, ms: number): Promise<T | null> {
+  return new Promise((resolve) => {
+    const t = setTimeout(() => resolve(null), ms)
+    p.then(
+      (v) => {
+        clearTimeout(t)
+        resolve(v)
+      },
+      () => {
+        clearTimeout(t)
+        resolve(null)
+      },
+    )
+  })
+}
+
 let sampleCache: Datasets | null = null
 const sample = () => {
   sampleCache ??= generateSample()
@@ -109,6 +128,7 @@ const sample = () => {
 
 export const useCensus = create<CensusState>((set, getState) => ({
   ready: false,
+  storageUnavailable: false,
   data: emptyData(),
   sources: sampleMeta(emptyData()),
   asOfOverride: LS.get<ISODate | null>('asOf', null),
@@ -121,18 +141,27 @@ export const useCensus = create<CensusState>((set, getState) => ({
     const base = sample()
     const data: Datasets = { ...base }
     const sources = sampleMeta(base)
-    for (const k of DATASET_KEYS) {
-      try {
-        const saved = await idbGet<{ rows: unknown[]; meta: SourceMeta }>(IDB_KEY(k))
-        if (saved?.rows) {
-          ;(data as unknown as Record<string, unknown[]>)[k] = saved.rows
-          sources[k] = { ...saved.meta, kind: 'upload', rowCount: saved.rows.length }
+    // Storage can be unavailable (private window) or stall (another tab holds an upgrade or a
+    // delete open). Never let that keep the app on its loading screen: give it a moment, then
+    // run on the sample and say so.
+    const saved = await withTimeout(
+      Promise.all(
+        DATASET_KEYS.map((k) =>
+          idbGet<{ rows: unknown[]; meta: SourceMeta }>(IDB_KEY(k)).catch(() => undefined),
+        ),
+      ),
+      1500,
+    )
+    if (saved) {
+      DATASET_KEYS.forEach((k, i) => {
+        const s = saved[i]
+        if (s?.rows) {
+          ;(data as unknown as Record<string, unknown[]>)[k] = s.rows
+          sources[k] = { ...s.meta, kind: 'upload', rowCount: s.rows.length }
         }
-      } catch {
-        /* IndexedDB blocked (private window): run on sample data */
-      }
+      })
     }
-    set({ data, sources, ready: true })
+    set({ data, sources, ready: true, storageUnavailable: !saved })
   },
 
   setFilters(patch) {

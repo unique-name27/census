@@ -7,7 +7,7 @@ import { useEffect } from 'react'
 import { FigureRegistryProvider } from '@/charts/registry'
 import { CurrentViewProvider } from '@/components/currentView'
 import { IconLock } from '@/components/icons'
-import { Toaster } from '@/components/toast'
+import { Toaster, toast } from '@/components/toast'
 import { TooltipProvider } from '@/components/ui'
 import { AnalyticsProvider, useAnalytics } from '@/data/context'
 import { SAMPLE_COMPANY } from '@/data/sample'
@@ -120,7 +120,14 @@ export function App() {
   const init = useCensus((s) => s.init)
   useThemeAttribute()
   useEffect(() => {
-    void init()
+    void init().then(() => {
+      if (useCensus.getState().storageUnavailable)
+        toast('Showing sample data', {
+          description:
+            'This browser did not open its local storage in time, so files added earlier are not loaded. Reload to try again.',
+          timeout: 10_000,
+        })
+    })
   }, [init])
   return (
     <MotionConfig reducedMotion="user">
