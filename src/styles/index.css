@@ -1,0 +1,175 @@
+@import 'tailwindcss';
+@import './tokens.css';
+
+/* Latin subsets only, bundled with the app (no font requests leave the browser).
+   Archivo carries a width axis (62–125%), used for the semi-condensed display cut. */
+@font-face {
+  font-family: 'Archivo Variable';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  font-stretch: 62% 125%;
+  src: url('@fontsource-variable/archivo/files/archivo-latin-wdth-normal.woff2') format('woff2-variations');
+}
+@font-face {
+  font-family: 'JetBrains Mono Variable';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 800;
+  src: url('@fontsource-variable/jetbrains-mono/files/jetbrains-mono-latin-wght-normal.woff2') format('woff2-variations');
+}
+
+/* Map design tokens into Tailwind utilities (bg-sheet, text-ink-2, border-rule, ...).
+   `inline` keeps the var() reference so light/dark swaps happen in tokens.css only. */
+@theme inline {
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+
+  --color-page: var(--page);
+  --color-sheet: var(--sheet);
+  --color-sheet-2: var(--sheet-2);
+  --color-sheet-3: var(--sheet-3);
+  --color-tab-idle: var(--tab-idle);
+  --color-tab-idle-hover: var(--tab-idle-hover);
+  --color-overlay: var(--overlay);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-muted: var(--muted);
+  --color-on-ink: var(--on-ink);
+  --color-rule: var(--rule);
+  --color-rule-strong: var(--rule-strong);
+  --color-grid: var(--grid);
+  --color-axis: var(--axis);
+  --color-focus: var(--focus);
+  --color-link: var(--link);
+  --color-hover: var(--hover-wash);
+  --color-press: var(--press-wash);
+  --color-s1: var(--s1);
+  --color-s2: var(--s2);
+  --color-s3: var(--s3);
+  --color-s4: var(--s4);
+  --color-s5: var(--s5);
+  --color-s6: var(--s6);
+  --color-s7: var(--s7);
+  --color-s8: var(--s8);
+  --color-deemph: var(--deemph);
+  --color-good: var(--good);
+  --color-warning: var(--warning);
+  --color-serious: var(--serious);
+  --color-critical: var(--critical);
+  --color-good-text: var(--good-text);
+  --color-bad-text: var(--bad-text);
+  --color-good-wash: var(--good-wash);
+  --color-warning-wash: var(--warning-wash);
+  --color-serious-wash: var(--serious-wash);
+  --color-critical-wash: var(--critical-wash);
+
+  --radius-sheet: var(--radius-sheet);
+  --radius-control: var(--radius-control);
+}
+
+@layer base {
+  html,
+  body {
+    height: 100%;
+  }
+  body {
+    margin: 0;
+    background: var(--page);
+    color: var(--ink);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 1.45;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  h1,
+  h2,
+  h3,
+  h4 {
+    text-wrap: balance;
+    font-stretch: var(--stretch-head);
+    letter-spacing: -0.005em;
+  }
+  ::selection {
+    background: color-mix(in srgb, var(--focus) 24%, transparent);
+  }
+  :focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+  button {
+    cursor: pointer;
+  }
+  button:disabled {
+    cursor: default;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.001ms !important;
+      transition-duration: 0.001ms !important;
+    }
+  }
+}
+
+@layer utilities {
+  /* Semi-condensed display cut of Archivo, used for headings, tab labels and figure values. */
+  .cut-head {
+    font-stretch: var(--stretch-head);
+  }
+  .cut-tab {
+    font-stretch: var(--stretch-tab);
+  }
+  .tnum {
+    font-variant-numeric: tabular-nums;
+  }
+  /* Small uppercase labels get a little tracking. */
+  .eyebrow {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .scroll-x {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+/* Observable Plot house styling. Plot renders SVG with class "census-plot". */
+.census-plot {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  color: var(--ink-2);
+  background: transparent;
+  overflow: visible;
+}
+.census-plot text {
+  fill: currentColor;
+}
+.census-plot [aria-label='x-axis tick label'] text,
+.census-plot [aria-label='y-axis tick label'] text,
+.census-plot [aria-label='fx-axis tick label'] text,
+.census-plot [aria-label='fy-axis tick label'] text {
+  fill: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.census-plot [aria-label='x-axis label'] text,
+.census-plot [aria-label='y-axis label'] text {
+  fill: var(--ink-2);
+  font-weight: 500;
+}
+.census-plot [aria-label='tip'] {
+  font-size: 12px;
+}
+.census-plot [aria-label='tip'] path {
+  fill: var(--sheet);
+  stroke: var(--rule-strong);
+}
+.census-plot [aria-label='tip'] text {
+  fill: var(--ink);
+}

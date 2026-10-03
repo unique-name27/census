@@ -1,0 +1,209 @@
+/*
+ * Census design tokens.
+ * Layout concept: the five HR practices are file-folder tabs that open onto a cool-gray desk;
+ * every figure is a white sheet laid on that desk. Archivo's width axis does the typographic work:
+ * normal width for reading, semi-condensed for headings, tabs and figures.
+ *
+ * Every color is defined here first (light), then redefined for dark under the OS preference
+ * (guarded so an explicit light choice wins) and again under [data-theme="dark"].
+ * Data colors follow the validated reference palette (dataviz skill), checked against --sheet.
+ */
+:root {
+  color-scheme: light;
+
+  /* type */
+  --font-sans: 'Archivo Variable', 'Archivo', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono Variable', 'JetBrains Mono', ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  --stretch-head: 84%;
+  --stretch-tab: 88%;
+
+  /* surfaces */
+  --page: #eceef1;
+  --sheet: #fbfbfc;
+  --sheet-2: #f3f4f6;
+  --sheet-3: #e7e9ed;
+  --tab-idle: #dde0e5;
+  --tab-idle-hover: #d3d7dd;
+  --overlay: rgba(18, 21, 26, 0.32);
+
+  /* ink */
+  --ink: #12151a;
+  --ink-2: #475060;
+  --muted: #737b8a;
+  --on-ink: #fbfbfc;
+
+  /* lines */
+  --rule: #dde1e7;
+  --rule-strong: #c3c9d2;
+  --grid: #e6e8ec;
+  --axis: #b9c0ca;
+
+  /* interaction */
+  --focus: #1c5cab;
+  --link: #1c5cab;
+  --hover-wash: rgba(18, 21, 26, 0.05);
+  --press-wash: rgba(18, 21, 26, 0.09);
+
+  /* categorical series, fixed order (never cycled) */
+  --s1: #2a78d6;
+  --s2: #eb6834;
+  --s3: #1baf7a;
+  --s4: #eda100;
+  --s5: #e87ba4;
+  --s6: #008300;
+  --s7: #4a3aa7;
+  --s8: #e34948;
+  --deemph: #c5cad3;
+
+  /* sequential blue */
+  --seq-100: #cde2fb;
+  --seq-200: #9ec5f4;
+  --seq-250: #86b6ef;
+  --seq-300: #6da7ec;
+  --seq-400: #3987e5;
+  --seq-450: #2a78d6;
+  --seq-500: #256abf;
+  --seq-600: #184f95;
+  --seq-700: #0d366b;
+
+  /* diverging blue <-> red, gray midpoint */
+  --div-neg-3: #b5372f;
+  --div-neg-2: #e34948;
+  --div-neg-1: #f2a49c;
+  --div-mid: #f0efec;
+  --div-pos-1: #9ec5f4;
+  --div-pos-2: #3987e5;
+  --div-pos-3: #184f95;
+
+  /* status (fixed, never themed; always paired with an icon + label) */
+  --good: #0ca30c;
+  --warning: #fab219;
+  --serious: #ec835a;
+  --critical: #d03b3b;
+  --good-text: #006300;
+  --bad-text: #b02a2a;
+  --good-wash: rgba(12, 163, 12, 0.1);
+  --warning-wash: rgba(250, 178, 25, 0.16);
+  --serious-wash: rgba(236, 131, 90, 0.14);
+  --critical-wash: rgba(208, 59, 59, 0.1);
+
+  /* geometry */
+  --radius-sheet: 6px;
+  --radius-control: 4px;
+  --gutter: clamp(16px, 2.4vw, 32px);
+
+  /* floating layers only (menus, popovers, dialogs); sheets never get a shadow */
+  --shadow-pop: 0 12px 32px -14px rgba(18, 21, 26, 0.38), 0 0 0 1px var(--rule-strong);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    color-scheme: dark;
+    --page: #0d0f12;
+    --sheet: #16191e;
+    --sheet-2: #1c2026;
+    --sheet-3: #242931;
+    --tab-idle: #181b20;
+    --tab-idle-hover: #1f2329;
+    --overlay: rgba(0, 0, 0, 0.55);
+    --ink: #f1f3f5;
+    --ink-2: #b6bdc8;
+    --muted: #8a919d;
+    --on-ink: #0d0f12;
+    --rule: #262a31;
+    --rule-strong: #363b44;
+    --grid: #22262c;
+    --axis: #3b414a;
+    --focus: #6da7ec;
+    --link: #86b6ef;
+    --hover-wash: rgba(255, 255, 255, 0.05);
+    --press-wash: rgba(255, 255, 255, 0.09);
+    --s1: #3987e5;
+    --s2: #d95926;
+    --s3: #199e70;
+    --s4: #c98500;
+    --s5: #d55181;
+    --s6: #008300;
+    --s7: #9085e9;
+    --s8: #e66767;
+    --deemph: #474d57;
+    --seq-100: #0d366b;
+    --seq-200: #104281;
+    --seq-250: #184f95;
+    --seq-300: #1c5cab;
+    --seq-400: #256abf;
+    --seq-450: #2a78d6;
+    --seq-500: #3987e5;
+    --seq-600: #6da7ec;
+    --seq-700: #9ec5f4;
+    --div-neg-3: #f2a49c;
+    --div-neg-2: #e66767;
+    --div-neg-1: #8f3a35;
+    --div-mid: #383835;
+    --div-pos-1: #184f95;
+    --div-pos-2: #3987e5;
+    --div-pos-3: #9ec5f4;
+    --good-text: #3fc23f;
+    --bad-text: #f08a8a;
+    --good-wash: rgba(12, 163, 12, 0.16);
+    --warning-wash: rgba(250, 178, 25, 0.14);
+    --serious-wash: rgba(236, 131, 90, 0.16);
+    --critical-wash: rgba(208, 59, 59, 0.18);
+    --shadow-pop: 0 14px 36px -12px rgba(0, 0, 0, 0.7), 0 0 0 1px var(--rule-strong);
+  }
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --page: #0d0f12;
+  --sheet: #16191e;
+  --sheet-2: #1c2026;
+  --sheet-3: #242931;
+  --tab-idle: #181b20;
+  --tab-idle-hover: #1f2329;
+  --overlay: rgba(0, 0, 0, 0.55);
+  --ink: #f1f3f5;
+  --ink-2: #b6bdc8;
+  --muted: #8a919d;
+  --on-ink: #0d0f12;
+  --rule: #262a31;
+  --rule-strong: #363b44;
+  --grid: #22262c;
+  --axis: #3b414a;
+  --focus: #6da7ec;
+  --link: #86b6ef;
+  --hover-wash: rgba(255, 255, 255, 0.05);
+  --press-wash: rgba(255, 255, 255, 0.09);
+  --s1: #3987e5;
+  --s2: #d95926;
+  --s3: #199e70;
+  --s4: #c98500;
+  --s5: #d55181;
+  --s6: #008300;
+  --s7: #9085e9;
+  --s8: #e66767;
+  --deemph: #474d57;
+  --seq-100: #0d366b;
+  --seq-200: #104281;
+  --seq-250: #184f95;
+  --seq-300: #1c5cab;
+  --seq-400: #256abf;
+  --seq-450: #2a78d6;
+  --seq-500: #3987e5;
+  --seq-600: #6da7ec;
+  --seq-700: #9ec5f4;
+  --div-neg-3: #f2a49c;
+  --div-neg-2: #e66767;
+  --div-neg-1: #8f3a35;
+  --div-mid: #383835;
+  --div-pos-1: #184f95;
+  --div-pos-2: #3987e5;
+  --div-pos-3: #9ec5f4;
+  --good-text: #3fc23f;
+  --bad-text: #f08a8a;
+  --good-wash: rgba(12, 163, 12, 0.16);
+  --warning-wash: rgba(250, 178, 25, 0.14);
+  --serious-wash: rgba(236, 131, 90, 0.16);
+  --critical-wash: rgba(208, 59, 59, 0.18);
+  --shadow-pop: 0 14px 36px -12px rgba(0, 0, 0, 0.7), 0 0 0 1px var(--rule-strong);
+}
