@@ -31,6 +31,7 @@ const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.s
 const VIEW_LABELS: Record<ViewKey, string> = {
   recruiting: 'Recruiting',
   hrbp: 'HR business partners',
+  org: 'Org chart',
   services: 'Employee services',
   talent: 'Talent',
   comp: 'Compensation',

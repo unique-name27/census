@@ -191,3 +191,21 @@ export const IconGood = (p: P) => (
     <path d="m5.25 8.25 1.9 1.9 3.6-4.15" stroke="var(--sheet)" strokeWidth={1.6} fill="none" />
   </Svg>
 )
+export const IconExternal = (p: P) => (
+  <Svg {...p}>
+    <path d="M9.5 2.5h4v4M13.5 2.5 7.5 8.5M12 9.5V13a.5.5 0 0 1-.5.5H3a.5.5 0 0 1-.5-.5V4.5A.5.5 0 0 1 3 4h3.5" />
+  </Svg>
+)
+export const IconApps = (p: P) => (
+  <Svg {...p}>
+    <rect x="2.5" y="2.5" width="4.25" height="4.25" rx=".75" />
+    <rect x="9.25" y="2.5" width="4.25" height="4.25" rx=".75" />
+    <rect x="2.5" y="9.25" width="4.25" height="4.25" rx=".75" />
+    <rect x="9.25" y="9.25" width="4.25" height="4.25" rx=".75" />
+  </Svg>
+)
+export const IconPencil = (p: P) => (
+  <Svg {...p}>
+    <path d="M10.5 3 13 5.5 6 12.5H3.5V10z" />
+  </Svg>
+)

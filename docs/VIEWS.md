@@ -404,3 +404,41 @@ unrecognized values) → validation summary (rows in/out, skipped, duplicates, d
 table with "Download issues (CSV)") → Apply replaces the dataset (store.replaceDataset) and toasts
 "Employees replaced: 1,912 rows". Remember the mapping by header fingerprint (profiles) and apply
 it silently next time with a note. Employees are linked by manager name when IDs are missing.
+
+---
+
+## Org chart (`org`)
+
+Question: who reports to whom, how is each team shaped, and what would a reorganization change?
+Ported from the user's own org chart tool (GitHub `unique-name27/org-chart-simulator`, which they say
+"functions well"), redrawn in the Census design language and fed by the Employees dataset.
+
+Tabs: `chart` Chart · `sandbox` Reorg sandbox.
+
+Folder-tab headline: people managers at asOf ("people managers"), or average span; keep it cheap.
+
+Chart: a top-down tree of person cards (name, title, level, department, location, direct and total
+org counts) with connectors, expand and collapse per node, "expand all to depth N", zoom and pan,
+fit to screen, search with jump-to-person (keyboard shortcut "/"), focus a person (breadcrumb up the
+chain), color by department / location / level / tenure band / business unit (legend, categorical
+slots in fixed order with "Other"), and flags carried from the old tool: span outliers (1 report or
+12+), new managers with large teams, single-report chains, people hired in the last 90 days. The
+global filters apply: a selected leader becomes the chart root; business unit / department /
+location / level filters dim non-matching cards instead of removing them (the chain stays
+readable). An as-of view uses `isActiveAt(ctx.asOf)`; a toggle shows open requisitions as dashed
+placeholder cards under their hiring manager. Clicking a card opens a detail panel: person facts,
+manager chain, direct reports, team stats (span, tenure, regretted exits 12 months), latest rating
+and potential when reviews exist, and links "Open in HR business partners" (sets leaderId and goes
+to #hrbp) and "Open in Talent".
+
+Reorg sandbox: drag a person (or a whole team) onto a new manager; changes stay in a local
+scenario (never touch the datasets), shown as a list of moves with undo; a ripple preview and a
+scenario diff (span changes, layers, managers gaining or losing reports, orphaned teams, cycles
+blocked) like the old tool's ScenarioDiffModal; reset; export the scenario as an Excel file of
+moves and the resulting roster.
+
+Exports: the chart is wrapped in a Figure whose rows are the people currently shown (ID, name,
+title, manager, level, department, location, directs, total org) so CSV/Excel work; PNG/SVG export
+of the visible chart; and an "Org slide" export (PowerPoint, one slide per selected leader with
+their direct org, like the old tool's slide builder) using pptxgenjs. Large orgs: virtualize or
+collapse by default below depth 3 so 1,500 people stay fast.

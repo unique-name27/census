@@ -1,5 +1,6 @@
 /**
- * Top line of the band: wordmark, whose data this is, the as-of date, the Data room and theme.
+ * Top line of the band: wordmark, whose data this is, the as-of date, related tools, the Data room
+ * and theme.
  */
 
 import { IconDatabase, IconMonitor, IconMoon, IconSun } from '@/components/icons'
@@ -11,6 +12,7 @@ import { type ThemePref, useCensus } from '@/data/store'
 import { formatDate } from '@/lib/dates'
 import { companyLine, uploadedCount } from './exportMeta'
 import { Mark } from './Mark'
+import { ToolsMenu } from './ToolsMenu'
 
 const THEMES: { value: ThemePref; label: string; Icon: typeof IconSun }[] = [
   { value: 'system', label: 'System', Icon: IconMonitor },
@@ -73,6 +75,7 @@ export function Masthead() {
       </div>
       <div className="ml-auto flex shrink-0 items-center gap-1">
         <span className="mr-2 hidden text-[12px] text-muted md:inline">As of {formatDate(ctx.asOf)}</span>
+        <ToolsMenu />
         <Button
           variant={onDataRoom ? 'secondary' : 'ghost'}
           icon={<IconDatabase />}

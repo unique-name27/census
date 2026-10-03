@@ -544,7 +544,7 @@ export interface DatasetDef {
   fields: FieldDef[]
 }
 
-export type ViewKey = 'recruiting' | 'hrbp' | 'services' | 'talent' | 'comp'
+export type ViewKey = 'recruiting' | 'hrbp' | 'org' | 'services' | 'talent' | 'comp'
 
 const f = (
   key: string,
@@ -562,7 +562,7 @@ export const DATASETS: DatasetDef[] = [
     sheet: 'Employees',
     description:
       'Roster of current and former workers. One row per person; leavers keep their termination fields.',
-    usedBy: ['hrbp', 'talent', 'comp', 'services', 'recruiting'],
+    usedBy: ['hrbp', 'org', 'talent', 'comp', 'services', 'recruiting'],
     rowKey: ['employeeId'],
     fields: [
       f(
