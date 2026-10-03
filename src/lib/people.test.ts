@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { periodWindows } from '@/data/scope'
 import type { Employee, Review } from '@/data/schema'
+import { periodWindows } from '@/data/scope'
 import {
   attrition,
   avgHeadcount,
@@ -51,7 +51,11 @@ describe('snapshots and headcount', () => {
   })
 
   it('excludes contractors and interns', () => {
-    const rows = [emp('a', '2020-01-01'), emp('b', '2020-01-01', { employmentType: 'Contractor' }), emp('c', '2020-01-01', { employmentType: 'Intern' })]
+    const rows = [
+      emp('a', '2020-01-01'),
+      emp('b', '2020-01-01', { employmentType: 'Contractor' }),
+      emp('c', '2020-01-01', { employmentType: 'Intern' }),
+    ]
     expect(headcountAt(rows, ASOF)).toBe(1)
   })
 
@@ -67,8 +71,16 @@ describe('snapshots and headcount', () => {
 describe('attrition', () => {
   const stayers = Array.from({ length: 18 }, (_, i) => emp(`s${i}`, '2019-01-01'))
   const leavers = [
-    emp('v1', '2019-01-01', { terminationDate: '2026-02-01', terminationType: 'Voluntary', regrettable: true }),
-    emp('v2', '2019-01-01', { terminationDate: '2026-05-01', terminationType: 'Voluntary', regrettable: false }),
+    emp('v1', '2019-01-01', {
+      terminationDate: '2026-02-01',
+      terminationType: 'Voluntary',
+      regrettable: true,
+    }),
+    emp('v2', '2019-01-01', {
+      terminationDate: '2026-05-01',
+      terminationType: 'Voluntary',
+      regrettable: false,
+    }),
     emp('i1', '2019-01-01', { terminationDate: '2025-12-01', terminationType: 'Involuntary' }),
     emp('old', '2019-01-01', { terminationDate: '2025-06-01', terminationType: 'Voluntary' }),
   ]
@@ -96,7 +108,10 @@ describe('attrition', () => {
 
   it('annualizes shorter windows', () => {
     const q = periodWindows('t3m', ASOF).current
-    const people = [...stayers, emp('x', '2019-01-01', { terminationDate: '2026-08-15', terminationType: 'Voluntary' })]
+    const people = [
+      ...stayers,
+      emp('x', '2019-01-01', { terminationDate: '2026-08-15', terminationType: 'Voluntary' }),
+    ]
     const r = attrition(people, q)
     expect(r.events).toBe(1)
     expect(r.rate).toBeCloseTo((1 / r.avgHeadcount) * (12 / q.months), 6)
@@ -126,7 +141,11 @@ describe('cohort measures', () => {
   })
 
   it('12-month retention', () => {
-    const rows = [emp('a', '2020-01-01'), emp('b', '2020-01-01', { terminationDate: '2026-01-01' }), emp('c', '2026-01-01')]
+    const rows = [
+      emp('a', '2020-01-01'),
+      emp('b', '2020-01-01', { terminationDate: '2026-01-01' }),
+      emp('c', '2026-01-01'),
+    ]
     const r = retention12(rows, ASOF)
     expect(r.base).toBe(2)
     expect(r.rate).toBe(0.5)

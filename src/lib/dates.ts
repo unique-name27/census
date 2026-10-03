@@ -14,7 +14,9 @@ export function ms(iso: string | null | undefined): number {
   let v = cache.get(iso)
   if (v === undefined) {
     const m = /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2}))?)?/.exec(iso)
-    v = m ? Date.UTC(+m[1], +m[2] - 1, +m[3], m[4] ? +m[4] : 0, m[5] ? +m[5] : 0, m[6] ? +m[6] : 0) : Number.NaN
+    v = m
+      ? Date.UTC(+m[1], +m[2] - 1, +m[3], m[4] ? +m[4] : 0, m[5] ? +m[5] : 0, m[6] ? +m[6] : 0)
+      : Number.NaN
     if (cache.size > 200_000) cache.clear()
     cache.set(iso, v)
   }

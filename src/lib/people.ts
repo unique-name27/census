@@ -9,9 +9,10 @@
  *    (13 points for a 12-month window);
  *  - turnover rates are annualized by 12 / window.months.
  */
+
+import type { Employee, ISODate, Review } from '@/data/schema'
 import type { Window } from '@/data/scope'
 import { isActiveAt, isEmployee } from '@/data/scope'
-import type { Employee, ISODate, Review } from '@/data/schema'
 import { addDays, addMonths, daysBetween, monthEnd, ms } from './dates'
 
 export { isActiveAt, isEmployee }
@@ -101,16 +102,24 @@ export function attrition(employees: readonly Employee[], w: Window, kind: ExitK
  * First-year attrition: of employees hired 12-24 months before asOf, the share who left within
  * 365 days of starting. Null when the cohort is empty.
  */
-export function firstYearAttrition(employees: readonly Employee[], asOf: ISODate): { rate: number | null; cohort: number; leavers: number } {
+export function firstYearAttrition(
+  employees: readonly Employee[],
+  asOf: ISODate,
+): { rate: number | null; cohort: number; leavers: number } {
   const from = addMonths(asOf, -24)
   const to = addMonths(asOf, -12)
   const cohort = employees.filter((e) => isEmployee(e) && e.hireDate > from && e.hireDate <= to)
-  const leavers = cohort.filter((e) => e.terminationDate && daysBetween(e.hireDate, e.terminationDate) < 365).length
+  const leavers = cohort.filter(
+    (e) => e.terminationDate && daysBetween(e.hireDate, e.terminationDate) < 365,
+  ).length
   return { rate: cohort.length ? leavers / cohort.length : null, cohort: cohort.length, leavers }
 }
 
 /** Of employees active 12 months before asOf, the share still active at asOf. */
-export function retention12(employees: readonly Employee[], asOf: ISODate): { rate: number | null; base: number } {
+export function retention12(
+  employees: readonly Employee[],
+  asOf: ISODate,
+): { rate: number | null; base: number } {
   const start = addMonths(asOf, -12)
   const base = activeAt(employees, start)
   const kept = base.filter((e) => isActiveAt(e, asOf)).length
@@ -169,7 +178,9 @@ export function buildReviewIndex(reviews: readonly Review[]): ReviewIndex {
   for (const arr of byEmployee.values()) arr.sort((a, b) => (a.cycleDate < b.cycleDate ? -1 : 1))
   return {
     byEmployee,
-    cycles: [...cycles.entries()].map(([cycle, cycleDate]) => ({ cycle, cycleDate })).sort((a, b) => (a.cycleDate < b.cycleDate ? -1 : 1)),
+    cycles: [...cycles.entries()]
+      .map(([cycle, cycleDate]) => ({ cycle, cycleDate }))
+      .sort((a, b) => (a.cycleDate < b.cycleDate ? -1 : 1)),
   }
 }
 

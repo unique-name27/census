@@ -11,5 +11,5 @@ export const view: ViewDef = {
   tabs: [{ key: 'overview', label: 'Overview' }],
   View,
   headline: () => ({ value: '—', label: 'coming soon' }),
-  datasets: ['employees','jobChanges','reviews'],
+  datasets: ['employees', 'jobChanges', 'reviews'],
 }

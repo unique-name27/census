@@ -9,7 +9,7 @@
  *  - candidates by their requisition;
  *  - succession plans by the incumbent.
  */
-import { addDays, addMonths, formatRange, iso, ms, quarterStart } from '@/lib/dates'
+import { addDays, addMonths, formatRange, iso, monthEnd, ms, quarterStart } from '@/lib/dates'
 import type { Datasets, Employee, ISODate, Requisition } from './schema'
 
 /* ───────────── periods ───────────── */
@@ -41,6 +41,15 @@ function win(start: ISODate, end: ISODate, months?: number): Window {
   return { start, end, months: months ?? monthsOf(start, end), label: formatRange(start, end) }
 }
 
+/**
+ * First day of the n-month window ending on `end`. A month-end `end` gives whole calendar months
+ * (6 months to 30 Sep starts 1 Apr, not 31 Mar).
+ */
+function trailingStart(end: ISODate, n: number): ISODate {
+  if (addDays(end, 1).slice(8) === '01') return addDays(monthEnd(addMonths(`${end.slice(0, 7)}-01`, -n)), 1)
+  return addDays(addMonths(end, -n), 1)
+}
+
 /** The reporting window and the comparison window right before it (prior year for YTD). */
 export function periodWindows(
   preset: PeriodPreset,
@@ -48,9 +57,9 @@ export function periodWindows(
   custom?: { start: ISODate | null; end: ISODate | null },
 ): { current: Window; prior: Window } {
   const trailing = (n: number): { current: Window; prior: Window } => {
-    const start = addDays(addMonths(asOf, -n), 1)
+    const start = trailingStart(asOf, n)
     const pEnd = addDays(start, -1)
-    const pStart = addDays(addMonths(pEnd, -n), 1)
+    const pStart = trailingStart(pEnd, n)
     return { current: win(start, asOf, n), prior: win(pStart, pEnd, n) }
   }
   switch (preset) {
@@ -109,7 +118,11 @@ export const DEFAULT_FILTERS: Filters = {
 }
 
 export const hasOrgFilter = (f: Filters): boolean =>
-  !!f.leaderId || f.businessUnit.length > 0 || f.department.length > 0 || f.location.length > 0 || f.level.length > 0
+  !!f.leaderId ||
+  f.businessUnit.length > 0 ||
+  f.department.length > 0 ||
+  f.location.length > 0 ||
+  f.level.length > 0
 
 /* ───────────── org index ───────────── */
 
@@ -159,7 +172,7 @@ export function employeeMatcher(filters: Filters, index: OrgIndex): (e: Employee
     if (bu.size && !bu.has(e.businessUnit)) return false
     if (dept.size && !dept.has(e.department)) return false
     if (loc.size && !loc.has(e.location)) return false
-    if (lvl.size && !lvl.has(e.level)) return false
+    if (lvl.size && !lvl.has(e.level ?? '')) return false
     return true
   }
 }
@@ -176,7 +189,7 @@ function reqMatcher(filters: Filters, index: OrgIndex): (r: Requisition | undefi
     if (bu.size && !bu.has(r.businessUnit)) return false
     if (dept.size && !dept.has(r.department)) return false
     if (loc.size && !loc.has(r.location)) return false
-    if (lvl.size && !lvl.has(r.level)) return false
+    if (lvl.size && !lvl.has(r.level ?? '')) return false
     return true
   }
 }
@@ -185,11 +198,13 @@ function reqMatcher(filters: Filters, index: OrgIndex): (r: Requisition | undefi
 export function scopeDatasets(all: Datasets, filters: Filters, index: OrgIndex): Datasets {
   if (!hasOrgFilter(filters)) return all
   const empOk = employeeMatcher(filters, index)
-  const byEmp = <T extends { employeeId: string }>(rows: T[]) => rows.filter((r) => empOk(index.byId.get(r.employeeId)))
+  const byEmp = <T extends { employeeId: string }>(rows: T[]) =>
+    rows.filter((r) => empOk(index.byId.get(r.employeeId)))
   const reqOk = reqMatcher(filters, index)
   const reqs = all.requisitions.filter(reqOk)
   const reqIds = new Set(reqs.map((r) => r.reqId))
-  const locOnly = !filters.leaderId && !filters.businessUnit.length && !filters.department.length && !filters.level.length
+  const locOnly =
+    !filters.leaderId && !filters.businessUnit.length && !filters.department.length && !filters.level.length
   const loc = new Set(filters.location)
   return {
     employees: all.employees.filter(empOk),

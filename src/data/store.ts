@@ -8,8 +8,8 @@
 import { del as idbDel, get as idbGet, set as idbSet } from 'idb-keyval'
 import { create } from 'zustand'
 import { generateSample, SAMPLE_AS_OF } from './sample'
-import { DEFAULT_FILTERS, type Filters } from './scope'
 import { DATASET_KEYS, type DatasetKey, type Datasets, type ISODate, type ViewKey } from './schema'
+import { DEFAULT_FILTERS, type Filters } from './scope'
 
 export type RouteView = ViewKey | 'data'
 export interface Route {
@@ -26,6 +26,8 @@ export interface SourceMeta {
   importedAt?: string
   /** Rows that imported with a warning (defaulted or unparsed values). */
   warnings?: number
+  /** Header fingerprint of the mapping profile used, so the Data room can offer to edit it. */
+  profileFingerprint?: string
 }
 
 export type ThemePref = 'system' | 'light' | 'dark'
@@ -42,11 +44,15 @@ interface CensusState {
   init: () => Promise<void>
   setFilters: (patch: Partial<Filters>) => void
   resetFilters: () => void
-  navigate: (view: RouteView, tab?: string) => void
+  navigate: (view: RouteView, tab?: string, opts?: { scroll?: boolean }) => void
   setShowPay: (on: boolean) => void
   setTheme: (t: ThemePref) => void
   setAsOfOverride: (d: ISODate | null) => void
-  replaceDataset: <K extends DatasetKey>(key: K, rows: Datasets[K], meta: Omit<SourceMeta, 'kind' | 'rowCount'>) => Promise<void>
+  replaceDataset: <K extends DatasetKey>(
+    key: K,
+    rows: Datasets[K],
+    meta: Omit<SourceMeta, 'kind' | 'rowCount'>,
+  ) => Promise<void>
   resetDataset: (key: DatasetKey) => Promise<void>
   resetAllToSample: () => Promise<void>
 }
@@ -138,12 +144,12 @@ export const useCensus = create<CensusState>((set, getState) => ({
     LS.set('filters', DEFAULT_FILTERS)
     set({ filters: { ...DEFAULT_FILTERS } })
   },
-  navigate(view, tab = '') {
+  navigate(view, tab = '', opts = {}) {
     const route = { view, tab }
     const hash = `#${view}${tab ? `.${tab}` : ''}`
     if (location.hash !== hash) history.replaceState(null, '', hash)
     set({ route })
-    window.scrollTo({ top: 0 })
+    if (opts.scroll !== false) window.scrollTo({ top: 0 })
   },
   setShowPay(on) {
     LS.set('showPay', on)
@@ -158,7 +164,12 @@ export const useCensus = create<CensusState>((set, getState) => ({
     set({ asOfOverride: d })
   },
   async replaceDataset(key, rows, meta) {
-    const full: SourceMeta = { ...meta, kind: 'upload', rowCount: rows.length, importedAt: meta.importedAt ?? new Date().toISOString() }
+    const full: SourceMeta = {
+      ...meta,
+      kind: 'upload',
+      rowCount: rows.length,
+      importedAt: meta.importedAt ?? new Date().toISOString(),
+    }
     set((s) => ({ data: { ...s.data, [key]: rows }, sources: { ...s.sources, [key]: full } }))
     try {
       await idbSet(IDB_KEY(key), { rows, meta: full })

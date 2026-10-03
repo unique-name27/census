@@ -9,7 +9,10 @@ export function mean(xs: readonly number[]): number | null {
 
 /** Linear-interpolated quantile (same convention as d3.quantile / Excel PERCENTILE.INC). */
 export function quantile(xs: readonly number[], q: number): number | null {
-  const v = xs.filter(Number.isFinite).slice().sort((a, b) => a - b)
+  const v = xs
+    .filter(Number.isFinite)
+    .slice()
+    .sort((a, b) => a - b)
   if (!v.length) return null
   const pos = (v.length - 1) * q
   const lo = Math.floor(pos)
@@ -95,7 +98,14 @@ export function fnv(s: string): number {
  * Significance gate for "vs prior period" call-outs: at least `minN` events on both sides and a
  * relative change of at least `minRel` (15% by default). Silence over noise.
  */
-export function isMaterialChange(cur: number, prev: number, nCur: number, nPrev: number, minN = 5, minRel = 0.15): boolean {
+export function isMaterialChange(
+  cur: number,
+  prev: number,
+  nCur: number,
+  nPrev: number,
+  minN = 5,
+  minRel = 0.15,
+): boolean {
   if (nCur < minN || nPrev < minN) return false
   const base = Math.max(Math.abs(cur), Math.abs(prev))
   return base > 0 && Math.abs(cur - prev) / base >= minRel

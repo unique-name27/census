@@ -242,6 +242,22 @@ Already written (lead): `Button`, `IconButton`, `Menu` (items API), `Popover`, `
 `@/charts` (chart builder). `Kpi` and `Finding` shapes are in
 `src/components/types.ts`.
 
+### Extra shared APIs (from the shell and chart builders)
+
+- Navigation:  (pushes history; keeps scroll inside a view), , .
+-  registers a table-only export without rendering.
+- Layout:  and ;  takes .
+- .
+- Charts:  +  + axis/grid helpers for custom Plot visuals; ; , ,
+  , ; . A custom SVG visual inside a Figure that also contains other
+  SVGs must put  on its root  so PNG/SVG export captures the right element.
+- Plot pitfall: the mark option  is a per-row data channel, not a fixed label (a constant string makes lines
+  disappear). Bar corner radii are in screen space; use the kit instead of hand-rolling rounded bars.
+- Imported data may have  in , , requisition /, case
+  / and comp  (unrecognized values are logged, not guessed). Guard for it.
+-  is boolean for leavers and null for active people. Succession roles with no successor have one row
+  with  null. Comp  is null for people hired after 2026-04-01 or without a rating.
+
 ### Views
 
 Each view folder exports `view: ViewDef` from `index.tsx` (see `src/views/types.ts`): label, tabs,

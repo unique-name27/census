@@ -1,22 +1,23 @@
-@import 'tailwindcss';
-@import './tokens.css';
+@import "tailwindcss";
+@import "./tokens.css";
 
 /* Latin subsets only, bundled with the app (no font requests leave the browser).
    Archivo carries a width axis (62–125%), used for the semi-condensed display cut. */
 @font-face {
-  font-family: 'Archivo Variable';
+  font-family: "Archivo Variable";
   font-style: normal;
   font-display: swap;
   font-weight: 100 900;
   font-stretch: 62% 125%;
-  src: url('@fontsource-variable/archivo/files/archivo-latin-wdth-normal.woff2') format('woff2-variations');
+  src: url("@fontsource-variable/archivo/files/archivo-latin-wdth-normal.woff2") format("woff2-variations");
 }
 @font-face {
-  font-family: 'JetBrains Mono Variable';
+  font-family: "JetBrains Mono Variable";
   font-style: normal;
   font-display: swap;
   font-weight: 100 800;
-  src: url('@fontsource-variable/jetbrains-mono/files/jetbrains-mono-latin-wght-normal.woff2') format('woff2-variations');
+  src: url("@fontsource-variable/jetbrains-mono/files/jetbrains-mono-latin-wght-normal.woff2")
+    format("woff2-variations");
 }
 
 /* Map design tokens into Tailwind utilities (bg-sheet, text-ink-2, border-rule, ...).
@@ -148,28 +149,15 @@
   background: transparent;
   overflow: visible;
 }
-.census-plot text {
-  fill: currentColor;
-}
-.census-plot [aria-label='x-axis tick label'] text,
-.census-plot [aria-label='y-axis tick label'] text,
-.census-plot [aria-label='fx-axis tick label'] text,
-.census-plot [aria-label='fy-axis tick label'] text {
+.census-plot [aria-label="x-axis tick label"] text,
+.census-plot [aria-label="y-axis tick label"] text,
+.census-plot [aria-label="fx-axis tick label"] text,
+.census-plot [aria-label="fy-axis tick label"] text {
   fill: var(--muted);
   font-variant-numeric: tabular-nums;
 }
-.census-plot [aria-label='x-axis label'] text,
-.census-plot [aria-label='y-axis label'] text {
+.census-plot [aria-label="x-axis label"] text,
+.census-plot [aria-label="y-axis label"] text {
   fill: var(--ink-2);
   font-weight: 500;
-}
-.census-plot [aria-label='tip'] {
-  font-size: 12px;
-}
-.census-plot [aria-label='tip'] path {
-  fill: var(--sheet);
-  stroke: var(--rule-strong);
-}
-.census-plot [aria-label='tip'] text {
-  fill: var(--ink);
 }

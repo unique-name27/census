@@ -49,8 +49,12 @@ export function buildContext(args: {
 }): AnalyticsContext {
   const { data, sources, filters, asOfOverride, showPay } = args
   const isSample = Object.values(sources).every((s) => s.kind === 'sample')
-  const asOf = isSample && !asOfOverride ? SAMPLE_AS_OF : resolveAsOf(data, args.today ?? todayISO(), asOfOverride)
-  const { current, prior } = periodWindows(filters.period, asOf, { start: filters.customStart, end: filters.customEnd })
+  const asOf =
+    isSample && !asOfOverride ? SAMPLE_AS_OF : resolveAsOf(data, args.today ?? todayISO(), asOfOverride)
+  const { current, prior } = periodWindows(filters.period, asOf, {
+    start: filters.customStart,
+    end: filters.customEnd,
+  })
   const org = buildOrgIndex(data.employees)
   return {
     asOf,

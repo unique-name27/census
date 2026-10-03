@@ -31,7 +31,8 @@ const BTN_VARIANT: Record<ButtonVariant, string> = {
   primary: 'bg-ink text-on-ink hover:bg-ink-2 data-[popup-open]:bg-ink-2',
   secondary:
     'bg-sheet text-ink shadow-[inset_0_0_0_1px_var(--rule-strong)] hover:bg-sheet-2 active:bg-sheet-3 data-[popup-open]:bg-sheet-2',
-  ghost: 'text-ink-2 hover:bg-hover hover:text-ink active:bg-press data-[popup-open]:bg-hover data-[popup-open]:text-ink',
+  ghost:
+    'text-ink-2 hover:bg-hover hover:text-ink active:bg-press data-[popup-open]:bg-hover data-[popup-open]:text-ink',
 }
 const BTN_SIZE = { sm: 'h-7 px-2.5 text-[13px]', md: 'h-8 px-3 text-[13px]' }
 
@@ -40,7 +41,12 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
   ref,
 ) {
   return (
-    <button ref={ref} type={type} className={cx(BTN_BASE, BTN_VARIANT[variant], BTN_SIZE[size], className)} {...rest}>
+    <button
+      ref={ref}
+      type={type}
+      className={cx(BTN_BASE, BTN_VARIANT[variant], BTN_SIZE[size], className)}
+      {...rest}
+    >
       {icon}
       {children}
       {caret && <IconChevronDown className="-mr-1 text-muted" />}
@@ -149,8 +155,13 @@ export function Popover({
       <BPopover.Trigger render={trigger} />
       <BPopover.Portal>
         <BPopover.Positioner sideOffset={6} side={side} align={align} className="z-50 outline-none">
-          <BPopover.Popup className={cx(POPUP, 'p-3 text-[13px]')} style={{ width, maxWidth: 'calc(100vw - 32px)' }}>
-            {title && <BPopover.Title className="cut-head mb-1.5 text-[14px] font-semibold">{title}</BPopover.Title>}
+          <BPopover.Popup
+            className={cx(POPUP, 'p-3 text-[13px]')}
+            style={{ width, maxWidth: 'calc(100vw - 32px)' }}
+          >
+            {title && (
+              <BPopover.Title className="cut-head mb-1.5 text-[14px] font-semibold">{title}</BPopover.Title>
+            )}
             {children}
           </BPopover.Popup>
         </BPopover.Positioner>
@@ -166,13 +177,23 @@ export function TooltipProvider({ children }: { children: ReactNode }) {
 }
 
 /** Short hover/focus hint. Never the only way to read a value. */
-export function Tip({ content, children, side = 'top' }: { content: ReactNode; children: ReactElement; side?: 'top' | 'bottom' }) {
+export function Tip({
+  content,
+  children,
+  side = 'top',
+}: {
+  content: ReactNode
+  children: ReactElement
+  side?: 'top' | 'bottom'
+}) {
   return (
     <BTooltip.Root>
       <BTooltip.Trigger render={children} />
       <BTooltip.Portal>
         <BTooltip.Positioner sideOffset={6} side={side} className="z-50">
-          <BTooltip.Popup className={cx(POPUP, 'max-w-72 px-2.5 py-1.5 text-[12px] leading-snug')}>{content}</BTooltip.Popup>
+          <BTooltip.Popup className={cx(POPUP, 'max-w-72 px-2.5 py-1.5 text-[12px] leading-snug')}>
+            {content}
+          </BTooltip.Popup>
         </BTooltip.Positioner>
       </BTooltip.Portal>
     </BTooltip.Root>
@@ -222,8 +243,17 @@ export function Segmented<T extends string>({
 
 /* ───────── Switch ───────── */
 
-export function Switch({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label: ReactNode }) {
+export function Switch({
+  checked,
+  onChange,
+  label,
+}: {
+  checked: boolean
+  onChange: (v: boolean) => void
+  label: ReactNode
+}) {
   return (
+    // biome-ignore lint/a11y/noLabelWithoutControl: Base UI renders the switch as a button inside the label
     <label className="inline-flex cursor-pointer items-center gap-2 text-[13px] text-ink-2 select-none">
       <BSwitch.Root
         checked={checked}
@@ -239,7 +269,10 @@ export function Switch({ checked, onChange, label }: { checked: boolean; onChang
 
 /* ───────── Status ───────── */
 
-const SEVERITY: Record<Severity, { icon: (p: { className?: string }) => ReactElement; text: string; wash: string; word: string }> = {
+const SEVERITY: Record<
+  Severity,
+  { icon: (p: { className?: string }) => ReactElement; text: string; wash: string; word: string }
+> = {
   critical: { icon: IconCritical, text: 'text-critical', wash: 'bg-critical-wash', word: 'Critical' },
   warning: { icon: IconWarning, text: 'text-warning', wash: 'bg-warning-wash', word: 'Watch' },
   info: { icon: IconInfoFilled, text: 'text-s1', wash: 'bg-hover', word: 'Note' },
@@ -247,7 +280,15 @@ const SEVERITY: Record<Severity, { icon: (p: { className?: string }) => ReactEle
 }
 
 /** Icon + word, so state never depends on color alone. */
-export function StatusPill({ severity, label, quiet }: { severity: Severity; label?: string; quiet?: boolean }) {
+export function StatusPill({
+  severity,
+  label,
+  quiet,
+}: {
+  severity: Severity
+  label?: string
+  quiet?: boolean
+}) {
   const s = SEVERITY[severity]
   const Icon = s.icon
   return (
@@ -270,7 +311,13 @@ export function SeverityIcon({ severity, className }: { severity: Severity; clas
 }
 
 /** Neutral tag, e.g. "Sample", "Uploaded", "Small sample". */
-export function Tag({ children, tone = 'neutral' }: { children: ReactNode; tone?: 'neutral' | 'ink' | 'outline' }) {
+export function Tag({
+  children,
+  tone = 'neutral',
+}: {
+  children: ReactNode
+  tone?: 'neutral' | 'ink' | 'outline'
+}) {
   return (
     <span
       className={cx(

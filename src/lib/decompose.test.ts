@@ -10,8 +10,18 @@ interface Row {
 
 const rows: Row[] = [
   // Bengaluru: 6 of 20 left; everyone else: 4 of 80.
-  ...Array.from({ length: 20 }, (_, i) => ({ site: 'Bengaluru', dept: i % 2 ? 'A' : 'B', left: i < 6, days: 40 })),
-  ...Array.from({ length: 80 }, (_, i) => ({ site: i % 2 ? 'San Jose' : 'Austin', dept: i % 2 ? 'A' : 'B', left: i < 4, days: 20 })),
+  ...Array.from({ length: 20 }, (_, i) => ({
+    site: 'Bengaluru',
+    dept: i % 2 ? 'A' : 'B',
+    left: i < 6,
+    days: 40,
+  })),
+  ...Array.from({ length: 80 }, (_, i) => ({
+    site: i % 2 ? 'San Jose' : 'Austin',
+    dept: i % 2 ? 'A' : 'B',
+    left: i < 4,
+    days: 20,
+  })),
 ]
 const dims = [
   { key: 'site', label: 'Location', get: (r: Row) => r.site },

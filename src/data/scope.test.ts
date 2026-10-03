@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import type { Datasets, Employee } from './schema'
-import { buildOrgIndex, DEFAULT_FILTERS, periodWindows, resolveAsOf, scopeDatasets, scopeLabel, subtreeIds } from './scope'
+import {
+  buildOrgIndex,
+  DEFAULT_FILTERS,
+  periodWindows,
+  resolveAsOf,
+  scopeDatasets,
+  scopeLabel,
+  subtreeIds,
+} from './scope'
 
 const e = (id: string, managerId: string | null, extra: Partial<Employee> = {}): Employee => ({
   employeeId: id,
@@ -56,12 +64,24 @@ describe('period windows', () => {
     expect(prior).toMatchObject({ start: '2025-01-01', end: '2025-09-30' })
   })
   it('last full quarter uses the quarter ending on asOf when asOf is a quarter end', () => {
-    expect(periodWindows('lastQuarter', '2026-09-30').current).toMatchObject({ start: '2026-07-01', end: '2026-09-30' })
-    expect(periodWindows('lastQuarter', '2026-09-15').current).toMatchObject({ start: '2026-04-01', end: '2026-06-30' })
-    expect(periodWindows('lastQuarter', '2026-09-30').prior).toMatchObject({ start: '2026-04-01', end: '2026-06-30' })
+    expect(periodWindows('lastQuarter', '2026-09-30').current).toMatchObject({
+      start: '2026-07-01',
+      end: '2026-09-30',
+    })
+    expect(periodWindows('lastQuarter', '2026-09-15').current).toMatchObject({
+      start: '2026-04-01',
+      end: '2026-06-30',
+    })
+    expect(periodWindows('lastQuarter', '2026-09-30').prior).toMatchObject({
+      start: '2026-04-01',
+      end: '2026-06-30',
+    })
   })
   it('custom range has an equal-length prior window', () => {
-    const { current, prior } = periodWindows('custom', '2026-09-30', { start: '2026-07-01', end: '2026-07-31' })
+    const { current, prior } = periodWindows('custom', '2026-09-30', {
+      start: '2026-07-01',
+      end: '2026-07-31',
+    })
     expect(current).toMatchObject({ start: '2026-07-01', end: '2026-07-31' })
     expect(prior).toMatchObject({ start: '2026-05-31', end: '2026-06-30' })
   })
@@ -84,7 +104,9 @@ describe('org scoping', () => {
   })
   it('labels the scope in plain words', () => {
     expect(scopeLabel(DEFAULT_FILTERS, index)).toBe('Whole company')
-    expect(scopeLabel({ ...DEFAULT_FILTERS, leaderId: 'vp', location: ['Hsinchu'] }, index)).toBe("Person vp's org · Hsinchu")
+    expect(scopeLabel({ ...DEFAULT_FILTERS, leaderId: 'vp', location: ['Hsinchu'] }, index)).toBe(
+      "Person vp's org · Hsinchu",
+    )
   })
 })
 
