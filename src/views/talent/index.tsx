@@ -1,15 +1,18 @@
 import type { ViewDef } from '../types'
-
-/** STUB: replaced by the Talent view builder. */
-function View({ tab }: { tab: string }) {
-  return <div className="p-8 text-ink-2">Talent — {tab || 'overview'}</div>
-}
+import { talentHeadline } from './engine'
+import { TalentView } from './ui/TalentView'
 
 export const view: ViewDef = {
   key: 'talent',
   label: 'Talent',
-  tabs: [{ key: 'overview', label: 'Overview' }],
-  View,
-  headline: () => ({ value: '—', label: 'coming soon' }),
-  datasets: ['reviews', 'succession', 'learning', 'employees', 'jobChanges'],
+  tabs: [
+    { key: 'overview', label: 'Overview' },
+    { key: 'performance', label: 'Performance' },
+    { key: 'succession', label: 'Potential & succession' },
+    { key: 'retention', label: 'Retention risk' },
+    { key: 'learning', label: 'Learning' },
+  ],
+  View: TalentView,
+  headline: talentHeadline,
+  datasets: ['reviews', 'succession', 'learning', 'employees', 'jobChanges', 'comp'],
 }

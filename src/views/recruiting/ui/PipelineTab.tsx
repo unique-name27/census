@@ -1,0 +1,351 @@
+/**
+ * Pipeline: where applications go (the river), who owns the next step (action queue), how each
+ * stage converts and how long candidates wait, and how speed changed by application month.
+ */
+import { useEffect, useRef } from 'react'
+import { DotStrip, Figure, Heatmap } from '@/charts'
+import { Button, Section } from '@/components'
+import { STAGES } from '@/data/schema'
+import { formatDate } from '@/lib/dates'
+import { fmt, fmtDelta, plural } from '@/lib/format'
+import { flowMembers, TRANSITIONS } from '../engine/flow'
+import { HIRED, LAST_OPEN_STAGE } from '../engine/types'
+import { useRecruitingUi } from '../state'
+import { ActionQueue } from './ActionQueue'
+import { asOfNote, NEED_CANDIDATES, NoRecruitingData, TABLET_FULL, windowText } from './common'
+import { useRecruiting } from './hooks'
+import { RiverChart } from './RiverChart'
+
+const OUTCOME_WORD: Record<string, string> = {
+  advanced: 'Advanced',
+  active: 'Still active',
+  rejected: 'Rejected',
+  withdrawn: 'Withdrawn',
+  declined: 'Offer declined',
+  node: 'Reached',
+}
+
+const MEMBER_COLUMNS = [
+  { key: 'candidate', label: 'Candidate' },
+  { key: 'reqId', label: 'Req' },
+  { key: 'title', label: 'Job title' },
+  { key: 'department', label: 'Department' },
+  { key: 'source', label: 'Source' },
+  { key: 'applied', label: 'Applied', format: 'date' as const },
+  { key: 'stage', label: 'Furthest stage' },
+  { key: 'outcome', label: 'Outcome' },
+  { key: 'exitDate', label: 'Outcome date', format: 'date' as const },
+  { key: 'reason', label: 'Reason' },
+]
+
+export function PipelineTab() {
+  const m = useRecruiting()
+  const b = m.base
+  const { flow: selected, selectFlow, focusQueue, queueFocused } = useRecruitingUi()
+  const queueRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!focusQueue) return
+    queueRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    queueFocused()
+  }, [focusQueue, queueFocused])
+
+  if (!b.apps.length && !b.reqs.length) return <NoRecruitingData />
+
+  const flow = b.flow
+  const flowRows = flow.stages.flatMap((s) => {
+    const name = STAGES[s.stage]
+    const share = (v: number) => (s.entered ? v / s.entered : null)
+    const rows: {
+      stage: string
+      flow: string
+      candidates: number
+      shareOfStage: number | null
+      medianDays: number | null
+    }[] = []
+    if (s.advanced)
+      rows.push({
+        stage: name,
+        flow: `Advanced to ${STAGES[s.stage + 1].toLowerCase()}`,
+        candidates: s.advanced,
+        shareOfStage: share(s.advanced),
+        medianDays: s.medianDays,
+      })
+    for (const [k, v] of [
+      ['Still active', s.active],
+      ['Rejected', s.rejected],
+      ['Withdrawn', s.withdrawn],
+      ['Offer declined', s.declined],
+    ] as const)
+      if (v) rows.push({ stage: name, flow: k, candidates: v, shareOfStage: share(v), medianDays: null })
+    return rows
+  })
+  flowRows.push({
+    stage: 'Hired',
+    flow: 'Hired',
+    candidates: flow.hired,
+    shareOfStage: flow.total ? flow.hired / flow.total : null,
+    medianDays: null,
+  })
+
+  const memberRow = (a: (typeof b.cohort)[number]) => ({
+    candidate: a.name,
+    applicationId: a.id,
+    reqId: a.reqId,
+    title: a.title,
+    department: a.department ?? '—',
+    source: a.source,
+    applied: a.appliedDate,
+    stage: STAGES[a.furthest],
+    outcome: a.outcome,
+    exitDate: a.exitDate,
+    reason: a.reason ?? '',
+  })
+  const members = selected ? flowMembers(b.cohort, selected.kind, selected.stage).map(memberRow) : []
+  const selLabel = selected
+    ? selected.kind === 'advanced'
+      ? `${STAGES[selected.stage]} to ${STAGES[selected.stage + 1].toLowerCase()}`
+      : selected.kind === 'node'
+        ? `${selected.stage === HIRED ? 'Hired' : `Reached ${STAGES[selected.stage].toLowerCase()}`}`
+        : `${OUTCOME_WORD[selected.kind]} at ${STAGES[selected.stage].toLowerCase()}`
+    : ''
+
+  const conversion = [
+    ...flow.stages.map((s) => ({
+      stage: STAGES[s.stage],
+      entered: s.entered,
+      advanced: s.advanced,
+      pass: s.pass,
+      rejected: s.rejected,
+      withdrawn: s.withdrawn,
+      declined: s.declined,
+      active: s.active,
+      medianDays: s.medianDays,
+      change: s.deltaDays != null ? fmtDelta(Math.round(s.deltaDays), 'days') : '',
+    })),
+    {
+      stage: 'Hired',
+      entered: flow.hired,
+      advanced: null,
+      pass: null,
+      rejected: null,
+      withdrawn: null,
+      declined: null,
+      active: null,
+      medianDays: null,
+      change: '',
+    },
+  ]
+  const lacking = b.actives.filter((x) => x.tier).length
+
+  return (
+    <>
+      <Section
+        title="Candidate flow"
+        dek={`Where the ${fmt(flow.total, 'int')} applications received ${windowText(b.window)} went. Click a ribbon to list those candidates and filter the action queue to that stage.`}
+      >
+        <Figure
+          id="recruiting-candidate-flow"
+          title="Candidate flow"
+          subtitle={`Applications received ${windowText(b.window)}, by the furthest stage reached and outcome on ${formatDate(b.asOf)}`}
+          data={flowRows}
+          columns={[
+            { key: 'stage', label: 'Stage' },
+            { key: 'flow', label: 'Flow' },
+            { key: 'candidates', label: 'Candidates', format: 'int' },
+            { key: 'shareOfStage', label: 'Share of stage', format: 'pct' },
+            { key: 'medianDays', label: 'Median days to advance', format: 'days' },
+          ]}
+          span={12}
+          empty={b.apps.length ? (flow.total ? null : 'No applications in this period.') : NEED_CANDIDATES}
+          detail={{
+            label: 'Applications',
+            columns: MEMBER_COLUMNS,
+            rows: () => b.cohort.map(memberRow),
+          }}
+          definitions={[
+            { term: 'Cohort', text: `Applications with an applied date ${windowText(b.window)}.` },
+            {
+              term: 'Reached a stage',
+              text: 'Has a date for that stage or a later one, or is at or past it now, so skipped stages count as passed.',
+            },
+            {
+              term: 'Pass rate',
+              text: 'Of candidates who reached a stage and are no longer waiting there, the share who advanced. Still-active candidates don’t count against it.',
+              formula: 'advanced ÷ (advanced + rejected + withdrawn + declined)',
+            },
+            {
+              term: 'Still active',
+              text: 'In process at that stage on the as-of date: the open-ended fade.',
+            },
+            {
+              term: 'Bottom band',
+              text: 'Everyone who left the process, building up from left to right. Drawn on its own, smaller scale.',
+            },
+          ]}
+          note={`${plural(flow.total, 'application')} · ${plural(flow.hired, 'hire')} · the bottom band uses a smaller scale than the river · ${asOfNote(b.asOf)}`}
+        >
+          <RiverChart flow={flow} cohort={b.cohort} selected={selected} onSelect={selectFlow} />
+        </Figure>
+        {selected && (
+          <Figure
+            id="recruiting-selected-flow"
+            title={`Selected: ${selLabel}`}
+            subtitle={`The ${plural(members.length, 'application')} behind the ribbon you clicked`}
+            data={members}
+            columns={MEMBER_COLUMNS}
+            tableOnly
+            span={12}
+            actions={
+              <Button variant="ghost" size="sm" onClick={() => selectFlow(null)}>
+                Clear selection
+              </Button>
+            }
+            table={{ search: 'Search candidates or reqs', maxRows: 10 }}
+            empty={members.length ? null : 'Nobody in this part of the flow.'}
+            note={`${plural(members.length, 'application')} · ${asOfNote(b.asOf)}`}
+          />
+        )}
+      </Section>
+
+      <div ref={queueRef} className="scroll-mt-4">
+        <Section
+          title="Action queue"
+          dek="Candidates without a timely next step, grouped by who owns it. Interview decisions sit with the hiring manager; copy a note to send each owner their list."
+        >
+          <ActionQueue groups={m.queue} asOf={b.asOf} />
+        </Section>
+      </div>
+
+      <Section
+        title="Stage conversion and waiting time"
+        dek="How each stage converts for this period’s applications, and how long today’s active candidates have been waiting."
+      >
+        <Figure
+          id="recruiting-stage-conversion"
+          title="Stage conversion"
+          subtitle={`Applications received ${windowText(b.window)}, by stage`}
+          data={conversion}
+          columns={[
+            { key: 'stage', label: 'Stage' },
+            { key: 'entered', label: 'Reached', format: 'int' },
+            { key: 'advanced', label: 'Advanced', format: 'int' },
+            { key: 'pass', label: 'Pass rate', format: 'pct' },
+            { key: 'rejected', label: 'Rejected', format: 'int' },
+            { key: 'withdrawn', label: 'Withdrawn', format: 'int' },
+            { key: 'declined', label: 'Declined', format: 'int' },
+            { key: 'active', label: 'Still active', format: 'int' },
+            { key: 'medianDays', label: 'Median days to next stage', format: 'days' },
+            { key: 'change', label: 'Change vs prior', format: 'text', align: 'right' },
+          ]}
+          tableOnly
+          span={7}
+          table={{ maxRows: 10 }}
+          empty={b.apps.length ? (flow.total ? null : 'No applications in this period.') : NEED_CANDIDATES}
+          definitions={[
+            {
+              term: 'Pass rate',
+              text: 'Advanced ÷ (advanced + left at this stage). Still-active candidates are shown separately.',
+              formula: 'advanced ÷ (advanced + rejected + withdrawn + declined)',
+            },
+            {
+              term: 'Median days to next stage',
+              text: 'Days between the stage date and the next stage date, for candidates with both.',
+            },
+            {
+              term: 'Change vs prior',
+              text: `The same median for applications received ${windowText(b.prior)}. Shown when both periods have at least 5 candidates.`,
+            },
+          ]}
+          note={`${plural(flow.total, 'application')} · ${asOfNote(b.asOf)}`}
+        />
+        <Figure
+          id="recruiting-waiting-time"
+          title="Waiting time by stage"
+          subtitle={`Days each active candidate has waited, ${formatDate(b.asOf)}`}
+          data={m.waiting}
+          columns={[
+            { key: 'candidate', label: 'Candidate' },
+            { key: 'applicationId', label: 'Application' },
+            { key: 'stage', label: 'Stage' },
+            { key: 'state', label: 'State' },
+            { key: 'days', label: 'Days waiting', format: 'int' },
+            { key: 'tier', label: 'Aging' },
+          ]}
+          span={5}
+          className={TABLET_FULL}
+          empty={
+            b.apps.length
+              ? m.waiting.length
+                ? null
+                : 'No active candidates on the as-of date.'
+              : NEED_CANDIDATES
+          }
+          definitions={[
+            {
+              term: 'Days waiting',
+              text: 'Days since the interview for decisions, since the offer for offers out, otherwise days in the current stage.',
+            },
+            { term: 'Red', text: 'Overdue: well past the usual time with nothing pending.' },
+            { term: 'Amber', text: 'Watch: past the usual time.' },
+            { term: 'Gray', text: 'Scheduled: in motion.' },
+          ]}
+          note={`${plural(m.waiting.length, 'active candidate')} · ${fmt(lacking, 'int')} lack a next step · ticks mark each stage’s median`}
+        >
+          <DotStrip
+            data={m.waiting}
+            x="days"
+            y="stage"
+            id="applicationId"
+            label="candidate"
+            tone={(d) => d.tone}
+            xFormat="days"
+            yOrder={STAGES.slice(0, LAST_OPEN_STAGE + 1)}
+            median
+            ariaLabel="Waiting time by stage"
+          />
+        </Figure>
+      </Section>
+
+      <Section
+        title="Speed by application month"
+        dek="Median days for each step, for candidates grouped by the month they applied. A row that darkens toward the right is a step slowing down."
+      >
+        <Figure
+          id="recruiting-speed-heatmap"
+          title="Days per transition by application month"
+          subtitle={`Median days per step, applications from the 12 months to ${formatDate(b.window.end)}`}
+          data={m.speed}
+          columns={[
+            { key: 'month', label: 'Applied in' },
+            { key: 'transition', label: 'Step' },
+            { key: 'days', label: 'Median days', format: 'days' },
+            { key: 'n', label: 'Candidates', format: 'int' },
+          ]}
+          span={12}
+          empty={b.apps.length ? null : NEED_CANDIDATES}
+          definitions={[
+            {
+              term: 'Median days',
+              text: 'Days from one stage date to the next, for candidates who applied that month and made the step. Cells with fewer than 5 candidates are left blank.',
+            },
+          ]}
+          note={asOfNote(b.asOf)}
+        >
+          <Heatmap
+            data={m.speed}
+            x="monthLabel"
+            y="transition"
+            value="days"
+            n="n"
+            format="days"
+            scheme="sequential"
+            xOrder={[...new Set(m.speed.map((c) => c.monthLabel))]}
+            yOrder={TRANSITIONS}
+            ariaLabel="Days per transition by application month"
+          />
+        </Figure>
+      </Section>
+    </>
+  )
+}

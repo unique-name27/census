@@ -1,0 +1,262 @@
+/**
+ * The dataset manifest: all ten datasets on one sheet. Each row says what the dataset feeds,
+ * where it came from, how many rows and how well its fields are filled, what needs a look, and
+ * offers upload, downloads and reset. A row opens to show its fields and checks in full.
+ */
+import { useState } from 'react'
+import { Meter } from '@/charts'
+import { IconChevronRight, IconDownload, IconFile, IconReset, IconUpload } from '@/components/icons'
+import { toast } from '@/components/toast'
+import { Button, cx, IconButton, Menu, SeverityIcon, Tag, Tip } from '@/components/ui'
+import type { DatasetKey } from '@/data/schema'
+import { useCensus } from '@/data/store'
+import { fmt } from '@/lib/format'
+import { feedsLine, type ManifestRow } from '../engine/manifest'
+import { useImportSession } from '../state/session'
+import { DatasetDetail } from './DatasetDetail'
+import { downloadCurrent, downloadTemplate } from './downloads'
+import { useBusy } from './useBusy'
+
+/** Desktop column template; below lg each row stacks into labelled lines. */
+const COLS =
+  'lg:grid lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1.25fr)_72px_132px_minmax(0,1.75fr)_auto] lg:items-start lg:gap-x-5'
+
+function CellLabel({ children }: { children: string }) {
+  return <span className="eyebrow mb-0.5 block lg:hidden">{children}</span>
+}
+
+function Source({ row }: { row: ManifestRow }) {
+  if (row.source.kind === 'sample')
+    return (
+      <span className="flex items-center gap-2">
+        <Tag>Sample</Tag>
+      </span>
+    )
+  return (
+    <span className="block min-w-0">
+      <span className="block truncate text-[13px]" title={row.source.label}>
+        {row.source.label}
+      </span>
+      {row.source.detail && (
+        <span className="block truncate text-[12px] text-muted">{row.source.detail}</span>
+      )}
+    </span>
+  )
+}
+
+function Coverage({ row }: { row: ManifestRow }) {
+  const core = row.coverage.fields.filter((f) => f.requirement !== 'optional')
+  return (
+    <Tip
+      content={`Mean share of rows filled across the ${core.length} required and recommended fields. Open the row to see each field.`}
+    >
+      <span
+        className="flex items-center gap-2"
+        role="img"
+        aria-label={`Field coverage ${fmt(row.coverage.core, 'pct0')}`}
+      >
+        <Meter
+          value={row.coverage.core}
+          tone={row.coverage.core != null && row.coverage.core < 0.8 ? 'warning' : 'default'}
+          className="w-14 shrink-0"
+        />
+        <span className="tnum text-[13px]">{fmt(row.coverage.core, 'pct0')}</span>
+      </span>
+    </Tip>
+  )
+}
+
+function Issues({ row }: { row: ManifestRow }) {
+  const [first, ...rest] = row.checks
+  if (!first) return <span className="text-[13px] text-muted">None</span>
+  return (
+    <span className="flex min-w-0 gap-2 text-[13px]">
+      <SeverityIcon severity={first.severity} className="mt-0.5 size-3.5 shrink-0" />
+      <span className="min-w-0">
+        <span className="line-clamp-2">{first.text}</span>
+        {rest.length > 0 && <span className="text-[12px] text-muted">{rest.length} more in details</span>}
+      </span>
+    </span>
+  )
+}
+
+function Actions({ row, onUpload }: { row: ManifestRow; onUpload: (key: DatasetKey) => void }) {
+  const showPay = useCensus((s) => s.showPay)
+  const resetDataset = useCensus((s) => s.resetDataset)
+  const replaceDataset = useCensus((s) => s.replaceDataset)
+  const sessionIdle = useImportSession((s) => s.phase === 'idle')
+  const { isBusy, run } = useBusy()
+
+  async function reset() {
+    const { data, sources } = useCensus.getState()
+    const previous = data[row.key]
+    const { kind: _kind, rowCount: _rows, ...meta } = sources[row.key]
+    await resetDataset(row.key)
+    const restored = useCensus.getState().data[row.key].length
+    toast(`${row.label} is back on the sample: ${fmt(restored, 'int')} rows`, {
+      action: {
+        label: 'Undo',
+        onClick: () => {
+          void replaceDataset(row.key, previous, meta)
+        },
+      },
+    })
+  }
+
+  return (
+    <span className="flex items-center gap-1">
+      <Button size="sm" icon={<IconUpload />} disabled={!sessionIdle} onClick={() => onUpload(row.key)}>
+        Upload
+      </Button>
+      <Menu
+        width={250}
+        trigger={
+          <IconButton size="sm" label={`Download ${row.label}`} disabled={isBusy('download')}>
+            <IconDownload />
+          </IconButton>
+        }
+        items={[
+          { heading: row.label },
+          {
+            label: 'Current rows',
+            hint: showPay ? '.xlsx with pay' : '.xlsx',
+            icon: <IconDownload />,
+            disabled: row.rows === 0,
+            onSelect: () =>
+              void run(
+                'download',
+                async () => {
+                  const rows = useCensus.getState().data[row.key]
+                  await downloadCurrent(row.key, rows, showPay)
+                },
+                `${row.label} could not be downloaded. Try again.`,
+              ),
+          },
+          {
+            label: 'Blank template',
+            hint: '.xlsx',
+            icon: <IconFile />,
+            onSelect: () =>
+              void run(
+                'download',
+                () => downloadTemplate(row.key),
+                'The template could not be prepared. Try again.',
+              ),
+          },
+        ]}
+      />
+      <IconButton
+        size="sm"
+        label={
+          row.source.kind === 'upload' ? `Reset ${row.label} to sample` : `${row.label} is already the sample`
+        }
+        disabled={row.source.kind !== 'upload' || !sessionIdle}
+        onClick={() => void run('reset', reset)}
+      >
+        <IconReset />
+      </IconButton>
+    </span>
+  )
+}
+
+function Row({
+  row,
+  open,
+  onToggle,
+  onUpload,
+}: {
+  row: ManifestRow
+  open: boolean
+  onToggle: () => void
+  onUpload: (key: DatasetKey) => void
+}) {
+  const detailId = `data-room-detail-${row.key}`
+  return (
+    <li className="border-b border-rule last:border-b-0">
+      <div className={cx(COLS, 'grid grid-cols-2 gap-x-4 gap-y-3 px-4 py-3 lg:px-5')}>
+        <div className="col-span-2 min-w-0 lg:col-span-1">
+          <h3>
+            <button
+              type="button"
+              aria-expanded={open}
+              aria-controls={detailId}
+              onClick={onToggle}
+              className="group -mx-1.5 -my-0.5 flex max-w-full items-start gap-1.5 rounded-control px-1.5 py-0.5 text-left hover:bg-hover"
+            >
+              <IconChevronRight
+                className={cx(
+                  'mt-[3px] size-3.5 shrink-0 text-muted transition-transform duration-150',
+                  open && 'rotate-90',
+                )}
+              />
+              <span className="min-w-0">
+                <span className="cut-head block text-[15px] leading-snug font-semibold">{row.label}</span>
+                <span className="block text-[12px] leading-snug text-muted">{feedsLine(row.feeds)}</span>
+              </span>
+            </button>
+          </h3>
+        </div>
+        <div className="min-w-0">
+          <CellLabel>Source</CellLabel>
+          <Source row={row} />
+        </div>
+        <div className="lg:text-right">
+          <CellLabel>Rows</CellLabel>
+          <span className="tnum text-[13px]">{fmt(row.rows, 'int')}</span>
+        </div>
+        <div>
+          <CellLabel>Field coverage</CellLabel>
+          <Coverage row={row} />
+        </div>
+        <div className="min-w-0">
+          <CellLabel>Issues</CellLabel>
+          <Issues row={row} />
+        </div>
+        <div className="col-span-2 lg:col-span-1">
+          <Actions row={row} onUpload={onUpload} />
+        </div>
+      </div>
+      {open && <DatasetDetail row={row} id={detailId} />}
+    </li>
+  )
+}
+
+export function Manifest({
+  rows,
+  onUpload,
+}: {
+  rows: readonly ManifestRow[]
+  onUpload: (key: DatasetKey) => void
+}) {
+  const [open, setOpen] = useState<ReadonlySet<DatasetKey>>(() => new Set())
+  const toggle = (key: DatasetKey) =>
+    setOpen((s) => {
+      const next = new Set(s)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  return (
+    <div className="col-span-1 min-w-0 rounded-sheet bg-sheet md:col-span-12">
+      <div aria-hidden="true" className={cx(COLS, 'hidden border-b border-rule px-5 py-2 lg:grid')}>
+        <span className="eyebrow">Dataset</span>
+        <span className="eyebrow">Source</span>
+        <span className="eyebrow text-right">Rows</span>
+        <span className="eyebrow">Field coverage</span>
+        <span className="eyebrow">Issues</span>
+        <span className="eyebrow w-[132px]">Actions</span>
+      </div>
+      <ul aria-label="Datasets">
+        {rows.map((r) => (
+          <Row
+            key={r.key}
+            row={r}
+            open={open.has(r.key)}
+            onToggle={() => toggle(r.key)}
+            onUpload={onUpload}
+          />
+        ))}
+      </ul>
+    </div>
+  )
+}

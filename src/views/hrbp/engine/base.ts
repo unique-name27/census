@@ -1,0 +1,220 @@
+/**
+ * Shared preparation for the HR business partner engine: the scoped population, company
+ * benchmark population, reporting windows, an index of job history (level and department at a
+ * date) and which optional columns exist. Built once per analytics context.
+ */
+import type { AnalyticsContext } from '@/data/context'
+import { type Employee, type ISODate, type JobChange, LEVELS, type Level } from '@/data/schema'
+import { periodWindows, type Window } from '@/data/scope'
+import { addDays, addMonths, formatMonthShort, monthEnd, quarterKey, quarterStart } from '@/lib/dates'
+import { isActiveAt, isEmployee } from '@/lib/people'
+
+/** A reporting block (quarter or month) with the length used to annualize rates inside it. */
+export interface Block extends Window {
+  key: string
+}
+
+/** Trailing window of n whole months ending at asOf (calendar-aligned when asOf is a month end). */
+export function trailing(asOf: ISODate, months: 3 | 6 | 12): Window {
+  const preset = months === 12 ? 't12m' : months === 6 ? 't6m' : 't3m'
+  return periodWindows(preset, asOf).current
+}
+
+/** The last n three-month blocks ending at asOf, oldest first. Calendar quarters when asOf is a quarter end. */
+export function quarterBlocks(asOf: ISODate, n: number): Block[] {
+  const out: Block[] = []
+  let end = asOf
+  for (let i = 0; i < n; i++) {
+    const w = trailing(end, 3)
+    const aligned =
+      quarterStart(w.start) === w.start && monthEnd(w.end) === w.end && +w.end.slice(5, 7) % 3 === 0
+    const label = aligned
+      ? quarterKey(w.end)
+      : `${formatMonthShort(w.start)}–${formatMonthShort(w.end, true)}`
+    out.unshift({ ...w, key: w.end, label })
+    end = addDays(w.start, -1)
+  }
+  return out
+}
+
+/** Month-end points for the last n months, oldest first; the final point is asOf. */
+export function monthEnds(asOf: ISODate, n: number): ISODate[] {
+  const pts: ISODate[] = []
+  for (let i = n - 1; i >= 1; i--) pts.push(monthEnd(addMonths(`${asOf.slice(0, 7)}-01`, -i)))
+  pts.push(asOf)
+  return pts
+}
+
+/** Delta coloring floor carried over from the earlier HRBP dashboard: |Δ| ≥ 2% of the reference + 0.15 pts. */
+export function isMaterialGap(
+  delta: number | null | undefined,
+  reference: number | null | undefined,
+): boolean {
+  if (delta == null || !Number.isFinite(delta)) return false
+  const ref = reference != null && Number.isFinite(reference) ? Math.abs(reference) : 0
+  return Math.abs(delta) >= 0.02 * ref + 0.0015
+}
+
+/* ───────── job history ───────── */
+
+interface LevelStep {
+  date: ISODate
+  from: Level | null
+}
+interface DeptStep {
+  date: ISODate
+  from: string | null
+}
+
+export interface History {
+  /** Level held on date d, reconstructed from level changes after d (falls back to today's level). */
+  levelAt: (e: Employee, d: ISODate) => Level | null
+  /** Department on date d, reconstructed from transfers after d. */
+  deptAt: (e: Employee, d: ISODate) => string
+  /** Date the person moved into a manager or executive level from an individual level, if they did. */
+  becameManager: (employeeId: string) => ISODate | null
+  /** Latest promotion on or before d. */
+  lastPromotion: (employeeId: string, d: ISODate) => ISODate | null
+}
+
+const isLevel = (v: unknown): v is Level => typeof v === 'string' && (LEVELS as readonly string[]).includes(v)
+
+export function buildHistory(changes: readonly JobChange[]): History {
+  const levels = new Map<string, LevelStep[]>()
+  const depts = new Map<string, DeptStep[]>()
+  const promos = new Map<string, ISODate[]>()
+  const toManager = new Map<string, ISODate>()
+  const push = <T>(m: Map<string, T[]>, k: string, v: T) => {
+    const arr = m.get(k)
+    if (arr) arr.push(v)
+    else m.set(k, [v])
+  }
+  for (const c of changes) {
+    if (!c.effectiveDate) continue
+    if (c.fromLevel !== undefined && c.toLevel && c.fromLevel !== c.toLevel) {
+      push(levels, c.employeeId, { date: c.effectiveDate, from: isLevel(c.fromLevel) ? c.fromLevel : null })
+    }
+    if (c.toDepartment && c.fromDepartment && c.fromDepartment !== c.toDepartment) {
+      push(depts, c.employeeId, { date: c.effectiveDate, from: c.fromDepartment })
+    }
+    if (c.changeType === 'Promotion') {
+      push(promos, c.employeeId, c.effectiveDate)
+      if (c.fromLevel?.startsWith('L') && c.toLevel && !c.toLevel.startsWith('L')) {
+        const prev = toManager.get(c.employeeId)
+        if (!prev || prev < c.effectiveDate) toManager.set(c.employeeId, c.effectiveDate)
+      }
+    }
+  }
+  const byDate = (a: { date: string }, b: { date: string }) =>
+    a.date < b.date ? -1 : a.date > b.date ? 1 : 0
+  for (const arr of levels.values()) arr.sort(byDate)
+  for (const arr of depts.values()) arr.sort(byDate)
+  for (const arr of promos.values()) arr.sort()
+
+  return {
+    levelAt(e, d) {
+      const steps = levels.get(e.employeeId)
+      if (steps) for (const s of steps) if (s.date > d) return s.from
+      return e.level
+    },
+    deptAt(e, d) {
+      const steps = depts.get(e.employeeId)
+      if (steps) for (const s of steps) if (s.date > d) return s.from ?? e.department
+      return e.department
+    },
+    becameManager: (id) => toManager.get(id) ?? null,
+    lastPromotion(id, d) {
+      const arr = promos.get(id)
+      if (!arr) return null
+      for (let i = arr.length - 1; i >= 0; i--) if (arr[i] <= d) return arr[i]
+      return null
+    },
+  }
+}
+
+/* ───────── prep ───────── */
+
+export interface Prep {
+  ctx: AnalyticsContext
+  asOf: ISODate
+  window: Window
+  prior: Window
+  /** Trailing 12 months to asOf, for rules defined over a year regardless of the period picker. */
+  t12: Window
+  /** Scoped workers of every type (contractors and interns count in spans of control). */
+  people: readonly Employee[]
+  /** Scoped employees (headcount and every rate). */
+  emps: Employee[]
+  /** Company employees, for benchmarks. */
+  companyEmps: Employee[]
+  /** Scoped job changes for employees (contractor rows are ignored). */
+  changes: JobChange[]
+  companyChanges: JobChange[]
+  history: History
+  name: (id: string | null | undefined) => string
+  has: {
+    jobChanges: boolean
+    reviews: boolean
+    terminationType: boolean
+    terminationReason: boolean
+    regrettable: boolean
+    level: boolean
+  }
+}
+
+const employeeChanges = (changes: readonly JobChange[], byId: Map<string, Employee>) =>
+  changes.filter((c) => {
+    const e = byId.get(c.employeeId)
+    return !!e && isEmployee(e)
+  })
+
+export function prepare(ctx: AnalyticsContext): Prep {
+  const { asOf, org } = ctx
+  const all = ctx.all.employees
+  const people = ctx.data.employees
+  const emps = people.filter(isEmployee)
+  const companyEmps = ctx.isCompany ? emps : all.filter(isEmployee)
+  const changes = employeeChanges(ctx.data.jobChanges, org.byId)
+  const companyChanges = ctx.isCompany ? changes : employeeChanges(ctx.all.jobChanges, org.byId)
+  return {
+    ctx,
+    asOf,
+    window: ctx.window,
+    prior: ctx.prior,
+    t12: trailing(asOf, 12),
+    people,
+    emps,
+    companyEmps,
+    changes,
+    companyChanges,
+    history: buildHistory(changes),
+    name: (id) => (id ? (org.byId.get(id)?.name ?? id) : '—'),
+    has: {
+      jobChanges: ctx.all.jobChanges.length > 0,
+      reviews: ctx.all.reviews.length > 0,
+      terminationType: all.some((e) => !!e.terminationType),
+      terminationReason: all.some((e) => !!e.terminationReason),
+      regrettable: all.some((e) => e.regrettable === true || e.regrettable === false),
+      level: all.some((e) => !!e.level),
+    },
+  }
+}
+
+/** Active workers of any type at d. */
+export const activeWorkers = (people: readonly Employee[], d: ISODate): Employee[] =>
+  people.filter((p) => isActiveAt(p, d))
+
+/** "Heather Hayes's" */
+export const possessive = (name: string): string => `${name}'s`
+
+/** "A, B and C" */
+export function listJoin(items: readonly string[]): string {
+  if (items.length <= 1) return items.join('')
+  return `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`
+}
+
+/** Names at most `max` items, then "and N more". */
+export function nameList(items: readonly string[], max = 5): string {
+  if (items.length <= max) return listJoin(items)
+  return `${items.slice(0, max).join(', ')} and ${items.length - max} more`
+}

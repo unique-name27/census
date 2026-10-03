@@ -1,0 +1,201 @@
+import { useState } from 'react'
+import { BarList, Columns, Figure, Heatmap } from '@/charts'
+import { Button, EmptyState, goTo, Section, Segmented } from '@/components'
+import { useAnalytics } from '@/data/context'
+import { formatDate } from '@/lib/dates'
+import { fmt, plural } from '@/lib/format'
+import type { TalentModel } from '../engine'
+import { type CourseRow, ON_TIME_TARGET, type OverdueCell } from '../engine/learning'
+import {
+  COMPLETION_COLUMNS,
+  COURSE_COLUMNS,
+  HOURS_COLUMNS,
+  overdueCellColumns,
+  TRAINING_OVERDUE_COLUMNS,
+} from './columns'
+import { DEF } from './defs'
+
+type Dim = 'department' | 'location'
+
+/** Groups ordered by how many overdue assignments they hold, most first. */
+function groupOrder(cells: readonly OverdueCell[]): string[] {
+  const totals = new Map<string, number>()
+  for (const c of cells) totals.set(c.group, (totals.get(c.group) ?? 0) + c.overdue)
+  return [...totals.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([g]) => g)
+}
+
+export function LearningTab({ m }: { m: TalentModel }) {
+  const ctx = useAnalytics()
+  const asOf = formatDate(ctx.asOf)
+  const l = m.learning
+  const [dim, setDim] = useState<Dim>('department')
+
+  if (!m.has.learning) {
+    return (
+      <EmptyState
+        title="Upload Learning to see training completion"
+        body="Learning assignments with a course, a required flag, due dates and completion dates power this tab."
+        action={
+          <Button variant="secondary" onClick={() => goTo('data')}>
+            Open the Data room
+          </Button>
+        }
+      />
+    )
+  }
+
+  const period = ctx.window.label
+  const cells = dim === 'department' ? l.overdueByDepartment : l.overdueByLocation
+  // Calm emphasis: courses short of the target in the series color, the rest in gray.
+  const tone = (d: CourseRow) =>
+    d.onTimeRate != null && d.onTimeRate < ON_TIME_TARGET ? ('default' as const) : ('deemph' as const)
+  const totalOverdue = l.overdue.length
+  const noDue = l.hasDueDates ? null : 'Upload Learning with due dates to measure on-time completion.'
+
+  return (
+    <>
+      <Section
+        title="Required training"
+        dek={`Whether required courses due in the period (${period}) were finished by their due date, and how completions moved month by month.`}
+      >
+        <Figure
+          id="talent-training-on-time-by-course"
+          title="Required training on time by course"
+          subtitle={`Share of assignments due ${period} completed by the due date`}
+          data={l.byCourse}
+          columns={COURSE_COLUMNS}
+          definitions={[DEF.required, DEF.onTime]}
+          note={`${plural(l.current.due, 'assignment')} due · ${fmt(l.current.rate, 'pct')} on time overall · target 95%`}
+          span={6}
+          empty={noDue ?? (l.byCourse.length ? null : 'No required assignments were due in this period.')}
+        >
+          <BarList
+            data={l.byCourse}
+            label="course"
+            value="onTimeRate"
+            format="pct"
+            sort="asc"
+            ref={{ value: ON_TIME_TARGET, label: 'Target 95%' }}
+            tone={tone}
+            secondary={(d) => `n = ${fmt(d.due)}`}
+            ariaLabel="Required training on time by course"
+          />
+        </Figure>
+        <Figure
+          id="talent-completions-by-month"
+          title="Completions by month"
+          subtitle={`Courses completed each month, required and optional, ${period}`}
+          data={l.completions}
+          columns={COMPLETION_COLUMNS}
+          definitions={[DEF.required]}
+          note={`${plural(
+            l.completions.reduce((s, r) => s + r.completions, 0),
+            'completion',
+          )} · as of ${asOf}`}
+          span={6}
+          empty={
+            l.completions.some((r) => r.completions > 0) ? null : 'No courses were completed in this period.'
+          }
+        >
+          <Columns
+            data={l.completions}
+            x="month"
+            y="completions"
+            series="kind"
+            stack
+            seriesOrder={['Required', 'Optional']}
+            xType="month"
+            height={260}
+            ariaLabel="Course completions by month"
+          />
+        </Figure>
+      </Section>
+
+      <Section
+        title="Overdue today"
+        dek={`Required assignments past their due date and not completed, as of ${asOf}, for people still employed. The grid shows where each course is behind.`}
+      >
+        <Figure
+          id="talent-overdue-by-course"
+          title={`Overdue by course and ${dim}`}
+          subtitle={`Share of past-due assignments not completed, as of ${asOf}`}
+          data={cells}
+          columns={overdueCellColumns(dim === 'department' ? 'Department' : 'Location')}
+          definitions={[DEF.overdue]}
+          note={`${plural(totalOverdue, 'assignment')} overdue · cells under 5 assignments are hidden`}
+          span={12}
+          actions={
+            <Segmented<Dim>
+              label="Rows"
+              value={dim}
+              onChange={setDim}
+              options={[
+                { value: 'department', label: 'Department' },
+                { value: 'location', label: 'Location' },
+              ]}
+            />
+          }
+          empty={noDue ?? (cells.length ? null : 'Nothing is overdue in this scope.')}
+        >
+          {/* Room for the rotated course names, which the heatmap draws past its right edge on narrow screens. */}
+          <div className="pr-12 lg:pr-8 xl:pr-4">
+            <Heatmap
+              data={cells}
+              x="course"
+              y="group"
+              value="share"
+              n="pastDue"
+              format="pct0"
+              xOrder={l.overdueCourses}
+              yOrder={groupOrder(cells)}
+              rowHeight={26}
+              ariaLabel={`Share overdue by course and ${dim}`}
+            />
+          </div>
+        </Figure>
+        <Figure
+          id="talent-overdue-assignments"
+          title="Overdue assignments"
+          subtitle={`Required, not completed and past due, as of ${asOf}`}
+          data={l.overdue}
+          columns={TRAINING_OVERDUE_COLUMNS}
+          definitions={[DEF.overdue]}
+          note={`${plural(totalOverdue, 'assignment')} for ${plural(new Set(l.overdue.map((o) => o.employeeId)).size, 'person', 'people')}`}
+          span={8}
+          tableOnly
+          table={{
+            maxRows: 12,
+            search: 'Search people or courses',
+            rowTone: (r) => (r.daysOverdue > 90 ? 'critical' : r.daysOverdue > 30 ? 'warning' : null),
+          }}
+          empty={noDue ?? (totalOverdue ? null : 'Nothing is overdue in this scope.')}
+        />
+        <Figure
+          id="talent-learning-hours"
+          title="Learning hours per employee"
+          subtitle={`Hours from courses completed ${period}, by business unit`}
+          data={l.hours}
+          columns={HOURS_COLUMNS}
+          definitions={[DEF.hours]}
+          note="Employees only · units under 5 people are hidden"
+          span={4}
+          empty={
+            !m.has.learningHours
+              ? 'Upload Learning with hours to see this.'
+              : l.hours.length
+                ? null
+                : 'No learning hours in this period.'
+          }
+        >
+          <BarList
+            data={l.hours}
+            label="businessUnit"
+            value="perEmployee"
+            format="num1"
+            ariaLabel="Learning hours per employee by business unit"
+          />
+        </Figure>
+      </Section>
+    </>
+  )
+}

@@ -1,0 +1,518 @@
+/**
+ * The Compensation readout: findings a comp partner would raise with a leader, most severe first.
+ * Counts and ratios always; dollar amounts only when pay amounts are switched on. Pure.
+ */
+import type { Finding, FindingPerson, Severity } from '@/components/types'
+import type { AnalyticsContext } from '@/data/context'
+import type { Employee } from '@/data/schema'
+import { levelIndex, MIN_GROUP } from '@/data/schema'
+import type { Filters } from '@/data/scope'
+import { type Dimension, decomposeRate } from '@/lib/decompose'
+import { fmt } from '@/lib/format'
+import { attrition, exitsIn } from '@/lib/people'
+import { OVER_BUDGET } from './cycle'
+import { safeMedian, values } from './groups'
+import { MARKET_FLAG, MARKET_RANGE_GAP } from './market'
+import type { CompModel } from './model'
+import { DIFFERENTIATION_FLOOR } from './performance'
+import type { CompPerson } from './population'
+import { COMPRESSION_FINDING_MIN, COMPRESSION_GAP } from './ranges'
+import { isAre, joinAnd, levelSpan, pct2, people as peopleText, times, windowPhrase } from './text'
+
+/** A location or department at or below this median compa-ratio is flagged. */
+export const LOW_COMPA = 0.92
+
+/** Judged at the precision people read (two decimals), so a bar labeled 0.92 is flagged. */
+export const isLowCompa = (median: number | null | undefined): boolean =>
+  median != null && Math.round(median * 100) / 100 <= LOW_COMPA + 1e-9
+/** Below-minimum share that makes the finding critical. */
+const BELOW_MIN_CRITICAL = 0.05
+/** Voluntary attrition this far above the company (fraction points) escalates a low-pay finding. */
+const ATTRITION_ESCALATE = 0.03
+const MAX_PEOPLE = 50
+const PAY_REASONS = new Set(['Base salary', 'Equity, bonus or total rewards'])
+
+export type FindingsInput = Omit<CompModel, 'kpis' | 'findings'>
+
+interface Ranked extends Finding {
+  /** People affected, for ordering within a severity. */
+  weight: number
+}
+
+const person = (p: CompPerson, note: string): FindingPerson => ({ id: p.id, name: p.name, note })
+const ratio = (v: number | null) => fmt(v, 'ratio')
+
+/* ───────── low compa-ratio by location or department ───────── */
+
+function lowCompa(ctx: AnalyticsContext, m: FindingsInput): Ranked[] {
+  const out: Ranked[] = []
+  const dims: { key: 'location' | 'department'; rows: typeof m.overview.byLocation }[] = [
+    { key: 'location', rows: m.overview.byLocation },
+    { key: 'department', rows: m.overview.byDepartment },
+  ]
+  const companyVol = attrition(ctx.all.employees, ctx.window, 'voluntary')
+  const flaggedLocations = new Set<string>()
+  for (const { key, rows } of dims) {
+    for (const g of rows) {
+      if (!isLowCompa(g.median) || g.group.startsWith('Other (')) continue
+      const inGroup = (p: { location: string; department: string }) => p[key] === g.group
+      if (key === 'location') flaggedLocations.add(g.group)
+      else if (flaggedLocations.size) {
+        // A department whose low pay sits entirely in an already-flagged location adds nothing.
+        const elsewhere = values(
+          m.pop.people.filter((p) => inGroup(p) && !flaggedLocations.has(p.location)),
+          (p) => p.compa,
+        )
+        if (!isLowCompa(safeMedian(elsewhere))) continue
+      }
+      const rest = values(
+        m.company.people.filter((p) => !inGroup(p)),
+        (p) => p.compa,
+      )
+      const restMedian = safeMedian(rest)
+      if (restMedian == null) continue
+      const emps = ctx.data.employees.filter((e: Employee) => e[key] === g.group)
+      const vol = attrition(emps, ctx.window, 'voluntary')
+      const payExits = exitsIn(emps, ctx.window).filter(
+        (e) =>
+          e.terminationType === 'Voluntary' && e.terminationReason && PAY_REASONS.has(e.terminationReason),
+      ).length
+      const comparable = vol.rate != null && companyVol.rate != null && vol.avgHeadcount >= MIN_GROUP
+      const linked = comparable && vol.rate! > companyVol.rate!
+      const sentences: string[] = []
+      if (linked) {
+        const reasons =
+          payExits > 0 ? `, and ${payExits} of ${vol.events} leavers named pay as the reason` : ''
+        sentences.push(
+          `Voluntary attrition there is ${fmt(vol.rate, 'pct')} vs ${fmt(companyVol.rate, 'pct')} for the company over ${windowPhrase(ctx.filters.period)}${reasons}.`,
+        )
+      } else if (comparable) {
+        const side = vol.rate! < companyVol.rate! ? 'below' : 'level with'
+        sentences.push(
+          `Voluntary attrition there is ${fmt(vol.rate, 'pct')} over ${windowPhrase(ctx.filters.period)}, ${side} the company's ${fmt(companyVol.rate, 'pct')}.`,
+        )
+      }
+      const groupPeople = m.pop.people.filter(inGroup)
+      if (g.belowMin > 0)
+        sentences.push(`${peopleText(g.belowMin)} there ${isAre(g.belowMin)} paid below range minimum.`)
+      const low = groupPeople
+        .filter((p) => p.compa != null && p.compa < m.settings.bandLow)
+        .sort((a, b) => a.compa! - b.compa!)
+      out.push({
+        id: `comp-low-compa-${key}-${g.group}`,
+        severity:
+          linked && vol.rate! - companyVol.rate! >= ATTRITION_ESCALATE ? 'critical' : ('warning' as Severity),
+        title: `Median compa-ratio in ${g.group} is ${ratio(g.median)} vs ${ratio(restMedian)} for the rest of the company`,
+        detail: sentences.slice(0, 2).join(' '),
+        action: `Review ${g.group} salary ranges and pay positioning before merit proposals are final.`,
+        filter: { [key]: [g.group] } as Partial<Filters>,
+        tab: 'ranges',
+        people: low.slice(0, MAX_PEOPLE).map((p) => person(p, `compa-ratio ${ratio(p.compa)}`)),
+        weight: g.n,
+      })
+    }
+  }
+  return out.sort((a, b) => b.weight - a.weight).slice(0, 2)
+}
+
+/* ───────── below minimum ───────── */
+
+const PROMOTED = 'Promoted in the last 12 months'
+
+function concentration(
+  people: readonly CompPerson[],
+  affected: (p: CompPerson) => boolean,
+  dims: Dimension<CompPerson>[],
+): { dim: string; value: string; affected: number }[] {
+  const segs = decomposeRate(people, dims, affected, { minDev: 0.02, top: 8 })
+  const seen = new Set<string>()
+  const out: { dim: string; value: string; affected: number }[] = []
+  for (const s of segs) {
+    if (seen.has(s.dim) || s.small) continue
+    seen.add(s.dim)
+    out.push({ dim: s.dim, value: s.value, affected: s.affected })
+  }
+  return out
+}
+
+const ORG_DIMS: Dimension<CompPerson>[] = [
+  { key: 'location', label: 'Location', get: (p) => p.location },
+  { key: 'department', label: 'Department', get: (p) => p.department },
+  { key: 'businessUnit', label: 'Business unit', get: (p) => p.businessUnit },
+  { key: 'level', label: 'Level', get: (p) => p.level },
+]
+
+function segmentPhrase(dim: string, value: string, n: number): string {
+  if (dim === 'promoted') return `${fmt(n, 'int')} ${n === 1 ? 'was' : 'were'} promoted in the last 12 months`
+  if (dim === 'level') return `${fmt(n, 'int')} ${isAre(n)} at ${value}`
+  return `${fmt(n, 'int')} ${isAre(n)} in ${value}`
+}
+
+const FILTER_KEYS = new Set(['location', 'department', 'businessUnit', 'level'])
+
+function belowMin(m: FindingsInput): Ranked[] {
+  const rows = m.ranges.below
+  if (!rows.length) return []
+  const placed = m.pop.people.filter((p) => p.position != null)
+  const share = rows.length / placed.length
+  const segs = concentration(placed, (p) => p.position === 'Below minimum', [
+    ...ORG_DIMS,
+    { key: 'promoted', label: PROMOTED, get: (p) => (p.promotedRecently ? 'Yes' : 'No') },
+  ]).filter((s) => s.dim !== 'promoted' || s.value === 'Yes')
+  const top = segs.slice(0, 2)
+  const sentences: string[] = []
+  if (top.length) sentences.push(`${joinAnd(top.map((s) => segmentPhrase(s.dim, s.value, s.affected)))}.`)
+  if (m.showPay && m.ranges.costToMin.usd > 0) {
+    const skipped = m.ranges.costToMin.skipped
+    sentences.push(
+      `Bringing them to minimum costs ${fmt(m.ranges.costToMin.usd, 'money')} a year${skipped ? ` (${peopleText(skipped)} without an FX rate left out)` : ''}.`,
+    )
+  }
+  const promotedLed = top[0]?.dim === 'promoted' || top.some((s) => s.dim === 'promoted')
+  const where = top.find((s) => FILTER_KEYS.has(s.dim))
+  const byId = new Map(m.pop.people.map((p) => [p.id, p]))
+  return [
+    {
+      id: 'comp-below-min',
+      severity:
+        share >= BELOW_MIN_CRITICAL && rows.length >= 10
+          ? 'critical'
+          : rows.length >= MIN_GROUP
+            ? 'warning'
+            : 'info',
+      title: `${peopleText(rows.length)} ${isAre(rows.length)} paid below range minimum, ${fmt(share, 'pct')} of ${fmt(placed.length, 'int')}`,
+      detail: sentences.join(' '),
+      action: promotedLed
+        ? 'Check that promotion increases reach the new range minimum, then plan the rest into the focal cycle.'
+        : 'Plan adjustments to range minimum into the focal cycle, starting with the largest gaps.',
+      filter: where ? ({ [where.dim]: [where.value] } as Partial<Filters>) : undefined,
+      tab: 'ranges',
+      people: rows
+        .slice(0, MAX_PEOPLE)
+        .map((r) => person(byId.get(r.id)!, `${r.department}, ${fmt(r.gapPct, 'pct')} to minimum`)),
+      weight: rows.length,
+    },
+  ]
+}
+
+/* ───────── above maximum ───────── */
+
+/**
+ * The highest half-year tenure that at least 95% of a group has reached, so one recent arrival
+ * doesn't define a long-tenured group.
+ */
+export function tenureFloor(tenures: readonly number[]): number {
+  if (!tenures.length) return 0
+  const need = Math.ceil(tenures.length * 0.95)
+  for (let t = Math.floor(Math.max(...tenures) * 2) / 2; t > 0; t -= 0.5)
+    if (tenures.filter((x) => x >= t).length >= need) return t
+  return 0
+}
+
+function aboveMax(m: FindingsInput): Ranked[] {
+  const rows = m.ranges.above
+  if (rows.length < MIN_GROUP) return []
+  const placed = m.pop.people.filter((p) => p.position != null)
+  const above = placed.filter((p) => p.position === 'Above maximum')
+  const segs = concentration(placed, (p) => p.position === 'Above maximum', [
+    { key: 'level', label: 'Level', get: (p) => p.level },
+    { key: 'tenureBand', label: 'Tenure', get: (p) => p.tenureBand },
+    { key: 'department', label: 'Department', get: (p) => p.department },
+  ])
+  const lvl = segs.find((s) => s.dim === 'level')
+  const ofAll = `${fmt(rows.length / placed.length, 'pct')} of ${fmt(placed.length, 'int')}`
+  let title = `${peopleText(rows.length)} ${isAre(rows.length)} paid above range maximum, ${ofAll}`
+  let detail = ''
+  let action = 'Review whether lump-sum awards should replace base increases for people above maximum.'
+  const ledByLevel = !!lvl && lvl.affected >= rows.length / 2
+  if (lvl && ledByLevel) {
+    const inLevel = above.filter((p) => p.level === lvl.value)
+    const levelN = placed.filter((p) => p.level === lvl.value).length
+    title = `${peopleText(rows.length)} ${isAre(rows.length)} paid above range maximum, ${lvl.affected === rows.length ? 'all' : fmt(lvl.affected, 'int')} of them at ${lvl.value}`
+    const floor = tenureFloor(inLevel.map((p) => p.tenure))
+    const long = inLevel.filter((p) => p.tenure >= floor).length
+    const tenure =
+      floor >= 3
+        ? `${fmt(long, 'int')} of those ${lvl.value}s have ${fmt(floor, 'num1')} or more years of tenure, and `
+        : ''
+    detail = `${tenure}${fmt(lvl.affected / levelN, 'pct')} of everyone at ${lvl.value} is above maximum.`
+    action =
+      floor >= 3
+        ? `Review promotion readiness for the long-tenured ${lvl.value}s, and use lump-sum awards instead of base increases where they stay.`
+        : `Review promotion readiness at ${lvl.value}, and use lump-sum awards instead of base increases where people stay.`
+  }
+  return [
+    {
+      id: 'comp-above-max',
+      severity: 'warning',
+      title,
+      detail,
+      action,
+      filter: lvl && ledByLevel ? { level: [lvl.value] } : undefined,
+      tab: 'ranges',
+      people: rows.slice(0, MAX_PEOPLE).map((r) => ({
+        id: r.id,
+        name: r.name,
+        note: `${r.level}, ${fmt(r.tenure, 'years')}, ${fmt(r.gapPct, 'pct')} over maximum`,
+      })),
+      weight: rows.length,
+    },
+  ]
+}
+
+/* ───────── compression ───────── */
+
+function compressionFindings(m: FindingsInput): Ranked[] {
+  const flagged = m.ranges.compression.filter((c) => c.flagged)
+  const byDept = new Map<string, string[]>()
+  for (const c of flagged) byDept.set(c.department, [...(byDept.get(c.department) ?? []), c.level])
+  for (const levels of byDept.values()) levels.sort((a, b) => levelIndex(a) - levelIndex(b))
+  const out: Ranked[] = []
+  for (const [dept, levels] of byDept) {
+    const cell = m.pop.people.filter((p) => p.department === dept && p.level && levels.includes(p.level))
+    const hires = cell.filter((p) => p.hiredRecently)
+    const inc = cell.filter((p) => !p.hiredRecently)
+    const newMed = safeMedian(values(hires, (p) => p.compa))
+    const incMed = safeMedian(values(inc, (p) => p.compa))
+    if (hires.length < COMPRESSION_FINDING_MIN || inc.length < COMPRESSION_FINDING_MIN) continue
+    if (newMed == null || incMed == null || newMed - incMed < COMPRESSION_GAP - 1e-9) continue
+    const span = levelSpan(levels)
+    out.push({
+      id: `comp-compression-${dept}`,
+      severity: 'warning',
+      title: `New hires in ${dept} ${span} are paid at a median compa-ratio of ${ratio(newMed)} vs ${ratio(incMed)} for incumbents`,
+      detail: `${peopleText(hires.length)} hired in the last 12 months against ${fmt(inc.length, 'int')} already in those roles.`,
+      action: `Review incumbent pay in ${dept} before the focal cycle so it keeps pace with new offers.`,
+      filter: { department: [dept], level: levels },
+      tab: 'ranges',
+      people: inc
+        .filter((p) => p.compa != null && p.compa < newMed)
+        .sort((a, b) => a.compa! - b.compa!)
+        .slice(0, MAX_PEOPLE)
+        .map((p) => person(p, `${p.level}, compa-ratio ${ratio(p.compa)}`)),
+      weight: cell.length,
+    })
+  }
+  return out.sort((a, b) => b.weight - a.weight).slice(0, 2)
+}
+
+/* ───────── merit spend ───────── */
+
+function overBudget(m: FindingsInput): Ranked[] {
+  const out: Ranked[] = []
+  const company = m.cycle.spend
+  for (const r of m.cycle.byBu) {
+    if (r.delta == null || r.delta < OVER_BUDGET || r.group.startsWith('Other (') || m.cycle.byBu.length < 2)
+      continue
+    const money =
+      m.showPay && r.overUsd != null && r.overUsd > 0
+        ? ` That is ${fmt(r.overUsd, 'money')} over budget.`
+        : ''
+    out.push({
+      id: `comp-over-budget-${r.group}`,
+      severity: 'warning',
+      title: `${r.group} merit proposals cost ${fmt(r.spendPct, 'pct')} of eligible base, ${fmt(r.delta, 'pts').replace('+', '')} over the ${pct2(m.settings.meritBudget)} budget`,
+      detail: `Across ${m.isCompany ? 'the company' : 'this scope'} spend is ${pct2(company.spendPct)} over ${fmt(company.eligible, 'int')} proposals.${money}`,
+      action: `Ask ${r.group} leaders to bring proposals back to budget before calibration closes.`,
+      filter: { businessUnit: [r.group] },
+      tab: 'cycle',
+      weight: r.n,
+    })
+  }
+  if (company.delta != null && company.delta >= OVER_BUDGET && company.eligible >= MIN_GROUP) {
+    const money =
+      m.showPay && company.overUsd != null && company.overUsd > 0
+        ? ` That is ${fmt(company.overUsd, 'money')} over budget.`
+        : ''
+    out.push({
+      id: 'comp-over-budget-total',
+      severity: 'critical',
+      title: `Merit proposals cost ${pct2(company.spendPct)} of eligible base, over the ${pct2(m.settings.meritBudget)} budget`,
+      detail: `${fmt(company.eligible, 'int')} proposals in ${m.isCompany ? 'the company' : 'this scope'}.${money}`,
+      action: 'Agree where to bring proposals back to budget before calibration closes.',
+      tab: 'cycle',
+      weight: company.eligible,
+    })
+  }
+  return out
+}
+
+/* ───────── guideline exceptions ───────── */
+
+function exceptions(m: FindingsInput): Ranked[] {
+  const rows = m.cycle.exceptions
+  const topLow = rows.filter((r) => r.kind === 'top-low')
+  const lowHigh = rows.filter((r) => r.kind === 'low-high')
+  const outliers = rows.filter((r) => r.kind === 'outlier')
+  const rules = topLow.length + lowHigh.length
+  if (!rules && !outliers.length) return []
+  const parts: string[] = []
+  if (topLow.length) parts.push(`${fmt(topLow.length, 'int')} rated 5 below 2%`)
+  if (lowHigh.length) parts.push(`${fmt(lowHigh.length, 'int')} rated 1-2 above 3%`)
+  let detail = ''
+  if (outliers.length) {
+    const byDept = new Map<string, number>()
+    for (const o of outliers) byDept.set(o.department, (byDept.get(o.department) ?? 0) + 1)
+    const [dept, n] = [...byDept.entries()].sort((a, b) => b[1] - a[1])[0]
+    const concentrated = n >= outliers.length / 2
+    if (rules) {
+      const where = concentrated ? `, ${fmt(n, 'int')} of them in ${dept}` : ''
+      detail = `Another ${fmt(outliers.length, 'int')} ${outliers.length === 1 ? 'proposal is' : 'proposals are'} unusual for the rating${where}.`
+    } else if (outliers.length === 1) detail = `It is in ${dept}.`
+    else if (concentrated) detail = `${fmt(n, 'int')} of them are in ${dept}.`
+  }
+  const title = rules
+    ? `${fmt(rules, 'int')} merit ${rules === 1 ? 'proposal breaks' : 'proposals break'} the guideline rules: ${joinAnd(parts)}`
+    : `${fmt(outliers.length, 'int')} merit ${outliers.length === 1 ? 'proposal is' : 'proposals are'} unusual for the rating`
+  return [
+    {
+      id: 'comp-exceptions',
+      severity: rules ? 'warning' : 'info',
+      title,
+      detail,
+      action: 'Confirm each exception with the manager and record the reason before proposals lock.',
+      tab: 'cycle',
+      people: [...topLow, ...lowHigh, ...outliers].slice(0, MAX_PEOPLE).map((r) => ({
+        id: r.id,
+        name: r.name,
+        note: `rating ${r.rating}, merit ${fmt(r.merit, 'pct')}`,
+      })),
+      weight: rules * 4 + outliers.length,
+    },
+  ]
+}
+
+/* ───────── market ───────── */
+
+function belowMarket(m: FindingsInput): Ranked[] {
+  const ranges: Ranked[] = []
+  const positioning: Ranked[] = []
+  for (const g of m.market.byFamily) {
+    if (g.median == null || g.median > MARKET_FLAG + 1e-9 || g.group.startsWith('Other (')) continue
+    const members = m.pop.people.filter((p) => p.jobFamily === g.group)
+    const rest = safeMedian(
+      values(
+        m.company.people.filter((p) => p.jobFamily !== g.group),
+        (p) => p.marketRatio,
+      ),
+    )
+    const compa = safeMedian(values(members, (p) => p.compa))
+    const depts = [...new Set(members.map((p) => p.department))]
+    const filter = depts.length === 1 ? { department: depts } : undefined
+    const title = `${g.group} base pay is ${fmt(1 - g.median, 'pct0')} below market, a median market ratio of ${ratio(g.median)}`
+    const restText = rest != null ? `Everyone else is at ${ratio(rest)}.` : ''
+    // Market ratio = compa-ratio × midpoint ÷ market median: the gap comes from the ranges, or from pay low in range.
+    if (g.marketVsMid != null && g.marketVsMid >= MARKET_RANGE_GAP) {
+      ranges.push({
+        id: `comp-below-market-${g.group}`,
+        severity: 'warning',
+        title,
+        detail:
+          `${restText} Market medians for this family sit ${fmt(g.marketVsMid - 1, 'pct0')} above the range midpoints, so the ranges trail the market.`.trim(),
+        action: `Review the ${g.group} salary ranges against current survey data.`,
+        filter,
+        tab: 'market',
+        weight: g.n * (1 - g.median),
+      })
+    } else {
+      positioning.push({
+        id: `comp-below-market-${g.group}`,
+        severity: 'info',
+        title,
+        detail:
+          `${restText} The ranges track the market here; pay sits low in the range, at a median compa-ratio of ${ratio(compa)}.`.trim(),
+        action: `Review ${g.group} pay positioning within the range before merit proposals are final.`,
+        filter,
+        tab: 'market',
+        weight: g.n * (1 - g.median),
+      })
+    }
+  }
+  const byGap = (a: Ranked, b: Ranked) => b.weight - a.weight
+  return [...ranges.sort(byGap).slice(0, 2), ...positioning.sort(byGap).slice(0, 1)]
+}
+
+/* ───────── differentiation ───────── */
+
+function noDifferentiation(m: FindingsInput): Ranked[] {
+  const company = m.performance.companyDifferentiation
+  return m.performance.byDepartment
+    .filter((r) => r.ratio != null && r.ratio < DIFFERENTIATION_FLOOR && !r.group.startsWith('Other ('))
+    .sort((a, b) => a.ratio! - b.ratio!)
+    .slice(0, 2)
+    .map((r) => ({
+      id: `comp-no-differentiation-${r.group}`,
+      severity: 'warning' as Severity,
+      title: `${r.group} merit barely follows ratings: people rated 4-5 get ${times(r.ratio)} the merit of people rated 3`,
+      detail: `Mean merit is ${fmt(r.merit45, 'pct')} for ratings 4-5 and ${fmt(r.merit3, 'pct')} for rating 3.${company.ratio != null ? ` Across the company the ratio is ${times(company.ratio)}.` : ''}`,
+      action: `Review the ${r.group} proposals against the guideline with its managers before calibration closes.`,
+      filter: { department: [r.group] },
+      tab: 'performance',
+      weight: r.n45 + r.n3,
+    }))
+}
+
+/* ───────── good news ───────── */
+
+function goodNews(m: FindingsInput, others: readonly Ranked[]): Ranked[] {
+  const d = m.performance.differentiation
+  if (d.ratio != null && d.ratio >= 1.3) {
+    return [
+      {
+        id: 'comp-good-differentiation',
+        severity: 'good',
+        title: `Merit follows performance: people rated 4-5 get ${times(d.ratio)} the merit of people rated 3`,
+        detail: `Mean merit is ${fmt(d.merit45, 'pct')} for ratings 4-5 and ${fmt(d.merit3, 'pct')} for rating 3, well above the ${times(DIFFERENTIATION_FLOOR)} floor.`,
+        action: 'Keep the guideline as it is for the next cycle.',
+        tab: 'performance',
+        weight: d.n45 + d.n3,
+      },
+    ]
+  }
+  const inBand = m.pop.people.filter(
+    (p) => p.compa != null && p.compa >= m.settings.bandLow && p.compa <= m.settings.bandHigh,
+  ).length
+  const n = m.pop.people.filter((p) => p.compa != null).length
+  if (n >= MIN_GROUP && inBand / n >= 0.75 && !others.some((f) => f.severity === 'critical')) {
+    return [
+      {
+        id: 'comp-good-band',
+        severity: 'good',
+        title: `${fmt(inBand / n, 'pct')} of people are paid inside the healthy compa-ratio band`,
+        detail: `${fmt(inBand, 'int')} of ${fmt(n, 'int')} sit from ${ratio(m.settings.bandLow)} to ${ratio(m.settings.bandHigh)}.`,
+        action: 'Keep the current ranges for the next cycle.',
+        tab: 'ranges',
+        weight: n,
+      },
+    ]
+  }
+  return []
+}
+
+const RANK: Record<Severity, number> = { critical: 0, warning: 1, info: 2, good: 3 }
+
+function toFinding(r: Ranked): Finding {
+  const f: Finding = { id: r.id, severity: r.severity, title: r.title }
+  if (r.detail) f.detail = r.detail
+  if (r.action) f.action = r.action
+  if (r.people?.length) f.people = r.people
+  if (r.filter) f.filter = r.filter
+  if (r.tab) f.tab = r.tab
+  return f
+}
+
+export function buildFindings(ctx: AnalyticsContext, m: FindingsInput): Finding[] {
+  if (!m.pop.people.length) return []
+  const found: Ranked[] = [
+    ...lowCompa(ctx, m),
+    ...belowMin(m),
+    ...overBudget(m),
+    ...compressionFindings(m),
+    ...noDifferentiation(m),
+    ...belowMarket(m),
+    ...aboveMax(m),
+    ...exceptions(m),
+  ]
+  found.push(...goodNews(m, found))
+  return found.sort((a, b) => RANK[a.severity] - RANK[b.severity] || b.weight - a.weight).map(toFinding)
+}
