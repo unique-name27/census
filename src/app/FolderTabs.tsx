@@ -67,7 +67,7 @@ function FolderTab({
       className={cx(
         'relative flex w-[184px] shrink-0 flex-col rounded-t-[6px] px-3.5 pt-2.5 pb-3 text-left transition-colors duration-100 focus-visible:-outline-offset-2',
         active
-          ? 'z-10 bg-page text-ink'
+          ? 'on-desk z-10 bg-page text-ink'
           : 'mt-1 bg-tab-idle text-ink-2 hover:bg-tab-idle-hover hover:text-ink',
       )}
     >

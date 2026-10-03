@@ -30,6 +30,7 @@
   --color-sheet: var(--sheet);
   --color-sheet-2: var(--sheet-2);
   --color-sheet-3: var(--sheet-3);
+  --color-band: var(--band);
   --color-tab-idle: var(--tab-idle);
   --color-tab-idle-hover: var(--tab-idle-hover);
   --color-overlay: var(--overlay);
@@ -114,6 +115,30 @@
       transition-duration: 0.001ms !important;
     }
   }
+}
+
+/* The masthead band re-points the ink tokens so every control inside it reads light-on-graphite;
+   the open folder tab (.on-desk) points them back to the page values. */
+:root {
+  --desk-ink: var(--ink);
+  --desk-ink-2: var(--ink-2);
+  --desk-muted: var(--muted);
+}
+.band {
+  background: var(--band);
+  --ink: var(--band-ink);
+  --ink-2: var(--band-ink-2);
+  --muted: var(--band-muted);
+  --rule-strong: var(--band-rule);
+  --sheet-3: var(--band-chip);
+  --hover-wash: rgba(255, 255, 255, 0.07);
+  --press-wash: rgba(255, 255, 255, 0.11);
+  color: var(--ink);
+}
+.band .on-desk {
+  --ink: var(--desk-ink);
+  --ink-2: var(--desk-ink-2);
+  --muted: var(--desk-muted);
 }
 
 @layer utilities {

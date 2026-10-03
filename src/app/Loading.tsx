@@ -11,7 +11,7 @@ const BLOCK = 'rounded-[3px] bg-sheet-3'
 export function LoadingShell() {
   return (
     <div className="flex min-h-dvh flex-col" aria-busy="true">
-      <header className="bg-sheet-3">
+      <header className="band">
         <div className="mx-auto max-w-[1440px] px-(--gutter)">
           <div className="flex h-[52px] items-center gap-2 pt-1">
             <Mark working />
@@ -26,7 +26,7 @@ export function LoadingShell() {
                 key={v.key}
                 className={cx(
                   'flex w-[184px] shrink-0 flex-col rounded-t-[6px] px-3.5 pt-2.5 pb-3',
-                  i === 0 ? 'bg-page' : 'mt-1 bg-tab-idle',
+                  i === 0 ? 'on-desk bg-page' : 'mt-1 bg-tab-idle',
                 )}
               >
                 <span className="cut-tab truncate text-[13px] leading-tight font-semibold text-ink-2">

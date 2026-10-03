@@ -23,8 +23,15 @@
   --sheet: #fbfbfc;
   --sheet-2: #f3f4f6;
   --sheet-3: #e7e9ed;
-  --tab-idle: #dde0e5;
-  --tab-idle-hover: #d3d7dd;
+  /* masthead band: graphite in both themes; the open folder tab takes the page color */
+  --band: #1b1f26;
+  --band-ink: #f1f3f5;
+  --band-ink-2: #b9c0ca;
+  --band-muted: #8a919d;
+  --band-rule: #3a404a;
+  --band-chip: #2c313a;
+  --tab-idle: #262b33;
+  --tab-idle-hover: #30363f;
   --overlay: rgba(18, 21, 26, 0.32);
 
   /* ink */
@@ -104,8 +111,11 @@
     --sheet: #16191e;
     --sheet-2: #1c2026;
     --sheet-3: #242931;
-    --tab-idle: #181b20;
-    --tab-idle-hover: #1f2329;
+    --band: #171a1f;
+    --band-chip: #262a31;
+    --band-rule: #2c3138;
+    --tab-idle: #1e2228;
+    --tab-idle-hover: #252a31;
     --overlay: rgba(0, 0, 0, 0.55);
     --ink: #f1f3f5;
     --ink-2: #b6bdc8;
@@ -160,8 +170,11 @@
   --sheet: #16191e;
   --sheet-2: #1c2026;
   --sheet-3: #242931;
-  --tab-idle: #181b20;
-  --tab-idle-hover: #1f2329;
+  --band: #171a1f;
+  --band-chip: #262a31;
+  --band-rule: #2c3138;
+  --tab-idle: #1e2228;
+  --tab-idle-hover: #252a31;
   --overlay: rgba(0, 0, 0, 0.55);
   --ink: #f1f3f5;
   --ink-2: #b6bdc8;

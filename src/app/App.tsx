@@ -93,7 +93,7 @@ function Shell() {
       >
         Skip to content
       </a>
-      <header className="bg-sheet-3">
+      <header className="band">
         <div className={PAGE}>
           <Masthead />
           <FolderTabs />
