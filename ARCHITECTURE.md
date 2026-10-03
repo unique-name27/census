@@ -244,19 +244,19 @@ Already written (lead): `Button`, `IconButton`, `Menu` (items API), `Popover`, `
 
 ### Extra shared APIs (from the shell and chart builders)
 
-- Navigation:  (pushes history; keeps scroll inside a view), , .
--  registers a table-only export without rendering.
-- Layout:  and ;  takes .
-- .
-- Charts:  +  + axis/grid helpers for custom Plot visuals; ; , ,
-  , ; . A custom SVG visual inside a Figure that also contains other
-  SVGs must put  on its root  so PNG/SVG export captures the right element.
-- Plot pitfall: the mark option  is a per-row data channel, not a fixed label (a constant string makes lines
-  disappear). Bar corner radii are in screen space; use the kit instead of hand-rolling rounded bars.
-- Imported data may have  in , , requisition /, case
-  / and comp  (unrecognized values are logged, not guessed). Guard for it.
--  is boolean for leavers and null for active people. Succession roles with no successor have one row
-  with  null. Comp  is null for people hired after 2026-04-01 or without a rating.
+- Navigation: `goTo(view, tab?)` (pushes history; keeps scroll inside a view), `useCurrentView()`, `routeHash`.
+- `useTableFigure({ id, title, subtitle?, note?, columns, rows })` registers a table-only export without rendering.
+- Layout: `Span` and `spanClass(span)`; `Section` takes `actions`.
+- `toast(message, { tone?: 'neutral' | 'good' | 'critical', description?, action?: { label, onClick }, timeout? })`.
+- Charts: `PlotChart` + `housePlot` + axis/grid helpers for custom Plot visuals; `Legend`; `toneColor`, `inkOn`,
+  `sequentialScale`, `divergingScale`; `textWidth`. A custom SVG visual inside a Figure that also contains other
+  SVGs must put `data-chart` on its root `<svg>` so PNG/SVG export captures the right element.
+- Plot pitfall: the mark option `ariaLabel` is a per-row data channel, not a fixed label (a constant string makes
+  lines disappear). Bar corner radii are in screen space; use the kit instead of hand-rolling rounded bars.
+- Imported data may have `null` in `level`, `employmentType`, requisition `reqType`/`priority`, case
+  `priority`/`tier` and comp `fxToUsd` (unrecognized values are logged, not guessed). Guard for it.
+- `regrettable` is boolean for leavers and null for active people. Succession roles with no successor have one row
+  with `successorId` null. Comp `meritPct` is null for people hired after 2026-04-01 or without a rating.
 
 ### Views
 
