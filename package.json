@@ -6,11 +6,12 @@
   "scripts": {
     "dev": "vite --port 8820 --strictPort",
     "build": "vite build",
-    "build:single": "vite build --mode single",
+    "build:single": "vite build --mode single && node scripts/copy-single.mjs",
     "preview": "vite preview --port 8821",
     "typecheck": "tsc --noEmit -p .",
     "test": "vitest run",
-    "lint": "biome check src"
+    "lint": "biome check src",
+    "verify": "node scripts/verify.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",
