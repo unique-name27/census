@@ -36,8 +36,9 @@ export interface Window {
 const DAY = 86_400_000
 const monthsOf = (start: ISODate, end: ISODate) => (ms(end) - ms(start) + DAY) / DAY / 30.436875
 
-function win(start: ISODate, end: ISODate, label?: string): Window {
-  return { start, end, months: monthsOf(start, end), label: label ?? formatRange(start, end) }
+/** Calendar-month windows carry their exact month count so annualizing a 12-month rate is a no-op. */
+function win(start: ISODate, end: ISODate, months?: number): Window {
+  return { start, end, months: months ?? monthsOf(start, end), label: formatRange(start, end) }
 }
 
 /** The reporting window and the comparison window right before it (prior year for YTD). */
@@ -50,7 +51,7 @@ export function periodWindows(
     const start = addDays(addMonths(asOf, -n), 1)
     const pEnd = addDays(start, -1)
     const pStart = addDays(addMonths(pEnd, -n), 1)
-    return { current: win(start, asOf), prior: win(pStart, pEnd) }
+    return { current: win(start, asOf, n), prior: win(pStart, pEnd, n) }
   }
   switch (preset) {
     case 't12m':
@@ -70,7 +71,7 @@ export function periodWindows(
       const cEnd = quarterStart(next) === next ? asOf : addDays(quarterStart(asOf), -1)
       const cStart = quarterStart(cEnd)
       const pEnd = addDays(cStart, -1)
-      return { current: win(cStart, cEnd), prior: win(quarterStart(pEnd), pEnd) }
+      return { current: win(cStart, cEnd, 3), prior: win(quarterStart(pEnd), pEnd, 3) }
     }
     case 'custom': {
       const start = custom?.start ?? addDays(addMonths(asOf, -12), 1)

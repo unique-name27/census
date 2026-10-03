@@ -142,6 +142,14 @@ are already applied to `ctx.data`; **period filtering is each engine's job** usi
 
 ## Metric conventions
 
+Shared definitions live in `src/lib/people.ts` (lead-owned, tested): `headcountAt`, `activeAt`, `avgHeadcount`,
+`snapshotDates`, `hiresIn`, `exitsIn`, `attrition(employees, window, kind)` (all / voluntary / involuntary / regretted,
+annualized, null-not-zero), `firstYearAttrition`, `retention12`, `tenureYears`, `tenureBand`, `directReports`,
+`buildReviewIndex` / `reviewAt` / `latestCycle`, `quarterPoints`, `monthPoints`. Root-cause analysis lives in
+`src/lib/decompose.ts` (`decomposeRate`, `decomposeMedian`): use it to say WHERE a finding concentrates.
+Always use these instead of re-implementing them, so a number means the same thing on every tab.
+
+
 - Headcount counts `employmentType === 'Employee'` only (`isEmployee`). Contractors and interns are
   reported separately.
 - Active on date d: `hireDate <= d` and (`!terminationDate || terminationDate > d`).
