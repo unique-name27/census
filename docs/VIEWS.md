@@ -103,7 +103,7 @@ process (HBars: rejected vs withdrawn reasons by stage).
 
 ---
 
-## HR business partners (`hrbp`)
+## People stats (`hrbp`)
 
 Question: what does a leader's organization look like, how is it changing, and what should the
 HRBP raise in the next 1:1? Port the user's HRBP dashboard definitions (research-hrbp.md, the
@@ -428,7 +428,7 @@ location / level filters dim non-matching cards instead of removing them (the ch
 readable). An as-of view uses `isActiveAt(ctx.asOf)`; a toggle shows open requisitions as dashed
 placeholder cards under their hiring manager. Clicking a card opens a detail panel: person facts,
 manager chain, direct reports, team stats (span, tenure, regretted exits 12 months), latest rating
-and potential when reviews exist, and links "Open in HR business partners" (sets leaderId and goes
+and potential when reviews exist, and links "Open in People stats" (sets leaderId and goes
 to #hrbp) and "Open in Talent".
 
 Reorg sandbox: drag a person (or a whole team) onto a new manager; changes stay in a local
@@ -494,3 +494,7 @@ Sample catalog (about 20 agents):
 - Compensation: Pay range explainer, Merit guideline checker
 - Compliance: Export control screening guide (process steps only, never nationality decisions)
 - People ops: Process finder for the Hire-to-Retire Atlas
+
+View-to-area mapping for those links: Recruiting → Recruiting; People stats → HR business partners;
+Org chart → HR business partners; HR ops → HR ops and People ops; Talent → Talent; Compensation →
+Compensation. (Onboarding and Compliance link from their own views when those exist.)

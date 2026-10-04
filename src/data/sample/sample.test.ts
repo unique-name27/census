@@ -493,7 +493,7 @@ describe('job history', () => {
 const leftT12 = employees.filter((e) => e.terminationDate && e.terminationDate >= T12_START)
 const hcT12 = avgHeadcount(employees, AS_OF)
 
-describe('story: HR business partners', () => {
+describe('story: People stats', () => {
   it('1. one Austin Physical Design manager lost 4+ regretted people citing their manager', () => {
     const counts = new Map<string, number>()
     for (const e of leftT12) {

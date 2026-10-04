@@ -1,7 +1,7 @@
 /**
  * Detail panel for the selected card: person facts, flags, the manager chain, direct reports, team
  * stats, the latest rating and potential when reviews exist, and the next steps (focus this org,
- * open the same org in HR business partners or Talent, simulate an exit, make a slide, and in the
+ * open the same org in People stats or Talent, simulate an exit, make a slide, and in the
  * sandbox, move the person). Every team figure opens the people behind it, and "Person card"
  * opens everything Census knows about the person.
  */
@@ -302,7 +302,7 @@ export function DetailPanel(p: DetailPanelProps) {
               Sets the leader filter to {e.name} for every view.
             </p>
             <div className="flex flex-col items-start gap-0.5">
-              <LinkButton onClick={() => openIn('hrbp')}>Open in HR business partners</LinkButton>
+              <LinkButton onClick={() => openIn('hrbp')}>Open in People stats</LinkButton>
               <LinkButton onClick={() => openIn('talent')}>Open in Talent</LinkButton>
             </div>
           </section>

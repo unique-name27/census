@@ -56,7 +56,7 @@ function View({ tab }: { tab: string }) {
 
 export const view: ViewDef = {
   key: 'hrbp',
-  label: 'HR business partners',
+  label: 'People stats',
   tabs: [
     { key: 'overview', label: 'Overview' },
     { key: 'workforce', label: 'Workforce' },

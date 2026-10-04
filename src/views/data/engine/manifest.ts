@@ -19,7 +19,7 @@ import { type DatasetCoverage, type FieldFills, fieldCoverage, REQUIREMENT_LABEL
 export const VIEW_ORDER: ViewKey[] = ['recruiting', 'hrbp', 'org', 'services', 'talent', 'comp']
 export const VIEW_LABELS: Record<ViewKey, string> = {
   recruiting: 'Recruiting',
-  hrbp: 'HR business partners',
+  hrbp: 'People stats',
   org: 'Org chart',
   services: 'HR ops',
   talent: 'Talent',

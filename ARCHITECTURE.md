@@ -6,7 +6,7 @@ views (folder tabs) and a Data room:
 | View key | Tab label | Who uses it | Reads |
 |---|---|---|---|
 | `recruiting` | Recruiting | Talent acquisition leads, recruiters, hiring leaders | requisitions, candidates |
-| `hrbp` | HR business partners | HRBPs preparing for leader 1:1s and org reviews | employees, jobChanges, reviews |
+| `hrbp` | People stats | HRBPs preparing for leader 1:1s and org reviews | employees, jobChanges, reviews |
 | `services` | HR ops | People operations, payroll, benefits, HRIS | cases, transactions, employees |
 | `talent` | Talent | Talent management, calibration owners | reviews, succession, learning, employees, jobChanges |
 | `comp` | Compensation | Total rewards / comp partners | comp, employees, reviews |

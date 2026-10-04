@@ -29,12 +29,12 @@ const sampleSources = (data: Datasets): Record<DatasetKey, SourceMeta> =>
 
 describe('labels', () => {
   it('names the views a dataset feeds, in folder-tab order', () => {
-    expect(feedsText(['talent', 'hrbp'])).toBe('HR business partners, Talent')
+    expect(feedsText(['talent', 'hrbp'])).toBe('People stats, Talent')
     const all = ['comp', 'services', 'talent', 'org', 'hrbp', 'recruiting'] as const
     expect(feedsText(all)).toBe('All six views')
     expect(feedsLine(all)).toBe('Feeds all six views')
     expect(feedsText(['comp', 'services', 'talent', 'hrbp', 'recruiting'])).toBe(
-      'Recruiting, HR business partners, HR ops, Talent, Compensation',
+      'Recruiting, People stats, HR ops, Talent, Compensation',
     )
     expect(feedsLine(['recruiting'])).toBe('Feeds Recruiting')
   })
@@ -48,12 +48,12 @@ describe('labels', () => {
       feeds,
     })
     const text = Object.fromEntries(rows.map((r) => [r.key, r.feedsText]))
-    expect(text.jobChanges).toBe('HR business partners, Org chart, Talent, Compensation')
+    expect(text.jobChanges).toBe('People stats, Org chart, Talent, Compensation')
     expect(text.comp).toBe('Talent, Compensation')
     expect(text.requisitions).toBe('Recruiting, Org chart')
-    expect(text.reviews).toBe('HR business partners, Org chart, Talent, Compensation')
+    expect(text.reviews).toBe('People stats, Org chart, Talent, Compensation')
     // Recruiting reads requisitions and candidates only.
-    expect(text.employees).toBe('HR business partners, Org chart, HR ops, Talent, Compensation')
+    expect(text.employees).toBe('People stats, Org chart, HR ops, Talent, Compensation')
     // Every view's declared datasets are listed as feeding it.
     for (const v of VIEWS)
       for (const d of v.datasets) expect(rows.find((r) => r.key === d)?.feeds).toContain(v.key)

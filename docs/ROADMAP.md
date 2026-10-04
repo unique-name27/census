@@ -2,7 +2,7 @@
 
 ## Context
 
-Census has seven tabs: Recruiting, HR business partners, Org chart, HR ops, Talent,
+Census has seven tabs: Recruiting, People stats, Org chart, HR ops, Talent,
 Compensation and the Data room. Drill-down on every number is being finished in the background.
 You asked two things:
 
@@ -17,7 +17,7 @@ gets built until you say go.
 
 ## Part 1. New "Onboarding" tab (your request; build first)
 
-**Where it goes:** a new folder tab between Recruiting and HR business partners, following the
+**Where it goes:** a new folder tab between Recruiting and People stats, following the
 employee lifecycle (hire, then start, then manage). Key `onboarding`, folder `src/views/onboarding/`.
 
 **The questions it answers:**
@@ -219,8 +219,8 @@ of the charts).
 | Hiring manager satisfaction | When a req is filled | Satisfaction with speed, slate quality and communication, by recruiter | Recruiting > Requisitions |
 | Onboarding pulse, Day 30 and Day 90 | 30 and 90 days after the start | Week-1 readiness ("I had what I needed"), role clarity, manager support | Onboarding > First 90 days |
 | Stay interviews | Twice a year for key talent | What keeps people and what would make them leave | Talent > Retention risk |
-| Exit survey | At notice of resignation | Primary reason (the 12-reason taxonomy), driver gaps between regretted and other leavers, would they return | HR business partners > Attrition |
-| Manager feedback (upward) | Twice a year | Manager effectiveness themes. Manager cuts only at 10 or more respondents over four quarters. | HR business partners > Org design |
+| Exit survey | At notice of resignation | Primary reason (the 12-reason taxonomy), driver gaps between regretted and other leavers, would they return | People stats > Attrition |
+| Manager feedback (upward) | Twice a year | Manager effectiveness themes. Manager cuts only at 10 or more respondents over four quarters. | People stats > Org design |
 | HR service survey | When a case is resolved | Satisfaction and effort by category and channel; extends today's case CSAT | HR ops > Cases |
 | Return to work | 30 days after returning from leave | Was the return smooth (systems ready, manager check-in) | HR ops > Leave & return |
 | Training evaluation | After a course | Course usefulness and relevance, by course | Talent > Learning |
