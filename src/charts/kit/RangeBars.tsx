@@ -33,8 +33,11 @@ export interface RangeBarsProps<T extends object> extends ChartBaseProps<T> {
   q1?: Key<T>
   q3?: Key<T>
   format?: Format
-  /** Names used in the tooltip. */
-  labels?: { min?: string; max?: string; mid?: string; value?: string }
+  /**
+   * Names used in the tooltip and legend. `range` names the bar in the legend (default 'Range',
+   * or 'Middle 50%' in quartile mode); setting it also shows the legend for a single marker.
+   */
+  labels?: { min?: string; max?: string; mid?: string; value?: string; range?: string }
   xDomain?: [number, number]
   rowHeight?: number
 }
@@ -88,12 +91,12 @@ export function RangeBars<T extends object>({
   const theme = useChartTheme()
   const markerColor = (i: number) => seriesColor(theme, i)
   const legend: LegendSpec | null =
-    markerDefs.length > 1 || quartiles
+    markerDefs.length > 1 || quartiles || labels?.range !== undefined
       ? {
           kind: 'swatch',
           items: [
             {
-              label: quartiles ? 'Middle 50%' : 'Range',
+              label: labels?.range ?? (quartiles ? 'Middle 50%' : 'Range'),
               color: quartiles ? theme.seq[200] : theme.seq[100],
               shape: 'rect',
             },

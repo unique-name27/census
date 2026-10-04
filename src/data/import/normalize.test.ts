@@ -416,6 +416,40 @@ describe('enums', () => {
     expect(coerceValue('candidates', f, 'Background Check', col).value).toBe('Offer')
     expect(coerceValue('candidates', f, 'Talent pool', col)).toEqual({ value: null })
   })
+
+  it('reads manual corrections through the field type, not as raw text', () => {
+    const field = (ds: Parameters<typeof datasetDef>[0], key: string) =>
+      datasetDef(ds).fields.find((x) => x.key === key)!
+    const col = (valueMap: Record<string, string | null>) => ({
+      dateOrder: 'MDY' as const,
+      percentWhole: false,
+      valueMap,
+    })
+    // yes/no
+    const regrettable = field('employees', 'regrettable')
+    const yesNo = col({ 'key talent': 'Yes', 'not key': 'No', 'maybe later': 'false' })
+    expect(coerceValue('employees', regrettable, 'Key talent', yesNo)).toEqual({ value: true })
+    expect(coerceValue('employees', regrettable, 'Not key', yesNo)).toEqual({ value: false })
+    expect(coerceValue('employees', regrettable, 'Maybe later', yesNo)).toEqual({ value: false })
+    // numbers (and ratings, which accept labels)
+    const openings = field('requisitions', 'openings')
+    expect(coerceValue('requisitions', openings, 'a few', col({ 'a few': '3' }))).toEqual({ value: 3 })
+    const rating = field('reviews', 'rating')
+    expect(coerceValue('reviews', rating, 'Star', col({ star: '5 - Far exceeds' }))).toEqual({ value: 5 })
+    // levels and enums in their canonical spelling
+    const level = field('employees', 'level')
+    expect(coerceValue('employees', level, 'Band 4', col({ 'band 4': 'l4' })).value).toBe('L4')
+    const stage = field('candidates', 'currentStage')
+    expect(coerceValue('candidates', stage, 'BG check', col({ 'bg check': 'offer' })).value).toBe('Offer')
+    expect(coerceValue('candidates', stage, 'Pool', col({ pool: 'Phone screen' })).value).toBe('Screen')
+    // blanks stay blank; a correction the field can't read is reported, never stored as text
+    expect(coerceValue('employees', level, 'TBD', col({ tbd: null }))).toEqual({ value: null })
+    expect(coerceValue('employees', level, 'TBD', col({ tbd: '' }))).toEqual({ value: null })
+    const bad = coerceValue('employees', level, 'TBD', col({ tbd: 'Wizard' }))
+    expect(bad.value).toBeNull()
+    expect(bad.code).toBe('unknown-value')
+    expect(bad.issue).toMatch(/^Your correction "Wizard" is not a recognized level/)
+  })
 })
 
 describe('text fields with vocabularies', () => {

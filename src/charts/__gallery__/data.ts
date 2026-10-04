@@ -166,3 +166,40 @@ export const training = [
   { course: 'Information security', rate: 0.91, tone: 'warning' as const },
   { course: 'Harassment prevention', rate: 0.78, tone: 'critical' as const },
 ]
+
+/* Contract demos: ordinal series, "Other" series, glyph tones, quarterly ticks. */
+
+export const RATINGS = ['1', '2', '3', '4', '5']
+export const ratingMix = ['Fab', 'Test', 'Design', 'Finance'].flatMap((group, g) =>
+  RATINGS.map((rating, r) => ({
+    group,
+    rating,
+    people: [
+      [3, 10, 52, 25, 10],
+      [5, 14, 48, 23, 10],
+      [2, 8, 45, 30, 15],
+      [4, 12, 58, 18, 8],
+    ][g][r],
+  })),
+)
+
+export const hiresWithOther = MONTHS.slice(-6).flatMap((month, m) =>
+  ['Referral', 'Sourced', 'Other (3)', 'Careers site'].map((source, s) => ({
+    month,
+    source,
+    hires: [6, 4, 2, 8][s] + ((m + s) % 3),
+  })),
+)
+
+export const quarterlyAttrition = ['Logic', 'Memory', 'Other'].flatMap((unit, u) =>
+  [
+    '2024-12-31',
+    '2025-03-31',
+    '2025-06-30',
+    '2025-09-30',
+    '2025-12-31',
+    '2026-03-31',
+    '2026-06-30',
+    '2026-09-30',
+  ].map((date, i) => ({ date, unit, rate: [0.1, 0.13, 0.09][u] + 0.01 * Math.sin(i + u) })),
+)

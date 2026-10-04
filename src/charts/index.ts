@@ -13,7 +13,7 @@ export {
   sequentialScale,
   toneColor,
 } from './core/color'
-export type { LegendShape, LegendSpec, LegendSwatch } from './core/legend'
+export { LEGEND_ATTR, type LegendShape, type LegendSpec, type LegendSwatch } from './core/legend'
 export {
   glyphForTone,
   glyphPath,
@@ -25,8 +25,8 @@ export {
   scalePos,
   type TextPart,
 } from './core/marks'
-export { maxTextWidth, textWidth, truncateText } from './core/measure'
-export type { TipContent, TipRow } from './core/tooltip'
+export { maxTextWidth, textWidth, truncateText, useFontsVersion } from './core/measure'
+export { placeTip, renderTip, TIP_CLASS, type TipContent, type TipRow } from './core/tooltip'
 export { DataTable, type DataTableProps, type SortState } from './DataTable'
 export {
   Figure,
@@ -43,9 +43,18 @@ export { Heatmap, type HeatmapProps } from './kit/Heatmap'
 export { Histogram, type HistogramProps } from './kit/Histogram'
 export { Lines, type LinesProps } from './kit/Lines'
 export { Meter, type MeterProps } from './kit/Meter'
-export type { BarRow, Category, FoldRule, HistogramBin } from './kit/prepare'
+export { type BarRow, type Category, type FoldRule, type HistogramBin, quarterLabel } from './kit/prepare'
 export { RangeBars, type RangeBarsProps, type RangeMarker } from './kit/RangeBars'
 export { Scatter, type ScatterProps } from './kit/Scatter'
+export { type NumericAxis, numericAxis } from './kit/scale'
+export {
+  isOtherSeries,
+  ordinalColors,
+  otherLast,
+  type SeriesColors,
+  type SeriesScheme,
+  seriesPalette,
+} from './kit/series'
 export type { ChartBaseProps, Key, RefLine, Tone } from './kit/shared'
 export { Legend } from './Legend'
 export {
@@ -64,5 +73,5 @@ export {
 export { FigureRegistryProvider, nextFigureOrder, useFigureRegistry } from './registry'
 export { Sparkline } from './Sparkline'
 export { type ChartTheme, readChartTheme, seriesColor, useChartTheme } from './theme'
-export type { Column, Definition, ExportMeta, RegisteredFigure } from './types'
+export type { Column, Definition, ExportMeta, RegisteredFigure, RowFormat } from './types'
 export { useExportMeta } from './useExportMeta'

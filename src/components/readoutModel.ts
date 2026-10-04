@@ -54,3 +54,12 @@ export function readoutRows(findings: readonly Finding[]): Record<string, unknow
     people: f.people?.length ?? null,
   }))
 }
+
+/**
+ * A label as it reads inside a sentence ("Open drivers"): the first letter is lowered only when
+ * the second is lowercase, so acronyms and names keep their case ("Open HR transactions").
+ */
+export function labelInSentence(label: string): string {
+  if (label.length < 2 || !/\p{Ll}/u.test(label[1])) return label
+  return label[0].toLowerCase() + label.slice(1)
+}

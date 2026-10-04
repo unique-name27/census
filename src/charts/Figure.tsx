@@ -26,24 +26,14 @@ import { downloadCsv } from '@/lib/export/csv'
 import { downloadPng, downloadSvg } from '@/lib/export/image'
 import { fileStem, imageFooter } from '@/lib/export/names'
 import { downloadXlsx } from '@/lib/export/xlsx'
+import { type Span, spanClass } from '@/lib/spans'
 import { DataTable, type DataTableProps } from './DataTable'
 import { nextFigureOrder, useFigureRegistry } from './registry'
 import type { Column, Definition } from './types'
 import { useExportMeta } from './useExportMeta'
 
-export type FigureSpan = 3 | 4 | 5 | 6 | 7 | 8 | 9 | 12
-
-/** Grid classes: full width on phones, half width on tablets for spans up to 6, N/12 on desktop. */
-const SPAN: Record<FigureSpan, string> = {
-  3: 'col-span-12 md:col-span-6 lg:col-span-3',
-  4: 'col-span-12 md:col-span-6 lg:col-span-4',
-  5: 'col-span-12 md:col-span-6 lg:col-span-5',
-  6: 'col-span-12 md:col-span-6 lg:col-span-6',
-  7: 'col-span-12 lg:col-span-7',
-  8: 'col-span-12 lg:col-span-8',
-  9: 'col-span-12 lg:col-span-9',
-  12: 'col-span-12',
-}
+/** Desktop grid columns; the shared mapping in `@/lib/spans` (also used by Section, Readout, EmptyState). */
+export type FigureSpan = Span
 
 /** The rows behind a figure, one level down (e.g. the requisitions behind a time-to-fill bar). */
 export interface FigureDetail {
@@ -79,6 +69,11 @@ export interface FigureProps<T extends object> {
   detail?: FigureDetail
   /** Render `data` as a table instead of a chart. */
   tableOnly?: boolean
+  /**
+   * The body has a chart image to export (default true). Set false for figures whose body is HTML
+   * (lists, meters, cards): the PNG and SVG menu items are hidden and view decks use the table.
+   */
+  image?: boolean
   /** Table view options. */
   table?: FigureTableOptions<T>
   className?: string
@@ -100,6 +95,7 @@ export function Figure<T extends object>({
   empty,
   detail,
   tableOnly = false,
+  image = true,
   table,
   className,
   children,
@@ -129,10 +125,10 @@ export function Figure<T extends object>({
       note,
       columns: cols.slice(),
       rows: rows.slice(),
-      getSvg: () => chartSvg(chartRef.current),
+      getSvg: () => (image ? chartSvg(chartRef.current) : null),
       order,
     })
-  }, [registry, id, title, subtitle, note, cols, rows, order])
+  }, [registry, id, title, subtitle, note, cols, rows, order, image])
 
   useEffect(() => () => window.clearTimeout(timer.current), [])
 
@@ -222,7 +218,7 @@ export function Figure<T extends object>({
         }),
     })
   }
-  if (!tableOnly) {
+  if (!tableOnly && image) {
     items.push(
       { separator: true },
       { heading: 'Image' },
@@ -260,7 +256,7 @@ export function Figure<T extends object>({
   return (
     <figure
       aria-labelledby={titleId}
-      className={cx('m-0 flex min-w-0 flex-col rounded-sheet bg-sheet', SPAN[span], className)}
+      className={cx('m-0 flex flex-col rounded-sheet bg-sheet', spanClass(span), className)}
     >
       <div className="flex flex-wrap items-start gap-x-3 gap-y-2 px-4 pt-3.5">
         <figcaption className="min-w-0 flex-1 basis-56">

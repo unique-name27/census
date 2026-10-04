@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest'
+import { generateSample, SAMPLE_AS_OF } from '@/data/sample'
 import type { Employee, Review } from '@/data/schema'
 import { periodWindows } from '@/data/scope'
 import {
   attrition,
   avgHeadcount,
   buildReviewIndex,
+  directReports,
   firstYearAttrition,
   headcountAt,
   latestCycle,
@@ -188,5 +190,44 @@ describe('series points', () => {
     expect(quarterPoints(ASOF, 4)).toEqual(['2025-12-30', '2026-03-30', '2026-06-30', '2026-09-30'])
     const m = monthPoints(ASOF, 3)
     expect(m).toEqual(['2026-07-31', '2026-08-31', '2026-09-30'])
+  })
+})
+
+describe('directReports', () => {
+  const people = [
+    emp('M', '2020-01-01'),
+    emp('A', '2021-01-01', { managerId: 'M' }),
+    emp('B', '2021-01-01', { managerId: 'M', employmentType: 'Contractor' }),
+    emp('C', '2026-06-01', { managerId: 'M', employmentType: 'Intern' }),
+    emp('D', '2021-01-01', { managerId: 'M', terminationDate: '2026-03-31' }),
+    emp('E', '2021-01-01', { managerId: 'E' }),
+    emp('F', '2021-01-01', { managerId: 'A', employmentType: 'Contractor' }),
+  ]
+  const ids = (m: Map<string, { employeeId: string }[]>, k: string) => m.get(k)?.map((e) => e.employeeId)
+
+  it('counts active employees only by default', () => {
+    const r = directReports(people, ASOF)
+    expect(ids(r, 'M')).toEqual(['A'])
+    expect(r.has('A')).toBe(false)
+    expect(r.has('E')).toBe(false)
+  })
+  it('counts contractors and interns with allWorkers', () => {
+    const r = directReports(people, ASOF, { allWorkers: true })
+    expect(ids(r, 'M')).toEqual(['A', 'B', 'C'])
+    expect(ids(r, 'A')).toEqual(['F'])
+    expect(r.has('E')).toBe(false)
+    expect(ids(directReports(people, '2026-03-01', { allWorkers: true }), 'M')).toEqual(['A', 'B', 'D'])
+  })
+  it('matches the planted span outliers in the sample (all worker types)', () => {
+    const employees = generateSample().employees
+    const spans = directReports(employees, SAMPLE_AS_OF, { allWorkers: true })
+    const spanOf = (name: string) => {
+      const m = employees.find((e) => e.name === name && !e.terminationDate)
+      return m ? (spans.get(m.employeeId)?.length ?? 0) : null
+    }
+    expect(spanOf('Nisha Iyer')).toBe(12)
+    expect(spanOf('Rohan Murthy')).toBe(13)
+    expect(spanOf('Wei-Lun Lee')).toBe(14)
+    expect(spanOf('Arjun Deshpande')).toBe(9)
   })
 })

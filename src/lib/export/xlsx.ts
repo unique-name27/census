@@ -8,7 +8,7 @@
 import type { CellValue, Workbook, Worksheet } from 'exceljs'
 import type { Column, ExportMeta } from '@/charts/types'
 import { excelNumFmt, type Format, fmt } from '@/lib/format'
-import { columnFormat, isNumericFormat, sampleValue, visibleColumns } from './columns'
+import { cellFormat, columnFormat, isNumericFormat, sampleRow, sampleValue, visibleColumns } from './columns'
 import { downloadBlob, MIME } from './download'
 import { fileStem, metaLine, stampLine, viewLine } from './names'
 import type { ExportOptions, ExportTable } from './types'
@@ -84,22 +84,33 @@ export function excelValue(v: unknown, format: Format | undefined): CellValue {
   return String(v)
 }
 
-/** Number format for a column; unformatted numeric columns get a sensible default. */
-export function numFmtFor(column: Pick<Column, 'format'>, sample: unknown): string | undefined {
-  return excelNumFmt(columnFormat(column, sample))
+/**
+ * Number format for a column (or, with a per-row format, for the cell of `row`); unformatted
+ * numeric columns get a sensible default.
+ */
+export function numFmtFor(column: Pick<Column, 'format'>, sample: unknown, row?: object): string | undefined {
+  return excelNumFmt(columnFormat(column, sample, row))
 }
 
 const WIDTH_MIN = 8
 const WIDTH_MAX = 48
 
-/** Column width in characters from the header and the formatted values (first 500 rows). */
-export function columnWidth(label: string, values: readonly unknown[], format: Format): number {
+/**
+ * Column width in characters from the header and the formatted values (first 500 rows). `format`
+ * is the column's format, or one format per value for columns formatted per row.
+ */
+export function columnWidth(
+  label: string,
+  values: readonly unknown[],
+  format: Format | readonly Format[],
+): number {
   let max = label.length
-  for (const v of values.slice(0, 500)) {
-    if (v == null) continue
-    const text = typeof v === 'string' && format !== 'date' ? v : fmt(v, format)
+  values.slice(0, 500).forEach((v, i) => {
+    if (v == null) return
+    const f = typeof format === 'string' ? format : (format[i] ?? 'text')
+    const text = typeof v === 'string' && f !== 'date' ? v : fmt(v, f)
     if (text.length > max) max = text.length
-  }
+  })
   return Math.min(WIDTH_MAX, Math.max(WIDTH_MIN, max + 2))
 }
 
@@ -143,7 +154,11 @@ export function addTableSheet(
 
   const headerRow = block.length + 2
   const samples = cols.map((c) => sampleValue(table.rows, c.key))
-  const formats = cols.map((c, i) => columnFormat(c, samples[i]))
+  const formats = cols.map((c, i) => columnFormat(c, samples[i], sampleRow(table.rows, c.key)))
+  // Per-row formats resolve per cell (e.g. a value column mixing rates and day counts).
+  const perRow = cols.map((c) => typeof c.format === 'function')
+  const formatAt = (i: number, row: Record<string, unknown>) =>
+    perRow[i] ? cellFormat(cols[i], row, formats[i]) : formats[i]
 
   // Header
   const hr = ws.getRow(headerRow)
@@ -165,9 +180,10 @@ export function addTableSheet(
     const xr = ws.getRow(headerRow + 1 + r)
     cols.forEach((c, i) => {
       const cell = xr.getCell(i + 1)
-      cell.value = excelValue(row[c.key], formats[i])
+      const f = formatAt(i, row)
+      cell.value = excelValue(row[c.key], f)
       cell.font = { size: 10, color: { argb: XL.ink } }
-      const nf = numFmtFor(c, samples[i])
+      const nf = excelNumFmt(f)
       if (nf) cell.numFmt = nf
       if (c.align) cell.alignment = { horizontal: c.align }
     })
@@ -182,7 +198,7 @@ export function addTableSheet(
     ws.getColumn(i + 1).width = columnWidth(
       c.label,
       table.rows.map((r) => r[c.key]),
-      formats[i],
+      perRow[i] ? table.rows.map((r) => formatAt(i, r)) : formats[i],
     )
   })
 

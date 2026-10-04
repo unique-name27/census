@@ -128,6 +128,39 @@ describe('buildWorkbook', () => {
     expect(ws.autoFilter).toBeTruthy()
   })
 
+  it('writes a per-cell number format for per-row column formats', async () => {
+    const metricRows = [
+      { metric: 'Offer acceptance', unit: 'rate', value: 0.854 },
+      { metric: 'Time to fill', unit: 'days', value: 41 },
+      { metric: 'Pipeline coverage', unit: 'multiple', value: 1.58 },
+      { metric: 'Precise rate', unit: 'rate2', value: 0.0354 },
+    ]
+    type MetricRow = (typeof metricRows)[number]
+    const metricColumns: Column<MetricRow>[] = [
+      { key: 'metric', label: 'Metric' },
+      {
+        key: 'value',
+        label: 'Value',
+        format: (r) =>
+          r.unit === 'rate' ? 'pct' : r.unit === 'days' ? 'days' : r.unit === 'rate2' ? 'pct2' : 'times',
+      },
+    ]
+    const wb = await buildWorkbook([{ name: 'Metrics', columns: metricColumns, rows: metricRows }], meta, {
+      showPay: false,
+    })
+    const ws = wb.worksheets[0]
+    const first = 5 + 1
+    expect([0, 1, 2, 3].map((i) => ws.getRow(first + i).getCell(2).numFmt)).toEqual([
+      '0.0%',
+      '#,##0',
+      '0.00"×"',
+      '0.00%',
+    ])
+    expect(ws.getRow(first + 1).getCell(2).value).toBe(41)
+    expect(ws.getRow(5).getCell(2).alignment?.horizontal).toBe('right')
+    expect(columnWidth('Value', [0.854, 41], ['pct', 'days'])).toBe(8)
+  })
+
   it('keeps pay columns when pay amounts are on', async () => {
     const wb = await buildWorkbook([{ name: 'Pay', columns, rows }], meta, { showPay: true })
     const ws = wb.worksheets[0]

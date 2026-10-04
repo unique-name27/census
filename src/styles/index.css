@@ -160,7 +160,10 @@
     text-transform: uppercase;
     color: var(--muted);
   }
+  /* A horizontal scroller is also the containing block of its absolutely positioned children
+     (sr-only captions and labels), so they can never widen the page. */
   .scroll-x {
+    position: relative;
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
   }

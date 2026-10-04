@@ -145,11 +145,20 @@ export function tenureBand(years: number): TenureBand {
 
 /* ───────── org structure ───────── */
 
-/** Active employee direct reports per manager at d (managers = anyone with >= 1 active direct). */
-export function directReports(employees: readonly Employee[], d: ISODate): Map<string, Employee[]> {
+/**
+ * Active direct reports per manager at d (managers = anyone with >= 1 active direct). By default
+ * only employees count; with `allWorkers`, contractors and interns count too, as in the sample
+ * company's spans of control ("active direct reports, all worker types").
+ */
+export function directReports(
+  employees: readonly Employee[],
+  d: ISODate,
+  opts: { allWorkers?: boolean } = {},
+): Map<string, Employee[]> {
   const out = new Map<string, Employee[]>()
   for (const e of employees) {
-    if (!isEmployee(e) || !isActiveAt(e, d) || !e.managerId || e.managerId === e.employeeId) continue
+    if (!opts.allWorkers && !isEmployee(e)) continue
+    if (!isActiveAt(e, d) || !e.managerId || e.managerId === e.employeeId) continue
     const arr = out.get(e.managerId)
     if (arr) arr.push(e)
     else out.set(e.managerId, [e])

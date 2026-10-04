@@ -13,10 +13,20 @@ import { hoverBand, labelsMark, refLabelWidth, refRule, roundedBarsY, scalePos }
 import { maxTextWidth, textWidth } from '../core/measure'
 import type { TipContent, TipRow } from '../core/tooltip'
 import { axisX, axisY, baseline, gridY, housePlot, type PlotBuildContext, PlotChart } from '../plot'
-import { seriesColor, useChartTheme } from '../theme'
+import { useChartTheme } from '../theme'
 import { type Category, categoryModel, stackSegments } from './prepare'
 import { bandLabelLayout, extent, numericAxis } from './scale'
-import { barInset, type ChartBaseProps, HIDDEN_NOTE, type Key, type RefLine, type Tone } from './shared'
+import { otherLast, type SeriesColors, type SeriesScheme, seriesPalette } from './series'
+import {
+  barInset,
+  type ChartBaseProps,
+  HIDDEN_NOTE,
+  type Key,
+  orderedKeys,
+  type RefLine,
+  type Tone,
+  textAt,
+} from './shared'
 
 export interface ColumnsProps<T extends object> extends ChartBaseProps<T> {
   data: readonly T[]
@@ -26,7 +36,12 @@ export interface ColumnsProps<T extends object> extends ChartBaseProps<T> {
   /** Series property for grouped or stacked columns. */
   series?: Key<T>
   stack?: boolean
+  /** Series order for the legend, grouping and stacking ("Other" series always go last). */
   seriesOrder?: readonly string[]
+  /** Per-series colors (resolved colors, e.g. from useChartTheme), overriding the scheme. */
+  colors?: SeriesColors
+  /** 'ordinal' maps `seriesOrder` onto the sequential ramp, for ordered series such as ratings 1-5. */
+  scheme?: SeriesScheme
   /** Category order (band x); months always run oldest to newest. */
   xOrder?: readonly string[]
   xType?: 'band' | 'month'
@@ -47,6 +62,8 @@ export function Columns<T extends object>({
   series,
   stack = false,
   seriesOrder,
+  colors: seriesColors,
+  scheme,
   xOrder,
   xType = 'band',
   format = 'int',
@@ -59,7 +76,15 @@ export function Columns<T extends object>({
   ariaLabel,
 }: ColumnsProps<T>) {
   const month = xType === 'month'
-  const model = categoryModel(data, { cat: x, value: y, series, catOrder: xOrder, seriesOrder, month })
+  const order = series
+    ? otherLast(
+        orderedKeys(
+          data.map((d) => textAt(d, series)),
+          seriesOrder,
+        ),
+      )
+    : undefined
+  const model = categoryModel(data, { cat: x, value: y, series, catOrder: xOrder, seriesOrder: order, month })
   const multi = !!series && model.series.length > 1
   const stacked = multi && stack
   const segments = stacked ? stackSegments(model) : []
@@ -68,7 +93,9 @@ export function Columns<T extends object>({
     month ? formatMonthShort(`${k}-01`, i === 0 || k.endsWith('-01')) : k
 
   const theme = useChartTheme()
-  const legendColors = model.series.map((_, i) => seriesColor(theme, i))
+  const paletteFor = (t: typeof theme) =>
+    seriesPalette(t, model.series, { colors: seriesColors, scheme, order: seriesOrder })
+  const legendColors = paletteFor(theme)
   const legend: LegendSpec | null = multi
     ? {
         kind: 'swatch',
@@ -85,7 +112,9 @@ export function Columns<T extends object>({
     const marginLeft = Math.ceil(axis.labelWidth) + 10
     const marginRight = refLine ? Math.max(8, refLabelWidth(refLine)) : 8
     const step = (width - marginLeft - marginRight) / cats.length
-    const colors = model.series.map((_, i) => seriesColor(t, i))
+    const colors = paletteFor(t)
+    // One series: the series' own color when a series is named (gray for "Other"), else slot 1.
+    const single = series ? colors[0] : t.series[0]
 
     const capText = (c: Category<T>) => fmt(stacked ? c.total : c.cells[0]?.value, format)
     const showCaps =
@@ -132,7 +161,7 @@ export function Columns<T extends object>({
           x: (d: (typeof cells)[number]) => d.cat,
           y1: 0,
           y2: (d: (typeof cells)[number]) => d.value,
-          fill: (d: (typeof cells)[number]) => (tone ? toneColor(t, tone(d.datum)) : t.series[0]),
+          fill: (d: (typeof cells)[number]) => (tone ? toneColor(t, tone(d.datum)) : single),
           insetLeft: inset,
           insetRight: inset,
         }),

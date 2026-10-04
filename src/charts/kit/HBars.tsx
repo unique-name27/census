@@ -11,10 +11,19 @@ import { hoverBand, labelsMark, refRule, roundedBarsX, scalePos } from '../core/
 import { maxTextWidth, textWidth, truncateText } from '../core/measure'
 import type { TipContent, TipRow } from '../core/tooltip'
 import { axisX, baseline, gridX, housePlot, type PlotBuildContext, PlotChart } from '../plot'
-import { seriesColor, useChartTheme } from '../theme'
+import { useChartTheme } from '../theme'
 import { type Category, categoryModel, type StackSegment, stackSegments } from './prepare'
 import { extent, numericAxis } from './scale'
-import { barInset, type ChartBaseProps, HIDDEN_NOTE, type Key, type RefLine } from './shared'
+import { otherLast, type SeriesColors, type SeriesScheme, seriesPalette } from './series'
+import {
+  barInset,
+  type ChartBaseProps,
+  HIDDEN_NOTE,
+  type Key,
+  orderedKeys,
+  type RefLine,
+  textAt,
+} from './shared'
 
 export interface HBarsProps<T extends object> extends ChartBaseProps<T> {
   data: readonly T[]
@@ -25,7 +34,12 @@ export interface HBarsProps<T extends object> extends ChartBaseProps<T> {
   series?: Key<T>
   /** Stack series, or stack shares of each row's total (100% bars). */
   stack?: boolean | 'normalize'
+  /** Series order for the legend, grouping and stacking ("Other" series always go last). */
   seriesOrder?: readonly string[]
+  /** Per-series colors (resolved colors, e.g. from useChartTheme), overriding the scheme. */
+  colors?: SeriesColors
+  /** 'ordinal' maps `seriesOrder` onto the sequential ramp, for ordered series such as ratings 1-5. */
+  scheme?: SeriesScheme
   yOrder?: readonly string[]
   format?: Format
   ref?: RefLine
@@ -42,6 +56,8 @@ export function HBars<T extends object>({
   series,
   stack = false,
   seriesOrder,
+  colors: seriesColors,
+  scheme,
   yOrder,
   format = 'int',
   ref: refLine,
@@ -51,7 +67,15 @@ export function HBars<T extends object>({
   onSelect,
   ariaLabel,
 }: HBarsProps<T>) {
-  const model = categoryModel(data, { cat: y, value: x, series, catOrder: yOrder, seriesOrder })
+  const order = series
+    ? otherLast(
+        orderedKeys(
+          data.map((d) => textAt(d, series)),
+          seriesOrder,
+        ),
+      )
+    : undefined
+  const model = categoryModel(data, { cat: y, value: x, series, catOrder: yOrder, seriesOrder: order })
   const multi = !!series && model.series.length > 1
   const normalize = stack === 'normalize'
   const stacked = multi && stack !== false
@@ -63,7 +87,9 @@ export function HBars<T extends object>({
   const height = marginTop + model.categories.length * pitch + 26
 
   const theme = useChartTheme()
-  const colors = model.series.map((_, i) => seriesColor(theme, i))
+  const paletteFor = (t: typeof theme) =>
+    seriesPalette(t, model.series, { colors: seriesColors, scheme, order: seriesOrder })
+  const colors = paletteFor(theme)
   const legend: LegendSpec | null = multi
     ? { kind: 'swatch', items: model.series.map((s, i) => ({ label: s, color: colors[i], shape: 'rect' })) }
     : null
@@ -72,7 +98,7 @@ export function HBars<T extends object>({
   const build = ({ width, theme: t }: PlotBuildContext) => {
     const cats = model.categories
     if (!cats.length) return null
-    const palette = model.series.map((_, i) => seriesColor(t, i))
+    const palette = paletteFor(t)
     const values = stacked
       ? normalize
         ? [1]
@@ -105,7 +131,8 @@ export function HBars<T extends object>({
           x1: 0,
           x2: (d: (typeof cells)[number]) => d.value,
           y: (d: (typeof cells)[number]) => d.cat,
-          fill: t.series[0],
+          // One series: the series' own color when a series is named (gray for "Other"), else slot 1.
+          fill: series ? palette[0] : t.series[0],
           insetTop: inset,
           insetBottom: inset,
         }),

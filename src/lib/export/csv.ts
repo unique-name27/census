@@ -45,7 +45,7 @@ export function toCsv(
       cols
         .map((c) => {
           const v = row[c.key]
-          const text = plainText(v, c.format)
+          const text = plainText(v, c.format, row)
           return typeof v === 'number' ? text : csvField(text)
         })
         .join(','),

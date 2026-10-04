@@ -115,12 +115,24 @@ export function Heatmap<T extends object>({
     const labelMax = Math.max(60, width * 0.3)
     const yShown = ys.map((k) => truncateText(k, labelMax, 12))
     const marginLeft = Math.ceil(maxTextWidth(yShown, 12)) + 12
-    const marginRight = 4
-    const cellW = (width - marginLeft - marginRight) / Math.max(1, xs.length)
+    const cols = Math.max(1, xs.length)
     const xWidest = maxTextWidth(xs, 11)
-    const rotate = xWidest > cellW - 6
+    const rotate = xWidest > (width - marginLeft - 4) / cols - 6
     const xLabelW = Math.min(120, xWidest)
-    const marginTop = rotate ? Math.ceil(Math.sin((40 * Math.PI) / 180) * xLabelW + 18) : marginTopFlat
+    const rad = (40 * Math.PI) / 180
+    // Rotated labels lean right from their cell centers: reserve room so the last ones end inside
+    // the chart (label i reaches cos 40° x its width past its center, n - i - 1/2 cells from the edge).
+    let marginRight = 4
+    if (rotate) {
+      const reach = xs.map((k) => Math.cos(rad) * textWidth(truncateText(k, xLabelW, 11), 11))
+      for (let pass = 0; pass < 3; pass++) {
+        const cell = (width - marginLeft - marginRight) / cols
+        const need = Math.max(...reach.map((r, i) => r - (cols - i - 0.5) * cell)) + 4
+        marginRight = Math.max(4, Math.min(Math.ceil(need), Math.floor(width * 0.4)))
+      }
+    }
+    const cellW = (width - marginLeft - marginRight) / cols
+    const marginTop = rotate ? Math.ceil(Math.sin(rad) * xLabelW + 18) : marginTopFlat
     const height = marginTop + ys.length * rowHeight + 2
 
     const fillOf = (c: Cell<T>) => (c.value == null ? t.sheet2 : color(c.value))

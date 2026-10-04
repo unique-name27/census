@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { peoplePreview, readoutRows, severityCounts, sortFindings } from './readoutModel'
+import { labelInSentence, peoplePreview, readoutRows, severityCounts, sortFindings } from './readoutModel'
 import type { Finding } from './types'
 
 const finding = (id: string, severity: Finding['severity'], extra: Partial<Finding> = {}): Finding => ({
@@ -72,5 +72,17 @@ describe('readoutRows', () => {
       },
       { severity: 'Note', finding: 'Finding a', detail: 'Detail a', nextStep: '', people: null },
     ])
+  })
+})
+
+describe('labelInSentence', () => {
+  it('lowers the first letter of ordinary labels and keeps acronyms', () => {
+    expect(labelInSentence('Drivers')).toBe('drivers')
+    expect(labelInSentence('Time to fill')).toBe('time to fill')
+    expect(labelInSentence('HR transactions')).toBe('HR transactions')
+    expect(labelInSentence('HRBP view')).toBe('HRBP view')
+    expect(labelInSentence('9-box')).toBe('9-box')
+    expect(labelInSentence('A')).toBe('A')
+    expect(labelInSentence('')).toBe('')
   })
 })

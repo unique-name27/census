@@ -8,7 +8,9 @@ import {
   jitter,
   monthOf,
   parseTime,
+  quarterLabel,
   stackSegments,
+  timeTicks,
 } from './prepare'
 import { extent, numericAxis } from './scale'
 
@@ -195,5 +197,87 @@ describe('layout helpers', () => {
     expect(numericAxis(0, 1, 'pct0', 5, [0, 1]).domain).toEqual([0, 1])
     expect(extent([3, null, 1, Number.NaN, 7])).toEqual([1, 7])
     expect(extent([null])).toBeNull()
+  })
+})
+
+describe('BarList glyph tone', () => {
+  it('records a glyph tone without changing the bar tone', () => {
+    const rows = barListRows(depts, {
+      label: 'dept',
+      value: 'rate',
+      tone: (d) => (d.dept === 'Fab' ? 'deemph' : 'default'),
+      glyphTone: (d) => (d.rate != null && d.rate > 0.15 ? 'critical' : 'default'),
+    })
+    const fab = rows.find((r) => r.label === 'Fab')!
+    expect(fab.tone).toBe('deemph')
+    expect(fab.glyph).toBe('critical')
+    expect(rows.find((r) => r.label === 'Test')?.glyph).toBe('default')
+    expect(barListRows(depts, { label: 'dept', value: 'rate' })[0]).not.toHaveProperty('glyph')
+  })
+})
+
+describe('time ticks', () => {
+  const utc = (s: string) => Date.parse(`${s}T00:00:00Z`)
+  const measure = (l: string) => l.length * 6
+
+  it('labels quarters as Q3 and a two-digit year', () => {
+    expect(quarterLabel(utc('2026-09-30'))).toBe("Q3 '26")
+    expect(quarterLabel(utc('2026-01-01'))).toBe("Q1 '26")
+    expect(quarterLabel(utc('2025-12-31'))).toBe("Q4 '25")
+  })
+
+  it('ticks quarter ends of monthly data, skipping a partial quarter', () => {
+    const months = ['2025-10', '2025-11', '2025-12', '2026-01', '2026-02', '2026-03', '2026-04', '2026-05']
+    const ticks = timeTicks(
+      months.map((m) => utc(`${m}-01`)),
+      'quarter',
+      800,
+      measure,
+    )
+    expect(ticks.map((k) => k.label)).toEqual(["Q4 '25", "Q1 '26"])
+    expect(ticks[0].t).toBe(utc('2025-12-01'))
+  })
+
+  it('ticks every point of quarterly data, thinned from the latest when crowded', () => {
+    const qs = [
+      '2024-12-31',
+      '2025-03-31',
+      '2025-06-30',
+      '2025-09-30',
+      '2025-12-31',
+      '2026-03-31',
+      '2026-06-30',
+      '2026-09-30',
+    ]
+    const times = qs.map(utc)
+    expect(timeTicks(times, 'quarter', 800, measure).map((k) => k.label)).toEqual([
+      "Q4 '24",
+      "Q1 '25",
+      "Q2 '25",
+      "Q3 '25",
+      "Q4 '25",
+      "Q1 '26",
+      "Q2 '26",
+      "Q3 '26",
+    ])
+    const narrow = timeTicks(times, 'quarter', 200, measure)
+    expect(narrow[narrow.length - 1].label).toBe("Q3 '26")
+    expect(narrow.length).toBeLessThan(8)
+    // Off-cycle quarterly points (e.g. as of 15 Aug) still get one tick each.
+    expect(
+      timeTicks([utc('2026-02-15'), utc('2026-05-15'), utc('2026-08-15')], 'quarter', 600, measure),
+    ).toHaveLength(3)
+  })
+
+  it('ticks months with the year on the first tick and on January', () => {
+    const months = ['2025-11', '2025-12', '2026-01', '2026-02']
+    expect(
+      timeTicks(
+        months.map((m) => utc(`${m}-01`)),
+        'month',
+        800,
+        measure,
+      ).map((k) => k.label),
+    ).toEqual(["Nov '25", 'Dec', "Jan '26", 'Feb'])
   })
 })

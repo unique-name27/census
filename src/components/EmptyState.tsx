@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
+import { type Span, spanClass } from '@/lib/spans'
 import { IconFile } from './icons'
-import { type Span, spanClass } from './Section'
 import { cx } from './ui'
 
 /**

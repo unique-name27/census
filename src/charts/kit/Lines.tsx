@@ -13,8 +13,9 @@ import { textWidth, truncateText } from '../core/measure'
 import type { TipContent } from '../core/tooltip'
 import { axisX, axisY, gridY, housePlot, type PlotBuildContext, PlotChart } from '../plot'
 import { type ChartTheme, seriesColor, useChartTheme } from '../theme'
-import { dodge, parseTime } from './prepare'
+import { dodge, parseTime, timeTicks } from './prepare'
 import { extent, numericAxis } from './scale'
+import { isOtherSeries, otherLast } from './series'
 import { type ChartBaseProps, type Key, orderedKeys, type RefLine, textAt } from './shared'
 
 export interface LinesProps<T extends object> extends ChartBaseProps<T> {
@@ -35,6 +36,11 @@ export interface LinesProps<T extends object> extends ChartBaseProps<T> {
   zero?: boolean
   /** End labels for up to four series (default true). */
   endLabels?: boolean
+  /**
+   * Time-axis ticks on the data dates: every month, or every quarter end labeled "Q3 '26"
+   * (thinned to fit). Default: automatic ticks.
+   */
+  xTicks?: 'month' | 'quarter'
   height?: number
 }
 
@@ -65,16 +71,21 @@ export function Lines<T extends object>({
   yDomain,
   zero,
   endLabels = true,
+  xTicks,
   height = 240,
   onSelect,
   ariaLabel,
 }: LinesProps<T>) {
+  // "Other" series are listed last and drawn in gray, beneath the named ones.
   const names = series
-    ? orderedKeys(
-        data.map((d) => textAt(d, series)),
-        seriesOrder,
+    ? otherLast(
+        orderedKeys(
+          data.map((d) => textAt(d, series)),
+          seriesOrder,
+        ),
       )
     : ['']
+  const slots = names.filter((n) => !isOtherSeries(n))
   const multi = names.length > 1
   const points: Point<T>[] = []
   for (const d of data) {
@@ -102,7 +113,8 @@ export function Lines<T extends object>({
   const theme = useChartTheme()
   const colorOf = (t: ChartTheme, name: string) => {
     if (emphasize !== undefined) return name === emphasize ? t.series[0] : t.deemph
-    return seriesColor(t, names.indexOf(name))
+    if (isOtherSeries(name)) return t.deemph
+    return seriesColor(t, slots.indexOf(name))
   }
   const legend: LegendSpec | null = multi
     ? { kind: 'swatch', items: names.map((s) => ({ label: s, color: colorOf(theme, s), shape: 'line' })) }
@@ -144,7 +156,8 @@ export function Lines<T extends object>({
     const plotW = width - marginLeft - marginRight
     const tickCount = Math.max(2, Math.floor(plotW / 84))
 
-    const order = emphasize === undefined ? names : [...names.filter((s) => s !== emphasize), emphasize]
+    const under = [...names.filter(isOtherSeries), ...names.filter((s) => !isOtherSeries(s))]
+    const order = emphasize === undefined ? under : [...under.filter((s) => s !== emphasize), emphasize]
     const lineData = order.flatMap((name) => points.filter((p) => p.series === name))
     const base = axis.domain[0] > 0 ? axis.domain[0] : 0
     const isolated = lineData.filter((p, i) => {
@@ -257,16 +270,30 @@ export function Lines<T extends object>({
       })
     }
     const shortSpan = lastT - slices[0].t < 75 * 86_400_000
+    const explicit = xTicks
+      ? timeTicks(
+          slices.map((s) => s.t),
+          xTicks,
+          plotW,
+          (l) => textWidth(l, 11),
+        )
+      : null
+    const explicitLabel = new Map(explicit?.map((k) => [k.t, k.label]))
     marks.push(
       axisY(t, { ticks: axis.ticks, tickFormat: axis.format }),
-      axisX(t, {
-        ticks: tickCount,
-        tickFormat: (d: Date, i: number) => {
-          const key = iso(d.getTime())
-          if (shortSpan) return `${d.getUTCDate()} ${formatMonthShort(key)}`
-          return formatMonthShort(key, i === 0 || d.getUTCMonth() === 0)
-        },
-      }),
+      explicit
+        ? axisX(t, {
+            ticks: explicit.map((k) => new Date(k.t)),
+            tickFormat: (d: Date) => explicitLabel.get(d.getTime()) ?? '',
+          })
+        : axisX(t, {
+            ticks: tickCount,
+            tickFormat: (d: Date, i: number) => {
+              const key = iso(d.getTime())
+              if (shortSpan) return `${d.getUTCDate()} ${formatMonthShort(key)}`
+              return formatMonthShort(key, i === 0 || d.getUTCMonth() === 0)
+            },
+          }),
     )
     return housePlot(
       { width, theme: t },

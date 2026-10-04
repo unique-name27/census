@@ -176,7 +176,17 @@ export function coerceValue(
 ): Coerced<unknown> {
   if (col.valueMap && !isBlank(v)) {
     const t = normText(v)
-    if (Object.hasOwn(col.valueMap, t)) return ok(col.valueMap[t])
+    if (Object.hasOwn(col.valueMap, t)) {
+      // A manual correction is a value in the app's own words ("Yes", "L4", "Offer"): read it
+      // through the field type like any cell, so it is stored as a boolean, number or canonical
+      // spelling rather than as raw text.
+      const fixed = col.valueMap[t]
+      if (fixed == null || isBlank(fixed)) return NONE
+      const c = coerceValue(dataset, field, fixed, { ...col, valueMap: undefined })
+      return c.value == null && c.issue
+        ? { ...c, issue: `Your correction ${c.issue[0].toLowerCase()}${c.issue.slice(1)}` }
+        : c
+    }
   }
   switch (field.type) {
     case 'date':

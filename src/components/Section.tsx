@@ -3,30 +3,14 @@
  * and the bare Grid. Children size themselves with `spanClass` (Figure does this via `span`).
  */
 import type { ReactNode } from 'react'
+import { GRID_CLASS, type Span, spanClass } from '@/lib/spans'
 import { cx } from './ui'
 
-export type Span = 3 | 4 | 5 | 6 | 7 | 8 | 9 | 12
-
-/**
- * Static class names so Tailwind sees every span. One column under 768px; on tablets quarters
- * pair up and halves stay halves, everything else takes the full row so no row is left with a hole.
- */
-const SPAN_CLASS: Record<Span, string> = {
-  3: 'md:col-span-6 lg:col-span-3',
-  4: 'md:col-span-12 lg:col-span-4',
-  5: 'md:col-span-12 lg:col-span-5',
-  6: 'md:col-span-6',
-  7: 'md:col-span-12 lg:col-span-7',
-  8: 'md:col-span-12 lg:col-span-8',
-  9: 'md:col-span-12 lg:col-span-9',
-  12: 'md:col-span-12',
-}
-
-/** Grid placement for a child of Grid/Section: full width on phones, `span` of 12 on desktop. */
-export const spanClass = (span: Span = 12): string => cx('col-span-1 min-w-0', SPAN_CLASS[span])
+/** Grid placement (one mapping for Figure, Readout, EmptyState and view panels): see `@/lib/spans`. */
+export { type Span, spanClass }
 
 export function Grid({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className={cx('grid grid-cols-1 gap-4 md:grid-cols-12', className)}>{children}</div>
+  return <div className={cx(GRID_CLASS, className)}>{children}</div>
 }
 
 export function Section({

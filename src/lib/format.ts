@@ -11,6 +11,7 @@ export type Format =
   | 'num2' // 0.98
   | 'pct' // fraction -> 12.4%
   | 'pct0' // fraction -> 12%
+  | 'pct2' // fraction -> 3.54%
   | 'pts' // fraction difference -> +2.1 pts
   | 'money' // USD compact, $1.2M
   | 'moneyFull' // USD, $123,456
@@ -18,10 +19,14 @@ export type Format =
   | 'hours' // 6.5 h
   | 'years' // 4.2 yrs
   | 'ratio' // 0.98
+  | 'times' // multiple -> 1.58×
   | 'date' // 30 Sep 2026
   | 'text'
 
 export const DASH = '—'
+
+/** U+2212, the typographic minus every display format uses for negative values. */
+export const MINUS = '−'
 
 const nf0 = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 })
 const nf1 = new Intl.NumberFormat('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 })
@@ -31,8 +36,14 @@ const usd = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD',
 
 export const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v)
 
+/** `body` of |v| with a true minus in front for negatives (none when the shown value rounds to zero). */
+function signed(v: number, body: (abs: number) => string): string {
+  const s = body(Math.abs(v))
+  return v < 0 && /[1-9]/.test(s) ? `${MINUS}${s}` : s
+}
+
 export function compact(v: number): string {
-  return Math.abs(v) < 1000 ? nf0.format(v) : compactNf.format(v)
+  return signed(v, (a) => (a < 1000 ? nf0.format(a) : compactNf.format(a)))
 }
 
 export function fmt(v: unknown, format: Format = 'int'): string {
@@ -41,42 +52,47 @@ export function fmt(v: unknown, format: Format = 'int'): string {
   if (!isNum(v)) return DASH
   switch (format) {
     case 'int':
-      return nf0.format(v)
+      return signed(v, (a) => nf0.format(a))
     case 'compact':
       return compact(v)
     case 'num1':
-      return nf1.format(v)
+      return signed(v, (a) => nf1.format(a))
     case 'num2':
     case 'ratio':
-      return nf2.format(v)
+      return signed(v, (a) => nf2.format(a))
+    case 'times':
+      return signed(v, (a) => `${nf2.format(a)}×`)
     case 'pct':
-      return `${nf1.format(v * 100)}%`
+      return signed(v, (a) => `${nf1.format(a * 100)}%`)
     case 'pct0':
-      return `${nf0.format(v * 100)}%`
+      return signed(v, (a) => `${nf0.format(a * 100)}%`)
+    case 'pct2':
+      return signed(v, (a) => `${nf2.format(a * 100)}%`)
     case 'pts': {
-      const p = v * 100
-      return `${p > 0 ? '+' : p < 0 ? '−' : ''}${nf1.format(Math.abs(p))} pts`
+      const s = nf1.format(Math.abs(v * 100))
+      return `${!/[1-9]/.test(s) ? '' : v > 0 ? '+' : MINUS}${s} pts`
     }
     case 'money':
-      return Math.abs(v) < 10_000 ? usd.format(v) : `$${compactNf.format(v)}`
+      return signed(v, (a) => (a < 10_000 ? usd.format(a) : `$${compactNf.format(a)}`))
     case 'moneyFull':
-      return usd.format(v)
+      return signed(v, (a) => usd.format(a))
     case 'days':
-      return `${Math.abs(v) < 10 && !Number.isInteger(v) ? nf1.format(v) : nf0.format(v)} d`
+      return signed(v, (a) => `${a < 10 && !Number.isInteger(a) ? nf1.format(a) : nf0.format(a)} d`)
     case 'hours':
-      return `${Math.abs(v) < 10 ? nf1.format(v) : nf0.format(v)} h`
+      return signed(v, (a) => `${a < 10 ? nf1.format(a) : nf0.format(a)} h`)
     case 'years':
-      return `${nf1.format(v)} yrs`
+      return signed(v, (a) => `${nf1.format(a)} yrs`)
   }
   return String(v)
 }
 
-/** Signed delta in the unit of the format: "+3", "−1.2 pts", "+4 d". */
+/** Signed delta in the unit of the format: "+3", "−1.2 pts", "+4 d", "±0" (always the true minus). */
 export function fmtDelta(d: number | null | undefined, format: Format): string {
   if (!isNum(d)) return DASH
-  if (format === 'pct' || format === 'pct0' || format === 'pts') return fmt(d, 'pts')
-  const sign = d > 0 ? '+' : d < 0 ? '−' : '±'
-  return `${sign}${fmt(Math.abs(d), format)}`
+  if (format === 'pct' || format === 'pct0' || format === 'pct2' || format === 'pts') return fmt(d, 'pts')
+  const body = fmt(Math.abs(d), format)
+  const sign = !/[1-9]/.test(body) ? '±' : d > 0 ? '+' : MINUS
+  return `${sign}${body}`
 }
 
 /** "1 person" / "12 people" */
@@ -97,11 +113,15 @@ export function excelNumFmt(format: Format | undefined): string | undefined {
     case 'num2':
     case 'ratio':
       return '0.00'
+    case 'times':
+      return '0.00"×"'
     case 'pct':
     case 'pts':
       return '0.0%'
     case 'pct0':
       return '0%'
+    case 'pct2':
+      return '0.00%'
     case 'money':
     case 'moneyFull':
       return '"$"#,##0'

@@ -13,7 +13,7 @@ import type { Workbook } from 'exceljs'
 import type PptxGenJS from 'pptxgenjs'
 import type { ExportMeta, RegisteredFigure } from '@/charts/types'
 import { fmt } from '@/lib/format'
-import { columnAlign, columnFormat, sampleValue, visibleColumns } from './columns'
+import { cellFormat, columnAlign, columnFormat, sampleRow, sampleValue, visibleColumns } from './columns'
 import { downloadBlob, MIME } from './download'
 import { pngDataUrl, type RasterImage, svgToPng, withLightTheme } from './image'
 import { asOfLabel, fileStem, metaLine, stampLine, viewLine } from './names'
@@ -347,8 +347,11 @@ function tableRows(
 ): { rows: PptxGenJS.TableRow[]; widths: number[]; more: number } {
   const cols = visibleColumns(f.columns, showPay)
   const samples = cols.map((c) => sampleValue(f.rows, c.key))
-  const formats = cols.map((c, i) => columnFormat(c, samples[i]))
-  const aligns = cols.map((c, i) => columnAlign(c, samples[i]))
+  const firsts = cols.map((c) => sampleRow(f.rows, c.key))
+  const formats = cols.map((c, i) => columnFormat(c, samples[i], firsts[i]))
+  const aligns = cols.map((c, i) => columnAlign(c, samples[i], firsts[i]))
+  const text = (row: Record<string, unknown>, i: number) =>
+    fmt(row[cols[i].key], cellFormat(cols[i], row, formats[i]))
   const shown = f.rows.slice(0, TABLE_ROWS)
   const head: PptxGenJS.TableRow = cols.map((c, i) => ({
     text: c.label,
@@ -361,8 +364,8 @@ function tableRows(
     },
   }))
   const body: PptxGenJS.TableRow[] = shown.map((row) =>
-    cols.map((c, i) => ({
-      text: fmt(row[c.key], formats[i]),
+    cols.map((_, i) => ({
+      text: text(row, i),
       options: {
         color: C.ink,
         fontSize: 10,
@@ -377,9 +380,7 @@ function tableRows(
     })),
   )
   // Column widths in proportion to their longest text, within the slide's content width.
-  const lens = cols.map((c, i) =>
-    Math.max(c.label.length, ...shown.map((r) => fmt(r[c.key], formats[i]).length), 4),
-  )
+  const lens = cols.map((c, i) => Math.max(c.label.length, ...shown.map((r) => text(r, i).length), 4))
   const total = lens.reduce((a, b) => a + b, 0)
   const avail = W - 2 * M
   const widths = lens.map((l) => Math.max(0.7, (l / total) * avail))

@@ -17,16 +17,42 @@ export function isNumericFormat(format: Format | undefined): boolean {
   return format !== undefined && !TEXT_FORMATS.has(format)
 }
 
-/** The format a column renders with: its own, or one inferred from a sample value. */
-export function columnFormat(column: Pick<Column, 'format'>, sample: unknown): Format {
-  if (column.format) return column.format
+type FormatSpec = Column['format']
+
+/**
+ * A column's own format for one row: its per-row function applied to `row`, or its fixed format.
+ * Undefined when the column has no format (or a per-row format and no row to apply it to).
+ */
+export function rowFormat(column: Pick<Column, 'format'>, row?: object | null): Format | undefined {
+  const f = column.format
+  if (typeof f !== 'function') return f
+  return row ? f(row) : undefined
+}
+
+/**
+ * The format a column renders with: its own (for a per-row format, the one of `row`, usually the
+ * first row with a value), or one inferred from a sample value.
+ */
+export function columnFormat(column: Pick<Column, 'format'>, sample: unknown, row?: object | null): Format {
+  const own = rowFormat(column, row)
+  if (own) return own
   if (isNum(sample)) return Number.isInteger(sample) ? 'int' : 'num2'
   return 'text'
 }
 
-export function columnAlign(column: Pick<Column, 'format' | 'align'>, sample?: unknown): 'left' | 'right' {
+/** The format of one cell: the column's per-row format for `row`, else the column format. */
+export function cellFormat(column: Pick<Column, 'format'>, row: object, fallback: Format): Format {
+  return typeof column.format === 'function' ? (column.format(row) ?? fallback) : fallback
+}
+
+export function columnAlign(
+  column: Pick<Column, 'format' | 'align'>,
+  sample?: unknown,
+  row?: object | null,
+): 'left' | 'right' {
   if (column.align) return column.align
-  return isNumericFormat(column.format) || (!column.format && isNum(sample)) ? 'right' : 'left'
+  const own = rowFormat(column, row)
+  return isNumericFormat(own) || (!own && isNum(sample)) ? 'right' : 'left'
 }
 
 /** First non-empty value of a column, used to infer formats for unformatted columns. */
@@ -36,6 +62,15 @@ export function sampleValue(rows: readonly Record<string, unknown>[], key: strin
     if (v != null && v !== '') return v
   }
   return undefined
+}
+
+/** First row with a non-empty value in `key` (the row a per-row format is sampled on), else the first row. */
+export function sampleRow<R extends object>(rows: readonly R[], key: string): R | undefined {
+  for (const r of rows) {
+    const v = (r as Record<string, unknown>)[key]
+    if (v != null && v !== '') return r
+  }
+  return rows[0]
 }
 
 /** Round away binary noise (0.1 + 0.2) without losing meaningful precision. */
@@ -49,7 +84,8 @@ function clean(v: number, digits: number): string {
  * percentages as "12.4%", points as "2.1", money as a plain number, dates as ISO.
  * Missing values are empty, never 0.
  */
-export function plainText(v: unknown, format: Format | undefined): string {
+export function plainText(v: unknown, spec: Format | FormatSpec | undefined, row?: object): string {
+  const format = typeof spec === 'function' ? (row ? spec(row) : undefined) : spec
   if (v == null) return ''
   if (typeof v === 'boolean') return v ? 'Yes' : 'No'
   if (v instanceof Date) return Number.isNaN(v.getTime()) ? '' : v.toISOString().slice(0, 10)
@@ -59,6 +95,8 @@ export function plainText(v: unknown, format: Format | undefined): string {
       case 'pct':
       case 'pct0':
         return `${clean(v * 100, 2)}%`
+      case 'pct2':
+        return `${clean(v * 100, 4)}%`
       case 'pts':
         return clean(v * 100, 2)
       case 'int':

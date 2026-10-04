@@ -3,6 +3,7 @@
  * stacking, time parsing, binning and deterministic jitter. Unit-tested.
  */
 import { bin as d3bin } from 'd3'
+import { formatMonthShort } from '@/lib/dates'
 import { fnv } from '@/lib/stats'
 import type { Tone } from '../core/color'
 import { numAt, orderedKeys, textAt } from './shared'
@@ -16,6 +17,8 @@ export interface BarRow<T> {
   value: number | null
   secondary: string
   tone: Tone
+  /** Status shown as a glyph beside the value without recoloring the bar (from `glyphTone`). */
+  glyph?: Tone
   /** The source row; null for the folded "Other" row. */
   datum: T | null
   /** Number of rows folded into this one (0 for ordinary rows). */
@@ -34,6 +37,7 @@ export function barListRows<T extends object>(
     other?: FoldRule<T>
     secondary?: string | ((d: T) => string | null | undefined)
     tone?: (d: T) => Tone
+    glyphTone?: (d: T) => Tone
   },
 ): BarRow<T>[] {
   const { sort = 'desc', top, other = 'sum' } = opts
@@ -57,6 +61,7 @@ export function barListRows<T extends object>(
     value: v,
     secondary: secondaryOf(d),
     tone: opts.tone?.(d) ?? 'default',
+    ...(opts.glyphTone ? { glyph: opts.glyphTone(d) } : {}),
     datum: d,
     folded: 0,
   })
@@ -197,6 +202,76 @@ export function parseTime(v: unknown): Date | null {
   if (!m) return null
   const t = Date.UTC(+m[1], +m[2] - 1, m[3] ? +m[3] : 1)
   return Number.isFinite(t) ? new Date(t) : null
+}
+
+/** Calendar quarter of a UTC time as a short tick label: "Q3 '26". */
+export function quarterLabel(t: number): string {
+  const d = new Date(t)
+  return `Q${Math.floor(d.getUTCMonth() / 3) + 1} '${String(d.getUTCFullYear()).slice(2)}`
+}
+
+export interface TimeTick {
+  t: number
+  label: string
+}
+
+/**
+ * Explicit ticks for a time axis, placed on data dates: one per month ("Sep", with the year on
+ * the first tick and on January: "Jan '26"), or one per quarter at its quarter-end month
+ * ("Q3 '26"; quarterly data that isn't on quarter ends gets one tick per point). Ticks are thinned
+ * to every k-th, counted back from the latest, so labels `measure`d in px stay apart over
+ * `width` px. Pure; `measure` is the text-width function.
+ */
+export function timeTicks(
+  times: readonly number[],
+  unit: 'month' | 'quarter',
+  width: number,
+  measure: (label: string) => number,
+): TimeTick[] {
+  const sorted = [...new Set(times.filter(Number.isFinite))].sort((a, b) => a - b)
+  if (!sorted.length) return []
+  const groups = new Map<string, number[]>()
+  for (const t of sorted) {
+    const d = new Date(t)
+    const y = d.getUTCFullYear()
+    const m = d.getUTCMonth()
+    const k = unit === 'month' ? `${y}-${m}` : `${y}-Q${Math.floor(m / 3)}`
+    const g = groups.get(k)
+    if (g) g.push(t)
+    else groups.set(k, [t])
+  }
+  const picks: number[] = []
+  for (const g of groups.values()) {
+    if (unit === 'month') {
+      picks.push(g[0])
+      continue
+    }
+    const ends = g.filter((t) => new Date(t).getUTCMonth() % 3 === 2)
+    if (ends.length) picks.push(ends[ends.length - 1])
+    // A quarter seen through one point is a quarterly series; a partial quarter of monthly data gets no tick.
+    else if (g.length === 1) picks.push(g[0])
+  }
+  if (!picks.length) return []
+  const quarterText = picks.map(quarterLabel)
+  const monthText = (t: number, first: boolean) => {
+    const key = new Date(t).toISOString().slice(0, 10)
+    return formatMonthShort(key, first || new Date(t).getUTCMonth() === 0)
+  }
+  const widest = Math.max(
+    ...picks.map((t, i) => measure(unit === 'quarter' ? quarterText[i] : monthText(t, true))),
+  )
+  const t0 = sorted[0]
+  const span = sorted[sorted.length - 1] - t0
+  let minGap = Number.POSITIVE_INFINITY
+  for (let i = 1; i < picks.length; i++)
+    minGap = Math.min(minGap, ((picks[i] - picks[i - 1]) / (span || 1)) * width)
+  const every = Number.isFinite(minGap) && minGap > 0 ? Math.max(1, Math.ceil((widest + 12) / minGap)) : 1
+  const last = picks.length - 1
+  const kept = picks.filter((_, i) => (last - i) % every === 0)
+  return kept.map((t, j) => ({
+    t,
+    label: unit === 'quarter' ? quarterLabel(t) : monthText(t, j === 0),
+  }))
 }
 
 /* ───────── Histogram ───────── */

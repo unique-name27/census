@@ -29,6 +29,11 @@ export interface BarListProps<T extends object> extends ChartBaseProps<T> {
   ref?: RefLine
   /** Per-row tone; status tones also add a glyph beside the value. */
   tone?: (d: T) => Tone
+  /**
+   * Per-row status shown only as the glyph (shape + status color) beside the value; the bar keeps
+   * its own color (from `tone`, or slot 1). Takes precedence over `tone` for the glyph.
+   */
+  glyphTone?: (d: T) => Tone
   /** Fixed value domain, e.g. [0, 1] for rates. */
   domain?: [number, number]
   /** Row pitch in px (default 28; bars are half of it, at most 24). */
@@ -48,16 +53,22 @@ export function BarList<T extends object>({
   secondary,
   ref: refLine,
   tone,
+  glyphTone,
   domain,
   rowHeight = 28,
   nullNote = HIDDEN_NOTE,
   onSelect,
   ariaLabel,
 }: BarListProps<T>) {
-  const rows = barListRows(data, { label, value, top, other, sort, secondary, tone })
+  const rows = barListRows(data, { label, value, top, other, sort, secondary, tone, glyphTone })
   const marginTop = refLine ? 22 : 2
   const height = marginTop + rows.length * rowHeight + 4
   const valueText = (r: BarRow<T>) => (r.value == null ? DASH : fmt(r.value, format))
+  /** The status glyph beside the value: from `glyphTone` when given, else from a status `tone`. */
+  const glyphOf = (r: BarRow<T>) => {
+    const g = r.glyph !== undefined && r.glyph !== 'default' ? r.glyph : r.tone
+    return isStatusTone(g) ? g : null
+  }
 
   const build = ({ width, theme: t }: PlotBuildContext) => {
     if (!rows.length) return null
@@ -67,7 +78,7 @@ export function BarList<T extends object>({
     const tailWidth = (r: BarRow<T>) =>
       textWidth(valueText(r), 12, 500) +
       (r.secondary ? 5 + textWidth(r.secondary, 11) : 0) +
-      (isStatusTone(r.tone) ? 12 : 0)
+      (glyphOf(r) ? 12 : 0)
     const marginRight = Math.ceil(Math.min(Math.max(...rows.map(tailWidth)) + 10, width * 0.4))
     const vals = rows.map((r) => r.value).filter(isNum)
     const lo = domain?.[0] ?? Math.min(0, ...vals, refLine?.value ?? 0)
@@ -117,13 +128,12 @@ export function BarList<T extends object>({
             (scales) =>
               rows.map((r) => {
                 const end = r.value != null && r.value > origin ? r.value : origin
+                const g = glyphOf(r)
                 return {
                   x: scalePos(scales, 'x', end) + 6,
                   y: scalePos(scales, 'y', r.key),
                   halo: t.sheet,
-                  glyph: isStatusTone(r.tone)
-                    ? { shape: glyphForTone(r.tone), color: toneColor(t, r.tone) }
-                    : undefined,
+                  glyph: g ? { shape: glyphForTone(g), color: toneColor(t, g) } : undefined,
                   parts: [
                     { text: valueText(r), color: r.value == null ? t.muted : t.ink, size: 12, weight: 500 },
                     ...(r.secondary ? [{ text: r.secondary, color: t.muted, size: 11 }] : []),

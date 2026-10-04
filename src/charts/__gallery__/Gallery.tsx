@@ -493,6 +493,7 @@ function Charts() {
           min="min"
           max="max"
           mid="mid"
+          labels={{ range: 'Salary range' }}
           markers={[
             { key: 'median', label: 'Median pay' },
             { key: 'market', label: 'Market median' },
@@ -519,6 +520,79 @@ function Charts() {
       </Figure>
 
       <Figure
+        id="gal-rating-mix"
+        title="Rating mix by group"
+        subtitle="Ordinal scheme: ratings 1-5 on the sequential ramp"
+        data={D.ratingMix}
+        columns={[
+          { key: 'group', label: 'Group' },
+          { key: 'rating', label: 'Rating' },
+          { key: 'people', label: 'People', format: 'int' },
+        ]}
+        span={6}
+      >
+        <HBars
+          data={D.ratingMix}
+          y="group"
+          x="people"
+          series="rating"
+          stack="normalize"
+          seriesOrder={D.RATINGS}
+          scheme="ordinal"
+        />
+      </Figure>
+
+      <Figure
+        id="gal-hires-other"
+        title="Hires by source, with Other"
+        subtitle="Other is gray and listed last"
+        data={D.hiresWithOther}
+        columns={[
+          { key: 'month', label: 'Month' },
+          { key: 'source', label: 'Source' },
+          { key: 'hires', label: 'Hires', format: 'int' },
+        ]}
+        span={6}
+      >
+        <Columns data={D.hiresWithOther} x="month" xType="month" y="hires" series="source" stack />
+      </Figure>
+
+      <Figure
+        id="gal-quarterly"
+        title="Attrition by quarter"
+        subtitle="Quarter-end ticks; Other in gray"
+        data={D.quarterlyAttrition}
+        columns={[
+          { key: 'date', label: 'Quarter end', format: 'date' },
+          { key: 'unit', label: 'Unit' },
+          { key: 'rate', label: 'Attrition', format: 'pct2' },
+        ]}
+        span={6}
+      >
+        <Lines data={D.quarterlyAttrition} x="date" y="rate" series="unit" format="pct" xTicks="quarter" />
+      </Figure>
+
+      <Figure
+        id="gal-glyph-tone"
+        title="Time to fill against target"
+        subtitle="Status glyph beside the value, bars keep slot 1"
+        data={D.timeToFill}
+        columns={[
+          { key: 'department', label: 'Department' },
+          { key: 'days', label: 'Median days', format: (r) => (r.days > 60 ? 'days' : 'int') },
+        ]}
+        span={6}
+      >
+        <BarList
+          data={D.timeToFill}
+          label="department"
+          value="days"
+          format="days"
+          glyphTone={(d) => (d.days > 60 ? 'critical' : d.days > 45 ? 'warning' : 'default')}
+        />
+      </Figure>
+
+      <Figure
         id="gal-meters"
         title="Training completion"
         subtitle="Required courses completed on time, target 95%"
@@ -528,6 +602,7 @@ function Charts() {
           { key: 'rate', label: 'Completed on time', format: 'pct' },
         ]}
         span={6}
+        image={false}
       >
         <ul className="grid gap-3">
           {D.training.map((m) => (
