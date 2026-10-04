@@ -12,7 +12,8 @@
     "test": "vitest run",
     "lint": "biome check src",
     "verify": "node scripts/verify.mjs",
-    "build:artifact": "vite build --mode single && node scripts/build-artifact.mjs"
+    "build:artifact": "vite build --mode single && node scripts/build-artifact.mjs",
+    "deploy": "npm run build:single && node scripts/deploy-pages.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",
