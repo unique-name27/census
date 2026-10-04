@@ -92,3 +92,67 @@ stay testable.
 4. **Messy sample:** the raw extract generator for the bronze and silver datasets, plus a "starter" certification state for the gold ones.
 5. **Lineage in every view:** each KPI, figure and finding declares `uses`. A test asserts that every declared field exists in the schema and that every figure and KPI declares at least one.
 6. **Review:** an independent reviewer per view checks tiers and gating, and a final check runs in light, dark and 375 px.
+
+## Settings (ships in the same wave)
+
+A **Settings** button (gear icon and the word) in the masthead opens one settings sheet. Settings
+that are scattered today move into it, so each one has exactly one home:
+
+| Section | What's in it | Moved from |
+|---|---|---|
+| Display | Theme (System / Light / Dark), text size (Small / Standard / Large / Extra large; scales the whole app), motion (follow system / reduce) | Masthead theme icon (removed) |
+| Data | Data standard (Production / Validated / Everything), reporting date (as-of override) | Data room "Reporting date" card (it becomes one read-only line with "Change in Settings") |
+| Privacy | Show pay amounts for this session | Compensation header switch (stays there too, as the in-context toggle bound to the same setting) |
+| Compensation cycle | Merit budget %, healthy compa-ratio band, merit guideline by rating | Compensation "Cycle settings" popover (its button now opens this section) |
+| Related tools | Edit the four tool links | Tools menu "Edit links" (it now opens this section) |
+| This device | Export settings to a file, import settings from a file, clear everything Census stored on this device (uploads, mappings, certifications, settings), with a confirm step in the page | New |
+
+Settings persist in this browser, except pay amounts, which last for the session only. The
+existing keys migrate: `census:theme`, `census:tools`, `census:comp-cycle-settings`, `census:asOf`.
+
+## Categories & mapping (a new Data room tab, same wave)
+
+The Data room gets two tabs, **Datasets** (what it shows today) and **Categories & mapping**
+(`#data.mapping`). The new tab shows how the categories in your data relate to each other, flags
+where they disagree, and lets you fix the mapping in one place. Every view then uses the fixed
+mapping. Mapping your own categories is part of what makes data silver.
+
+**1. Org structure**
+- A two-column mapping diagram, business unit → department, with links weighted by active headcount. A sortable table holds the same rows: business unit, department, headcount, managers, department leader (most senior person), cost centers, sites.
+- It also shows location → country → region.
+- **Conflicts** are flagged with a status pill and drill to the people:
+  - a department that appears under more than one business unit
+  - a department with no business unit
+  - requisition departments that are not in the roster
+
+**2. Job architecture**
+- Function → job family → job title, with headcount.
+- A job family × level matrix (heatmap of headcount) shows each family's level spread.
+- **Conflicts:**
+  - a family under several functions
+  - titles whose level doesn't fit their family's usual range
+  - people with no family
+- **New field:** `jobFunction` on Employees (Engineering, Operations, Sales & marketing, G&A, Executive) with its own header names. "Job function" and "Function" stop being treated as synonyms of job family. The sample derives it from business unit.
+
+**3. Category lists**
+- One table per categorical field across the ten datasets:
+  - levels, locations
+  - case categories → Atlas process → team
+  - transaction types → process
+  - candidate stages and statuses, sources
+  - termination types and reasons (the 12-reason taxonomy), change types
+  - learning categories, readiness, potential
+- Each table shows the canonical values, counts and shares, the raw spellings that were mapped to each value (from the import logs), and any unrecognized values.
+
+**Editing the mapping (stored in this browser, applied before every metric):**
+- **Move** a department to another business unit, or a job family to another function.
+- **Merge** two spellings into one value (e.g. "DV" and "Design Verification").
+- **Rename** a value.
+
+Each change is listed with who made it and when, can be undone, and can be exported as an Excel
+"reference mapping" to send to the HRIS team. Changes show up in the tier explanations, e.g.
+"Department remapped by you for 14 rows".
+
+Every count drills to the people or records behind it, every table and diagram sits in a
+Figure (with exports), and the mapping layer is a pure function with tests:
+`applyReferenceMappings(datasets, mappings)`.
