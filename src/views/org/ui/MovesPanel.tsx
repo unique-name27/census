@@ -5,11 +5,13 @@
 import type { Column } from '@/charts'
 import { Button, spanClass, useTableFigure } from '@/components'
 import { cx } from '@/components/ui'
+import { Drill, type DrillSource } from '@/drill'
 import { plural } from '@/lib/format'
 import { MOVE_COLUMNS, type MoveRow } from '../engine'
 
 export function MovesPanel({
   moves,
+  drillMoving,
   undone,
   onUndo,
   onRedo,
@@ -17,6 +19,8 @@ export function MovesPanel({
   canRedo,
 }: {
   moves: MoveRow[]
+  /** The people moving in a step (by step number). */
+  drillMoving?: (step: number) => DrillSource
   /** Steps that were undone and can be redone, in order. */
   undone: string[]
   onUndo: () => void
@@ -61,7 +65,12 @@ export function MovesPanel({
                 <span className="block text-ink">{m.change}</span>
                 <span className="block text-[12px] text-muted">
                   {m.type === 'Exit' ? `Reported to ${m.fromManager}` : `From ${m.fromManager}`}
-                  {m.peopleMoving > 1 ? ` · ${plural(m.peopleMoving, 'person', 'people')}` : ''}
+                  {m.peopleMoving > 1 && (
+                    <>
+                      {' · '}
+                      <Drill spec={drillMoving?.(m.step)}>{plural(m.peopleMoving, 'person', 'people')}</Drill>
+                    </>
+                  )}
                 </span>
               </span>
             </li>

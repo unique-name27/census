@@ -15,7 +15,7 @@ import type { Window } from '@/data/scope'
 import { daysBetween, monthsBetween } from '@/lib/dates'
 import { decomposeRate, type Segment } from '@/lib/decompose'
 import { avgHeadcount, isActiveAt, isEmployee } from '@/lib/people'
-import { nameOf, orgDims, type TalentBase } from './base'
+import { nameOf, orgDims, pushTo, type TalentBase } from './base'
 
 export const ON_TIME_TARGET = 0.95
 const MIN_GROUP = 5
@@ -87,6 +87,33 @@ export interface OnTime {
   onTime: number
 }
 
+/** A required assignment past its due date, for an employee active today. */
+export interface PastDue {
+  l: LearningRecord
+  e: Employee
+  /** Not completed. */
+  overdue: boolean
+}
+
+export type CompletionKind = CompletionRow['kind']
+
+/** Key of `LearningRecords.completions`. */
+export const completionKey = (month: string, kind: CompletionKind): string => `${month}|${kind}`
+
+/** The assignments behind each Learning number, for drill-down. */
+export interface LearningRecords {
+  /** Required assignments due in the period to employees employed on the due date (on-time base). */
+  due: LearningRecord[]
+  /** Required assignments past due today, for employees active today (the overdue grid's base). */
+  pastDue: PastDue[]
+  /** Assignments completed in the period, per month and kind (completionKey). */
+  completions: Map<string, LearningRecord[]>
+  /** Employee assignments with hours completed in the period, per business unit. */
+  hours: Map<string, LearningRecord[]>
+  /** The overdue assignments in the overdue finding's top segment (as many as it counts). */
+  segment: LearningRecord[]
+}
+
 export interface LearningResult {
   /** Required assignments carry due dates. */
   hasDueDates: boolean
@@ -109,6 +136,7 @@ export interface LearningResult {
   concentration: OverdueConcentration | null
   /** Per-month on-time share for the KPI trend, oldest first. */
   trend: (number | null)[]
+  records: LearningRecords
 }
 
 const rate = (k: number, n: number) => (n >= MIN_GROUP ? k / n : null)
@@ -127,15 +155,21 @@ function dueIn(
   })
 }
 
+/** Completed on or before the due date. */
+export const isOnTime = (l: LearningRecord): boolean => !!l.completedDate && l.completedDate <= l.dueDate!
+
+function onTimeOf(due: readonly LearningRecord[]): OnTime {
+  const onTime = due.filter(isOnTime).length
+  return { rate: rate(onTime, due.length), due: due.length, onTime }
+}
+
 function onTimeIn(
   rows: readonly LearningRecord[],
   byId: Map<string, Employee>,
   w: Pick<Window, 'start' | 'end'>,
   asOf: ISODate,
 ): OnTime {
-  const due = dueIn(rows, byId, w, asOf)
-  const onTime = due.filter((l) => l.completedDate && l.completedDate <= l.dueDate!).length
-  return { rate: rate(onTime, due.length), due: due.length, onTime }
+  return onTimeOf(dueIn(rows, byId, w, asOf))
 }
 
 /** Half the summed difference in course-category shares: 0 = same mix, 1 = nothing in common. */
@@ -180,10 +214,10 @@ export function computeLearning(base: TalentBase): LearningResult {
   const byId = base.byId
   const hasDueDates = required.some((l) => !!l.dueDate)
 
-  const current = onTimeIn(required, byId, w, asOf)
-  const prior = onTimeIn(required, byId, ctx.prior, asOf)
   const dueNow = dueIn(required, byId, w, asOf)
   const duePrior = dueIn(required, byId, ctx.prior, asOf)
+  const current = onTimeOf(dueNow)
+  const prior = onTimeOf(duePrior)
   const mixDiffers = dueNow.length > 0 && duePrior.length > 0 && mixDistance(dueNow, duePrior) > 0.25
 
   // By course: assignments due in the window.
@@ -209,7 +243,7 @@ export function computeLearning(base: TalentBase): LearningResult {
     .sort((a, b) => (a.onTimeRate ?? 2) - (b.onTimeRate ?? 2))
 
   // Overdue today, for employees active today.
-  const pastDue: { l: LearningRecord; e: Employee; overdue: boolean }[] = []
+  const pastDue: PastDue[] = []
   let otherWorkersOverdue = 0
   for (const l of required) {
     if (!l.dueDate || l.dueDate >= asOf) continue
@@ -241,6 +275,7 @@ export function computeLearning(base: TalentBase): LearningResult {
 
   // Where the most overdue course concentrates.
   let concentration: OverdueConcentration | null = null
+  let segment: LearningRecord[] = []
   const topCourse = overdueCourses[0]
   if (topCourse && (overdueByCourse.get(topCourse) ?? 0) >= MIN_GROUP) {
     const rows = pastDue.filter((p) => p.l.course === topCourse)
@@ -251,10 +286,9 @@ export function computeLearning(base: TalentBase): LearningResult {
     const k = rows.filter((r) => r.overdue).length
     const coursePeople = overdue.filter((o) => o.course === topCourse)
     const topDim = top ? dims.find((d) => d.key === top.dim) : undefined
-    const inTop =
-      top && topDim
-        ? new Set(rows.filter((r) => r.overdue && topDim.get(r) === top.value).map((r) => r.e.employeeId))
-        : null
+    const inSegment = top && topDim ? rows.filter((r) => r.overdue && topDim.get(r) === top.value) : null
+    segment = inSegment ? inSegment.map((r) => r.l) : []
+    const inTop = inSegment ? new Set(inSegment.map((r) => r.e.employeeId)) : null
     concentration = {
       course: topCourse,
       category: rows[0]?.l.category ?? '',
@@ -276,29 +310,30 @@ export function computeLearning(base: TalentBase): LearningResult {
   // Completions by month over the window.
   const months = monthsBetween(w.start, w.end)
   const monthSet = new Set(months)
-  const counts = new Map<string, number>()
+  const completed = new Map<string, LearningRecord[]>()
   for (const l of all) {
     if (!l.completedDate || l.completedDate < w.start || l.completedDate > w.end) continue
     const m = l.completedDate.slice(0, 7)
     if (!monthSet.has(m)) continue
-    const k = `${m}|${l.required ? 'Required' : 'Optional'}`
-    counts.set(k, (counts.get(k) ?? 0) + 1)
+    pushTo(completed, completionKey(m, l.required ? 'Required' : 'Optional'), l)
   }
   const completions: CompletionRow[] = months.flatMap((month) =>
     (['Required', 'Optional'] as const).map((kind) => ({
       month,
       kind,
-      completions: counts.get(`${month}|${kind}`) ?? 0,
+      completions: completed.get(completionKey(month, kind))?.length ?? 0,
     })),
   )
 
   // Learning hours per employee by business unit (completed in the window, employees only).
   const unitHours = new Map<string, number>()
+  const hourRecords = new Map<string, LearningRecord[]>()
   for (const l of all) {
     if (l.hours == null || !l.completedDate || l.completedDate < w.start || l.completedDate > w.end) continue
     const e = byId.get(l.employeeId)
     if (!e || !isEmployee(e)) continue
     unitHours.set(e.businessUnit, (unitHours.get(e.businessUnit) ?? 0) + l.hours)
+    pushTo(hourRecords, e.businessUnit, l)
   }
   const unitPeople = new Map<string, Employee[]>()
   for (const e of base.scoped) {
@@ -335,6 +370,18 @@ export function computeLearning(base: TalentBase): LearningResult {
     overdue,
     concentration,
     trend,
+    records: {
+      due: dueNow,
+      pastDue,
+      completions: completed,
+      // Only units whose hours per employee are shown.
+      hours: new Map(
+        hours
+          .filter((h) => h.perEmployee != null)
+          .map((h) => [h.businessUnit, hourRecords.get(h.businessUnit) ?? []]),
+      ),
+      segment,
+    },
   }
 }
 

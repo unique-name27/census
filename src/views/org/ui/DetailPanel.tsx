@@ -2,17 +2,32 @@
  * Detail panel for the selected card: person facts, flags, the manager chain, direct reports, team
  * stats, the latest rating and potential when reviews exist, and the next steps (focus this org,
  * open the same org in HR business partners or Talent, simulate an exit, make a slide, and in the
- * sandbox, move the person).
+ * sandbox, move the person). Every team figure opens the people behind it, and "Person card"
+ * opens everything Census knows about the person.
  */
-import { useState } from 'react'
+import { type ReactNode, useState } from 'react'
 import { Button, goTo, IconButton, IconChevronRight, IconClose, IconExternal, StatusPill } from '@/components'
-import type { Employee } from '@/data/schema'
+import type { Employee, Requisition } from '@/data/schema'
 import { RATING_LABELS } from '@/data/schema'
 import { useCensus } from '@/data/store'
+import { Drill, type DrillSource, drillSpec, openPerson } from '@/drill'
 import { formatDate } from '@/lib/dates'
 import { DASH, fmt, plural } from '@/lib/format'
 import { tenureYears } from '@/lib/people'
-import { chainNames, type Flag, type OrgModel, type OrgTree, ratingOf, teamStats } from '../engine'
+import {
+  chainNames,
+  type DrillScope,
+  directsDrill,
+  type Flag,
+  leaversDrill,
+  type OrgModel,
+  type OrgTree,
+  orgDrill,
+  peopleDrill,
+  ratingOf,
+  scopeLine,
+  teamStats,
+} from '../engine'
 
 export interface DetailPanelProps {
   model: OrgModel
@@ -21,6 +36,8 @@ export interface DetailPanelProps {
   id: string
   employees: readonly Employee[]
   mode: 'chart' | 'sandbox'
+  /** Where the panel's numbers come from, for the drill subtitles. */
+  scope: DrillScope
   onClose: () => void
   onJump: (id: string) => void
   onFocus?: (id: string) => void
@@ -51,14 +68,52 @@ export function DetailPanel(p: DetailPanelProps) {
     goTo(view)
   }
 
+  const sc = p.scope
+  const reqRows = (p.model.reqs.get(p.id) ?? [])
+    .map((r) => p.model.reqRecords.get(r.reqId))
+    .filter((r): r is Requisition => !!r)
+  const drills = stats && {
+    directs: () => directsDrill(t, p.id, sc),
+    org: () => orgDrill(t, p.id, sc),
+    tenure: stats.ids.tenure.length
+      ? () =>
+          peopleDrill(t, stats.ids.tenure, {
+            title: `Tenure in ${e.name}'s org`,
+            subtitle: scopeLine(sc),
+            columns: ['directs'],
+            note: `Average tenure = ${fmt(stats.avgTenure, 'years')} across ${plural(stats.ids.tenure.length, 'person', 'people')}. Tenure is the measured value.`,
+          })
+      : null,
+    contingent: () =>
+      peopleDrill(t, stats.ids.contingent, {
+        title: `Contractors and interns reporting to ${e.name}`,
+        subtitle: scopeLine(sc),
+      }),
+    exits: () => leaversDrill(e.name, stats.exits, false, sc),
+    regretted: () => leaversDrill(e.name, stats.regretted, true, sc),
+    reqs: reqRows.length
+      ? () =>
+          drillSpec({
+            kind: 'requisitions',
+            title: `Open requisitions with ${e.name} as hiring manager`,
+            subtitle: scopeLine(sc),
+            rows: reqRows,
+            hide: ['filledDate'],
+          })
+      : null,
+  }
+
   return (
     <aside aria-label={`Details for ${e.name}`} className="flex min-h-0 flex-col text-[13px]">
       <header className="flex items-start gap-2 border-b border-rule px-4 pt-3 pb-3">
         <div className="min-w-0 flex-1">
-          <h3 className="cut-head text-[17px] leading-tight font-semibold text-ink">{e.name}</h3>
+          <h3 className="cut-head text-[16px] leading-tight font-semibold text-ink">{e.name}</h3>
           <p className="mt-0.5 text-[13px] leading-snug text-ink-2">{e.jobTitle}</p>
           <p className="mt-1 font-mono text-[12px] text-muted">{e.employeeId}</p>
         </div>
+        <Button size="sm" variant="ghost" onClick={() => openPerson(p.id)} className="-mt-0.5 shrink-0">
+          Person card
+        </Button>
         <IconButton label="Close details" size="sm" onClick={p.onClose} className="-mt-0.5 -mr-1.5">
           <IconClose />
         </IconButton>
@@ -133,12 +188,12 @@ export function DetailPanel(p: DetailPanelProps) {
           </section>
         )}
 
-        {stats && (
+        {stats && drills && (
           <section className="mt-4">
             <h4 className="eyebrow mb-1.5">Team</h4>
             <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-control bg-rule">
-              <Stat label="Direct reports" value={fmt(stats.directs, 'int')} />
-              <Stat label="Total org" value={fmt(stats.totalOrg, 'int')} />
+              <Stat label="Direct reports" value={fmt(stats.directs, 'int')} drill={drills.directs} />
+              <Stat label="Total org" value={fmt(stats.totalOrg, 'int')} drill={drills.org} />
               <Stat
                 label="Average tenure"
                 value={stats.avgTenure == null ? DASH : fmt(stats.avgTenure, 'years')}
@@ -147,43 +202,63 @@ export function DetailPanel(p: DetailPanelProps) {
                     ? 'Hidden to protect anonymity (n < 5)'
                     : 'Mean tenure of everyone in the org'
                 }
+                drill={drills.tenure}
               />
               <Stat
                 label="Contractors, interns"
                 value={fmt(stats.contingentDirects, 'int')}
                 title="Among direct reports"
+                drill={stats.contingentDirects ? drills.contingent : null}
               />
               <Stat
                 label="Exits, 12 months"
                 value={fmt(stats.exits12, 'int')}
                 title="People who left while reporting to them"
+                drill={stats.exits12 ? drills.exits : null}
               />
-              <Stat label="Regretted, 12 months" value={fmt(stats.regrettedExits12, 'int')} />
-              {stats.openReqs > 0 && <Stat label="Open roles" value={fmt(stats.openReqs, 'int')} />}
+              <Stat
+                label="Regretted, 12 months"
+                value={fmt(stats.regrettedExits12, 'int')}
+                drill={stats.regrettedExits12 ? drills.regretted : null}
+              />
+              {stats.openReqs > 0 && (
+                <Stat label="Open roles" value={fmt(stats.openReqs, 'int')} drill={drills.reqs} />
+              )}
             </dl>
           </section>
         )}
 
         {isManager && (
           <section className="mt-4">
-            <h4 className="eyebrow mb-1.5">Direct reports · {directs.length}</h4>
+            <h4 className="eyebrow mb-1.5">
+              Direct reports ·{' '}
+              <Drill spec={drills?.directs} label={`Show ${e.name}'s ${directs.length} direct reports`}>
+                {fmt(directs.length, 'int')}
+              </Drill>
+            </h4>
             <ul className="divide-y divide-rule">
               {shown.map((id) => {
                 const r = t.people.get(id)!
                 const n = t.total.get(id) ?? 0
                 return (
-                  <li key={id}>
+                  <li key={id} className="flex items-baseline gap-2">
                     <button
                       type="button"
                       onClick={() => p.onJump(id)}
-                      className="flex w-full items-baseline gap-2 rounded-[3px] px-1 py-1.5 text-left hover:bg-hover"
+                      className="min-w-0 flex-1 rounded-[3px] px-1 py-1.5 text-left hover:bg-hover"
                     >
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-ink">{r.name}</span>
-                        <span className="block truncate text-[12px] text-muted">{r.jobTitle}</span>
-                      </span>
-                      {n > 0 && <span className="tnum shrink-0 text-[12px] text-muted">{n} org</span>}
+                      <span className="block truncate text-ink">{r.name}</span>
+                      <span className="block truncate text-[12px] text-muted">{r.jobTitle}</span>
                     </button>
+                    {n > 0 && (
+                      <Drill
+                        spec={() => orgDrill(t, id, sc)}
+                        label={`Show the ${n} people in ${r.name}'s org`}
+                        className="tnum shrink-0 text-[12px] text-muted"
+                      >
+                        {fmt(n, 'int')} org
+                      </Drill>
+                    )}
                   </li>
                 )
               })}
@@ -249,11 +324,30 @@ function Fact({ term, value }: { term: string; value: string }) {
   )
 }
 
-function Stat({ label, value, title }: { label: string; value: string; title?: string }) {
+function Stat({
+  label,
+  value,
+  title,
+  drill,
+}: {
+  label: string
+  value: string
+  title?: string
+  /** The records behind the value; suppressed and zero values pass null and stay plain. */
+  drill?: DrillSource
+}) {
+  let shown: ReactNode = value
+  if (drill && value !== DASH) {
+    shown = (
+      <Drill spec={drill} label={`${label}: show the records behind ${value}`}>
+        {value}
+      </Drill>
+    )
+  }
   return (
     <div className="bg-sheet px-2.5 py-2" title={title}>
       <dt className="text-[11px] text-muted">{label}</dt>
-      <dd className="cut-head mt-0.5 text-[16px] font-semibold text-ink">{value}</dd>
+      <dd className="cut-head mt-0.5 text-[16px] font-semibold text-ink">{shown}</dd>
     </div>
   )
 }

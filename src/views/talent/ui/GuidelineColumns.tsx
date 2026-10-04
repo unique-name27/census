@@ -22,15 +22,19 @@ import {
   textWidth,
   useChartTheme,
 } from '@/charts'
+import { type DrillSource, drill } from '@/drill'
 import { DASH, fmt } from '@/lib/format'
 import type { DistributionRow } from '../engine/performance'
 
 export function GuidelineColumns({
   data,
+  drillFor,
   height = 260,
   ariaLabel,
 }: {
   data: readonly DistributionRow[]
+  /** The records behind a column; clicking it opens them. */
+  drillFor?: (d: DistributionRow) => DrillSource
   height?: number
   ariaLabel?: string
 }) {
@@ -117,8 +121,10 @@ export function GuidelineColumns({
       },
       { value: fmt(d.guideline, 'pct0'), label: 'Guideline', color: theme.ink, shape: 'line' },
       { value: d.gap == null ? DASH : fmt(d.gap, 'pts'), label: 'Gap to guideline' },
+      ...(d.share == null ? [] : [{ value: fmt(d.people), label: d.people === 1 ? 'person' : 'people' }]),
     ],
-    note: d.share == null ? 'Hidden to protect anonymity (n < 5)' : `${fmt(d.people)} people`,
+    // Without a note the chart says "Click to see the records" on columns that open them.
+    note: d.share == null ? 'Hidden to protect anonymity (n < 5)' : undefined,
   })
 
   return (
@@ -127,6 +133,8 @@ export function GuidelineColumns({
       height={height}
       legend={legend}
       tip={tip}
+      selectable={drillFor ? (d) => drillFor(d) != null : undefined}
+      onSelect={drillFor ? (d) => drill(drillFor(d)) : undefined}
       ariaLabel={ariaLabel}
     />
   )

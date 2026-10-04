@@ -3,7 +3,7 @@
  * sample with your own files. The upload dialog and the spreadsheet reader load on first use.
  */
 import { lazy, Suspense, useEffect, useMemo } from 'react'
-import { type Definition, type ExportMeta, Figure } from '@/charts'
+import { type Column, type Definition, type ExportMeta, Figure } from '@/charts'
 import { type CurrentView, CurrentViewProvider } from '@/components/currentView'
 import { IconDownload } from '@/components/icons'
 import { Grid } from '@/components/Section'
@@ -11,7 +11,7 @@ import { Button } from '@/components/ui'
 import { useAnalytics } from '@/data/context'
 import { summarizeIssues } from '@/data/import/issues'
 import { SAMPLE_COMPANY } from '@/data/sample'
-import { DATASET_KEYS, type DatasetKey } from '@/data/schema'
+import { DATASET_KEYS, type DatasetKey, type Datasets } from '@/data/schema'
 import { VIEWS } from '@/views/registry'
 import {
   buildManifest,
@@ -19,6 +19,7 @@ import {
   coverageExportRows,
   feedsFromViews,
   MANIFEST_COLUMNS,
+  type ManifestRow,
   manifestExportRows,
   manifestSummary,
   type UploadFacts,
@@ -29,6 +30,7 @@ import { useImportSession } from './state/session'
 import { AsOfPanel } from './ui/AsOfPanel'
 import { DropZone } from './ui/DropZone'
 import { downloadManifest } from './ui/downloads'
+import { rowsSpec } from './ui/drillSpecs'
 import { DataRoomHeader } from './ui/Header'
 import { Manifest } from './ui/Manifest'
 import { useBusy } from './ui/useBusy'
@@ -58,6 +60,21 @@ const DEFINITIONS: Definition[] = [
     text: 'Checks on the loaded rows: fields blank in every row, fields the attrition metrics need, rows that refer to people or requisitions missing from the linked dataset, and data that stops well before the as-of date.',
   },
 ]
+
+/** The manifest's table view: a dataset's row count opens its rows, as on the sheet. */
+function manifestColumns(rows: readonly ManifestRow[], data: Datasets): Column[] {
+  return MANIFEST_COLUMNS.map((c) =>
+    c.key === 'rows'
+      ? {
+          ...c,
+          drill: (r: Record<string, unknown>) => {
+            const row = rows.find((m) => m.label === r.dataset)
+            return row?.rows ? () => rowsSpec(row, data) : null
+          },
+        }
+      : c,
+  )
+}
 
 export function DataRoom() {
   const ctx = useAnalytics()
@@ -112,7 +129,7 @@ export function DataRoom() {
             title="Datasets"
             subtitle={`Ten datasets feed the ${VIEW_COUNT_TEXT}. Replace any one with your own export; the others keep running on the sample. Open a row to see each field.`}
             data={exportRows}
-            columns={MANIFEST_COLUMNS}
+            columns={manifestColumns(rows, ctx.all)}
             definitions={DEFINITIONS}
             image={false}
             detail={{
@@ -139,7 +156,7 @@ export function DataRoom() {
               </Button>
             }
           >
-            <Manifest rows={rows} onUpload={(key) => picker.open(key)} />
+            <Manifest rows={rows} data={ctx.all} onUpload={(key) => picker.open(key)} />
           </Figure>
         </Grid>
       </div>

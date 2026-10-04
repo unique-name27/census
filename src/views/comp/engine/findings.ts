@@ -11,6 +11,20 @@ import { type Dimension, decomposeRate } from '@/lib/decompose'
 import { fmt } from '@/lib/format'
 import { attrition, exitsIn } from '@/lib/people'
 import { OVER_BUDGET, overBudgetSeverity } from './cycle'
+import {
+  compaGroupDrill,
+  differentiationDrill,
+  exceptionsDrill,
+  HIDE_POSITION,
+  inBandOf,
+  marketDrill,
+  outsideDrill,
+  peopleDrill,
+  scopeLine,
+  spendDrill,
+  X_HIRED,
+  X_TENURE,
+} from './drill'
 import { safeMedian, values } from './groups'
 import { MARKET_CHART_MIN, MARKET_FLAG, MARKET_RANGE_GAP } from './market'
 import type { CompModel } from './model'
@@ -115,6 +129,7 @@ function lowCompa(ctx: AnalyticsContext, m: FindingsInput): Ranked[] {
         filter: { [key]: [g.group] } as Partial<Filters>,
         tab: 'ranges',
         people: low.map((p) => person(p, `compa-ratio ${ratio(p.compa)}`)),
+        drill: () => compaGroupDrill(m, g, 'measured'),
         weight: g.n,
       })
     }
@@ -236,6 +251,16 @@ function belowMin(m: FindingsInput): Ranked[] {
       filter: where ? ({ [where.dim]: [where.value] } as Partial<Filters>) : undefined,
       tab: 'ranges',
       people: rows.map((r) => person(byId.get(r.id)!, `${r.department}, ${fmt(r.gapPct, 'pct')} to minimum`)),
+      drill: () =>
+        outsideDrill(
+          m,
+          'below',
+          rows.map((r) => r.person),
+          'Below range minimum',
+          placed.length >= MIN_GROUP
+            ? `Rate = ${fmt(rows.length, 'int')} below minimum ÷ ${fmt(placed.length, 'int')} people with a salary range.`
+            : undefined,
+        ),
       weight: rows.length,
     },
   ]
@@ -302,6 +327,14 @@ function aboveMax(m: FindingsInput): Ranked[] {
         name: r.name,
         note: `${r.level}, ${fmt(r.tenure, 'years')}, ${fmt(r.gapPct, 'pct')} over maximum`,
       })),
+      drill: () =>
+        outsideDrill(
+          m,
+          'above',
+          rows.map((r) => r.person),
+          'Above range maximum',
+          `Rate = ${fmt(rows.length, 'int')} above maximum ÷ ${fmt(placed.length, 'int')} people with a salary range.`,
+        ),
       weight: rows.length,
     },
   ]
@@ -334,6 +367,17 @@ function compressionFindings(m: FindingsInput): Ranked[] {
       filter: { department: [dept], level: levels },
       tab: 'ranges',
       people: behind.map((p) => person(p, `${p.level}, compa-ratio ${ratio(p.compa)}`)),
+      drill: () =>
+        peopleDrill({
+          title: `New hires and incumbents, ${dept} ${span}`,
+          subtitle: scopeLine(m),
+          people: [...hires, ...inc].filter((p) => p.compa != null),
+          extras: [X_HIRED, X_TENURE],
+          hide: HIDE_POSITION,
+          sort: (a, b) =>
+            Number(b.hiredRecently) - Number(a.hiredRecently) || (a.compa ?? 0) - (b.compa ?? 0),
+          note: `Median compa-ratio ${ratio(newMed)} for ${peopleText(hires.length)} hired in the last 12 months vs ${ratio(incMed)} for ${fmt(inc.length, 'int')} incumbents.`,
+        }),
       weight: cell.length,
     })
   }
@@ -360,6 +404,7 @@ function overBudget(m: FindingsInput): Ranked[] {
       action: `Ask ${r.group} leaders to bring proposals back to budget before calibration closes.`,
       filter: { businessUnit: [r.group] },
       tab: 'cycle',
+      drill: () => spendDrill(m, r, 'priced'),
       weight: r.n,
     })
   }
@@ -375,6 +420,7 @@ function overBudget(m: FindingsInput): Ranked[] {
       detail: `${fmt(company.eligible, 'int')} proposals in ${m.isCompany ? 'the company' : 'this scope'}.${money}`,
       action: 'Agree where to bring proposals back to budget before calibration closes.',
       tab: 'cycle',
+      drill: () => spendDrill(m, { ...company, group: null }, 'priced'),
       weight: company.eligible,
     })
   }
@@ -422,6 +468,10 @@ function exceptions(m: FindingsInput, explained: ReadonlySet<string>): Ranked[] 
         name: r.name,
         note: `rating ${r.rating}, merit ${pct2(r.merit)}`,
       })),
+      drill: () =>
+        rules
+          ? exceptionsDrill(m, [...topLow, ...lowHigh], 'Proposals that break the guideline rules')
+          : exceptionsDrill(m, outliers, 'Proposals unusual for the rating'),
       weight: rules * 4 + outliers.length,
     },
   ]
@@ -459,6 +509,7 @@ function belowMarket(m: FindingsInput): Ranked[] {
         action: `Review the ${g.group} salary ranges against current survey data.`,
         filter,
         tab: 'market',
+        drill: () => marketDrill(m, g),
         weight: g.n * (1 - g.median),
       })
     } else {
@@ -471,6 +522,7 @@ function belowMarket(m: FindingsInput): Ranked[] {
         action: `Review ${g.group} pay positioning within the range before merit proposals are final.`,
         filter,
         tab: 'market',
+        drill: () => marketDrill(m, g),
         weight: g.n * (1 - g.median),
       })
     }
@@ -505,6 +557,7 @@ function noDifferentiation(m: FindingsInput): Ranked[] {
         action: `Review the ${r.group} proposals against the guideline with its managers before calibration closes.`,
         filter: { department: [r.group] },
         tab: 'performance',
+        drill: () => differentiationDrill(m, r, r.group, null),
         weight: r.n45 + r.n3,
       }
     })
@@ -523,13 +576,13 @@ function goodNews(m: FindingsInput, others: readonly Ranked[]): Ranked[] {
         detail: `Mean merit is ${pct2(d.merit45)} for ratings 4-5 and ${pct2(d.merit3)} for rating 3, well above the ${times(DIFFERENTIATION_FLOOR)} floor.`,
         action: 'Keep the guideline as it is for the next cycle.',
         tab: 'performance',
+        drill: () => differentiationDrill(m, d, null, null),
         weight: d.n45 + d.n3,
       },
     ]
   }
-  const inBand = m.pop.people.filter(
-    (p) => p.compa != null && p.compa >= m.settings.bandLow && p.compa <= m.settings.bandHigh,
-  ).length
+  const banded = inBandOf(m.pop.people, m.settings)
+  const inBand = banded.length
   const n = m.pop.people.filter((p) => p.compa != null).length
   if (n >= MIN_GROUP && inBand / n >= 0.75 && !others.some((f) => f.severity === 'critical')) {
     return [
@@ -540,6 +593,15 @@ function goodNews(m: FindingsInput, others: readonly Ranked[]): Ranked[] {
         detail: `${fmt(inBand, 'int')} of ${fmt(n, 'int')} sit from ${ratio(m.settings.bandLow)} to ${ratio(m.settings.bandHigh)}.`,
         action: 'Keep the current ranges for the next cycle.',
         tab: 'ranges',
+        drill: () =>
+          peopleDrill({
+            title: 'In the healthy band',
+            subtitle: scopeLine(m),
+            people: banded,
+            hide: HIDE_POSITION,
+            sort: (a, b) => (a.compa ?? 0) - (b.compa ?? 0) || a.name.localeCompare(b.name),
+            note: `Share = ${fmt(inBand, 'int')} with a compa-ratio from ${ratio(m.settings.bandLow)} to ${ratio(m.settings.bandHigh)} ÷ ${fmt(n, 'int')} with a compa-ratio.`,
+          }),
         weight: n,
       },
     ]
@@ -556,6 +618,7 @@ function toFinding(r: Ranked): Finding {
   if (r.people?.length) f.people = r.people
   if (r.filter) f.filter = r.filter
   if (r.tab) f.tab = r.tab
+  if (r.drill) f.drill = r.drill
   return f
 }
 

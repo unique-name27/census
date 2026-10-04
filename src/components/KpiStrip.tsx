@@ -54,6 +54,8 @@ function Tile({ kpi }: { kpi: Kpi }) {
     <div
       className={cx(
         'group/tile relative flex min-w-0 flex-col px-4 pt-3 pb-3.5 shadow-[-1px_0_0_var(--rule),0_-1px_0_var(--rule)]',
+        // Phones show two tiles a row; a lone last tile takes the whole row, so no cell sits empty.
+        'max-sm:odd:last:col-span-2',
         target && 'hover:bg-hover',
       )}
     >
@@ -142,7 +144,7 @@ export function KpiStrip({
     <section
       aria-label={title}
       className={cx(
-        'col-span-full grid min-w-0 grid-cols-[repeat(auto-fit,minmax(150px,1fr))] overflow-hidden rounded-sheet bg-sheet',
+        'col-span-full grid min-w-0 grid-cols-[repeat(auto-fit,minmax(150px,1fr))] overflow-hidden rounded-sheet bg-sheet max-sm:grid-cols-2',
         className,
       )}
     >

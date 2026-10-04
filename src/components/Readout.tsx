@@ -16,6 +16,7 @@ import { IconChevronDown, IconChevronRight, IconGood } from './icons'
 import { goTo } from './navigation'
 import {
   labelInSentence,
+  peopleChipLabel,
   peoplePreview,
   READOUT_COLUMNS,
   readoutRows,
@@ -34,7 +35,7 @@ const PERSON =
 const LINK =
   'inline-flex items-center gap-0.5 rounded-[2px] text-[12px] font-medium text-link hover:underline underline-offset-2'
 
-function People({ people }: { people: FindingPerson[] }) {
+function People({ people, total }: { people: FindingPerson[]; total?: number }) {
   const ctx = useAnalytics()
   const known = (id: string) => ctx.org.byId.has(id)
   const [open, setOpen] = useState(false)
@@ -50,7 +51,7 @@ function People({ people }: { people: FindingPerson[] }) {
         className="-ml-1 inline-flex items-center gap-1 rounded-control px-1 py-0.5 text-[12px] font-medium text-ink-2 hover:bg-hover hover:text-ink"
       >
         {open ? <IconChevronDown className="size-3.5" /> : <IconChevronRight className="size-3.5" />}
-        {plural(people.length, 'person', 'people')}
+        {peopleChipLabel(people.length, total)}
       </button>
       {open && (
         <ul className="mt-1 ml-1 border-l border-rule pl-3">
@@ -108,7 +109,7 @@ function FindingItem({ finding }: { finding: Finding }) {
             {finding.action}
           </p>
         )}
-        {!!finding.people?.length && <People people={finding.people} />}
+        {!!finding.people?.length && <People people={finding.people} total={finding.peopleTotal} />}
         {(finding.filter || finding.drill || (finding.tab && view)) && (
           <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
             {finding.drill && (

@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { labelInSentence, peoplePreview, readoutRows, severityCounts, sortFindings } from './readoutModel'
+import {
+  labelInSentence,
+  peopleChipLabel,
+  peopleCount,
+  peoplePreview,
+  readoutRows,
+  severityCounts,
+  sortFindings,
+} from './readoutModel'
 import type { Finding } from './types'
 
 const finding = (id: string, severity: Finding['severity'], extra: Partial<Finding> = {}): Finding => ({
@@ -84,5 +92,36 @@ describe('labelInSentence', () => {
     expect(labelInSentence('9-box')).toBe('9-box')
     expect(labelInSentence('A')).toBe('A')
     expect(labelInSentence('')).toBe('')
+  })
+})
+
+describe('capped people lists', () => {
+  const people = (n: number) => Array.from({ length: n }, (_, i) => ({ id: `E${i}`, name: `Person ${i}` }))
+
+  it('labels the toggle with the total when the list is capped', () => {
+    expect(peopleChipLabel(50, 57)).toBe('57 people (first 50 listed)')
+    expect(peopleChipLabel(1, 2)).toBe('2 people (first 1 listed)')
+    expect(peopleChipLabel(12)).toBe('12 people')
+    expect(peopleChipLabel(12, 12)).toBe('12 people')
+    expect(peopleChipLabel(1)).toBe('1 person')
+    // A total below the list length is stale; the list wins.
+    expect(peopleChipLabel(12, 10)).toBe('12 people')
+  })
+
+  it('counts peopleTotal, else the list length', () => {
+    expect(peopleCount({ people: people(50), peopleTotal: 57 })).toBe(57)
+    expect(peopleCount({ people: people(3) })).toBe(3)
+    expect(peopleCount({ peopleTotal: 9 })).toBe(9)
+    expect(peopleCount({ people: people(3), peopleTotal: 2 })).toBe(3)
+    expect(peopleCount({})).toBeNull()
+  })
+
+  it('exports peopleTotal in the People column', () => {
+    const rows = readoutRows([
+      finding('capped', 'warning', { people: people(50), peopleTotal: 57 }),
+      finding('full', 'info', { people: people(4) }),
+      finding('none', 'good'),
+    ])
+    expect(rows.map((r) => r.people)).toEqual([57, 4, null])
   })
 })

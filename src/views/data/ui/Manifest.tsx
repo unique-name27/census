@@ -8,14 +8,17 @@ import { Meter } from '@/charts'
 import { IconChevronRight, IconDownload, IconFile, IconReset, IconUpload } from '@/components/icons'
 import { toast } from '@/components/toast'
 import { Button, cx, IconButton, Menu, SeverityIcon, Tag, Tip } from '@/components/ui'
-import type { DatasetKey } from '@/data/schema'
+import type { DatasetKey, Datasets } from '@/data/schema'
 import { useCensus } from '@/data/store'
+import { Drill } from '@/drill/Drill'
 import { fmt } from '@/lib/format'
 import { coverageText } from '../engine/coverage'
 import { feedsLine, type ManifestRow } from '../engine/manifest'
 import { useImportSession } from '../state/session'
 import { DatasetDetail } from './DatasetDetail'
+import { CheckSentence } from './DrillSentence'
 import { downloadCurrent, downloadTemplate } from './downloads'
+import { rowsSpec } from './drillSpecs'
 import { useBusy } from './useBusy'
 
 /** Desktop column template; below lg each row stacks into labelled lines. */
@@ -85,14 +88,16 @@ function Coverage({
   )
 }
 
-function Issues({ row }: { row: ManifestRow }) {
+function Issues({ row, data }: { row: ManifestRow; data: Datasets }) {
   const [first, ...rest] = row.checks
   if (!first) return <span className="text-[13px] text-muted">None</span>
   return (
     <span className="flex min-w-0 gap-2 text-[13px]">
       <SeverityIcon severity={first.severity} className="mt-0.5 size-3.5 shrink-0" />
       <span className="min-w-0">
-        <span className="line-clamp-2">{first.text}</span>
+        <span className="line-clamp-2">
+          <CheckSentence check={first} row={row} data={data} />
+        </span>
         {rest.length > 0 && <span className="text-[12px] text-muted">{rest.length} more in details</span>}
       </span>
     </span>
@@ -178,13 +183,30 @@ function Actions({ row, onUpload }: { row: ManifestRow; onUpload: (key: DatasetK
   )
 }
 
+/** The row count opens the rows themselves (the first 2,000 when there are more). */
+function RowCount({ row, data }: { row: ManifestRow; data: Datasets }) {
+  const n = fmt(row.rows, 'int')
+  if (!row.rows) return <span className="tnum text-[13px]">{n}</span>
+  return (
+    <Drill
+      spec={() => rowsSpec(row, data)}
+      label={`Show the ${n} ${row.rows === 1 ? 'row' : 'rows'} loaded in ${row.label}`}
+      className="tnum text-[13px]"
+    >
+      {n}
+    </Drill>
+  )
+}
+
 function Row({
   row,
+  data,
   open,
   onToggle,
   onUpload,
 }: {
   row: ManifestRow
+  data: Datasets
   open: boolean
   onToggle: () => void
   onUpload: (key: DatasetKey) => void
@@ -221,7 +243,7 @@ function Row({
         </div>
         <div className="lg:text-right">
           <CellLabel>Rows</CellLabel>
-          <span className="tnum text-[13px]">{fmt(row.rows, 'int')}</span>
+          <RowCount row={row} data={data} />
         </div>
         <div>
           <CellLabel>Field coverage</CellLabel>
@@ -229,22 +251,25 @@ function Row({
         </div>
         <div className="min-w-0">
           <CellLabel>Issues</CellLabel>
-          <Issues row={row} />
+          <Issues row={row} data={data} />
         </div>
         <div className="col-span-2 lg:col-span-1">
           <Actions row={row} onUpload={onUpload} />
         </div>
       </div>
-      {open && <DatasetDetail row={row} id={detailId} />}
+      {open && <DatasetDetail row={row} data={data} id={detailId} />}
     </li>
   )
 }
 
 export function Manifest({
   rows,
+  data,
   onUpload,
 }: {
   rows: readonly ManifestRow[]
+  /** The datasets the manifest was built from; numbers open their rows. */
+  data: Datasets
   onUpload: (key: DatasetKey) => void
 }) {
   const [open, setOpen] = useState<ReadonlySet<DatasetKey>>(() => new Set())
@@ -271,6 +296,7 @@ export function Manifest({
           <Row
             key={r.key}
             row={r}
+            data={data}
             open={open.has(r.key)}
             onToggle={() => toggle(r.key)}
             onUpload={onUpload}

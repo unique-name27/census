@@ -53,6 +53,8 @@ export interface SpendSummary {
   guidelinePct: number | null
   /** Mean merit % over people with a proposal; null under 5 people. */
   meanMerit: number | null
+  /** The people with a merit proposal (select priced and rated ones with the drill helpers). */
+  members: CompPerson[]
 }
 
 export function meritSpend(people: readonly CompPerson[], s: CycleSettings): SpendSummary {
@@ -78,6 +80,7 @@ export function meritSpend(people: readonly CompPerson[], s: CycleSettings): Spe
     rated: rated.length,
     guidelinePct: ratedBase > 0 && rated.length >= MIN_GROUP ? guided / ratedBase : null,
     meanMerit: eligible.length >= MIN_GROUP ? sum(eligible.map((p) => p.merit!)) / eligible.length : null,
+    members: eligible,
   }
 }
 
@@ -90,6 +93,8 @@ export interface SpendRow {
   eligibleBaseUsd: number | null
   spendUsd: number | null
   overUsd: number | null
+  /** The proposals in the group; empty when its spend is hidden (fewer than 5 priced). */
+  members: CompPerson[]
 }
 
 /** Merit spend per group (groups under 5 eligible people folded into Other). */
@@ -111,32 +116,51 @@ export function spendBy(
       eligibleBaseUsd: ok ? m.eligibleBaseUsd : null,
       spendUsd: ok ? m.spendUsd : null,
       overUsd: ok ? m.overUsd : null,
+      members: ok ? g.rows : [],
     }
   })
 }
 
-export interface Bin {
+export interface Bin<T = number> {
   from: number
   to: number
   n: number
   share: number
+  /** The items in the bin (the people, for the drill-down). */
+  members: T[]
 }
 
-/** Equal-width bins over [lo, hi]; values outside are clamped into the end bins. Last edge inclusive. */
-export function binValues(xs: readonly number[], lo: number, hi: number, step: number): Bin[] {
+/**
+ * Equal-width bins over [lo, hi] of `value(item)`; values outside are clamped into the end bins.
+ * Last edge inclusive. A value within 1e-9 of an edge counts in the bin that starts there.
+ */
+export function binBy<T>(
+  items: readonly T[],
+  value: (t: T) => number,
+  lo: number,
+  hi: number,
+  step: number,
+): Bin<T>[] {
   const count = Math.max(1, Math.round((hi - lo) / step))
-  const out: Bin[] = Array.from({ length: count }, (_, i) => ({
+  const out: Bin<T>[] = Array.from({ length: count }, (_, i) => ({
     from: lo + i * step,
     to: lo + (i + 1) * step,
     n: 0,
     share: 0,
+    members: [],
   }))
-  for (const x of xs) {
-    const i = Math.min(count - 1, Math.max(0, Math.floor((x - lo) / step + 1e-9)))
+  for (const it of items) {
+    const i = Math.min(count - 1, Math.max(0, Math.floor((value(it) - lo) / step + 1e-9)))
     out[i].n++
+    out[i].members.push(it)
   }
-  for (const b of out) b.share = xs.length ? b.n / xs.length : 0
+  for (const b of out) b.share = items.length ? b.n / items.length : 0
   return out
+}
+
+/** Equal-width bins of plain values (see binBy). */
+export function binValues(xs: readonly number[], lo: number, hi: number, step: number): Bin[] {
+  return binBy(xs, (x) => x, lo, hi, step)
 }
 
 /** Bin edges that cover the data on a step grid. */
@@ -190,6 +214,8 @@ export interface ExceptionRow {
   promotion: number | null
   rule: string
   kind: 'top-low' | 'low-high' | 'outlier'
+  /** The person, for the drill-down and the person card. */
+  person: CompPerson
 }
 
 /**
@@ -239,6 +265,7 @@ export function guidelineExceptions(
       promotion: p.promotion,
       rule,
       kind,
+      person: p,
     })
   }
   const rank = { 'top-low': 0, 'low-high': 1, outlier: 2 } as const
@@ -255,6 +282,8 @@ export interface PromotionRow {
   promotion: number
   /** Merit plus promotion. */
   total: number
+  /** The person, for the drill-down and the person card. */
+  person: CompPerson
 }
 
 export function promotions(people: readonly CompPerson[]): {
@@ -273,6 +302,7 @@ export function promotions(people: readonly CompPerson[]): {
       merit: p.merit,
       promotion: p.promotion!,
       total: (p.merit ?? 0) + p.promotion!,
+      person: p,
     }))
     .sort((a, b) => a.department.localeCompare(b.department) || a.name.localeCompare(b.name))
   const eligible = people.filter((p) => p.merit != null).length
@@ -289,6 +319,8 @@ export interface RewardsMixRow {
   base: number | null
   bonus: number | null
   equity: number | null
+  /** The people behind the shares; empty when the shares are hidden. */
+  members: CompPerson[]
 }
 
 /**
@@ -309,6 +341,7 @@ export function rewardsMix(people: readonly CompPerson[], hasEquity: boolean): R
       base: ok ? base / total : null,
       bonus: ok ? bonus / total : null,
       equity: ok && hasEquity ? equity / total : null,
+      members: ok ? g.rows : [],
     }
   })
 }

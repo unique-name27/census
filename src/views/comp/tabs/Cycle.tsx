@@ -1,7 +1,12 @@
-/** Merit cycle: spend against budget, the merit distribution, exceptions, promotions and the rewards mix. */
+/**
+ * Merit cycle: spend against budget, the merit distribution, exceptions, promotions and the
+ * rewards mix. Tiles, bars, bins, segments and counts open the proposals behind them with merit %;
+ * a person's row opens their card.
+ */
 import { BarList, Figure, HBars, Histogram } from '@/charts'
 import { KpiStrip, Section, type Severity } from '@/components'
 import { LEVELS } from '@/data/schema'
+import { drill, openPerson } from '@/drill'
 import { formatDate } from '@/lib/dates'
 import { fmt } from '@/lib/format'
 import {
@@ -10,14 +15,18 @@ import {
   DEF_FX,
   DEF_LATEST_RATING,
   DEF_SPEND,
-  EXCEPTION_COLUMNS,
   guidelineDefinition,
-  MERIT_BIN_COLUMNS,
-  MIX_COLUMNS,
-  PROMOTION_COLUMNS,
-  SPEND_COLUMNS,
 } from '../columns'
+import {
+  binColumns,
+  binItems,
+  exceptionColumns,
+  mixColumns,
+  promotionColumns,
+  spendColumns,
+} from '../drillColumns'
 import { type ExceptionRow, OVER_BUDGET, type SpendRow } from '../engine/cycle'
+import { meritBinDrill, mixDrill, spendDrill } from '../engine/drill'
 import { smallSpend } from '../engine/kpis'
 import { type CompModel, MERIT_STEP } from '../engine/model'
 import { pts2 } from '../engine/text'
@@ -29,13 +38,21 @@ const spendGap = (d: SpendRow) => (d.delta == null ? null : pts2(d.delta))
 const pct2 = (v: number | null) => fmt(v, 'pct2')
 const exceptionTone = (r: ExceptionRow): Severity => (r.kind === 'outlier' ? 'info' : 'warning')
 const MIX_SERIES = ['Base', 'Target bonus', 'Equity']
+/** Person rows open that person's card. */
+const personRow = (r: { id: string }) => openPerson(r.id)
 
 export function Cycle({ m }: { m: CompModel }) {
   const c = m.cycle
   const s = m.settings
   const asOf = formatDate(m.asOf)
   const noMerit = m.pop.has.merit ? null : MISSING.merit
-  const merits = m.pop.people.map((p) => p.merit).filter((v): v is number => v != null)
+  const merits = c.hist.reduce((a, b) => a + b.n, 0)
+  const lastBin = c.hist.length - 1
+  const mixRow = new Map(c.mix.map((r) => [r.level, r]))
+  const onMix = (d: { level: string; part: string | null }) => {
+    const row = mixRow.get(d.level)
+    if (row) drill(mixDrill(m, row, d.part))
+  }
   const mixChart = c.mix.flatMap((r) =>
     [
       { level: r.level, part: 'Base', share: r.base },
@@ -64,7 +81,7 @@ export function Cycle({ m }: { m: CompModel }) {
           title="Merit spend by business unit"
           subtitle={`Σ merit ÷ Σ eligible base, USD, this cycle against the ${pct2(s.meritBudget)} budget`}
           data={c.byBu}
-          columns={SPEND_COLUMNS}
+          columns={spendColumns(m)}
           definitions={[DEF_SPEND, budgetDefinition(s), DEF_FX]}
           note={`${note(m, c.spend.eligible, 'proposals', true)}${overall}${money}`}
           span={6}
@@ -78,6 +95,7 @@ export function Cycle({ m }: { m: CompModel }) {
             ref={{ value: s.meritBudget, label: `Budget ${pct2(s.meritBudget)}` }}
             tone={spendTone}
             secondary={spendGap}
+            onSelect={(d) => drill(spendDrill(m, d, 'priced'))}
           />
         </Figure>
         <Figure
@@ -85,19 +103,24 @@ export function Cycle({ m }: { m: CompModel }) {
           title="Merit distribution"
           subtitle="Proposed merit % per person, this cycle"
           data={c.hist}
-          columns={MERIT_BIN_COLUMNS}
+          columns={binColumns(m, c.hist, 'merit')}
           definitions={[DEF_SPEND, guidelineDefinition(s)]}
-          note={`${note(m, merits.length, 'proposals')}${c.spend.meanMerit == null ? '' : ` · mean ${pct2(c.spend.meanMerit)}`}`}
+          note={`${note(m, merits, 'proposals')}${c.spend.meanMerit == null ? '' : ` · mean ${pct2(c.spend.meanMerit)}`}`}
           span={6}
           empty={emptyIf(c.hist, noMerit, 'No merit proposals in this scope.')}
         >
           <Histogram
-            values={merits}
+            data={binItems(c.hist)}
+            value="v"
             thresholds={edges(c.histDomain, MERIT_STEP)}
             domain={c.histDomain ?? undefined}
             format="pct2"
             refs={[{ value: s.meritBudget, label: `Budget ${pct2(s.meritBudget)}` }]}
             unit="proposals"
+            onSelect={(b) => {
+              const i = b.rows[0]?.bin
+              if (i != null) drill(meritBinDrill(m, c.hist[i], i === lastBin))
+            }}
           />
         </Figure>
       </Section>
@@ -111,11 +134,16 @@ export function Cycle({ m }: { m: CompModel }) {
           title="Guideline exceptions"
           subtitle={`Rule breaks first, then the largest gaps to the guideline, as of ${asOf}`}
           data={c.exceptions}
-          columns={EXCEPTION_COLUMNS}
+          columns={exceptionColumns(m)}
           definitions={[DEF_EXCEPTIONS, guidelineDefinition(s), DEF_LATEST_RATING]}
           note={note(m, c.exceptions.length, 'proposals')}
           tableOnly
-          table={{ rowTone: exceptionTone, search: 'Search people or departments', maxRows: 15 }}
+          table={{
+            rowTone: exceptionTone,
+            search: 'Search people or departments',
+            maxRows: 15,
+            onRowClick: personRow,
+          }}
           empty={emptyIf(
             c.exceptions,
             noMerit ?? (m.pop.has.reviews ? null : MISSING.reviews),
@@ -133,7 +161,7 @@ export function Cycle({ m }: { m: CompModel }) {
           title="Promotions in this cycle"
           subtitle="Promotion increases proposed this cycle, kept apart from merit"
           data={c.promotions.rows}
-          columns={PROMOTION_COLUMNS}
+          columns={promotionColumns(m)}
           definitions={[
             {
               term: 'Promotion %',
@@ -144,7 +172,7 @@ export function Cycle({ m }: { m: CompModel }) {
           note={note(m, c.promotions.rows.length)}
           span={6}
           tableOnly
-          table={{ search: 'Search people', maxRows: 12 }}
+          table={{ search: 'Search people', maxRows: 12, onRowClick: personRow }}
           empty={emptyIf(c.promotions.rows, null, MISSING.promotion)}
         />
         <Figure
@@ -152,7 +180,7 @@ export function Cycle({ m }: { m: CompModel }) {
           title="Total rewards mix by level"
           subtitle="Share of target pay from base, target bonus and annual equity, USD"
           data={c.mix}
-          columns={MIX_COLUMNS}
+          columns={mixColumns(m)}
           definitions={[
             {
               term: 'Target pay',
@@ -185,6 +213,8 @@ export function Cycle({ m }: { m: CompModel }) {
             format="pct"
             xDomain={[0, 1]}
             labels
+            onSelect={(d) => onMix({ level: d.level, part: null })}
+            onSelectSegment={onMix}
           />
         </Figure>
       </Section>

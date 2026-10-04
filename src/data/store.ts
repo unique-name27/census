@@ -4,6 +4,7 @@
  *
  * Persistence never leaves the browser: uploaded datasets go to IndexedDB, small preferences to
  * localStorage. Sample data is regenerated deterministically on load, so it is never stored.
+ * Showing pay amounts is a decision for one session: it lives in memory and starts off on every load.
  */
 import { del as idbDel, get as idbGet, set as idbSet } from 'idb-keyval'
 import { create } from 'zustand'
@@ -41,6 +42,7 @@ interface CensusState {
   asOfOverride: ISODate | null
   filters: Filters
   route: Route
+  /** Pay amounts are shown and exported. In memory only: off on every load, never persisted. */
   showPay: boolean
   theme: ThemePref
   init: () => Promise<void>
@@ -73,6 +75,13 @@ const LS = {
       localStorage.setItem(`census:${k}`, JSON.stringify(v))
     } catch {
       /* storage unavailable: preferences just won't persist */
+    }
+  },
+  remove(k: string) {
+    try {
+      localStorage.removeItem(`census:${k}`)
+    } catch {
+      /* storage unavailable: nothing to remove */
     }
   },
 }
@@ -134,10 +143,12 @@ export const useCensus = create<CensusState>((set, getState) => ({
   asOfOverride: LS.get<ISODate | null>('asOf', null),
   filters: { ...DEFAULT_FILTERS, ...LS.get<Partial<Filters>>('filters', {}) },
   route: parseHash(typeof location === 'undefined' ? '' : location.hash) ?? { view: 'recruiting', tab: '' },
-  showPay: LS.get('showPay', false),
+  showPay: false,
   theme: LS.get<ThemePref>('theme', 'system'),
 
   async init() {
+    // Earlier versions remembered the pay switch across sessions; it is now per session only.
+    LS.remove('showPay')
     const base = sample()
     const data: Datasets = { ...base }
     const sources = sampleMeta(base)
@@ -181,7 +192,6 @@ export const useCensus = create<CensusState>((set, getState) => ({
     if (opts.scroll !== false) window.scrollTo({ top: 0 })
   },
   setShowPay(on) {
-    LS.set('showPay', on)
     set({ showPay: on })
   },
   setTheme(theme) {

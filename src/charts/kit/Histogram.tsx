@@ -1,7 +1,8 @@
 /**
  * Distribution of a numeric field: binned columns with 2px gaps, an optional shaded band for the
- * healthy range (e.g. compa-ratio 0.90 to 1.10) and labeled reference rules. Click a bin to drill
- * into its rows when the chart was given `data`.
+ * healthy range (e.g. compa-ratio 0.90 to 1.10) and labeled reference rules (labels above the
+ * plot; the band label steps past any rule). Click a bin to drill into its rows when the chart
+ * was given `data`.
  */
 import * as Plot from '@observablehq/plot'
 import { type Format, fmt } from '@/lib/format'
@@ -9,6 +10,7 @@ import { HOVER_CLASS, labelsMark, scalePos } from '../core/marks'
 import { textWidth } from '../core/measure'
 import type { TipContent } from '../core/tooltip'
 import { axisX, axisY, baseline, gridY, housePlot, type PlotBuildContext, PlotChart } from '../plot'
+import { clearOfRules } from './hit'
 import { type HistogramBin, histogramBins } from './prepare'
 import { numericAxis } from './scale'
 import type { ChartBaseProps, Key, RefLine } from './shared'
@@ -149,7 +151,13 @@ export function Histogram<T extends object>({
         labelsMark(
           (scales, dims) => [
             {
-              x: scalePos(scales, 'x', band[0]) + 6,
+              // Past any reference rule that would run through the label.
+              x: clearOfRules(
+                scalePos(scales, 'x', band[0]) + 6,
+                textWidth(bandLabel, 11),
+                sortedRefs.map((r) => scalePos(scales, 'x', r.value)),
+                3,
+              ),
               y: dims.marginTop + 9,
               parts: [{ text: bandLabel, color: t.muted, size: 11 }],
               halo: t.sheet,
@@ -191,6 +199,7 @@ export function Histogram<T extends object>({
       build={build}
       height={height}
       tip={tip}
+      selectable={(b) => b.n > 0}
       onSelect={onSelect}
       ariaLabel={ariaLabel}
     />

@@ -50,7 +50,8 @@ describe('labels', () => {
     expect(text.comp).toBe('Talent, Compensation')
     expect(text.requisitions).toBe('Recruiting, Org chart')
     expect(text.reviews).toBe('HR business partners, Org chart, Talent, Compensation')
-    expect(text.employees).toBe('All six views')
+    // Recruiting reads requisitions and candidates only.
+    expect(text.employees).toBe('HR business partners, Org chart, Employee services, Talent, Compensation')
     // Every view's declared datasets are listed as feeding it.
     for (const v of VIEWS)
       for (const d of v.datasets) expect(rows.find((r) => r.key === d)?.feeds).toContain(v.key)
@@ -114,19 +115,19 @@ describe('the sample company in the Data room', () => {
   it('lists all ten datasets with their sample row counts', () => {
     expect(rows.map((r) => r.key)).toEqual(DATASET_KEYS)
     expect(Object.fromEntries(rows.map((r) => [r.key, r.rows]))).toEqual({
-      employees: 2004,
-      jobChanges: 1795,
+      employees: 2055,
+      jobChanges: 1797,
       requisitions: 556,
       candidates: 9279,
-      cases: 6645,
-      transactions: 3506,
-      reviews: 5155,
+      cases: 6676,
+      transactions: 3526,
+      reviews: 5169,
       succession: 90,
-      learning: 10964,
+      learning: 10984,
       comp: 1450,
     })
-    expect(manifestSummary(rows).text).toBe('41,444 rows across 10 datasets')
-    expect(manifestSummary(rows).totalRows).toBe(41_444)
+    expect(manifestSummary(rows).text).toBe('41,582 rows across 10 datasets')
+    expect(manifestSummary(rows).totalRows).toBe(41_582)
   })
 
   it('finds every required field filled and nothing to flag', () => {
@@ -142,18 +143,18 @@ describe('the sample company in the Data room', () => {
   it('measures fields that apply to some rows over those rows only', () => {
     const field = (key: string, f: string) =>
       rows.find((r) => r.key === key)?.coverage.fields.find((x) => x.key === f)
-    expect(field('employees', 'terminationType')).toMatchObject({ expected: 446, filled: 446, share: 1 })
-    expect(field('employees', 'terminationReason')).toMatchObject({ expected: 446, share: 1 })
-    expect(field('employees', 'regrettable')).toMatchObject({ expected: 311, filled: 311, share: 1 })
+    expect(field('employees', 'terminationType')).toMatchObject({ expected: 497, filled: 497, share: 1 })
+    expect(field('employees', 'terminationReason')).toMatchObject({ expected: 497, share: 1 })
+    expect(field('employees', 'regrettable')).toMatchObject({ expected: 347, filled: 347, share: 1 })
     // The CEO has no manager by design.
-    expect(field('employees', 'managerId')).toMatchObject({ expected: 2003, filled: 2003, share: 1 })
+    expect(field('employees', 'managerId')).toMatchObject({ expected: 2054, filled: 2054, share: 1 })
     expect(field('candidates', 'offerDate')).toMatchObject({ expected: 641, filled: 641 })
     expect(field('candidates', 'coordinator')).toMatchObject({ expected: 1800, filled: 1800 })
     expect(field('candidates', 'hiredDate')).toMatchObject({ expected: 525, filled: 525 })
     expect(field('candidates', 'rejectedDate')).toMatchObject({ expected: 8297, filled: 8297 })
     expect(field('requisitions', 'filledDate')).toMatchObject({ expected: 399, filled: 399 })
     expect(field('requisitions', 'closedDate')).toMatchObject({ expected: 427, filled: 427 })
-    expect(field('jobChanges', 'fromManagerId')).toMatchObject({ expected: 1032, filled: 1032 })
+    expect(field('jobChanges', 'fromManagerId')).toMatchObject({ expected: 1034, filled: 1034 })
     expect(field('succession', 'readiness')).toMatchObject({ expected: 84, filled: 84 })
     expect(rows.find((r) => r.key === 'employees')?.coverage.core).toBe(1)
   })
@@ -167,7 +168,7 @@ describe('the sample company in the Data room', () => {
     const emp = after.find((r) => r.key === 'employees')!
     expect(emp.status).toBe('warning')
     expect(emp.checks.map((c) => c.text)).toEqual([
-      'Termination type is blank for all 446 leavers, so voluntary and regretted attrition can’t be shown.',
+      'Termination type is blank for all 497 leavers, so voluntary and regretted attrition can’t be shown.',
     ])
   })
 

@@ -23,6 +23,10 @@ export interface BarRow<T> {
   datum: T | null
   /** Number of rows folded into this one (0 for ordinary rows). */
   folded: number
+  /** The source rows folded into the "Other" row (absent on ordinary rows). */
+  foldedRows?: T[]
+  /** Printed value from the chart's `valueText` (absent when not given or the value is missing). */
+  text?: string
 }
 
 export type FoldRule<T> = 'sum' | 'mean' | ((rest: T[]) => number | null)
@@ -38,6 +42,8 @@ export function barListRows<T extends object>(
     secondary?: string | ((d: T) => string | null | undefined)
     tone?: (d: T) => Tone
     glyphTone?: (d: T) => Tone
+    /** Printed value for a row with a value (e.g. signed "+0.8%"); missing values stay "—". */
+    valueText?: (d: T) => string
   },
 ): BarRow<T>[] {
   const { sort = 'desc', top, other = 'sum' } = opts
@@ -62,6 +68,7 @@ export function barListRows<T extends object>(
     secondary: secondaryOf(d),
     tone: opts.tone?.(d) ?? 'default',
     ...(opts.glyphTone ? { glyph: opts.glyphTone(d) } : {}),
+    ...(opts.valueText && v != null ? { text: opts.valueText(d) } : {}),
     datum: d,
     folded: 0,
   })
@@ -88,6 +95,7 @@ export function barListRows<T extends object>(
       tone: 'deemph',
       datum: null,
       folded: rest.length,
+      foldedRows: rest,
     },
   ]
 }
@@ -104,8 +112,8 @@ export interface Category<T> {
   key: string
   label: string
   cells: CategoryCell<T>[]
-  /** Sum of the non-null values. */
-  total: number
+  /** Sum of the non-null values; null when every value is missing (hidden), so it prints "—". */
+  total: number | null
 }
 
 export interface CategoryModel<T> {
@@ -134,14 +142,14 @@ export function categoryModel<T extends object>(
     : orderedKeys(data.map(catOf), opts.catOrder)
   const series = opts.series ? orderedKeys(data.map(seriesOf), opts.seriesOrder) : ['']
   const byCat = new Map<string, Category<T>>(
-    catKeys.map((k) => [k, { key: k, label: k, cells: [], total: 0 }]),
+    catKeys.map((k) => [k, { key: k, label: k, cells: [], total: null }]),
   )
   for (const d of data) {
     const c = byCat.get(catOf(d))
     if (!c) continue
     const v = numAt(d, opts.value)
     c.cells.push({ series: seriesOf(d), value: v, datum: d })
-    if (v != null) c.total += v
+    if (v != null) c.total = (c.total ?? 0) + v
   }
   const rank = new Map(series.map((s, i) => [s, i]))
   for (const c of byCat.values())
@@ -169,16 +177,17 @@ export function stackSegments<T>(model: CategoryModel<T>, normalize = false): St
   const rank = new Map(model.series.map((s, i) => [s, i]))
   for (const c of model.categories) {
     let acc = 0
+    const total = c.total ?? 0
     const segs: StackSegment<T>[] = []
     for (const cell of c.cells) {
       if (cell.value == null || cell.value <= 0) continue
-      const v = normalize ? (c.total > 0 ? cell.value / c.total : 0) : cell.value
+      const v = normalize ? (total > 0 ? cell.value / total : 0) : cell.value
       segs.push({
         cat: c.key,
         series: cell.series,
         seriesIndex: rank.get(cell.series) ?? 0,
         value: cell.value,
-        share: c.total > 0 ? cell.value / c.total : 0,
+        share: total > 0 ? cell.value / total : 0,
         lo: acc,
         hi: acc + v,
         top: false,

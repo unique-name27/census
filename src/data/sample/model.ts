@@ -20,6 +20,8 @@ export type Tag =
   | 'long-l4'
   | 'hm-awaiting'
   | 'first-year-leaver'
+  /** First-year leaver from an earlier hire cohort; added late, so services rows draw from their own streams. */
+  | 'prior-first-year-leaver'
   | 'leaver-manager'
   | 'demoted'
   | 'backfill'

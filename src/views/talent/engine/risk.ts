@@ -891,6 +891,10 @@ export interface BackTest {
   defaults: FactorKey[]
   /** Actual share of people in the high band at the scoring date (ties share a band). */
   highShare: number | null
+  /** Everyone scored at the scoring date, with the score and band they had then. */
+  scored: Map<string, PersonRisk>
+  /** Who of them left in the outcome window (voluntarily, when termination type exists). */
+  leaverIds: Set<string>
 }
 
 export interface RiskModel {
@@ -1022,6 +1026,8 @@ export function buildRiskModel(input: RiskInput, asOf: ISODate): RiskModel {
       learnedLeavers: earlier.leavers,
       defaults: earlier.evidence.filter((e) => e.source === 'default' && e.points > 0).map((e) => e.key),
       highShare: cutsThen.highShare,
+      scored,
+      leaverIds,
     },
   }
 }

@@ -6,7 +6,7 @@
 import { MIN_GROUP, RATING_LABELS } from '@/data/schema'
 import { isNum } from '@/lib/format'
 import { mean } from '@/lib/stats'
-import { groupRows, safeMean, safeMedian, safeQuantile, values } from './groups'
+import { behind, groupRows, safeMean, safeMedian, safeQuantile, values } from './groups'
 import { type CompPerson, POSITIONS } from './population'
 import { type CycleSettings, guidelineFor, RATINGS, type RatingKey, ratingKey } from './settings'
 
@@ -42,6 +42,8 @@ export interface CompaByRatingRow {
   median: number | null
   p25: number | null
   p75: number | null
+  /** The people measured; empty when hidden (n < 5). */
+  members: CompPerson[]
 }
 
 export function compaByRating(people: readonly CompPerson[]): CompaByRatingRow[] {
@@ -56,6 +58,7 @@ export function compaByRating(people: readonly CompPerson[]): CompaByRatingRow[]
       median: safeMedian(xs),
       p25: safeQuantile(xs, 0.25),
       p75: safeQuantile(xs, 0.75),
+      members: behind(rows, xs.length),
     }
   })
 }
@@ -86,6 +89,8 @@ export interface MeritByRatingRow {
   guideline: number
   /** Mean merit minus guideline, in fraction points. */
   diff: number | null
+  /** The proposals measured; empty when hidden (n < 5). */
+  members: CompPerson[]
 }
 
 /** Proposed merit (promotion increases excluded) against the guideline, per rating. */
@@ -104,6 +109,7 @@ export function meritByRating(people: readonly CompPerson[], s: CycleSettings): 
       median: safeMedian(xs),
       guideline: g,
       diff: m == null ? null : toPoint(m - g),
+      members: behind(rows, xs.length),
     }
   })
 }
@@ -115,6 +121,8 @@ export interface MatrixCell {
   mean: number | null
   guideline: number
   diff: number | null
+  /** The proposals in the cell; empty when hidden (n < 5). */
+  members: CompPerson[]
 }
 
 /** Mean merit by rating and range position, against the guideline for the rating. */
@@ -125,10 +133,8 @@ export function meritMatrix(people: readonly CompPerson[], s: CycleSettings): Ma
     (p) => p.rating,
   )) {
     for (const pos of POSITIONS) {
-      const xs = values(
-        rows.filter((p) => p.position === pos),
-        (p) => p.merit,
-      )
+      const cell = rows.filter((p) => p.position === pos)
+      const xs = values(cell, (p) => p.merit)
       if (!xs.length) continue
       const m = safeMean(xs)
       const g = s.guideline[rating]
@@ -139,6 +145,7 @@ export function meritMatrix(people: readonly CompPerson[], s: CycleSettings): Ma
         mean: m,
         guideline: g,
         diff: m == null ? null : toPoint(m - g),
+        members: behind(cell, xs.length),
       })
     }
   }
@@ -151,17 +158,27 @@ export interface Differentiation {
   merit3: number | null
   n45: number
   n3: number
+  /** The proposals behind each mean; each side is empty when its mean is hidden (n < 5). */
+  rated45: CompPerson[]
+  rated3: CompPerson[]
 }
 
 /** Mean merit of rating 4-5 ÷ mean merit of rating 3; null when either side has fewer than 5 people. */
 export function differentiation(people: readonly CompPerson[]): Differentiation {
   const m45: number[] = []
   const m3: number[] = []
+  const p45: CompPerson[] = []
+  const p3: CompPerson[] = []
   for (const p of people) {
     if (!isNum(p.merit)) continue
     const k = ratingKey(p.rating)
-    if (k === 4 || k === 5) m45.push(p.merit)
-    else if (k === 3) m3.push(p.merit)
+    if (k === 4 || k === 5) {
+      m45.push(p.merit)
+      p45.push(p)
+    } else if (k === 3) {
+      m3.push(p.merit)
+      p3.push(p)
+    }
   }
   const a = m45.length >= MIN_GROUP ? mean(m45) : null
   const b = m3.length >= MIN_GROUP ? mean(m3) : null
@@ -171,6 +188,8 @@ export function differentiation(people: readonly CompPerson[]): Differentiation 
     merit3: b,
     n45: m45.length,
     n3: m3.length,
+    rated45: behind(p45, p45.length),
+    rated3: behind(p3, p3.length),
   }
 }
 
@@ -191,6 +210,8 @@ export interface BonusByRatingRow {
   n: number
   mean: number | null
   median: number | null
+  /** The people with a payout behind the row; empty when hidden (n < 5). */
+  members: CompPerson[]
 }
 
 /** Last bonus payout (share of target) by the rating in the latest annual cycle. */
@@ -200,7 +221,13 @@ export function bonusByRating(people: readonly CompPerson[]): BonusByRatingRow[]
     (p) => p.annualRating,
   ).map(({ rating, rows }) => {
     const xs = values(rows, (p) => p.bonusPayout)
-    return { rating: ratingLabel(rating), n: xs.length, mean: safeMean(xs), median: safeMedian(xs) }
+    return {
+      rating: ratingLabel(rating),
+      n: xs.length,
+      mean: safeMean(xs),
+      median: safeMedian(xs),
+      members: behind(rows, xs.length),
+    }
   })
 }
 
@@ -209,6 +236,8 @@ export interface EquityByRatingRow {
   n: number
   /** Median annual equity as a share of base (both in USD). */
   median: number | null
+  /** The people with equity behind the row; empty when hidden (n < 5). */
+  members: CompPerson[]
 }
 
 export function equityByRating(people: readonly CompPerson[]): EquityByRatingRow[] {
@@ -217,7 +246,12 @@ export function equityByRating(people: readonly CompPerson[]): EquityByRatingRow
     (p) => p.rating,
   ).map(({ rating, rows }) => {
     const xs = values(rows, (p) => p.equityUsd! / p.baseUsd!)
-    return { rating: ratingLabel(rating), n: xs.length, median: safeMedian(xs) }
+    return {
+      rating: ratingLabel(rating),
+      n: xs.length,
+      median: safeMedian(xs),
+      members: behind(rows, xs.length),
+    }
   })
 }
 

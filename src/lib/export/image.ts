@@ -7,7 +7,7 @@
  */
 import archivoUrl from '@fontsource-variable/archivo/files/archivo-latin-wdth-normal.woff2?url'
 import { HOVER_CLASS } from '@/charts/core/attrs'
-import { type LegendSpec, readLegend } from '@/charts/core/legend'
+import { type LegendShape, type LegendSpec, readLegend, swatchSvg } from '@/charts/core/legend'
 import { textWidth } from '@/charts/core/measure'
 import { readChartTheme } from '@/charts/theme'
 import { downloadBlob, MIME } from './download'
@@ -146,7 +146,7 @@ interface LegendLayoutItem {
   y: number
   label: string
   color: string
-  shape: 'rect' | 'line' | 'dot'
+  shape: LegendShape
 }
 
 function layoutSwatches(spec: Extract<LegendSpec, { kind: 'swatch' }>, maxWidth: number) {
@@ -205,13 +205,8 @@ export async function composeSvg(svg: SVGSVGElement, opts: ImageOptions = {}): P
     const lay = layoutSwatches(legend, innerW)
     for (const it of lay.items) {
       const cy = y + it.y + 9
-      const sw =
-        it.shape === 'line'
-          ? el('rect', { x: pad + it.x, y: cy - 1, width: 14, height: 2, rx: 1, fill: it.color })
-          : it.shape === 'dot'
-            ? el('circle', { cx: pad + it.x + 4, cy, r: 4, fill: it.color })
-            : el('rect', { x: pad + it.x, y: cy - 5, width: 10, height: 10, rx: 2, fill: it.color })
-      out.append(sw)
+      const sw = swatchSvg(it.shape, pad + it.x, cy)
+      out.append(el(sw.tag, { ...sw.attrs, fill: it.color }))
       const label = el('text', { x: pad + it.x + 16, y: cy, dy: '0.32em', fill: t.ink2 }, it.label)
       label.setAttribute('style', 'font-size:12px')
       out.append(label)

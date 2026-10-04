@@ -4,6 +4,7 @@
  * requisitions per hiring manager, the reviews index and the chart root.
  */
 import type { AnalyticsContext } from '@/data/context'
+import type { Requisition } from '@/data/schema'
 import { employeeMatcher, type Filters } from '@/data/scope'
 import { buildReviewIndex, type ReviewIndex } from '@/lib/people'
 import { computeFlags, type Flag } from './flags'
@@ -17,6 +18,8 @@ export interface OrgModel {
   reqs: Map<string, ReqStub[]>
   /** The same requisitions keyed by card id. */
   reqByCardId: Map<string, ReqStub>
+  /** The raw requisition records behind the stubs, by req ID (for drill-down). */
+  reqRecords: Map<string, Requisition>
   reviews: ReviewIndex
   /** Root from the global leader filter, else the tree's root. */
   rootId: string
@@ -36,6 +39,7 @@ export function buildOrgModel(ctx: Pick<AnalyticsContext, 'all' | 'asOf' | 'filt
   const flags = computeFlags(tree, ctx.all.jobChanges)
   const reqs = new Map<string, ReqStub[]>()
   const reqByCardId = new Map<string, ReqStub>()
+  const reqRecords = new Map<string, Requisition>()
   for (const r of ctx.all.requisitions) {
     if (r.status !== 'Open' || !r.hiringManagerId || !tree.people.has(r.hiringManagerId)) continue
     if (r.openedDate > ctx.asOf) continue
@@ -51,6 +55,7 @@ export function buildOrgModel(ctx: Pick<AnalyticsContext, 'all' | 'asOf' | 'filt
     if (arr) arr.push(stub)
     else reqs.set(r.hiringManagerId, [stub])
     reqByCardId.set(reqCardId(r.reqId), stub)
+    reqRecords.set(r.reqId, r)
   }
   for (const arr of reqs.values()) arr.sort((a, b) => a.openedDate.localeCompare(b.openedDate))
 
@@ -59,7 +64,17 @@ export function buildOrgModel(ctx: Pick<AnalyticsContext, 'all' | 'asOf' | 'filt
   const dims = hasDimFilters(ctx.filters)
   const m = employeeMatcher(dimFilters(ctx.filters), ctx.org)
   const matches = dims ? (id: string) => m(tree.people.get(id)) : () => true
-  return { tree, flags, reqs, reqByCardId, reviews: buildReviewIndex(ctx.all.reviews), rootId, dims, matches }
+  return {
+    tree,
+    flags,
+    reqs,
+    reqByCardId,
+    reqRecords,
+    reviews: buildReviewIndex(ctx.all.reviews),
+    rootId,
+    dims,
+    matches,
+  }
 }
 
 /** People managers on the as-of date among the scoped people: anyone with an active direct report. */

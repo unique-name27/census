@@ -5,7 +5,7 @@
  */
 import { LEVELS, MIN_GROUP } from '@/data/schema'
 import { TENURE_BANDS } from '@/lib/people'
-import { groupRows, safeMedian, safeQuantile, safeShare, values } from './groups'
+import { behind, groupRows, safeMedian, safeQuantile, safeShare, values } from './groups'
 import type { CompPerson, Position } from './population'
 import type { CycleSettings } from './settings'
 
@@ -26,9 +26,11 @@ export interface PositionMixRow {
   q3: number | null
   q4: number | null
   above: number | null
+  /** The placed people behind the shares; empty when the shares are hidden (n < 5). */
+  members: CompPerson[]
 }
 
-export const POSITION_FIELD: Record<Position, keyof Omit<PositionMixRow, 'group' | 'n'>> = {
+export const POSITION_FIELD: Record<Position, keyof Omit<PositionMixRow, 'group' | 'n' | 'members'>> = {
   'Below minimum': 'below',
   Q1: 'q1',
   Q2: 'q2',
@@ -50,6 +52,7 @@ function mixRow(group: string, rows: readonly CompPerson[]): PositionMixRow {
     q3: share('Q3'),
     q4: share('Q4'),
     above: share('Above maximum'),
+    members: behind(placed, placed.length),
   }
 }
 
@@ -77,6 +80,11 @@ export interface CompaGroupRow {
   inBand: number | null
   belowMin: number
   aboveMax: number
+  /**
+   * The people behind the row (every row given, with or without a compa-ratio); empty when the
+   * statistics are hidden (n < 5). Select from it with the helpers in drill.ts.
+   */
+  members: CompPerson[]
 }
 
 export function compaRow(group: string, rows: readonly CompPerson[], s: CycleSettings): CompaGroupRow {
@@ -90,6 +98,7 @@ export function compaRow(group: string, rows: readonly CompPerson[], s: CycleSet
     inBand: safeShare(rows.filter((p) => inBand(p, s)).length, xs.length),
     belowMin: rows.filter((p) => p.position === 'Below minimum').length,
     aboveMax: rows.filter((p) => p.position === 'Above maximum').length,
+    members: behind(rows, xs.length),
   }
 }
 
@@ -111,6 +120,8 @@ export interface PenetrationRow {
   median: number | null
   q3: number | null
   p90: number | null
+  /** The people measured; empty when the percentiles are hidden (n < 5). */
+  members: CompPerson[]
 }
 
 /** Range penetration quartiles by level, in level order. */
@@ -129,6 +140,7 @@ export function penetrationByLevel(people: readonly CompPerson[]): PenetrationRo
       median: safeMedian(xs),
       q3: safeQuantile(xs, 0.75),
       p90: safeQuantile(xs, 0.9),
+      members: behind(g.rows, xs.length),
     }
   })
 }
@@ -146,6 +158,8 @@ export interface OutsideRangeRow {
   /** The same gap in USD (pay amount; null without an FX rate). */
   gapUsd: number | null
   promoted: 'Yes' | 'No'
+  /** The person, for the drill-down and the person card. */
+  person: CompPerson
 }
 
 export function belowMinimum(people: readonly CompPerson[]): OutsideRangeRow[] {
@@ -162,6 +176,7 @@ export function belowMinimum(people: readonly CompPerson[]): OutsideRangeRow[] {
       gapPct: (p.min! - p.base) / p.base,
       gapUsd: p.minUsd != null && p.baseUsd != null ? p.minUsd - p.baseUsd : null,
       promoted: p.promotedRecently ? ('Yes' as const) : ('No' as const),
+      person: p,
     }))
     .sort((a, b) => b.gapPct - a.gapPct)
 }
@@ -180,6 +195,7 @@ export function aboveMaximum(people: readonly CompPerson[]): OutsideRangeRow[] {
       gapPct: (p.base - p.max!) / p.max!,
       gapUsd: p.maxUsd != null && p.baseUsd != null ? p.baseUsd - p.maxUsd : null,
       promoted: p.promotedRecently ? ('Yes' as const) : ('No' as const),
+      person: p,
     }))
     .sort((a, b) => b.gapPct - a.gapPct)
 }
@@ -233,6 +249,9 @@ export interface CompressionRow {
   low: number
   high: number
   flagged: boolean
+  /** The new hires and the incumbents behind the two medians. */
+  hires: CompPerson[]
+  incumbents: CompPerson[]
 }
 
 /**
@@ -240,7 +259,10 @@ export interface CompressionRow {
  * have at least `minN` people. Largest gap first.
  */
 export function compression(people: readonly CompPerson[], minN = MIN_GROUP): CompressionRow[] {
-  const cells = new Map<string, { department: string; level: string; hires: number[]; inc: number[] }>()
+  const cells = new Map<
+    string,
+    { department: string; level: string; hires: CompPerson[]; inc: CompPerson[] }
+  >()
   for (const p of people) {
     if (p.compa == null || !p.level) continue
     const k = `${p.department}\u0000${p.level}`
@@ -249,13 +271,19 @@ export function compression(people: readonly CompPerson[], minN = MIN_GROUP): Co
       c = { department: p.department, level: p.level, hires: [], inc: [] }
       cells.set(k, c)
     }
-    ;(p.hiredRecently ? c.hires : c.inc).push(p.compa)
+    ;(p.hiredRecently ? c.hires : c.inc).push(p)
   }
   const out: CompressionRow[] = []
   for (const c of cells.values()) {
     if (c.hires.length < minN || c.inc.length < minN) continue
-    const newMedian = safeMedian(c.hires, minN)!
-    const incMedian = safeMedian(c.inc, minN)!
+    const newMedian = safeMedian(
+      values(c.hires, (p) => p.compa),
+      minN,
+    )!
+    const incMedian = safeMedian(
+      values(c.inc, (p) => p.compa),
+      minN,
+    )!
     const gap = newMedian - incMedian
     out.push({
       group: `${c.department} · ${c.level}`,
@@ -269,6 +297,8 @@ export function compression(people: readonly CompPerson[], minN = MIN_GROUP): Co
       low: Math.min(newMedian, incMedian),
       high: Math.max(newMedian, incMedian),
       flagged: gap >= COMPRESSION_GAP - 1e-9,
+      hires: c.hires,
+      incumbents: c.inc,
     })
   }
   return out.sort((a, b) => b.gap - a.gap || a.group.localeCompare(b.group))

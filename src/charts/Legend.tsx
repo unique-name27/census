@@ -1,12 +1,19 @@
 /**
  * Chart legend: swatches that mirror the mark (rect for bars and areas, a short line for lines,
- * a dot for points) with ink labels, or a continuous ramp with its end labels. Identity sits in
- * the swatch; the text never wears the series color.
+ * a dot for points, a diamond for diamond markers) with ink labels, or a continuous ramp with
+ * its end labels. Identity sits in the swatch; the text never wears the series color.
  */
 import { cx } from '@/components/ui'
 import type { LegendShape, LegendSpec } from './core/legend'
 
 function Swatch({ color, shape = 'rect' }: { color: string; shape?: LegendShape }) {
+  if (shape === 'diamond') {
+    return (
+      <svg aria-hidden="true" width="10" height="10" viewBox="0 0 10 10" className="shrink-0">
+        <path d="M5 0L10 5L5 10L0 5Z" fill={color} />
+      </svg>
+    )
+  }
   const size =
     shape === 'line'
       ? 'h-[2px] w-3.5 rounded-[1px]'

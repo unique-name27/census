@@ -2,6 +2,9 @@
  * Color keys for the cards' top edge. Categories (department, business unit, location) take the
  * categorical slots in a fixed order, largest group first; with more than eight groups the
  * smallest fold into "Other". Ordered dimensions (level, tenure) use the sequential blue ramp.
+ *
+ * Slots are ranked over the whole as-of roster and reused for any root or focus, so a department
+ * keeps its color when you focus on a sub-org; the legend lists only the groups on screen.
  */
 import type { Employee, ISODate } from '@/data/schema'
 import { TENURE_BANDS, tenureBand, tenureYears } from '@/lib/people'
@@ -56,7 +59,16 @@ const CATEGORICAL: Partial<Record<ColorBy, (e: Employee) => string>> = {
 
 export const OTHER_KEY = '__other__'
 
-export function colorScheme(by: ColorBy, people: readonly Employee[], asOf: ISODate): ColorScheme {
+/**
+ * @param people who the slots are ranked over (the whole as-of roster, so colors stay put)
+ * @param shown who is on screen: legend counts, and which keys the legend lists (default `people`)
+ */
+export function colorScheme(
+  by: ColorBy,
+  people: readonly Employee[],
+  asOf: ISODate,
+  shown: readonly Employee[] = people,
+): ColorScheme {
   if (by === 'none') return { by, legend: [], keyOf: () => null, swatchOf: () => null }
 
   const cat = CATEGORICAL[by]
@@ -65,14 +77,18 @@ export function colorScheme(by: ColorBy, people: readonly Employee[], asOf: ISOD
     for (const e of people) counts.set(cat(e), (counts.get(cat(e)) ?? 0) + 1)
     const ranked = [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
     const named = ranked.length > 8 ? ranked.slice(0, 7) : ranked
-    const rest = ranked.slice(named.length)
     const slot = new Map(named.map(([k], i) => [k, i]))
-    const legend: ColorKey[] = named.map(([k, n], i) => ({
-      key: k,
-      label: k,
-      swatch: { kind: 'series', index: i },
-      count: n,
-    }))
+    const onScreen = new Map<string, number>()
+    for (const e of shown) onScreen.set(cat(e), (onScreen.get(cat(e)) ?? 0) + 1)
+    const legend: ColorKey[] = named
+      .filter(([k]) => onScreen.has(k))
+      .map(([k]) => ({
+        key: k,
+        label: k,
+        swatch: { kind: 'series', index: slot.get(k)! },
+        count: onScreen.get(k)!,
+      }))
+    const rest = [...onScreen].filter(([k]) => !slot.has(k))
     if (rest.length) {
       legend.push({
         key: OTHER_KEY,
@@ -98,7 +114,7 @@ export function colorScheme(by: ColorBy, people: readonly Employee[], asOf: ISOD
       LEVEL_GROUPS.findIndex((g) => (g.levels as readonly string[]).includes(e.level ?? ''))
     const counts = new Array(LEVEL_GROUPS.length).fill(0)
     let none = 0
-    for (const e of people) {
+    for (const e of shown) {
       const g = groupOf(e)
       if (g < 0) none++
       else counts[g]++
@@ -127,7 +143,7 @@ export function colorScheme(by: ColorBy, people: readonly Employee[], asOf: ISOD
   // Tenure bands at the as-of date.
   const bandOf = (e: Employee) => tenureBand(tenureYears(e, asOf))
   const counts = new Map<string, number>()
-  for (const e of people) counts.set(bandOf(e), (counts.get(bandOf(e)) ?? 0) + 1)
+  for (const e of shown) counts.set(bandOf(e), (counts.get(bandOf(e)) ?? 0) + 1)
   const legend: ColorKey[] = TENURE_BANDS.map((b, i) => ({
     key: b,
     label: b,

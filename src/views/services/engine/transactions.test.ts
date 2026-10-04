@@ -146,9 +146,17 @@ describe('timing and retro', () => {
       tx({ type: 'New hire', dueDate: '2026-09-23', retro: null }),
     ])
     expect(retroShare(rows, W)).toEqual({ rate: 0.2, retro: 1, n: 5, people: 5 })
-    expect(retroByMonth(rows, ['2026-08', '2026-09'])).toEqual([
+    const months = retroByMonth(rows, ['2026-08', '2026-09'])
+    expect(months.map(({ records: _, ...r }) => r)).toEqual([
       { month: '2026-08', changes: 0, retro: null, share: null },
       { month: '2026-09', changes: 5, retro: 1, share: 0.2 },
+    ])
+    expect(months[1].records.map((f) => f.type).sort()).toEqual([
+      'Compensation change',
+      'Job change',
+      'Job change',
+      'Job change',
+      'Job change',
     ])
   })
 })

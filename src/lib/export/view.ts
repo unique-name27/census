@@ -7,6 +7,10 @@
  *   slide, then one slide per figure with the chart as a crisp 2x image, or a native table for
  *   table-only figures.
  *
+ * Both take one tab's figures, or a whole view's figures grouped by tab (`FigureGroup[]`): sheet
+ * names are then prefixed with the tab label, the Summary lists figures under their tab, and the
+ * deck opens each tab with a divider slide.
+ *
  * Images are captured in the light theme so they sit on white slides and sheets.
  */
 import type { Workbook } from 'exceljs'
@@ -23,11 +27,59 @@ export interface ViewExportOptions {
   showPay: boolean
   /** File name without extension; defaults to census-<view>-<tab>-<as-of>. */
   fileName?: string
+  /**
+   * Chart images captured earlier, by figure id (see `captureFigureImages`), e.g. while figures
+   * rendered off screen were still mounted. When given, nothing is captured at export time.
+   */
+  captured?: ReadonlyMap<string, RasterImage>
 }
+
+/** The figures of one tab of a view, for an export of every tab. */
+export interface FigureGroup {
+  /** Tab key. Figure ids must be unique across groups (prefix them with the tab key). */
+  key: string
+  /** Tab label: prefixes sheet names and titles the tab's divider slide. */
+  label: string
+  figures: readonly RegisteredFigure[]
+}
+
+/** One tab's figures, or a whole view's figures grouped by tab. */
+export type ViewFigures = readonly RegisteredFigure[] | readonly FigureGroup[]
+
+/** A figure in export order, with the tab group it came from (null for a single-tab export). */
+export interface ViewEntry {
+  figure: RegisteredFigure
+  group: FigureGroup | null
+}
+
+export function isFigureGroups(figures: ViewFigures): figures is readonly FigureGroup[] {
+  return figures.length > 0 && 'figures' in figures[0]
+}
+
+/** Figures in export order; groups without figures are left out. */
+export function viewEntries(figures: ViewFigures): ViewEntry[] {
+  if (!isFigureGroups(figures)) return figures.map((figure) => ({ figure, group: null }))
+  return figures.flatMap((group) => group.figures.map((figure) => ({ figure, group })))
+}
+
+/** Sheet name before sanitizing: the figure title, prefixed with its tab label in a whole-view export. */
+export function entrySheetName(e: ViewEntry): string {
+  return e.group ? `${e.group.label} · ${e.figure.title}` : e.figure.title
+}
+
+/** The export meta for one entry: a grouped figure names its own tab. */
+const entryMeta = (meta: ExportMeta, e: ViewEntry): ExportMeta =>
+  e.group ? { ...meta, tab: e.group.label } : meta
 
 const viewStem = (meta: ExportMeta) => fileStem(meta, meta.tab ?? '')
 
-async function captureImages(figures: readonly RegisteredFigure[]): Promise<Map<string, RasterImage>> {
+/**
+ * Chart images for view exports, by figure id: each figure's SVG rasterized at 2x in the light
+ * theme. Call while the figures are mounted; a chart that fails to render is skipped.
+ */
+export async function captureFigureImages(
+  figures: readonly RegisteredFigure[],
+): Promise<Map<string, RasterImage>> {
   const out = new Map<string, RasterImage>()
   await withLightTheme(async () => {
     for (const f of figures) {
@@ -49,7 +101,7 @@ async function captureImages(figures: readonly RegisteredFigure[]): Promise<Map<
 function writeSummary(
   wb: Workbook,
   sheetName: string,
-  figures: readonly RegisteredFigure[],
+  entries: readonly ViewEntry[],
   sheetNames: string[],
   meta: ExportMeta,
   opts: ViewExportOptions,
@@ -71,8 +123,11 @@ function writeSummary(
   sub.value = [meta.company, 'Census people analytics'].filter(Boolean).join(' · ')
   sub.font = { size: 10, color: { argb: XL.muted } }
 
+  const figures = entries.map((e) => e.figure)
   const anyPay = figures.some((f) => f.columns.some((c) => c.pay))
+  const tabs = [...new Set(entries.flatMap((e) => (e.group ? [e.group.label] : [])))]
   const facts: [string, string][] = [
+    ...(tabs.length ? ([['Tabs', tabs.join(', ')]] as [string, string][]) : []),
     ['Scope', meta.scope],
     ['Window', meta.window],
     ['As of', asOfLabel(meta.asOf)],
@@ -100,8 +155,18 @@ function writeSummary(
     c.border = { bottom: { style: 'thin', color: { argb: XL.ink } } }
     c.alignment = { horizontal: i === 3 ? 'right' : 'left' }
   })
-  figures.forEach((f, i) => {
-    const row = r + 1 + i
+  let row = r
+  entries.forEach(({ figure: f, group }, i) => {
+    row++
+    // In a whole-view export, each tab's figures sit under a heading row with the tab label.
+    if (group && group !== entries[i - 1]?.group) {
+      const g = ws.getCell(row, 2)
+      g.value = group.label
+      g.font = { size: 10, bold: true, color: { argb: XL.ink } }
+      g.alignment = { vertical: 'bottom' }
+      ws.getRow(row).height = 20
+      row++
+    }
     ws.getCell(row, 1).value = i + 1
     ws.getCell(row, 1).alignment = { horizontal: 'left' }
     const link = ws.getCell(row, 2)
@@ -121,28 +186,42 @@ function writeSummary(
       }
     }
   })
-  const foot = ws.getCell(r + figures.length + 2, 1)
+  const foot = ws.getCell(row + 2, 1)
   foot.value = stampLine(meta)
   foot.font = { size: 9, bold: true, color: { argb: XL.muted } }
 }
 
-/** One workbook for the view: Summary plus a sheet per figure (chart image beside its table). */
-export async function exportViewWorkbook(
+/** Images for an export: none when switched off, the pre-captured ones, or captured now. */
+async function exportImages(
   figures: readonly RegisteredFigure[],
+  opts: ViewExportOptions & { images?: boolean },
+): Promise<ReadonlyMap<string, RasterImage>> {
+  if (opts.images === false) return new Map()
+  return opts.captured ?? captureFigureImages(figures)
+}
+
+/** Build (without downloading) the view workbook: Summary plus a sheet per figure. */
+export async function buildViewWorkbook(
+  figures: ViewFigures,
   meta: ExportMeta,
   opts: ViewExportOptions & { images?: boolean },
-): Promise<void> {
+): Promise<Workbook> {
+  const entries = viewEntries(figures)
   const wb = await newWorkbook(meta, viewLine(meta) || 'Census')
-  const names = uniqueSheetNames(['Summary', ...figures.map((f) => f.title)])
+  const names = uniqueSheetNames(['Summary', ...entries.map(entrySheetName)])
   wb.addWorksheet(names[0])
-  const images = opts.images === false ? new Map<string, RasterImage>() : await captureImages(figures)
+  const images = await exportImages(
+    entries.map((e) => e.figure),
+    opts,
+  )
 
-  for (const [i, f] of figures.entries()) {
+  for (const [i, e] of entries.entries()) {
+    const f = e.figure
     const layout = addTableSheet(
       wb,
       names[i + 1],
       { name: f.title, title: f.title, subtitle: f.subtitle, note: f.note, columns: f.columns, rows: f.rows },
-      meta,
+      entryMeta(meta, e),
       opts,
     )
     const img = images.get(f.id)
@@ -155,7 +234,20 @@ export async function exportViewWorkbook(
       })
     }
   }
-  writeSummary(wb, names[0], figures, names.slice(1), meta, opts)
+  writeSummary(wb, names[0], entries, names.slice(1), meta, opts)
+  return wb
+}
+
+/**
+ * One workbook for the view: Summary plus a sheet per figure (chart image beside its table).
+ * With figures grouped by tab, sheet names start with the tab label.
+ */
+export async function exportViewWorkbook(
+  figures: ViewFigures,
+  meta: ExportMeta,
+  opts: ViewExportOptions & { images?: boolean },
+): Promise<void> {
+  const wb = await buildViewWorkbook(figures, meta, opts)
   await saveWorkbook(wb, opts.fileName ?? viewStem(meta))
 }
 
@@ -311,6 +403,58 @@ function titleSlide(pptx: PptxGenJS, meta: ExportMeta) {
   })
 }
 
+/** Opens a tab in a whole-view deck: the view, the tab label and the figures that follow. */
+function dividerSlide(pptx: PptxGenJS, meta: ExportMeta, group: FigureGroup, right: string) {
+  const s = pptx.addSlide()
+  s.background = { color: 'FFFFFF' }
+  s.addText(meta.view.toUpperCase(), {
+    x: M,
+    y: 0.55,
+    w: W - 2 * M,
+    h: 0.3,
+    fontFace: FONT,
+    fontSize: 10,
+    bold: true,
+    color: C.muted,
+    charSpacing: 2,
+    margin: 0,
+  })
+  s.addShape(pptx.ShapeType.line, { x: M, y: 1.0, w: W - 2 * M, h: 0, line: { color: C.ink, width: 1 } })
+  s.addText(group.label, {
+    x: M,
+    y: 1.9,
+    w: W - 2 * M,
+    h: 0.8,
+    fontFace: FONT,
+    fontSize: 34,
+    bold: true,
+    color: C.ink,
+    margin: 0,
+    fit: 'shrink',
+  })
+  const LIST = 10
+  const titles = group.figures.slice(0, LIST).map((f) => f.title)
+  const more = group.figures.length - titles.length
+  const lines = [...titles, ...(more > 0 ? [`and ${more} more`] : [])]
+  s.addText(
+    lines.map((text, i) => ({ text, options: { breakLine: i < lines.length - 1 } })),
+    {
+      x: M,
+      y: 2.95,
+      w: W - 2 * M,
+      h: H - 0.85 - 2.95,
+      fontFace: FONT,
+      fontSize: 14,
+      color: C.ink2,
+      margin: 0,
+      valign: 'top',
+      paraSpaceAfter: 4,
+      fit: 'shrink',
+    },
+  )
+  footer(s, pptx, `${group.figures.length} ${group.figures.length === 1 ? 'figure' : 'figures'}`, right)
+}
+
 function figureHeader(slide: Slide, f: RegisteredFigure): number {
   slide.addText(f.title, {
     x: M,
@@ -392,13 +536,23 @@ function tableRows(
   }
 }
 
-/** A 16:9 deck for the view: title slide, then a slide per figure. */
+/**
+ * A 16:9 deck for the view: title slide, then a slide per figure. With figures grouped by tab,
+ * each tab opens with a divider slide.
+ */
 export async function exportViewDeck(
-  figures: readonly RegisteredFigure[],
+  figures: ViewFigures,
   meta: ExportMeta,
   opts: ViewExportOptions,
 ): Promise<void> {
-  const [{ default: Pptx }, images] = await Promise.all([import('pptxgenjs'), captureImages(figures)])
+  const entries = viewEntries(figures)
+  const [{ default: Pptx }, images] = await Promise.all([
+    import('pptxgenjs'),
+    exportImages(
+      entries.map((e) => e.figure),
+      opts,
+    ),
+  ])
   const pptx = new Pptx()
   pptx.layout = 'LAYOUT_WIDE'
   pptx.theme = { headFontFace: FONT, bodyFontFace: 'Arial' }
@@ -408,10 +562,14 @@ export async function exportViewDeck(
   pptx.subject = metaLine(meta)
 
   titleSlide(pptx, meta)
-  const right = (n: number) =>
-    `${viewLine(meta)}  ·  ${meta.scope}  ·  As of ${asOfLabel(meta.asOf)}  ·  ${n}`
+  const right = (m: ExportMeta, n: number) =>
+    `${viewLine(m)}  ·  ${m.scope}  ·  As of ${asOfLabel(m.asOf)}  ·  ${n}`
 
-  for (const [i, f] of figures.entries()) {
+  let slideNo = 1
+  for (const [i, e] of entries.entries()) {
+    const f = e.figure
+    const m = entryMeta(meta, e)
+    if (e.group && e.group !== entries[i - 1]?.group) dividerSlide(pptx, meta, e.group, right(m, ++slideNo))
     const s = pptx.addSlide()
     s.background = { color: 'FFFFFF' }
     const top = figureHeader(s, f)
@@ -459,7 +617,7 @@ export async function exportViewDeck(
         margin: 0,
       })
     }
-    footer(s, pptx, f.note ?? '', right(i + 2))
+    footer(s, pptx, f.note ?? '', right(m, ++slideNo))
     const notes = [f.subtitle, f.note].filter(Boolean).join('\n')
     if (notes) s.addNotes(notes)
   }

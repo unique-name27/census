@@ -57,9 +57,6 @@ export function onOrBeforeWeekday(d: Day): Day {
 /** The first Monday on or after d (start dates fall on Mondays). */
 export const nextMonday = (d: Day): Day => d + ((8 - weekday(d)) % 7)
 
-/** The first Friday on or after d. */
-export const nextFriday = (d: Day): Day => d + ((12 - weekday(d)) % 7)
-
 export function addBusinessDays(d: Day, n: number): Day {
   let t = d
   let left = Math.abs(n)

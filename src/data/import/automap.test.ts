@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { datasetDef } from '../schema'
-import { autoMap, rankHeaders, withChoice } from './automap'
+import { autoMap, knownShare, rankHeaders, withChoice } from './automap'
+import { profileColumn } from './sniff'
 import type { Mapping } from './types'
 
 /** Field → header for the mapped fields only. */
@@ -267,6 +268,91 @@ describe('autoMap: real exports', () => {
     expect(m.assignee.header).toBe('Assigned to')
     expect(m.team.header).toBe('Assignment group')
     expect(m.priority.header).toBe('Priority')
+  })
+})
+
+describe('autoMap: Greenhouse export with both Job ID and Requisition ID', () => {
+  const headers = [
+    'Candidate ID',
+    'Candidate Name',
+    'Job',
+    'Job ID',
+    'Requisition ID',
+    'Current Stage',
+    'Status',
+    'Source',
+    'Applied At',
+  ]
+  const data = rows({
+    'Candidate ID': ['81234', '81235', '81236', '81237'],
+    'Candidate Name': ['Ana Ruiz', 'Bo Chen', 'Cy Dorn', 'Di Park'],
+    Job: ['DV Engineer', 'PD Engineer', 'PD Engineer', 'Analog Designer'],
+    'Job ID': ['4012345005', '4012345006', '4012345006', '4012345011'],
+    'Requisition ID': ['REQ-0042', 'REQ-0043', 'REQ-0043', 'REQ-0050'],
+    'Current Stage': ['Offer', 'Application Review', 'Phone Screen', 'Onsite'],
+    Status: ['Active', 'Rejected', 'Active', 'Active'],
+    Source: ['LinkedIn', 'Referral', 'Agency', 'LinkedIn'],
+    'Applied At': ['2026-07-01', '2026-07-03', '2026-07-09', '2026-07-12'],
+  })
+  const def = datasetDef('candidates')
+
+  it('prefers Requisition ID over Job ID for the req ID, in any column order', () => {
+    expect(autoMap(headers, data, def).reqId.header).toBe('Requisition ID')
+    const swapped = ['Requisition ID', ...headers.filter((h) => h !== 'Requisition ID')]
+    expect(autoMap(swapped, data, def).reqId.header).toBe('Requisition ID')
+    expect(autoMap(headers, [], def).reqId.header).toBe('Requisition ID')
+    expect(rankHeaders(headers, data, def, 'reqId').map((r) => r.header)).toEqual([
+      'Requisition ID',
+      'Job ID',
+      'Job',
+    ])
+  })
+
+  it('keeps the rest of the Greenhouse mapping', () => {
+    const m = autoMap(headers, data, def)
+    expect(picks(m)).toMatchObject({
+      candidateId: 'Candidate ID',
+      candidateName: 'Candidate Name',
+      currentStage: 'Current Stage',
+      status: 'Status',
+      source: 'Source',
+      appliedDate: 'Applied At',
+    })
+    // Job ID is left free for the user rather than mapped to something else.
+    expect(Object.values(m).some((x) => x.header === 'Job ID')).toBe(false)
+  })
+
+  it('prefers the column whose values match the loaded requisitions', () => {
+    const byJobId = [{ field: 'reqId', values: new Set(['4012345005', '4012345006', '4012345011']) }]
+    const m = autoMap(headers, data, def, undefined, byJobId)
+    expect(m.reqId.header).toBe('Job ID')
+    expect(m.reqId.reason).toMatch(/values match records already loaded/)
+    expect(rankHeaders(headers, data, def, 'reqId', byJobId)[0].header).toBe('Job ID')
+
+    // Requisition IDs written in another case still count.
+    const byReq = [{ field: 'reqId', values: new Set(['req-0042', 'req-0043', 'req-0050']) }]
+    expect(autoMap(headers, data, def, undefined, byReq).reqId.header).toBe('Requisition ID')
+    // A hint for another field, or an empty one, changes nothing.
+    const other = [
+      { field: 'candidateId', values: new Set(['4012345005']) },
+      { field: 'reqId', values: new Set<string>() },
+    ]
+    expect(autoMap(headers, data, def, undefined, other).reqId.header).toBe('Requisition ID')
+  })
+
+  it('never lets a known-value match beat a clearly better name', () => {
+    // "Job" holds titles; even if they matched, Requisition ID is the stronger name.
+    const titles = [{ field: 'reqId', values: new Set(['DV Engineer', 'PD Engineer', 'Analog Designer']) }]
+    expect(autoMap(headers, data, def, undefined, titles).reqId.header).toBe('Requisition ID')
+  })
+
+  it('knownShare is the share of sampled values found in the known set', () => {
+    const p = profileColumn('Job ID', data)
+    expect(knownShare('reqId', p, [{ field: 'reqId', values: new Set(['4012345006']) }])).toBe(0.5)
+    expect(knownShare('reqId', p, undefined)).toBe(0)
+    expect(
+      knownShare('reqId', profileColumn('Missing', data), [{ field: 'reqId', values: new Set(['x']) }]),
+    ).toBe(0)
   })
 })
 

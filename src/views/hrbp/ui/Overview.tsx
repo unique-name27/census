@@ -1,13 +1,17 @@
 import { Columns, Figure, Lines } from '@/charts'
 import { Grid, KpiStrip, Readout } from '@/components'
 import { useAnalytics } from '@/data/context'
+import { drill } from '@/drill/Drill'
 import { addDays, formatDate } from '@/lib/dates'
 import { fmt } from '@/lib/format'
 import type { HrbpModel } from '../engine'
 import { NO_HISTORY } from '../engine/base'
-import { SCORE_METRICS, type ScoreMetric } from '../engine/scorecard'
+import { bridgeSpec, flowMonthSpec, flowSpec, type ScoreCell, scoreSpec } from '../engine/buckets'
+import { employeesOnSpec } from '../engine/drill'
+import { SCORE_METRICS, type ScoreMetric, type ScoreRow } from '../engine/scorecard'
 import { LAST_YEAR, YEAR_BEFORE } from '../engine/workforce'
 import { DEF } from './defs'
+import { drillWhen } from './drill'
 import { rescope } from './model'
 import { ScorecardTable } from './ScorecardTable'
 
@@ -39,6 +43,10 @@ export function Overview({ m }: { m: HrbpModel }) {
   // charts, so the scorecard fills the column beside it; a short readout leaves the scorecard
   // full width below, so neither column runs on alone.
   const scorecardBeside = Math.min(m.findings.length, 6) >= 5
+  const p = m.prep
+  // Scorecard cells open the records behind them; the row itself still rescopes the app.
+  const scoreDrill = (row: ScoreRow, cell: ScoreCell) => scoreSpec(p, row, cell)
+  const scoreCol = (cell: ScoreCell) => (x: { source: ScoreRow }) => scoreDrill(x.source, cell)
 
   const scorecard = (
     <Figure
@@ -60,17 +68,19 @@ export function Overview({ m }: { m: HrbpModel }) {
         offCompany: SCORE_METRICS.filter((k) => r.shade[k])
           .map((k) => `${METRIC_LABEL[k]} ${r.shade[k]}`)
           .join('; '),
+        // Not a column: the engine row behind the table row, for its drills.
+        source: r,
       }))}
       columns={[
         { key: 'organization', label: 'Organization', format: 'text' },
         { key: 'role', label: 'Role or note', format: 'text' },
-        { key: 'headcount', label: 'Headcount', format: 'int' },
-        { key: 'netChange', label: 'Net change, 12 mo', format: 'int' },
-        { key: 'voluntary', label: 'Voluntary attrition', format: 'pct' },
-        { key: 'regretted', label: 'Regretted attrition', format: 'pct' },
-        { key: 'firstYear', label: 'First-year attrition', format: 'pct' },
-        { key: 'promotionRate', label: 'Promotion rate', format: 'pct' },
-        { key: 'avgSpan', label: 'Avg span', format: 'num1' },
+        { key: 'headcount', label: 'Headcount', format: 'int', drill: scoreCol('headcount') },
+        { key: 'netChange', label: 'Net change, 12 mo', format: 'int', drill: scoreCol('netChange') },
+        { key: 'voluntary', label: 'Voluntary attrition', format: 'pct', drill: scoreCol('voluntary') },
+        { key: 'regretted', label: 'Regretted attrition', format: 'pct', drill: scoreCol('regretted') },
+        { key: 'firstYear', label: 'First-year attrition', format: 'pct', drill: scoreCol('firstYear') },
+        { key: 'promotionRate', label: 'Promotion rate', format: 'pct', drill: scoreCol('promotionRate') },
+        { key: 'avgSpan', label: 'Avg span', format: 'num1', drill: scoreCol('avgSpan') },
         { key: 'offCompany', label: 'Materially off the company', format: 'text' },
       ]}
       definitions={[DEF.voluntary, DEF.regretted, DEF.firstYear, DEF.promotionRate, DEF.span, DEF.suppressed]}
@@ -84,6 +94,7 @@ export function Overview({ m }: { m: HrbpModel }) {
         onPick={(row) => {
           if (row.filter) rescope(ctx, row.filter)
         }}
+        drillFor={scoreDrill}
       />
     </Figure>
   )
@@ -104,7 +115,12 @@ export function Overview({ m }: { m: HrbpModel }) {
           data={series}
           columns={[
             { key: 'date', label: 'Month end', format: 'date' },
-            { key: 'headcount', label: 'Headcount', format: 'int' },
+            {
+              key: 'headcount',
+              label: 'Headcount',
+              format: 'int',
+              drill: (r) => drillWhen(r.headcount > 0, () => employeesOnSpec(p, r.date)),
+            },
             { key: 'period', label: 'Period', format: 'text' },
           ]}
           definitions={[DEF.headcount]}
@@ -126,6 +142,7 @@ export function Overview({ m }: { m: HrbpModel }) {
             emphasize={LAST_YEAR}
             format="int"
             height={350}
+            onSelect={(d) => drill(() => employeesOnSpec(p, d.date))}
           />
         </Figure>
         <Grid>
@@ -137,7 +154,12 @@ export function Overview({ m }: { m: HrbpModel }) {
             columns={[
               { key: 'month', label: 'Month', format: 'text' },
               { key: 'series', label: 'Movement', format: 'text' },
-              { key: 'people', label: 'Employees', format: 'int' },
+              {
+                key: 'people',
+                label: 'Employees',
+                format: 'int',
+                drill: (r) => drillWhen(r.records.length > 0, () => flowSpec(p, r)),
+              },
             ]}
             definitions={[
               { term: 'Hire', text: 'An employee whose hire date falls in the month.' },
@@ -155,6 +177,8 @@ export function Overview({ m }: { m: HrbpModel }) {
               seriesOrder={['Hires', 'Exits']}
               xType="month"
               height={showBridge ? undefined : 260}
+              onSelect={(d) => drill(() => flowMonthSpec(p, wf.flows, d.month))}
+              onSelectSegment={(d) => drill(() => flowSpec(p, d))}
             />
           </Figure>
           {showBridge && (
@@ -165,7 +189,12 @@ export function Overview({ m }: { m: HrbpModel }) {
               data={wf.bridge}
               columns={[
                 { key: 'step', label: 'Step', format: 'text' },
-                { key: 'people', label: 'Employees', format: 'int' },
+                {
+                  key: 'people',
+                  label: 'Employees',
+                  format: 'int',
+                  drill: (r) => drillWhen(r.records.length > 0, () => bridgeSpec(p, r)),
+                },
               ]}
               definitions={[
                 DEF.headcount,

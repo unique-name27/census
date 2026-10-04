@@ -3,7 +3,7 @@
  * family, location and level, and the jobs furthest below market. Ratios need no FX. Pure.
  */
 import { LEVELS } from '@/data/schema'
-import { groupRows, safeMedian, values } from './groups'
+import { behind, groupRows, safeMedian, values } from './groups'
 import type { CompPerson } from './population'
 
 /** A job family at or below this median market ratio is flagged (5% or more below market). */
@@ -20,6 +20,8 @@ export interface MarketRow {
   gap: number | null
   /** Median market median ÷ range midpoint: how the ranges track the market. */
   marketVsMid: number | null
+  /** The people with a market median behind the row; empty when it is hidden (n < 5). */
+  members: CompPerson[]
 }
 
 function marketRow(group: string, rows: readonly CompPerson[]): MarketRow {
@@ -31,6 +33,10 @@ function marketRow(group: string, rows: readonly CompPerson[]): MarketRow {
     median,
     gap: median == null ? null : median - 1,
     marketVsMid: safeMedian(values(rows, (p) => p.marketVsMid)),
+    members: behind(
+      rows.filter((p) => p.marketRatio != null),
+      xs.length,
+    ),
   }
 }
 

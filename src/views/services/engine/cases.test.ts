@@ -145,8 +145,13 @@ describe('breakdowns', () => {
     ])
     const { rows: out, series } = openedByMonth(rows, ['2026-08', '2026-09'], 1)
     expect(series).toEqual(['A', 'Other'])
-    expect(out).toContainEqual({ month: '2026-09', category: 'Other', cases: 6 })
-    expect(out).toContainEqual({ month: '2026-08', category: 'Other', cases: 0 })
+    const counts = out.map(({ records, ...r }) => {
+      // The drill lists exactly the cases the segment counts.
+      expect(records).toHaveLength(r.cases)
+      return r
+    })
+    expect(counts).toContainEqual({ month: '2026-09', category: 'Other', cases: 6 })
+    expect(counts).toContainEqual({ month: '2026-08', category: 'Other', cases: 0 })
   })
 
   it('gives no category its own monthly series behind fewer than 5 people', () => {
@@ -156,7 +161,10 @@ describe('breakdowns', () => {
     ])
     const { rows: out, series } = openedByMonth(rows, ['2026-09'])
     expect(series).toEqual(['All categories'])
-    expect(out).toEqual([{ month: '2026-09', category: 'All categories', cases: 9 }])
+    expect(out.map(({ records: _, ...r }) => r)).toEqual([
+      { month: '2026-09', category: 'All categories', cases: 9 },
+    ])
+    expect(out[0].records).toHaveLength(9)
   })
 
   it('computes reopen over resolved cases and escalation over all cases', () => {

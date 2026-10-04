@@ -4,18 +4,21 @@
  */
 import { useState } from 'react'
 import { Button, Dialog, Segmented } from '@/components'
-import { isWithin, type MoveMode, type OrgTree, rippleOf } from '../engine'
+import { type DrillScope, isWithin, type MoveMode, type OrgTree, rippleOf } from '../engine'
 import { PersonSearch } from './PersonSearch'
 import { RipplePreview } from './Ripple'
 
 export function MoveDialog({
   tree,
+  scope,
   personId,
   mode: initialMode,
   onClose,
   onConfirm,
 }: {
   tree: OrgTree
+  /** Where the preview's numbers come from, for the drill subtitles. */
+  scope: DrillScope
   personId: string | null
   mode: MoveMode
   onClose: () => void
@@ -95,7 +98,7 @@ export function MoveDialog({
           {target && (
             <div className="rounded-control bg-sheet-2 px-3 py-3">
               <div className="eyebrow mb-2">New manager: {tree.people.get(target)?.name}</div>
-              {ripple && <RipplePreview tree={tree} ripple={ripple} />}
+              {ripple && <RipplePreview tree={tree} ripple={ripple} scope={scope} />}
             </div>
           )}
         </div>

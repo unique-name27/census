@@ -29,7 +29,9 @@ export interface ChartPrefs {
   showReqs: boolean
   showFlags: boolean
 }
-const DEFAULT_PREFS: ChartPrefs = { colorBy: 'department', showReqs: false, showFlags: true }
+// Business unit by default: six units fit the eight color slots, where most departments would
+// fold into "Other" at the executive levels.
+const DEFAULT_PREFS: ChartPrefs = { colorBy: 'businessUnit', showReqs: false, showFlags: true }
 
 export function useChartPrefs(): [ChartPrefs, (patch: Partial<ChartPrefs>) => void] {
   const [prefs, setPrefs] = useState<ChartPrefs>(() => ({
@@ -53,7 +55,7 @@ export interface BlockedAttempt {
   reason: string
 }
 
-interface StoredScenario {
+export interface StoredScenario {
   fingerprint: string
   actions: ScenarioAction[]
   cursor: number
@@ -72,7 +74,10 @@ export interface Scenario {
   push: (a: ScenarioAction) => void
   undo: () => void
   redo: () => void
-  reset: () => void
+  /** Clear every step (and the redo list); returns what was cleared so it can be restored. */
+  reset: () => StoredScenario
+  /** Put back a scenario that `reset` cleared. */
+  restore: (s: StoredScenario) => void
   block: (b: BlockedAttempt) => void
   clearBlocked: () => void
 }
@@ -114,7 +119,13 @@ export function useScenario(fingerprint: string): Scenario {
     redo: () => {
       if (cur.cursor < cur.actions.length) commit({ ...cur, cursor: cur.cursor + 1 })
     },
-    reset: () => commit(empty(fingerprint)),
+    reset: () => {
+      commit(empty(fingerprint))
+      return cur
+    },
+    restore: (s) => {
+      if (s.fingerprint === fingerprint) commit(s)
+    },
     block: (b) => commit({ ...cur, blocked: [b, ...cur.blocked].slice(0, 20) }),
     clearBlocked: () => commit({ ...cur, blocked: [] }),
   }

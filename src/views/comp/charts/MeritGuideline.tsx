@@ -1,7 +1,8 @@
 /**
  * Mean proposed merit by rating as columns, with the guideline for each rating drawn as an ink
  * tick across its column: the reference belongs to the rating, so it is a mark per category
- * rather than a second bar series. The value sits above whichever is higher, bar or tick.
+ * rather than a second bar series. The value sits above whichever is higher, bar or tick. A click
+ * on a column drills into the proposals for that rating.
  */
 import * as Plot from '@observablehq/plot'
 import {
@@ -32,11 +33,14 @@ export function MeritGuideline({
   rows,
   order,
   ariaLabel,
+  onSelect,
 }: {
   rows: readonly MeritByRatingRow[]
   /** Rating labels, low to high. */
   order: readonly string[]
   ariaLabel?: string
+  /** Click-to-drill on a rating's column. */
+  onSelect?: (row: MeritByRatingRow) => void
 }) {
   const theme = useChartTheme()
   const cats = [...rows].sort((a, b) => order.indexOf(a.rating) - order.indexOf(b.rating))
@@ -129,7 +133,7 @@ export function MeritGuideline({
       { value: fmt(c.guideline, 'pct2'), label: 'guideline', color: theme.ink, shape: 'line' },
       { value: pts2(c.mean == null ? null : c.mean - c.guideline), label: 'mean vs guideline', strong: true },
     ],
-    note: `${fmt(c.n, 'int')} proposals`,
+    note: `${fmt(c.n, 'int')} proposals${onSelect && c.members.length ? '. Click to see the records' : ''}`,
   })
 
   return (
@@ -138,6 +142,8 @@ export function MeritGuideline({
       height={HEIGHT}
       legend={legend}
       tip={tip}
+      selectable={(c) => c.members.length > 0}
+      onSelect={onSelect}
       ariaLabel={ariaLabel}
     />
   )

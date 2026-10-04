@@ -2,28 +2,92 @@
  * Scenario diff (the old tool's ScenarioDiffModal, as a sheet): what the scenario changes against
  * the org on the as-of date. Spans, layers, managers gaining their first report or losing their
  * last, new span outliers, people reporting across departments, and moves that were blocked.
+ * Every number opens the people it affects.
  */
 import type { ReactNode } from 'react'
-import { SeverityIcon, StatusPill, spanClass } from '@/components'
+import { SeverityIcon, spanClass } from '@/components'
 import { cx } from '@/components/ui'
+import { Drill, type DrillSource, type DrillSpec } from '@/drill'
 import { DASH, fmt, plural } from '@/lib/format'
-import type { ScenarioDiff } from '../engine'
+import {
+  type DrillScope,
+  type OrgTree,
+  peopleAtLayer,
+  peopleDrill,
+  removedDrill,
+  reportingChangesDrill,
+  type ScenarioDiff,
+  scopeLine,
+  spanChangesDrill,
+} from '../engine'
 import type { BlockedAttempt } from './state'
 
 export function DiffPanel({
   diff,
+  before,
+  after,
+  scope,
   blocked,
   describe,
   onJump,
   onClearBlocked,
 }: {
   diff: ScenarioDiff
+  /** The org today and in the scenario, for the people behind each number. */
+  before: OrgTree
+  after: OrgTree
+  scope: DrillScope
   blocked: readonly BlockedAttempt[]
   describe: (b: BlockedAttempt) => string
   onJump: (id: string) => void
   onClearBlocked: () => void
 }) {
   const empty = !diff.reportingChanges.length && !diff.removed.length
+  const sub = scopeLine(scope)
+  const when = (t: OrgTree) => (t === before ? 'today' : 'in the scenario')
+  const managers = (t: OrgTree) => [...t.people.keys()].filter((id) => (t.directs.get(id) ?? 0) > 0)
+  const managersDrill = (t: OrgTree) => () =>
+    peopleDrill(t, managers(t), {
+      title: `People managers ${when(t)}`,
+      subtitle: sub,
+      columns: ['directs', 'totalOrg'],
+      sortBy: 'directs',
+    })
+  const spanDrill = (t: OrgTree, avg: number | null) => () =>
+    peopleDrill(t, managers(t), {
+      title: `Spans of control ${when(t)}`,
+      subtitle: sub,
+      columns: ['directs'],
+      sortBy: 'directs',
+      note:
+        avg == null
+          ? undefined
+          : `Average span = ${fmt(avg, 'num1')} direct reports across ${plural(managers(t).length, 'manager')}. Direct reports is the measured value.`,
+    })
+  const layersDrill = (t: OrgTree) => () =>
+    peopleDrill(t, [...t.people.keys()], {
+      title: `People by layer ${when(t)}`,
+      subtitle: sub,
+      columns: ['layer', 'directs'],
+      sortBy: 'layer',
+      note: 'Layer 1 is the top of the chart. Deepest first.',
+    })
+  const layerDrill = (t: OrgTree, layer: number) => () =>
+    peopleDrill(t, peopleAtLayer(t, t.rootId, layer), {
+      title: `People in layer ${layer} ${when(t)}`,
+      subtitle: sub,
+      columns: t === before ? ['directs'] : ['manager', 'directs'],
+      managerLabel: 'Manager in the scenario',
+      note: 'Layer 1 is the top of the chart.',
+    })
+  const afterList = (title: string) => (ids: readonly string[]) =>
+    peopleDrill(after, ids, {
+      title,
+      subtitle: sub,
+      columns: ['manager', 'directs', 'totalOrg'],
+      managerLabel: 'Manager in the scenario',
+    })
+
   return (
     <section
       aria-labelledby="org-diff-title"
@@ -33,21 +97,49 @@ export function DiffPanel({
         Scenario compared with today
       </h3>
       <p className="mt-0.5 text-[13px] text-ink-2">
-        What the moves change against the org on the as-of date.
+        What the moves change against the org on the as-of date. Click a number to list the people.
       </p>
 
       <dl className="mt-3 grid grid-cols-2 gap-px overflow-hidden rounded-control bg-rule sm:grid-cols-3">
-        <Tile label="People changing manager" value={fmt(diff.reportingChanges.length, 'int')} />
-        <Tile label="Spans that change" value={fmt(diff.spanChanges.length, 'int')} />
-        <Tile label="Exits" value={fmt(diff.removed.length, 'int')} />
+        <Tile
+          label="People changing manager"
+          value={fmt(diff.reportingChanges.length, 'int')}
+          drill={() => reportingChangesDrill(after, diff.reportingChanges, scope)}
+        />
+        <Tile
+          label="Spans that change"
+          value={fmt(diff.spanChanges.length, 'int')}
+          drill={() => spanChangesDrill(before, after, diff.spanChanges, scope)}
+        />
+        <Tile
+          label="Exits"
+          value={fmt(diff.removed.length, 'int')}
+          drill={() => removedDrill(before, diff.removed, scope)}
+        />
         <Tile
           label="People managers"
           before={diff.managers.before}
           after={diff.managers.after}
           format="int"
+          drillBefore={managersDrill(before)}
+          drillAfter={managersDrill(after)}
         />
-        <Tile label="Average span" before={diff.avgSpan.before} after={diff.avgSpan.after} format="num1" />
-        <Tile label="Layers" before={diff.layers.before} after={diff.layers.after} format="int" />
+        <Tile
+          label="Average span"
+          before={diff.avgSpan.before}
+          after={diff.avgSpan.after}
+          format="num1"
+          drillBefore={spanDrill(before, diff.avgSpan.before)}
+          drillAfter={spanDrill(after, diff.avgSpan.after)}
+        />
+        <Tile
+          label="Layers"
+          before={diff.layers.before}
+          after={diff.layers.after}
+          format="int"
+          drillBefore={layersDrill(before)}
+          drillAfter={layersDrill(after)}
+        />
       </dl>
 
       {empty ? (
@@ -64,12 +156,23 @@ export function DiffPanel({
               text: m.name,
               note: plural(m.directs, 'report'),
             }))}
+            drillOf={afterList('People who gain their first direct report')}
             onJump={onJump}
           />
           <List
             title="No direct reports left"
             empty="No manager loses their whole team."
             items={diff.managersEmptied.map((m) => ({ id: m.id, text: m.name, note: `had ${m.before}` }))}
+            drillOf={(ids) =>
+              peopleDrill(after, ids, {
+                title: 'Managers left with no direct reports',
+                subtitle: sub,
+                more: {
+                  columns: [{ key: 'had', label: 'Direct reports today', format: 'int' }],
+                  values: (e) => ({ had: before.directs.get(e.employeeId) ?? 0 }),
+                },
+              })
+            }
             onJump={onJump}
           />
           <List
@@ -81,6 +184,7 @@ export function DiffPanel({
               text: m.name,
               note: plural(m.directs, 'report'),
             }))}
+            drillOf={afterList('Managers with a new wide span (12+)')}
             onJump={onJump}
           />
           <List
@@ -88,6 +192,7 @@ export function DiffPanel({
             empty="No new spans of 1."
             severity="info"
             items={diff.newSpansOfOne.map((m) => ({ id: m.id, text: m.name }))}
+            drillOf={afterList('Managers with a new span of 1')}
             onJump={onJump}
           />
           <List
@@ -98,6 +203,15 @@ export function DiffPanel({
               text: c.name,
               note: `${c.department} → ${c.managerDepartment}`,
             }))}
+            drillOf={(ids) => {
+              const pick = new Set(ids)
+              return reportingChangesDrill(
+                after,
+                diff.reportingChanges.filter((r) => pick.has(r.id)),
+                scope,
+                'People reporting to a manager in another department',
+              )
+            }}
             onJump={onJump}
           />
           <div>
@@ -122,14 +236,16 @@ export function DiffPanel({
                     <th scope="row" className="py-0.5 text-left font-normal text-muted">
                       Layer {l.layer}
                     </th>
-                    <td className="tnum py-0.5 text-right text-ink-2">{fmt(l.before, 'int')}</td>
+                    <td className="tnum py-0.5 text-right text-ink-2">
+                      <Count n={l.before} drill={layerDrill(before, l.layer)} />
+                    </td>
                     <td
                       className={cx(
                         'tnum py-0.5 pl-3 text-right',
                         l.after !== l.before ? 'font-semibold text-ink' : 'text-ink-2',
                       )}
                     >
-                      {fmt(l.after, 'int')}
+                      <Count n={l.after} drill={layerDrill(after, l.layer)} />
                     </td>
                   </tr>
                 ))}
@@ -168,33 +284,51 @@ export function DiffPanel({
   )
 }
 
+/** A count that opens its people; zero stays plain. */
+function Count({ n, drill }: { n: number; drill: DrillSource }) {
+  const text = fmt(n, 'int')
+  return n > 0 ? <Drill spec={drill}>{text}</Drill> : text
+}
+
 function Tile({
   label,
   value,
   before,
   after,
   format,
+  drill,
+  drillBefore,
+  drillAfter,
 }: {
   label: string
   value?: string
   before?: number | null
   after?: number | null
   format?: 'int' | 'num1'
+  drill?: DrillSource
+  drillBefore?: DrillSource
+  drillAfter?: DrillSource
 }) {
-  const changed = before !== undefined && before !== after
+  const link = (text: string, src: DrillSource) =>
+    src && text !== DASH && text !== '0' ? <Drill spec={src}>{text}</Drill> : text
+  const b = fmt(before, format)
+  const a = fmt(after, format)
+  // Compare what is shown, so "5.9 → 5.9" never appears when only hidden decimals moved.
+  const changed = before !== undefined && b !== a
   return (
     <div className="bg-sheet px-3 py-2">
       <dt className="text-[11px] text-muted">{label}</dt>
-      <dd className="cut-head mt-0.5 text-[18px] font-semibold text-ink">
-        {value ??
-          (changed ? (
-            <span className="tnum">
-              <span className="text-[14px] font-normal text-muted">{fmt(before, format)} → </span>
-              {fmt(after, format)}
-            </span>
-          ) : (
-            (fmt(after, format) ?? DASH)
-          ))}
+      <dd className="cut-head mt-0.5 text-[20px] font-semibold text-ink">
+        {value !== undefined ? (
+          link(value, drill)
+        ) : changed ? (
+          <span className="tnum">
+            <span className="text-[14px] font-normal text-muted">{link(b, drillBefore)} → </span>
+            {link(a, drillAfter)}
+          </span>
+        ) : (
+          link(a, drillAfter)
+        )}
       </dd>
     </div>
   )
@@ -205,14 +339,18 @@ function List({
   items,
   empty,
   severity,
+  drillOf,
   onJump,
 }: {
   title: string
   items: { id: string; text: string; note?: string }[]
   empty: string
   severity?: 'warning' | 'info'
+  /** The people behind some of the list (all of it, or the ones not named). */
+  drillOf: (ids: readonly string[]) => DrillSpec | null
   onJump: (id: string) => void
 }) {
+  const ids = items.map((it) => it.id)
   let body: ReactNode
   if (!items.length) body = <p className="text-[12px] text-muted">{empty}</p>
   else
@@ -230,15 +368,24 @@ function List({
             {it.note && <span className="shrink-0 text-[12px] text-muted">{it.note}</span>}
           </li>
         ))}
-        {items.length > 6 && <li className="text-[12px] text-muted">and {items.length - 6} more</li>}
+        {items.length > 6 && (
+          <li className="text-[12px] text-muted">
+            and <Drill spec={() => drillOf(ids.slice(6))}>{fmt(items.length - 6, 'int')} more</Drill>
+          </li>
+        )}
       </ul>
     )
   return (
     <div>
       <h4 className="eyebrow mb-1.5 flex items-center gap-1.5">
         {title}
-        {severity && items.length > 0 && (
-          <StatusPill severity={severity} label={String(items.length)} quiet />
+        {items.length > 0 && (
+          <>
+            {severity && <SeverityIcon severity={severity} className="size-3.5" />}
+            <Drill spec={() => drillOf(ids)} label={`Show the ${items.length} people: ${title}`}>
+              {fmt(items.length, 'int')}
+            </Drill>
+          </>
         )}
       </h4>
       {body}

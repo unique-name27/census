@@ -28,6 +28,12 @@ export interface Column<T = any> {
    * the drill panel. Return null for cells with nothing behind them. Not used by exports.
    */
   drill?: { bivarianceHack(row: T): DrillSource }['bivarianceHack']
+  /**
+   * A link for the cell (e.g. the record in its source system): the table shows the value as a
+   * link that opens in a new tab. Return null for no link; when it gives one it wins over
+   * `drill` for that cell. Only web, mail and same-site links render. Exports keep the plain value.
+   */
+  href?: { bivarianceHack(row: T): string | null }['bivarianceHack']
 }
 
 /** A row of the "datasheet" popover that defines a metric. */

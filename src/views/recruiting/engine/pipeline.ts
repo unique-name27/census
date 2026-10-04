@@ -26,6 +26,8 @@ export interface PipelineCell {
   /** Of these, lacking a timely next step. */
   lacking: number
   medianDaysWaiting: number | null
+  /** The candidates in this segment (what a click on it lists). */
+  items: ActiveItem[]
 }
 
 export interface PipelineStage {
@@ -35,6 +37,8 @@ export interface PipelineStage {
   lacking: number
   medianDaysInStage: number | null
   cells: PipelineCell[]
+  /** Every active candidate at this stage. */
+  items: ActiveItem[]
 }
 
 export function pipelineToday(actives: readonly ActiveItem[]): PipelineStage[] {
@@ -54,6 +58,7 @@ export function pipelineToday(actives: readonly ActiveItem[]): PipelineStage[] {
         candidates: list.length,
         lacking: list.filter((x) => x.tier).length,
         medianDaysWaiting: median(list.map((x) => x.days)),
+        items: list,
       })
     }
     out.push({
@@ -63,6 +68,7 @@ export function pipelineToday(actives: readonly ActiveItem[]): PipelineStage[] {
       lacking: here.filter((x) => x.tier).length,
       medianDaysInStage: median(here.map((x) => x.daysInStage)),
       cells,
+      items: here,
     })
   }
   return out
@@ -90,6 +96,8 @@ export interface QueueRow {
   tier: string
   nextStep: string
   severity: Severity | null
+  /** The queue item behind the row (for the drill panel; not exported). */
+  item: ActiveItem
 }
 
 export interface QueueGroup {
@@ -139,6 +147,7 @@ export function queueRows(groups: readonly QueueGroup[]): QueueRow[] {
       tier: x.tier ? TIER_WORD[x.tier] : '',
       nextStep: x.nextStep,
       severity: tierSeverity(x.tier),
+      item: x,
     })),
   )
 }
@@ -151,6 +160,8 @@ export interface WaitDot {
   state: string
   tier: string
   tone: 'default' | 'deemph' | 'warning' | 'critical'
+  /** The active candidate behind the dot (for the drill panel; not exported). */
+  item: ActiveItem
 }
 
 export function waitingDots(actives: readonly ActiveItem[]): WaitDot[] {
@@ -169,5 +180,6 @@ export function waitingDots(actives: readonly ActiveItem[]): WaitDot[] {
           : x.state === 'scheduled'
             ? 'deemph'
             : 'default',
+    item: x,
   }))
 }

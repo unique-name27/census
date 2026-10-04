@@ -1,29 +1,35 @@
 /**
  * Chart tab: key figures, the org chart (search, levels, color key, open roles, flags, pan and zoom,
- * detail panel, slides) and the table of flagged people.
+ * detail panel, slides) and the table of flagged people. Every number opens the records behind it:
+ * the tiles, the cards' "6 direct · 41 org", the table cells and the detail panel's team figures.
  */
-import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
-import { Figure } from '@/charts'
+import { useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { DataTable, Figure } from '@/charts'
 import type { Kpi } from '@/components'
 import { Button, Grid, IconSlides, KpiStrip, Switch, toast } from '@/components'
 import { useAnalytics } from '@/data/context'
+import type { Employee } from '@/data/schema'
 import { useCensus } from '@/data/store'
+import type { DrillSpec } from '@/drill'
 import { formatDate } from '@/lib/dates'
 import { fmt, plural } from '@/lib/format'
-import { median } from '@/lib/stats'
 import {
   COMPANY_ROOT,
   canExpand,
   colorScheme,
+  type DrillScope,
   defaultSlideLeaders,
+  directsDrill,
   entryPoints,
-  FLAG_COLUMNS,
+  exportCut,
   flagRows,
   isWithin,
-  layersBelow,
+  keyFigureDrills,
   layoutTree,
-  PERSON_COLUMNS,
+  orgDrill,
+  orgKeyFigures,
   STRUCTURAL,
+  scopeLabel,
   shownRows,
   subtreeOf,
   visibleIds,
@@ -38,10 +44,16 @@ import { ExportSvg } from './ExportSvg'
 import { PersonSearch } from './PersonSearch'
 import { SlidesDialog } from './SlidesDialog'
 import { useChartPrefs } from './state'
+import { flagColumns, personColumns, TableToggle } from './tables'
 import { useExpansion } from './useExpansion'
 import { CHART_DEFINITIONS, useOrgModel } from './useOrgModel'
 
 const FLAG_KINDS = new Set([...STRUCTURAL, 'placement'])
+
+const isPerson = (e: Employee | undefined): e is Employee => !!e
+
+/** Under the lg breakpoint the detail panel sits below the chart. */
+const panelBelow = () => typeof window !== 'undefined' && !window.matchMedia('(min-width: 1024px)').matches
 
 export function ChartTab() {
   const ctx = useAnalytics()
@@ -62,6 +74,7 @@ export function ChartTab() {
   const [slidesOpen, setSlidesOpen] = useState(false)
   const [slideLeaders, setSlideLeaders] = useState<string[]>([])
   const [pendingJump, setPendingJump] = useState<string | null>(null)
+  const [showTable, setShowTable] = useState(false)
 
   // When the dimming filters change, bring the largest matching group into view.
   // biome-ignore lint/correctness/useExhaustiveDependencies: runs when the filter key changes
@@ -71,26 +84,83 @@ export function ChartTab() {
     if (first) setCenterReq((r) => ({ id: first, n: (r?.n ?? 0) + 1 }))
   }, [dimKey])
   const chartRef = useRef<HTMLDivElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
 
   const reqs = prefs.showReqs ? model.reqs : undefined
   const orgIds = useMemo(() => subtreeOf(tree, rootId), [tree, rootId])
+  // Color slots come from the whole roster, so a department keeps its color in any focus.
+  const allPeople = useMemo(() => [...tree.people.values()], [tree])
   const scheme = useMemo(
-    () => colorScheme(prefs.colorBy, orgIds.map((id) => tree.people.get(id)!).filter(Boolean), ctx.asOf),
-    [prefs.colorBy, orgIds, tree, ctx.asOf],
+    () =>
+      colorScheme(
+        prefs.colorBy,
+        allPeople,
+        ctx.asOf,
+        orgIds.map((id) => tree.people.get(id)).filter(isPerson),
+      ),
+    [prefs.colorBy, allPeople, orgIds, tree, ctx.asOf],
   )
   const vtree = useMemo(
     () => visibleTree(tree, rootId, expanded.ids, { reqs }),
     [tree, rootId, expanded.ids, reqs],
   )
   const layout = useMemo(() => layoutTree(vtree), [vtree])
+  // The image export keeps to a readable number of cards: the top levels of a bigger chart.
+  const exportImage = useMemo(() => {
+    const cut = exportCut(tree, rootId, expanded.ids, { vtree, layout }, reqs)
+    return {
+      layout: cut.layout,
+      caption:
+        cut.depth == null
+          ? null
+          : `Top ${cut.depth + 1} levels of the chart. Use Org slides for each leader's team.`,
+    }
+  }, [tree, rootId, expanded.ids, vtree, layout, reqs])
   // The export mirror catches up after the chart paints.
-  const exportLayout = useDeferredValue(layout)
-  const shownIds = visibleIds(vtree)
-  const rows = useMemo(() => shownRows(tree, shownIds, flags), [tree, shownIds, flags])
-  const flagTable = useMemo(() => flagRows(tree, orgIds, flags, FLAG_KINDS), [tree, orgIds, flags])
+  const exportView = useDeferredValue(exportImage)
+  const rows = useMemo(() => shownRows(tree, visibleIds(vtree), flags), [tree, vtree, flags])
+  const matcher = model.dims ? model.matches : null
+  const key = useMemo(() => orgKeyFigures(model, rootId, matcher), [model, rootId, matcher])
+  const scopeIds = key.people
+  const flagTable = useMemo(
+    () => flagRows(tree, model.dims ? scopeIds : orgIds, flags, FLAG_KINDS),
+    [tree, model.dims, scopeIds, orgIds, flags],
+  )
 
-  const jump = (id: string) => {
-    if (!tree.people.has(id)) return
+  const rootName = rootId === COMPANY_ROOT ? 'Whole company' : (tree.people.get(rootId)?.name ?? '')
+  const scope: DrillScope = { label: scopeLabel(tree, rootId), asOf: ctx.asOf, filtered: model.dims }
+  /** Scope for one person's numbers (cards, rows, detail panel): the chart, not the filters. */
+  const chartScope: DrillScope = { label: 'Org chart', asOf: ctx.asOf }
+  const countDrill = (id: string, which: 'directs' | 'org') =>
+    which === 'directs' ? directsDrill(tree, id, chartScope) : orgDrill(tree, id, chartScope)
+
+  // On narrow screens the panel sits below the chart: bring it into view once it shows the card
+  // the reader just picked on the chart.
+  const revealPanel = useRef(false)
+  const select = (id: string | null) => {
+    setSelectedId(id)
+    revealPanel.current = !!id && panelBelow()
+  }
+  useEffect(() => {
+    if (!revealPanel.current || !selectedId) return
+    revealPanel.current = false
+    panelRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+  }, [selectedId])
+
+  const jump = (id: string, opts: { scroll?: boolean } = {}) => {
+    if (!tree.people.has(id)) {
+      const e = ctx.org.byId.get(id)
+      if (!e) return
+      const left = !!e.terminationDate && e.terminationDate <= ctx.asOf
+      toast(`${e.name} is not on the chart`, {
+        description: left
+          ? `They left on ${formatDate(e.terminationDate)}. The chart shows people active on ${formatDate(ctx.asOf)}.`
+          : e.hireDate > ctx.asOf
+            ? `They start on ${formatDate(e.hireDate)}. The chart shows people active on ${formatDate(ctx.asOf)}.`
+            : `The chart shows people active on ${formatDate(ctx.asOf)}.`,
+      })
+      return
+    }
     if (!isWithin(tree, id, model.rootId)) {
       const leader = tree.people.get(model.rootId)?.name ?? 'the selected leader'
       toast(`${tree.people.get(id)!.name} is outside ${leader}'s org`, {
@@ -111,9 +181,16 @@ export function ChartTab() {
       root = model.rootId
     }
     expanded.reveal(id, { root })
+    setShowTable(false)
     setSelectedId(id)
     setCenterReq((r) => ({ id, n: (r?.n ?? 0) + 1 }))
+    if (opts.scroll) chartRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
   }
+  // Window events and timers call the latest jump (the tree, root and expansion change).
+  const jumpRef = useRef(jump)
+  useLayoutEffect(() => {
+    jumpRef.current = jump
+  })
 
   // After "Show whole company" widens the filter, finish the jump on the new model.
   // biome-ignore lint/correctness/useExhaustiveDependencies: runs once per model change for a pending jump
@@ -124,14 +201,14 @@ export function ChartTab() {
     jump(id)
   }, [model])
 
-  // Jumps requested from other views (openInOrgChart).
-  // biome-ignore lint/correctness/useExhaustiveDependencies: on mount, plus a window event while open
+  // Jumps requested from other views and from person cards (openInOrgChart): one pending on
+  // mount, plus a window event while this tab is open.
   useEffect(() => {
     const pending = takeOrgJump()
-    if (pending) jump(pending)
+    if (pending) jumpRef.current(pending, { scroll: true })
     const onJump = (ev: Event) => {
       const id = (ev as CustomEvent<string>).detail
-      if (typeof id === 'string' && takeOrgJump() === id) jump(id)
+      if (typeof id === 'string' && takeOrgJump() === id) jumpRef.current(id, { scroll: true })
     }
     window.addEventListener(ORG_JUMP_EVENT, onJump)
     return () => window.removeEventListener(ORG_JUMP_EVENT, onJump)
@@ -149,51 +226,69 @@ export function ChartTab() {
 
   if (!tree.people.size) return null
 
-  // Key figures for the org on screen.
+  // Key figures for the org on screen (only the people matching the filters when they are on).
   const people = orgIds.length
-  const spans = orgIds.map((id) => tree.directs.get(id) ?? 0).filter((n) => n > 0)
-  const openRoles = orgIds.reduce((s, id) => s + (model.reqs.get(id)?.length ?? 0), 0)
-  const structural = flagTable.filter((r) => STRUCTURAL.has(r.kind))
+  const kd = () => keyFigureDrills(tree, rootId, key, scope, flags, model.reqRecords)
+  /** A zero has nothing behind it: no drill, so no underline that opens nothing. */
+  const when = (n: number, src: () => DrillSpec | null) => (n > 0 ? src : undefined)
   const kpis: Kpi[] = [
     {
       id: 'org-people',
-      label: 'People in this org',
-      value: people,
+      label: model.dims ? 'People matching' : 'People in this org',
+      value: key.people.length,
       format: 'int',
-      note: 'Every worker type',
+      note: model.dims
+        ? 'Matching the filters · every worker type'
+        : 'Including the leader · every worker type',
+      drill: when(key.people.length, () => kd().people),
     },
-    { id: 'org-managers', label: 'People managers', value: spans.length, format: 'int' },
+    {
+      id: 'org-managers',
+      label: 'People managers',
+      value: key.managers.length,
+      format: 'int',
+      drill: when(key.managers.length, () => kd().managers),
+    },
     {
       id: 'org-span',
       label: 'Median span',
-      value: median(spans),
+      value: key.medianSpan,
       format: 'num1',
       note: 'Direct reports per manager',
       definition: 'Median number of direct reports among people with at least one, all worker types.',
+      drill: when(key.managers.length, () => kd().medianSpan),
     },
     {
       id: 'org-layers',
       label: 'Layers',
-      value: layersBelow(tree, rootId),
+      value: key.layers,
       format: 'int',
       definition: 'Levels from the top of this org to its deepest report, counting the top as 1.',
+      drill: when(key.layers, () => kd().layers),
     },
-    { id: 'org-open-roles', label: 'Open roles', value: openRoles, format: 'int', note: 'Open requisitions' },
+    {
+      id: 'org-open-roles',
+      label: 'Open roles',
+      value: key.openReqIds.length,
+      format: 'int',
+      note: 'Open requisitions',
+      drill: when(key.openReqIds.length, () => kd().openRoles),
+    },
     {
       id: 'org-flags',
       label: 'Structure flags',
-      value: new Set(structural.map((r) => r.employeeId)).size,
+      value: key.flagged.length,
       format: 'int',
-      note: 'People with a span or chain flag',
+      note: 'People with a span, chain or new-manager flag',
+      drill: when(key.flagged.length, () => kd().flagged),
     },
   ]
 
-  const rootName = rootId === COMPANY_ROOT ? 'Whole company' : (tree.people.get(rootId)?.name ?? '')
   const title = rootId === tree.rootId ? 'Org chart' : `Org chart: ${rootName}`
-  const matching = model.dims ? orgIds.filter((id) => model.matches(id)).length : people
   const dimNote = model.dims
-    ? ` ${plural(matching, 'person matches', 'people match')} the filters; everyone else is dimmed so reporting lines stay readable.`
+    ? ` ${plural(key.people.length, 'person matches', 'people match')} the filters; everyone else is dimmed so reporting lines stay readable.`
     : ''
+  const flaggedPeople = new Set(flagTable.filter((r) => STRUCTURAL.has(r.kind)).map((r) => r.employeeId)).size
 
   return (
     <div className="space-y-4">
@@ -204,89 +299,114 @@ export function ChartTab() {
           title={title}
           subtitle={`Reporting lines on ${formatDate(ctx.asOf)}, everyone active including contractors and interns`}
           data={rows}
-          columns={PERSON_COLUMNS}
+          columns={personColumns(tree, chartScope)}
           definitions={CHART_DEFINITIONS}
-          note={`${plural(rows.length, 'person', 'people')} shown of ${fmt(people, 'int')} in this org.${dimNote} Drag to pan. Click the chart and scroll, or pinch, to zoom. Arrow keys move between people.`}
+          note={`${plural(rows.length, 'person', 'people')} shown of ${fmt(people, 'int')} in this org.${dimNote} Drag to pan, or click the chart and scroll. Ctrl and scroll, or pinch, to zoom. Arrow keys move through the tree. Click a count on a card to list those people.`}
+          tableToggle={false}
           actions={
-            <Button size="sm" icon={<IconSlides />} onClick={() => openSlides()}>
-              Org slides
-            </Button>
+            <>
+              <Button size="sm" icon={<IconSlides />} onClick={() => openSlides()}>
+                Org slides
+              </Button>
+              <TableToggle showTable={showTable} onChange={setShowTable} />
+            </>
           }
-          table={{ maxRows: 15, search: 'Search people', onRowClick: (r) => jump(r.employeeId) }}
         >
           <div ref={chartRef} className="relative scroll-mt-4">
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-              <PersonSearch
-                people={tree.people}
-                orgSize={(id) => tree.total.get(id) ?? 0}
-                onPick={jump}
-                slashKey
-                className="w-full sm:w-64"
-                placeholder="Find a person"
+            {showTable && (
+              <DataTable
+                columns={personColumns(tree, chartScope)}
+                rows={rows}
+                caption={title}
+                maxRows={15}
+                search="Search people"
+                onRowClick={(r) => jump(r.employeeId)}
               />
-              <LevelsControl value={expanded.preset} onChange={expanded.setLevels} />
-              <ColorControl value={prefs.colorBy} onChange={(c) => setPrefs({ colorBy: c })} />
-              <Switch
-                checked={prefs.showReqs}
-                onChange={(v) => setPrefs({ showReqs: v })}
-                label="Open roles"
-              />
-              <Switch checked={prefs.showFlags} onChange={(v) => setPrefs({ showFlags: v })} label="Flags" />
-            </div>
-            <div className="mt-2.5 flex flex-wrap items-start gap-x-6 gap-y-2">
-              <RootTrail
-                tree={tree}
-                rootId={rootId}
-                globalRootId={model.rootId}
-                onFocus={(id) => focus(id)}
-                onWiden={(id) => {
-                  setFocusId(null)
-                  setFilters({ leaderId: id })
-                }}
-              />
-              <ColorLegend scheme={scheme} className="ml-auto" />
-            </div>
+            )}
+            <div hidden={showTable}>
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+                <PersonSearch
+                  people={tree.people}
+                  orgSize={(id) => tree.total.get(id) ?? 0}
+                  onPick={jump}
+                  slashKey
+                  className="w-full sm:w-64"
+                  placeholder="Find a person"
+                />
+                <LevelsControl value={expanded.preset} onChange={expanded.setLevels} />
+                <ColorControl value={prefs.colorBy} onChange={(c) => setPrefs({ colorBy: c })} />
+                <Switch
+                  checked={prefs.showReqs}
+                  onChange={(v) => setPrefs({ showReqs: v })}
+                  label="Open roles"
+                />
+                <Switch
+                  checked={prefs.showFlags}
+                  onChange={(v) => setPrefs({ showFlags: v })}
+                  label="Flags"
+                />
+              </div>
+              <div className="mt-2.5 flex flex-wrap items-start gap-x-6 gap-y-2">
+                <RootTrail
+                  tree={tree}
+                  rootId={rootId}
+                  globalRootId={model.rootId}
+                  onFocus={(id) => focus(id)}
+                  onWiden={(id) => {
+                    setFocusId(null)
+                    setFilters({ leaderId: id })
+                  }}
+                />
+                <ColorLegend scheme={scheme} className="ml-auto" />
+              </div>
 
-            <div className="mt-3 flex flex-col gap-3 lg:flex-row">
-              <Canvas
-                tree={tree}
-                layout={layout}
-                rootId={rootId}
-                expanded={expanded.ids}
-                canOpen={(id) => canExpand(tree, id, reqs)}
-                onToggle={expanded.toggle}
-                selectedId={selected}
-                onSelect={setSelectedId}
-                flags={flags}
-                showFlags={prefs.showFlags}
-                scheme={scheme}
-                matches={model.matches}
-                reqByCardId={model.reqByCardId}
-                centerRequest={centerReq}
-                placeKey={String(expanded.levelsPicked)}
-                label={`Org chart for ${rootName}`}
-                className="h-[60vh] min-h-[360px] min-w-0 flex-1 lg:h-[min(74vh,780px)]"
-              />
-              {selected && (
-                <div className="flex max-h-[70vh] min-h-0 shrink-0 flex-col rounded-control shadow-[0_0_0_1px_var(--rule)] lg:max-h-[min(74vh,780px)] lg:w-[320px]">
-                  <DetailPanel
-                    model={model}
-                    tree={tree}
-                    id={selected}
-                    employees={ctx.all.employees}
-                    mode="chart"
-                    onClose={() => setSelectedId(null)}
-                    onJump={jump}
-                    onFocus={(id) => focus(id)}
-                    onExit={setExitId}
-                    onSlides={(id) => openSlides(id)}
-                  />
-                </div>
-              )}
+              <div className="mt-3 flex flex-col gap-3 lg:flex-row">
+                <Canvas
+                  tree={tree}
+                  layout={layout}
+                  rootId={rootId}
+                  expanded={expanded.ids}
+                  canOpen={(id) => canExpand(tree, id, reqs)}
+                  onToggle={expanded.toggle}
+                  selectedId={selected}
+                  onSelect={select}
+                  flags={flags}
+                  showFlags={prefs.showFlags}
+                  scheme={scheme}
+                  matches={model.matches}
+                  reqByCardId={model.reqByCardId}
+                  centerRequest={centerReq}
+                  placeKey={String(expanded.levelsPicked)}
+                  countDrill={countDrill}
+                  label={`Org chart for ${rootName}`}
+                  className="h-[60vh] min-h-[360px] min-w-0 flex-1 lg:h-[min(74vh,780px)]"
+                />
+                {selected && (
+                  <div
+                    ref={panelRef}
+                    className="flex max-h-[70vh] min-h-0 shrink-0 scroll-mt-4 flex-col rounded-control shadow-[0_0_0_1px_var(--rule)] lg:max-h-[min(74vh,780px)] lg:w-[320px]"
+                  >
+                    <DetailPanel
+                      model={model}
+                      tree={tree}
+                      id={selected}
+                      employees={ctx.all.employees}
+                      mode="chart"
+                      scope={chartScope}
+                      onClose={() => setSelectedId(null)}
+                      onJump={jump}
+                      onFocus={(id) => focus(id)}
+                      onExit={setExitId}
+                      onSlides={(id) => openSlides(id)}
+                    />
+                  </div>
+                )}
+              </div>
             </div>
             <ExportSvg
               tree={tree}
-              layout={exportLayout}
+              layout={exportView.layout}
+              caption={exportView.caption}
               scheme={scheme}
               matches={model.matches}
               flags={flags}
@@ -300,24 +420,25 @@ export function ChartTab() {
         <Figure
           id="org-flags"
           title="Flags in this org"
-          subtitle="Span outliers, single-report chains, new managers with large teams, and people shown away from their data manager"
+          subtitle={`Span outliers, single-report chains, new managers with large teams, and people shown away from their data manager${model.dims ? ', among people matching the filters' : ''}`}
           data={flagTable}
-          columns={FLAG_COLUMNS}
+          columns={flagColumns(tree, model.dims ? scopeIds : orgIds, flags, scope)}
           tableOnly
           empty={flagTable.length ? null : 'No flags in this org.'}
           table={{
             maxRows: 12,
             search: 'Search flags',
-            onRowClick: (r) => {
-              jump(r.employeeId)
-              chartRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-            },
+            onRowClick: (r) => jump(r.employeeId, { scroll: true }),
           }}
-          note={`${plural(new Set(structural.map((r) => r.employeeId)).size, 'person', 'people')} with a structure flag. Click a row to find the person on the chart.`}
+          note={
+            flagTable.length
+              ? `${plural(flaggedPeople, 'person', 'people')} with a structure flag. Click a row to find the person on the chart, or a count to list the people.`
+              : undefined
+          }
         />
       </Grid>
 
-      <ExitDialog model={model} tree={tree} id={exitId} onClose={() => setExitId(null)} />
+      <ExitDialog model={model} tree={tree} id={exitId} scope={chartScope} onClose={() => setExitId(null)} />
       <SlidesDialog
         open={slidesOpen}
         onOpenChange={setSlidesOpen}

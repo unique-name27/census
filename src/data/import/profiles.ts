@@ -4,9 +4,15 @@
  * same system maps itself next time. Learned synonyms remember single header picks across
  * layouts. Everything stays in this browser; storage failures are ignored.
  */
-import { del as idbDel, get as idbGet, set as idbSet } from 'idb-keyval'
+import {
+  del as idbDel,
+  delMany as idbDelMany,
+  get as idbGet,
+  keys as idbKeys,
+  set as idbSet,
+} from 'idb-keyval'
 import { fnv } from '@/lib/stats'
-import type { DatasetDef, DatasetKey } from '../schema'
+import { DATASET_KEYS, type DatasetDef, type DatasetKey } from '../schema'
 import { normalizeHeader } from './text'
 import type { ApplyOptions, DateOrder, HourlyConversion, Mapping } from './types'
 
@@ -30,7 +36,8 @@ export function headerFingerprint(headers: readonly string[]): string {
   return fnv(norm.join('|')).toString(16).padStart(8, '0')
 }
 
-const profileKey = (dataset: DatasetKey, fp: string) => `census:profile:${dataset}:${fp}`
+const PROFILE_PREFIX = 'census:profile:'
+const profileKey = (dataset: DatasetKey, fp: string) => `${PROFILE_PREFIX}${dataset}:${fp}`
 const synonymsKey = (dataset: DatasetKey) => `census:synonyms:${dataset}`
 
 /** Capture the current mapping and options as a profile for this header layout. */
@@ -140,6 +147,23 @@ export async function deleteProfile(dataset: DatasetKey, fingerprint: string): P
     await idbDel(profileKey(dataset, fingerprint))
   } catch {
     /* nothing stored */
+  }
+}
+
+/**
+ * Forget every remembered mapping: the saved profile of each file layout and, unless
+ * `{ synonyms: false }`, the single header picks learned for each dataset. Resolves to the number
+ * of profiles removed (0 when storage is unavailable).
+ */
+export async function forgetAllProfiles(opts: { synonyms?: boolean } = {}): Promise<number> {
+  if (opts.synonyms !== false) for (const k of DATASET_KEYS) forgetLearnedSynonyms(k)
+  try {
+    const stored = await idbKeys()
+    const ours = stored.filter((k) => typeof k === 'string' && k.startsWith(PROFILE_PREFIX))
+    if (ours.length) await idbDelMany(ours)
+    return ours.length
+  } catch {
+    return 0
   }
 }
 

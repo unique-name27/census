@@ -41,6 +41,21 @@ export function toast(message: string, opts: ToastOptions = {}): string {
   return id
 }
 
+/**
+ * Change a toast in place (e.g. progress through a long export, then the result). Without a
+ * `timeout` the toast keeps its current one; pass 0 to keep it open.
+ */
+export function updateToast(id: string, message: string, opts: Omit<ToastOptions, 'action'> = {}): void {
+  const tone = opts.tone ?? 'neutral'
+  manager.update(id, {
+    title: message,
+    description: opts.description,
+    type: tone,
+    priority: tone === 'critical' ? 'high' : 'low',
+    ...(opts.timeout !== undefined && { timeout: opts.timeout }),
+  })
+}
+
 export function dismissToast(id?: string): void {
   manager.close(id)
 }

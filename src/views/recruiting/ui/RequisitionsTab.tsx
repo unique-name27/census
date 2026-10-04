@@ -1,14 +1,33 @@
 /**
  * Requisitions: every open req with its pipeline and health, how old the open reqs are, how long
- * reqs take to fill by department, monthly volume, and recruiter load.
+ * reqs take to fill by department, monthly volume, and recruiter load. Every number opens the
+ * requisitions or candidates behind it.
  */
-import { BarList, Columns, Figure, Histogram } from '@/charts'
+import { BarList, type Column, Columns, Figure, Histogram } from '@/charts'
 import { Section } from '@/components'
+import { drill } from '@/drill'
 import { daysBetween, formatDate } from '@/lib/dates'
 import { fmt, plural } from '@/lib/format'
 import { median } from '@/lib/stats'
-import { EMPTY_FUNNEL_DAYS, LOAD_FLAG_RATIO, NOT_CHECKED, type RecruiterRow } from '../engine/reqs'
-import { asOfNote, NEED_REQS, NoRecruitingData, TABLET_FULL, windowText } from './common'
+import {
+  ageBinDrill,
+  type RecruiterMeasure,
+  type ReqRowMeasure,
+  recruiterDrill,
+  reqMonthDrill,
+  reqRowDrill,
+  ttfGroupDrill,
+} from '../engine/drills'
+import {
+  EMPTY_FUNNEL_DAYS,
+  LOAD_FLAG_RATIO,
+  type MonthReqRow,
+  NOT_CHECKED,
+  type OpenReqRow,
+  type RecruiterRow,
+  type TtfRow,
+} from '../engine/reqs'
+import { asOfNote, drillIf, NEED_REQS, NoRecruitingData, TABLET_FULL, windowText } from './common'
 import { useRecruiting } from './hooks'
 
 /** Open req age bins: equal 15-day steps so bar heights compare. */
@@ -31,6 +50,40 @@ export function RequisitionsTab() {
   const medianAge = median(m.openAges)
   const flagged = m.recruiters.filter((r) => r.flagged).length
 
+  // Drills: a req row's own numbers, its candidates per stage, months, groups and recruiters.
+  const rowDrill = (measure: ReqRowMeasure, n: (r: OpenReqRow) => number) => (r: OpenReqRow) =>
+    drillIf(n(r), () => reqRowDrill(b, r, measure))
+  const oneReq = rowDrill('req', () => 1)
+  const byMonth = new Map<string, { opened: MonthReqRow | null; filled: MonthReqRow | null }>()
+  for (const r of m.openedFilled) {
+    const e = byMonth.get(r.month) ?? { opened: null, filled: null }
+    if (r.series === 'Opened') e.opened = r
+    else e.filled = r
+    byMonth.set(r.month, e)
+  }
+  const monthDrill = (r: MonthReqRow, series?: 'Opened' | 'Filled') => {
+    const e = byMonth.get(r.month)
+    const opened = e?.opened?.list ?? []
+    const filled = e?.filled?.list ?? []
+    const n =
+      series === 'Opened'
+        ? opened.length
+        : series === 'Filled'
+          ? filled.length
+          : opened.length + filled.length
+    return drillIf(n, () => reqMonthDrill(b, r.month, opened, filled, series))
+  }
+  const deptDrill = (d: TtfRow) => drillIf(d.filled.length, () => ttfGroupDrill(b, d))
+  const recDrill = (measure: RecruiterMeasure, n: (r: RecruiterRow) => number | null) => (r: RecruiterRow) =>
+    drillIf(n(r), () => recruiterDrill(b, r, measure))
+  const ageRows = rows.map((r) => ({
+    reqId: r.reqId,
+    title: r.title,
+    department: r.department,
+    daysOpen: r.daysOpen,
+    row: r,
+  }))
+
   return (
     <>
       <Section
@@ -42,23 +95,39 @@ export function RequisitionsTab() {
           title="Open requisitions"
           subtitle={`Reqs open on ${formatDate(b.asOf)}, with active candidates per stage and health`}
           data={rows}
-          columns={[
-            { key: 'reqId', label: 'Req', width: 12 },
-            { key: 'title', label: 'Job title' },
-            { key: 'health', label: 'Health' },
-            { key: 'daysOpen', label: 'Days open', format: 'int' },
-            { key: 'priority', label: 'Priority' },
-            { key: 'department', label: 'Department' },
-            { key: 'location', label: 'Location' },
-            { key: 'level', label: 'Level' },
-            { key: 'hiringManager', label: 'Hiring manager' },
-            { key: 'recruiter', label: 'Recruiter' },
-            { key: 'applied', label: 'Applied', format: 'int' },
-            { key: 'screen', label: 'Screen', format: 'int' },
-            { key: 'hiringManagerStage', label: 'HM', format: 'int' },
-            { key: 'onsite', label: 'Onsite', format: 'int' },
-            { key: 'offer', label: 'Offer', format: 'int' },
-          ]}
+          columns={
+            [
+              { key: 'reqId', label: 'Req', width: 12, drill: oneReq },
+              { key: 'title', label: 'Job title' },
+              {
+                key: 'health',
+                label: 'Health',
+                drill: rowDrill('health', (r) => (r.health === 'Empty funnel' ? 1 : r.lacking)),
+              },
+              { key: 'daysOpen', label: 'Days open', format: 'int', drill: oneReq },
+              { key: 'priority', label: 'Priority' },
+              { key: 'department', label: 'Department' },
+              { key: 'location', label: 'Location' },
+              { key: 'level', label: 'Level' },
+              { key: 'hiringManager', label: 'Hiring manager' },
+              { key: 'recruiter', label: 'Recruiter' },
+              {
+                key: 'applied',
+                label: 'Applied',
+                format: 'int',
+                drill: rowDrill('applied', (r) => r.applied),
+              },
+              { key: 'screen', label: 'Screen', format: 'int', drill: rowDrill('screen', (r) => r.screen) },
+              {
+                key: 'hiringManagerStage',
+                label: 'HM',
+                format: 'int',
+                drill: rowDrill('hiringManagerStage', (r) => r.hiringManagerStage),
+              },
+              { key: 'onsite', label: 'Onsite', format: 'int', drill: rowDrill('onsite', (r) => r.onsite) },
+              { key: 'offer', label: 'Offer', format: 'int', drill: rowDrill('offer', (r) => r.offer) },
+            ] satisfies Column<OpenReqRow>[]
+          }
           tableOnly
           span={12}
           table={{ rowTone: (r) => r.severity, search: 'Search reqs, titles or people', maxRows: 15 }}
@@ -98,18 +167,15 @@ export function RequisitionsTab() {
           id="recruiting-open-req-age"
           title="Open req age"
           subtitle={`Days since each open req opened, ${formatDate(b.asOf)}`}
-          data={rows.map((r) => ({
-            reqId: r.reqId,
-            title: r.title,
-            department: r.department,
-            daysOpen: r.daysOpen,
-          }))}
-          columns={[
-            { key: 'reqId', label: 'Req', width: 12 },
-            { key: 'title', label: 'Job title' },
-            { key: 'department', label: 'Department' },
-            { key: 'daysOpen', label: 'Days open', format: 'int' },
-          ]}
+          data={ageRows}
+          columns={
+            [
+              { key: 'reqId', label: 'Req', width: 12, drill: (r) => oneReq(r.row) },
+              { key: 'title', label: 'Job title' },
+              { key: 'department', label: 'Department' },
+              { key: 'daysOpen', label: 'Days open', format: 'int', drill: (r) => oneReq(r.row) },
+            ] satisfies Column<(typeof ageRows)[number]>[]
+          }
           span={5}
           className={TABLET_FULL}
           empty={b.reqs.length ? (rows.length ? null : 'No open reqs on the as-of date.') : NEED_REQS}
@@ -123,11 +189,22 @@ export function RequisitionsTab() {
           note={`${plural(rows.length, 'open req')} · median ${fmt(medianAge, 'days')}${onHoldAges.length ? ` · ${plural(onHoldAges.length, 'req')} on hold, median ${fmt(median(onHoldAges), 'days')} open` : ''}`}
         >
           <Histogram
-            values={m.openAges}
+            data={ageRows}
+            value="daysOpen"
             thresholds={edges}
             format="days"
             unit="reqs"
             refs={medianAge != null ? [{ value: medianAge, label: `Median ${fmt(medianAge, 'days')}` }] : []}
+            onSelect={(bin) =>
+              drill(() =>
+                ageBinDrill(
+                  b,
+                  bin.rows.map((r) => r.row.req),
+                  bin.x0,
+                  bin.x1,
+                ),
+              )
+            }
             ariaLabel="Open req age"
           />
         </Figure>
@@ -136,11 +213,13 @@ export function RequisitionsTab() {
           title="Reqs opened and filled by month"
           subtitle={`Requisitions opened and filled per month, 12 months to ${formatDate(b.window.end)}`}
           data={m.openedFilled}
-          columns={[
-            { key: 'month', label: 'Month' },
-            { key: 'series', label: 'Measure' },
-            { key: 'reqs', label: 'Reqs', format: 'int' },
-          ]}
+          columns={
+            [
+              { key: 'month', label: 'Month' },
+              { key: 'series', label: 'Measure' },
+              { key: 'reqs', label: 'Reqs', format: 'int', drill: (r) => monthDrill(r, r.series) },
+            ] satisfies Column<MonthReqRow>[]
+          }
           span={7}
           empty={b.reqs.length ? null : NEED_REQS}
           definitions={[
@@ -160,6 +239,8 @@ export function RequisitionsTab() {
             seriesOrder={['Opened', 'Filled']}
             xType="month"
             format="int"
+            onSelect={(d) => drill(monthDrill(d))}
+            onSelectSegment={(d) => drill(monthDrill(d, d.series))}
             ariaLabel="Reqs opened and filled by month"
           />
         </Figure>
@@ -174,11 +255,13 @@ export function RequisitionsTab() {
           title="Time to fill by department"
           subtitle={`Median days from opened to offer accepted, reqs filled ${windowText(b.window)}`}
           data={m.ttfByDepartment}
-          columns={[
-            { key: 'group', label: 'Department' },
-            { key: 'days', label: 'Median days to fill', format: 'days' },
-            { key: 'reqs', label: 'Reqs filled', format: 'int' },
-          ]}
+          columns={
+            [
+              { key: 'group', label: 'Department' },
+              { key: 'days', label: 'Median days to fill', format: 'days', drill: deptDrill },
+              { key: 'reqs', label: 'Reqs filled', format: 'int', drill: deptDrill },
+            ] satisfies Column<TtfRow>[]
+          }
           span={5}
           className={TABLET_FULL}
           empty={
@@ -208,6 +291,7 @@ export function RequisitionsTab() {
             ref={m.ttf != null ? { value: m.ttf, label: `All ${fmt(m.ttf, 'days')}` } : undefined}
             tone={(d) => (d.days != null && m.ttf != null && d.days >= 1.5 * m.ttf ? 'warning' : 'default')}
             nullNote="Fewer than 5 reqs filled"
+            onSelect={(d) => drill(deptDrill(d))}
             ariaLabel="Time to fill by department"
           />
         </Figure>
@@ -216,15 +300,32 @@ export function RequisitionsTab() {
           title="Recruiter load"
           subtitle={`Open reqs and active candidates on ${formatDate(b.asOf)}, hires ${windowText(b.window)}`}
           data={m.recruiters}
-          columns={[
-            { key: 'recruiter', label: 'Recruiter', width: 18 },
-            { key: 'openReqs', label: 'Open reqs', format: 'int' },
-            { key: 'active', label: 'Active', format: 'int' },
-            { key: 'hires', label: 'Hires', format: 'int' },
-            { key: 'medianWait', label: 'Median wait', format: 'days' },
-            { key: 'lacking', label: 'Lacking', format: 'int' },
-            { key: 'flag', label: 'Flag' },
-          ]}
+          columns={
+            [
+              { key: 'recruiter', label: 'Recruiter', width: 18 },
+              {
+                key: 'openReqs',
+                label: 'Open reqs',
+                format: 'int',
+                drill: recDrill('openReqs', (r) => r.openReqs),
+              },
+              { key: 'active', label: 'Active', format: 'int', drill: recDrill('active', (r) => r.active) },
+              { key: 'hires', label: 'Hires', format: 'int', drill: recDrill('hires', (r) => r.hires) },
+              {
+                key: 'medianWait',
+                label: 'Median wait',
+                format: 'days',
+                drill: recDrill('medianWait', (r) => (r.medianWait != null ? r.active : 0)),
+              },
+              {
+                key: 'lacking',
+                label: 'Lacking',
+                format: 'int',
+                drill: recDrill('lacking', (r) => r.lacking),
+              },
+              { key: 'flag', label: 'Flag' },
+            ] satisfies Column<RecruiterRow>[]
+          }
           tableOnly
           span={7}
           table={{ rowTone: (r: RecruiterRow) => (r.flagged ? 'warning' : null), maxRows: 12 }}

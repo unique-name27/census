@@ -1,13 +1,16 @@
 /**
  * One person card: a small sheet with a thin color key on its top edge, name in the condensed cut,
  * title, department and location, counts in tabular figures, and flag icons. Real DOM so text
- * stays crisp and accessible at every zoom.
+ * stays crisp and accessible at every zoom. The counts open the records behind them (the direct
+ * reports, the whole org). Memoized: panning and drag hover only re-render the cards that change.
  */
+import { memo, type ReactNode } from 'react'
 import { IconCritical, SeverityIcon } from '@/components'
 import { cx } from '@/components/ui'
 import type { Employee } from '@/data/schema'
+import { DRILL_CLASS, type DrillSource, drill } from '@/drill/Drill'
 import { formatDate } from '@/lib/dates'
-import { type Flag, type PlacedCard, type ReqStub, STRUCTURAL } from '../engine'
+import { countsText, type Flag, type PlacedCard, type ReqStub, STRUCTURAL } from '../engine'
 
 export type DropState = 'ok' | 'blocked' | null
 
@@ -34,11 +37,13 @@ export interface CardProps {
   posInSet: number
   onToggle: (id: string) => void
   onSelect: (id: string) => void
+  /** The records behind the counts; without it the counts are plain text. */
+  countDrill?: (id: string, which: 'directs' | 'org') => DrillSource
 }
 
 const pos = (c: PlacedCard) => ({ left: c.x, top: c.y, width: c.w, height: c.h })
 
-export function Card(p: CardProps) {
+export const Card = memo(function Card(p: CardProps) {
   const { card } = p
   if (card.kind === 'req') return <ReqCard card={card} req={p.req} />
 
@@ -48,11 +53,7 @@ export function Card(p: CardProps) {
     ? (p.flags ?? []).filter((f) => STRUCTURAL.has(f.kind) || f.kind === 'placement')
     : []
   const newHire = p.showFlags && (p.flags ?? []).some((f) => f.kind === 'new-hire')
-  const counts = e
-    ? p.directs > 0
-      ? `${p.directs} direct · ${p.total} org`
-      : ''
-    : `${p.companySize.toLocaleString('en-US')} people`
+  const counts = e ? countsText(p.directs, p.total) : `${p.companySize.toLocaleString('en-US')} people`
   const contingent = e?.employmentType && e.employmentType !== 'Employee' ? e.employmentType : null
   const label = [
     name,
@@ -101,7 +102,7 @@ export function Card(p: CardProps) {
       />
       <div className="flex min-h-0 flex-1 flex-col px-3 pt-2.5 pb-2">
         <div className="flex items-baseline gap-2">
-          <span className="cut-head min-w-0 flex-1 truncate text-[13.5px] leading-[18px] font-semibold text-ink">
+          <span className="cut-head min-w-0 flex-1 truncate text-[14px] leading-[18px] font-semibold text-ink">
             {name}
           </span>
           {e?.level && <span className="shrink-0 font-mono text-[11px] text-muted">{e.level}</span>}
@@ -115,7 +116,7 @@ export function Card(p: CardProps) {
           </div>
         )}
         <div className="mt-auto flex items-center gap-1.5 text-[11px] leading-4 text-ink-2">
-          {counts && <span className="tnum whitespace-nowrap">{counts}</span>}
+          {counts && <Counts {...p} name={name} />}
           {contingent && <span className="text-muted">{contingent}</span>}
           {newHire && <span className="text-muted">New hire</span>}
           {flags.length > 0 && (
@@ -146,10 +147,73 @@ export function Card(p: CardProps) {
           }}
           className="tnum absolute -bottom-2.5 left-1/2 inline-flex h-5 min-w-7 -translate-x-1/2 items-center justify-center gap-0.5 rounded-control bg-sheet px-1.5 text-[11px] font-semibold text-ink-2 shadow-[inset_0_0_0_1px_var(--rule-strong)] hover:bg-sheet-2 hover:text-ink"
         >
-          {p.expanded ? <Minus /> : <>+{e ? p.directs : ''}</>}
+          {p.expanded ? <Minus /> : <>+{e && p.directs > 0 ? p.directs : ''}</>}
         </button>
       )}
     </div>
+  )
+})
+
+/**
+ * "6 direct · 41 org": each number opens its people. The buttons stay out of the tab order (the
+ * tree has one tab stop; keyboard users reach the same lists from the detail panel).
+ */
+function Counts(p: CardProps & { name: string }) {
+  const id = p.card.id
+  const drillOf = p.countDrill
+  if (!p.person) {
+    const text = `${p.companySize.toLocaleString('en-US')} people`
+    return drillOf ? (
+      <CountButton label={`Show everyone, ${text}`} onClick={() => drill(drillOf(id, 'org'))}>
+        {text}
+      </CountButton>
+    ) : (
+      <span className="tnum whitespace-nowrap">{text}</span>
+    )
+  }
+  if (!drillOf) return <span className="tnum whitespace-nowrap">{countsText(p.directs, p.total)}</span>
+  return (
+    <span className="tnum whitespace-nowrap">
+      <CountButton
+        label={`Show ${p.name}'s ${p.directs.toLocaleString('en-US')} direct reports`}
+        onClick={() => drill(drillOf(id, 'directs'))}
+      >
+        {p.directs.toLocaleString('en-US')} direct
+      </CountButton>
+      {' · '}
+      <CountButton
+        label={`Show the ${p.total.toLocaleString('en-US')} people in ${p.name}'s org`}
+        onClick={() => drill(drillOf(id, 'org'))}
+      >
+        {p.total.toLocaleString('en-US')} org
+      </CountButton>
+    </span>
+  )
+}
+
+function CountButton({
+  label,
+  onClick,
+  children,
+}: {
+  label: string
+  onClick: () => void
+  children: ReactNode
+}) {
+  return (
+    <button
+      type="button"
+      tabIndex={-1}
+      aria-label={label}
+      title={label}
+      className={cx(DRILL_CLASS, 'tnum text-inherit')}
+      onClick={(ev) => {
+        ev.stopPropagation()
+        onClick()
+      }}
+    >
+      {children}
+    </button>
   )
 }
 

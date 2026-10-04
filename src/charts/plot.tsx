@@ -110,15 +110,36 @@ function useElementWidth(ref: RefObject<HTMLElement | null>): number {
   return width
 }
 
+/** The pointer in the plot's own coordinates: px from the top-left of the plot's SVG. */
+export interface PlotPointer {
+  x: number
+  y: number
+}
+
 export interface PlotChartProps<P> {
   /** Build the plot for a width and theme; return null to render nothing. */
   build: (ctx: PlotBuildContext) => PlotElement | null
   /** Plot height in px, reserved before the first render so the layout doesn't jump. */
   height: number
-  /** Tooltip content for the hovered datum (the `value` of the plot's pointer mark). */
-  tip?: (d: P) => TipContent | null
-  /** Click-to-drill on the hovered datum. */
-  onSelect?: (d: P) => void
+  /**
+   * Tooltip content for the hovered datum (the `value` of the plot's pointer mark); `part` is
+   * what `pick` found under the pointer (null without `pick`).
+   */
+  tip?: (d: P, part: string | null) => TipContent | null
+  /** Click-to-drill on the hovered datum and the part of it under the pointer. */
+  onSelect?: (d: P, part: string | null) => void
+  /**
+   * Whether clicking this datum (and part) drills; default: always, when `onSelect` is given.
+   * Gates the click, the pointer cursor and the tooltip's "Click to see the records".
+   */
+  selectable?: (d: P, part: string | null) => boolean
+  /**
+   * For charts whose hover mark is coarser than their marks (a category band over stacked
+   * segments, a date over several lines): name the part of the hovered datum under the pointer,
+   * e.g. its series, or null. Re-run as the pointer moves; the tooltip redraws when it changes.
+   * `plot.scale(name)` gives the scales (`apply`, `invert`, `bandwidth`) to hit-test with.
+   */
+  pick?: (d: P, at: PlotPointer, plot: PlotElement) => string | null
   /** Legend shown above the plot and drawn into exported images. */
   legend?: LegendSpec | null
   /** Accessible name of the chart image. */
@@ -131,6 +152,8 @@ export function PlotChart<P>({
   height,
   tip,
   onSelect,
+  selectable,
+  pick,
   legend,
   ariaLabel,
   className,
@@ -143,16 +166,25 @@ export function PlotChart<P>({
   const fontsVersion = useFontsVersion()
   const legendAttr = legend ? JSON.stringify(legend) : null
 
-  const describe = useEffectEvent((value: unknown): TipContent | null => {
+  const canSelect = useEffectEvent(
+    (value: unknown, part: string | null) =>
+      value != null && onSelect !== undefined && (selectable?.(value as P, part) ?? true),
+  )
+  const describe = useEffectEvent((value: unknown, part: string | null): TipContent | null => {
     if (value == null || !tip) return null
-    const content = tip(value as P)
+    const content = tip(value as P, part)
     // Clickable marks say so, so readers learn every number opens the records behind it.
-    return content && onSelect && !content.note ? { ...content, note: 'Click to see the records' } : content
+    return content && !content.note && canSelect(value, part)
+      ? { ...content, note: 'Click to see the records' }
+      : content
   })
-  const canSelect = useEffectEvent(() => onSelect !== undefined)
-  const select = useEffectEvent((value: unknown) => {
-    if (value != null) onSelect?.(value as P)
+  const select = useEffectEvent((value: unknown, part: string | null) => {
+    if (canSelect(value, part)) onSelect?.(value as P, part)
   })
+  const hasPick = useEffectEvent(() => pick !== undefined)
+  const pickPart = useEffectEvent((value: unknown, at: PlotPointer | null, plot: PlotElement) =>
+    value != null && at && pick ? pick(value as P, at, plot) : null,
+  )
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: fontsVersion re-runs layout measured in the old font
   useLayoutEffect(() => {
@@ -171,44 +203,70 @@ export function PlotChart<P>({
       node.setAttribute('aria-label', ariaLabel)
     }
     host.replaceChildren(node)
+    const svg = node instanceof SVGSVGElement ? node : node.querySelector('svg')
 
     let pos = { x: 0, y: 0 }
+    let at: PlotPointer | null = null
+    let part: string | null = null
     let shown = false
     let sticky = false
     let unpinning = false
+    /** The pointer in plot coordinates (the SVG can be drawn narrower than its width while resizing). */
+    const toPlot = (e: PointerEvent): PlotPointer | null => {
+      if (!svg) return null
+      const r = svg.getBoundingClientRect()
+      const sx = r.width > 0 ? (Number(svg.getAttribute('width')) || r.width) / r.width : 1
+      const sy = r.height > 0 ? (Number(svg.getAttribute('height')) || r.height) / r.height : 1
+      return { x: (e.clientX - r.left) * sx, y: (e.clientY - r.top) * sy }
+    }
     const hide = () => {
       shown = false
+      part = null
       tipEl.hidden = true
       box.style.cursor = ''
     }
     const show = () => {
-      const content = describe(node.value)
+      part = pickPart(node.value, at, node)
+      const content = describe(node.value, part)
+      const cursor = canSelect(node.value, part) ? 'pointer' : ''
       if (!content) {
         hide()
-        box.style.cursor = canSelect() && node.value != null ? 'pointer' : ''
+        box.style.cursor = cursor
         return
       }
       renderTip(tipEl, content)
       tipEl.hidden = false
       shown = true
       placeTip(tipEl, box, pos.x, pos.y)
-      box.style.cursor = canSelect() ? 'pointer' : ''
+      box.style.cursor = cursor
     }
     const onInput = () => (node.value == null ? hide() : show())
-    const onMove = (e: PointerEvent) => {
+    // Capture phase: runs before Plot's own pointer handling on the SVG, so `input` sees this position.
+    const track = (e: PointerEvent) => {
       const r = box.getBoundingClientRect()
       pos = { x: e.clientX - r.left, y: e.clientY - r.top }
-      if (shown && !sticky) placeTip(tipEl, box, pos.x, pos.y)
+      at = toPlot(e)
+    }
+    const onMove = () => {
+      if (sticky) return
+      // Same hovered datum (Plot fires no input), but the part under the pointer may have changed.
+      if (node.value != null && hasPick() && pickPart(node.value, at, node) !== part) show()
+      else if (shown) placeTip(tipEl, box, pos.x, pos.y)
     }
     // Plot pins the tooltip on click; mirror that so a pinned tooltip stops following the pointer.
     const onDown = (e: PointerEvent) => {
-      if (unpinning || e.pointerType !== 'mouse' || node.value == null) return
+      if (unpinning) return
+      track(e)
+      if (e.pointerType !== 'mouse' || node.value == null) return
       const inPointerMark = e.target instanceof Element && e.target.closest(`.${HOVER_CLASS}`) !== null
       sticky = sticky ? inPointerMark : true
     }
     const onClick = () => {
-      if (node.value == null || !canSelect()) return
-      select(node.value)
+      if (node.value == null) return
+      // A pinned tooltip keeps the part it was pinned on; otherwise drill what is under the pointer.
+      const hit = sticky ? part : pickPart(node.value, at, node)
+      if (!canSelect(node.value, hit)) return
+      select(node.value, hit)
       // A click that drills should not leave the tooltip pinned; a second pointerdown unpins it.
       if (sticky) {
         unpinning = true
@@ -220,11 +278,13 @@ export function PlotChart<P>({
     hide()
     node.addEventListener('input', onInput)
     node.addEventListener('click', onClick)
+    box.addEventListener('pointermove', track, { capture: true })
     box.addEventListener('pointermove', onMove)
     box.addEventListener('pointerdown', onDown, { capture: true })
     return () => {
       node.removeEventListener('input', onInput)
       node.removeEventListener('click', onClick)
+      box.removeEventListener('pointermove', track, { capture: true })
       box.removeEventListener('pointermove', onMove)
       box.removeEventListener('pointerdown', onDown, { capture: true })
       node.remove()

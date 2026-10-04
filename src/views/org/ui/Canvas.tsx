@@ -1,12 +1,16 @@
 /**
  * The pan-and-zoom surface for the org chart. Cards are DOM, connectors one SVG path, both inside
- * one transformed layer. Drag the background to pan (or a card, outside the sandbox), wheel or
- * pinch to zoom around the pointer, buttons for zoom, fit and 100%. Arrow keys move the selection
- * along reporting lines. In the sandbox, dragging a card onto another card proposes a move.
+ * one transformed layer. Drag the background to pan (or a card, outside the sandbox). Once the
+ * chart has been clicked, the scroll wheel and two-finger swipes pan it (Shift+wheel pans
+ * sideways); Ctrl or Cmd with the wheel, a trackpad pinch, or the buttons zoom around the pointer.
+ * Arrow keys follow the treeview pattern. In the sandbox, dragging a card onto another card
+ * proposes a move.
  */
-import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { flushSync } from 'react-dom'
 import { IconButton } from '@/components'
 import { cx } from '@/components/ui'
+import type { DrillSource } from '@/drill/Drill'
 import type { ColorScheme, Flag, Layout, OrgTree, ReqStub } from '../engine'
 import { COMPANY_ROOT, swatchCss } from '../engine'
 import { Card, type DropState } from './Card'
@@ -44,6 +48,8 @@ export interface CanvasProps {
   changed?: ReadonlySet<string>
   /** Extra overlay content (e.g. a hint) in the top-left corner. */
   overlay?: ReactNode
+  /** The records behind a card's "6 direct · 41 org" counts; the counts become drill buttons. */
+  countDrill?: (id: string, which: 'directs' | 'org') => DrillSource
   className?: string
 }
 
@@ -60,6 +66,9 @@ const CHUNK = 512
 const MIN_K = 0.08
 const MAX_K = 2
 const clampK = (k: number) => Math.min(MAX_K, Math.max(MIN_K, k))
+/** Pixels per wheel line and page, for wheel events that report lines or pages. */
+const wheelScale = (ev: WheelEvent) => (ev.deltaMode === 1 ? 16 : ev.deltaMode === 2 ? 400 : 1)
+const TREE_KEYS = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Enter', ' ', 'Home', 'End'])
 
 type Gesture =
   | { kind: 'pending'; id: number; sx: number; sy: number; view: View; dragId: string | null }
@@ -81,13 +90,25 @@ export function Canvas(p: CanvasProps) {
   const placedRoot = useRef<string | null>(null)
   const animTimer = useRef<number | undefined>(undefined)
   const [panning, setPanning] = useState(false)
-  const [wheelHint, setWheelHint] = useState(false)
+  const [hint, setHint] = useState<string | null>(null)
   const hintTimer = useRef<number | undefined>(undefined)
+  /** The viewport width the view was last placed or adjusted for. */
+  const placedW = useRef(0)
+  /** The reader has panned or zoomed since the chart was placed. */
+  const moved = useRef(false)
+  /** A "pan to" request that arrived while the chart was hidden (zero width). */
+  const pendingCenter = useRef<string | null>(null)
   // Latest props for event handlers and gestures (kept out of render so the compiler can memoize).
   const props = useRef(p)
   useLayoutEffect(() => {
     props.current = p
   })
+
+  const showHint = (text: string, ms = 1400) => {
+    setHint(text)
+    window.clearTimeout(hintTimer.current)
+    hintTimer.current = window.setTimeout(() => setHint(null), ms)
+  }
 
   const setView = (v: View, anim = false) => {
     viewRef.current = v
@@ -122,31 +143,60 @@ export function Canvas(p: CanvasProps) {
     }
   }
 
-  const fitView = (): View => {
+  /** The whole chart on screen, or (when that needs less than the smallest zoom) the top of it. */
+  const fit = () => {
     const { layout } = props.current
     const w = vpRef.current?.clientWidth ?? 0
     const h = vpRef.current?.clientHeight ?? 0
-    const k = clampK(Math.min((w - 2 * PAD) / layout.width, (h - 2 * PAD) / layout.height, 1))
-    return {
-      x: (w - layout.width * k) / 2,
-      y: Math.max(PAD, (h - layout.height * k) / 2),
-      k,
+    const need = Math.min((w - 2 * PAD) / layout.width, (h - 2 * PAD) / layout.height, 1)
+    moved.current = true
+    if (need < MIN_K) {
+      setView(topView(MIN_K), true)
+      showHint('Too wide to fit on screen. Showing the top; pick fewer levels or focus on an org.', 3200)
+      return
     }
+    const k = clampK(need)
+    setView({ x: (w - layout.width * k) / 2, y: Math.max(PAD, (h - layout.height * k) / 2), k }, true)
   }
 
   // Place the root at the top when the chart opens or its root changes; keep a toggled card
-  // where it was on screen when the layout changes under it.
+  // where it was on screen when the layout changes under it; follow width changes (window
+  // resize, rotation, the detail panel opening) by placing again while the reader has not moved
+  // the chart, else by keeping its centre where it was. A pan request that came in while the
+  // chart was hidden runs now.
   // biome-ignore lint/correctness/useExhaustiveDependencies: placement reads the latest props through a ref; it should run only when the layout, root or width change
   useLayoutEffect(() => {
     if (!size.w) return
     const placeKey = `${p.rootId}|${p.placeKey ?? ''}`
-    if (placedRoot.current !== placeKey) {
-      placedRoot.current = placeKey
-      anchor.current = null
+    const place = () => {
       // Fit the width when it can be done at a readable size; otherwise start at the root.
       const fitK = (size.w - 2 * PAD) / Math.max(1, p.layout.width)
       const k = clampK(Math.min(1, Math.max(size.w < 640 ? 0.6 : 0.55, fitK)))
       setView(topView(k))
+    }
+    const pending = pendingCenter.current
+    pendingCenter.current = null
+    if (placedRoot.current !== placeKey) {
+      placedRoot.current = placeKey
+      placedW.current = size.w
+      moved.current = false
+      anchor.current = null
+      place()
+      if (pending) centerOn(pending, false)
+      return
+    }
+    if (placedW.current !== size.w) {
+      const dw = size.w - placedW.current
+      placedW.current = size.w
+      if (!moved.current && !anchor.current) place()
+      else {
+        const v = viewRef.current
+        setView({ ...v, x: v.x + dw / 2 })
+      }
+    }
+    if (pending) {
+      anchor.current = null
+      centerOn(pending, false)
       return
     }
     const a = anchor.current
@@ -162,6 +212,12 @@ export function Canvas(p: CanvasProps) {
     const c = props.current.layout.byId.get(id)
     const el = vpRef.current
     if (!c || !el) return
+    // Hidden (the figure is showing its table): pan once the chart has a size again.
+    if (!el.clientWidth) {
+      pendingCenter.current = id
+      return
+    }
+    moved.current = true
     const v = viewRef.current
     const k = Math.max(v.k, 0.6)
     setView(
@@ -181,33 +237,44 @@ export function Canvas(p: CanvasProps) {
   }, [req?.n])
 
   const zoomAt = (factor: number, cx: number, cy: number, anim = false) => {
+    moved.current = true
     const v = viewRef.current
     const k = clampK(v.k * factor)
     const r = k / v.k
     setView({ k, x: cx - (cx - v.x) * r, y: cy - (cy - v.y) * r }, anim)
   }
 
-  // Wheel and trackpad pinch zoom around the pointer (non-passive so the page doesn't scroll).
-  // biome-ignore lint/correctness/useExhaustiveDependencies: attach once; zoomAt reads the current view through a ref
+  // Wheel and trackpad: once the chart is engaged (clicked, or Ctrl/Cmd held), the wheel and
+  // two-finger swipes pan, Shift+wheel pans sideways, and Ctrl/Cmd+wheel or a pinch (which arrives
+  // as Ctrl+wheel) zooms around the pointer. Before that the page scrolls past with a hint.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: attach once; handlers read the current view through a ref
   useEffect(() => {
     const el = vpRef.current
     if (!el) return
     const onWheel = (ev: WheelEvent) => {
-      // Zoom with Ctrl or Cmd held (trackpad pinch arrives that way too) or once the chart has
-      // been clicked; otherwise let the page scroll past and say how to zoom.
-      const engaged = ev.ctrlKey || ev.metaKey || el.contains(document.activeElement)
-      if (!engaged) {
-        setWheelHint(true)
-        window.clearTimeout(hintTimer.current)
-        hintTimer.current = window.setTimeout(() => setWheelHint(false), 1400)
+      const zoom = ev.ctrlKey || ev.metaKey
+      if (!zoom && !el.contains(document.activeElement)) {
+        showHint('Click the chart to scroll around it. Hold Ctrl and scroll to zoom.')
         return
       }
       ev.preventDefault()
-      setWheelHint(false)
-      const rect = el.getBoundingClientRect()
-      const scale = ev.deltaMode === 1 ? 16 : ev.deltaMode === 2 ? 400 : 1
-      const factor = Math.exp(-ev.deltaY * scale * (ev.ctrlKey ? 0.01 : 0.0015))
-      zoomAt(factor, ev.clientX - rect.left, ev.clientY - rect.top)
+      setHint(null)
+      const scale = wheelScale(ev)
+      if (zoom) {
+        const rect = el.getBoundingClientRect()
+        const factor = Math.exp(-ev.deltaY * scale * (ev.ctrlKey ? 0.01 : 0.0015))
+        zoomAt(factor, ev.clientX - rect.left, ev.clientY - rect.top)
+        return
+      }
+      let dx = ev.deltaX * scale
+      let dy = ev.deltaY * scale
+      if (ev.shiftKey && !dx) {
+        dx = dy
+        dy = 0
+      }
+      moved.current = true
+      const v = viewRef.current
+      setView({ ...v, x: v.x - dx, y: v.y - dy })
     }
     el.addEventListener('wheel', onWheel, { passive: false })
     return () => el.removeEventListener('wheel', onWheel)
@@ -247,6 +314,7 @@ export function Canvas(p: CanvasProps) {
         props.current.drag.onHover(g.dragId, null)
       } else {
         gesture.current = { kind: 'pan', id: g.id, sx: g.sx, sy: g.sy, view: g.view }
+        moved.current = true
         setPanning(true)
       }
     }
@@ -328,6 +396,7 @@ export function Canvas(p: CanvasProps) {
     if (pointers.current.size === 2) {
       const [a, b] = [...pointers.current.values()]
       if (gesture.current?.kind === 'drag') setGhost(null)
+      moved.current = true
       gesture.current = {
         kind: 'pinch',
         dist: Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)),
@@ -354,13 +423,16 @@ export function Canvas(p: CanvasProps) {
   /* ───────── keyboard ───────── */
 
   // Visible children per parent, in on-screen order (requisition cards are skipped).
-  const kids = new Map<string, string[]>()
-  for (const c of p.layout.cards) {
-    if (c.kind === 'req' || !c.parentId) continue
-    const arr = kids.get(c.parentId)
-    if (arr) arr.push(c.id)
-    else kids.set(c.parentId, [c.id])
-  }
+  const kids = useMemo(() => {
+    const out = new Map<string, string[]>()
+    for (const c of p.layout.cards) {
+      if (c.kind === 'req' || !c.parentId) continue
+      const arr = out.get(c.parentId)
+      if (arr) arr.push(c.id)
+      else out.set(c.parentId, [c.id])
+    }
+    return out
+  }, [p.layout])
 
   const ensureVisible = (id: string) => {
     const c = props.current.layout.byId.get(id)
@@ -375,30 +447,36 @@ export function Canvas(p: CanvasProps) {
   }
 
   const selectAndFocus = (id: string) => {
-    props.current.onSelect(id)
-    window.setTimeout(() => {
-      const el = vpRef.current?.querySelector<HTMLElement>(`[data-card="${CSS.escape(id)}"]`)
-      el?.focus({ preventScroll: true })
-      ensureVisible(id)
-    })
+    // Commit the selection now: the card becomes the tab stop (so it is rendered) and takes focus
+    // before the next key press reads which card has it.
+    flushSync(() => props.current.onSelect(id))
+    const el = vpRef.current?.querySelector<HTMLElement>(`[data-card="${CSS.escape(id)}"]`)
+    el?.focus({ preventScroll: true })
+    ensureVisible(id)
   }
 
-  const onToggle = (id: string) => {
-    const c = props.current.layout.byId.get(id)
-    const v = viewRef.current
-    if (c) anchor.current = { id, sx: v.x + c.x * v.k, sy: v.y + c.y * v.k }
-    props.current.onToggle(id)
-  }
+  // Card handlers read everything through refs, so they are created once and memoized cards
+  // never re-render because of them.
+  const [cardActions] = useState(() => ({
+    toggle: (id: string) => {
+      const c = props.current.layout.byId.get(id)
+      const v = viewRef.current
+      if (c) anchor.current = { id, sx: v.x + c.x * v.k, sy: v.y + c.y * v.k }
+      props.current.onToggle(id)
+    },
+    select: (id: string) => {
+      if (suppressClick.current) return
+      const card = props.current.layout.byId.get(id)
+      if (!card || card.kind === 'req') return
+      props.current.onSelect(id)
+    },
+  }))
 
-  const onSelectCard = (id: string) => {
-    if (suppressClick.current) return
-    const card = props.current.layout.byId.get(id)
-    if (!card || card.kind === 'req') return
-    props.current.onSelect(id)
-  }
-
+  // Treeview keys: Up and Down move between people on the same team, Right opens a closed card
+  // or steps to its first report, Left closes an open card or steps up to the manager, Home goes
+  // to the top and End to the last person on the team; Enter or Space opens and closes.
   const onKeyDown = (ev: React.KeyboardEvent<HTMLDivElement>) => {
-    const { layout, selectedId, rootId, tree, expanded, canOpen } = props.current
+    const { layout, selectedId, rootId, expanded, canOpen } = props.current
     const vp = vpRef.current
     if (!vp) return
     const cx = vp.clientWidth / 2
@@ -428,32 +506,36 @@ export function Canvas(p: CanvasProps) {
       }
       return
     }
-    if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Enter', ' ', 'Home'].includes(ev.key)) return
+    if (!TREE_KEYS.has(ev.key)) return
     ev.preventDefault()
     if (!cur || ev.key === 'Home') {
       selectAndFocus(rootId)
       return
     }
     const card = layout.byId.get(cur)!
+    const isOpen = expanded.has(cur) && canOpen(cur)
     if (ev.key === 'Enter' || ev.key === ' ') {
-      if (canOpen(cur)) onToggle(cur)
+      if (canOpen(cur)) cardActions.toggle(cur)
       return
     }
-    if (ev.key === 'ArrowUp') {
-      if (card.parentId) selectAndFocus(card.parentId)
+    if (ev.key === 'ArrowRight') {
+      if (canOpen(cur) && !expanded.has(cur)) {
+        cardActions.toggle(cur)
+        return
+      }
+      const first = kids.get(cur)?.[0]
+      if (first) selectAndFocus(first)
       return
     }
-    if (ev.key === 'ArrowDown') {
-      const first = kids.get(cur)?.[0] ?? tree.children.get(cur)?.[0]
-      if (!first) return
-      if (!expanded.has(cur) && canOpen(cur)) onToggle(cur)
-      selectAndFocus(first)
+    if (ev.key === 'ArrowLeft') {
+      if (isOpen) cardActions.toggle(cur)
+      else if (card.parentId) selectAndFocus(card.parentId)
       return
     }
     const sibs = card.parentId ? (kids.get(card.parentId) ?? []) : [cur]
     const i = sibs.indexOf(cur)
-    const next = sibs[i + (ev.key === 'ArrowRight' ? 1 : -1)]
-    if (next) selectAndFocus(next)
+    const next = ev.key === 'End' ? sibs[sibs.length - 1] : sibs[i + (ev.key === 'ArrowDown' ? 1 : -1)]
+    if (next && next !== cur) selectAndFocus(next)
   }
 
   /* ───────── render ───────── */
@@ -461,56 +543,81 @@ export function Canvas(p: CanvasProps) {
   const t = p.tree
   const dragId = p.drag?.dragId ?? null
   // Big charts render only the cards near the viewport: a window about three viewports wide,
-  // snapped to a grid so it only changes when the view moves a fair way.
-  let [cx0, cy0, cx1, cy1] = [
-    Number.NEGATIVE_INFINITY,
-    Number.NEGATIVE_INFINITY,
-    Number.POSITIVE_INFINITY,
-    Number.POSITIVE_INFINITY,
-  ]
-  if (p.layout.cards.length > CULL_OVER && size.w) {
-    const vw = size.w / view.k
-    const vh = size.h / view.k
-    cx0 = Math.floor((-view.x / view.k - vw) / CHUNK) * CHUNK
-    cy0 = Math.floor((-view.y / view.k - vh) / CHUNK) * CHUNK
-    cx1 = Math.ceil((-view.x / view.k + 2 * vw) / CHUNK) * CHUNK
-    cy1 = Math.ceil((-view.y / view.k + 2 * vh) / CHUNK) * CHUNK
-  }
+  // snapped to a grid so it only changes when the view moves a fair way. The card list is memoized
+  // on that window, so most pan moves only change the transform.
+  const cull = p.layout.cards.length > CULL_OVER && size.w > 0
+  const vw = size.w / view.k
+  const vh = size.h / view.k
+  // The snap grows with the visible area (a power of two, so small zoom steps keep it), so the
+  // window moves about every half viewport whatever the zoom.
+  const chunk = Math.max(CHUNK, 2 ** Math.ceil(Math.log2(Math.max(1, Math.min(vw, vh) / 2))))
+  const cx0 = cull ? Math.floor((-view.x / view.k - vw) / chunk) * chunk : Number.NEGATIVE_INFINITY
+  const cy0 = cull ? Math.floor((-view.y / view.k - vh) / chunk) * chunk : Number.NEGATIVE_INFINITY
+  const cx1 = cull ? Math.ceil((-view.x / view.k + 2 * vw) / chunk) * chunk : Number.POSITIVE_INFINITY
+  const cy1 = cull ? Math.ceil((-view.y / view.k + 2 * vh) / chunk) * chunk : Number.POSITIVE_INFINITY
   // One tab stop for the whole tree: the selected card, else the root.
   const tabStop = p.selectedId && p.layout.byId.has(p.selectedId) ? p.selectedId : p.rootId
-  const shown = p.layout.cards.filter(
-    (c) => c.id === tabStop || (c.x + c.w >= cx0 && c.x <= cx1 && c.y + c.h >= cy0 && c.y <= cy1),
+  const { reqByCardId, flags, showFlags, scheme, matches, canOpen, expanded, changed, drag, countDrill } = p
+  const selectedId = p.selectedId
+  const cards = useMemo(
+    () =>
+      p.layout.cards
+        .filter((c) => c.id === tabStop || (c.x + c.w >= cx0 && c.x <= cx1 && c.y + c.h >= cy0 && c.y <= cy1))
+        .map((c) => {
+          const e = t.people.get(c.id)
+          const sibs = c.parentId ? (kids.get(c.parentId) ?? []) : [c.id]
+          return (
+            <Card
+              key={c.id}
+              card={c}
+              person={e}
+              req={c.kind === 'req' ? reqByCardId.get(c.id) : undefined}
+              companySize={t.people.size}
+              directs={t.directs.get(c.id) ?? 0}
+              total={t.total.get(c.id) ?? 0}
+              flags={flags.get(c.id)}
+              showFlags={showFlags}
+              color={e ? swatchCss(scheme.swatchOf(e)) : 'var(--ink)'}
+              selected={selectedId === c.id}
+              tabbable={c.id === tabStop}
+              dimmed={!!e && !matches(c.id)}
+              expandable={canOpen(c.id)}
+              expanded={expanded.has(c.id)}
+              changed={!!changed?.has(c.id)}
+              dragging={dragId === c.id}
+              drop={dragId ? (drag?.dropState(c.id) ?? null) : null}
+              setSize={sibs.length}
+              posInSet={sibs.indexOf(c.id) + 1}
+              onToggle={cardActions.toggle}
+              onSelect={cardActions.select}
+              countDrill={countDrill}
+            />
+          )
+        }),
+    [
+      p.layout,
+      tabStop,
+      cx0,
+      cy0,
+      cx1,
+      cy1,
+      t,
+      kids,
+      reqByCardId,
+      flags,
+      showFlags,
+      scheme,
+      selectedId,
+      matches,
+      canOpen,
+      expanded,
+      changed,
+      dragId,
+      drag,
+      cardActions,
+      countDrill,
+    ],
   )
-  const cards = shown.map((c) => {
-    const e = t.people.get(c.id)
-    const sibs = c.parentId ? (kids.get(c.parentId) ?? []) : [c.id]
-    return (
-      <Card
-        key={c.id}
-        card={c}
-        person={e}
-        req={c.kind === 'req' ? p.reqByCardId.get(c.id) : undefined}
-        companySize={t.people.size}
-        directs={t.directs.get(c.id) ?? 0}
-        total={t.total.get(c.id) ?? 0}
-        flags={p.flags.get(c.id)}
-        showFlags={p.showFlags}
-        color={e ? swatchCss(p.scheme.swatchOf(e)) : 'var(--ink)'}
-        selected={p.selectedId === c.id}
-        tabbable={c.id === tabStop}
-        dimmed={!!e && !p.matches(c.id)}
-        expandable={p.canOpen(c.id)}
-        expanded={p.expanded.has(c.id)}
-        changed={!!p.changed?.has(c.id)}
-        dragging={dragId === c.id}
-        drop={dragId ? (p.drag?.dropState(c.id) ?? null) : null}
-        setSize={sibs.length}
-        posInSet={sibs.indexOf(c.id) + 1}
-        onToggle={onToggle}
-        onSelect={onSelectCard}
-      />
-    )
-  })
 
   const zoomBtn = (factor: number) => () => zoomAt(factor, size.w / 2, size.h / 2, true)
 
@@ -573,15 +680,17 @@ export function Canvas(p: CanvasProps) {
       {p.overlay && <div className="pointer-events-none absolute top-2 left-2 max-w-[70%]">{p.overlay}</div>}
 
       <div
-        aria-hidden="true"
+        role="status"
         className={cx(
           'pointer-events-none absolute inset-x-0 top-3 flex justify-center transition-opacity duration-150',
-          wheelHint ? 'opacity-100' : 'opacity-0',
+          hint ? 'opacity-100' : 'opacity-0',
         )}
       >
-        <span className="rounded-control bg-ink px-2.5 py-1 text-[12px] text-on-ink">
-          Click the chart or hold Ctrl to zoom with the scroll wheel
-        </span>
+        {hint && (
+          <span className="max-w-[90%] rounded-control bg-ink px-2.5 py-1 text-center text-[12px] text-on-ink">
+            {hint}
+          </span>
+        )}
       </div>
 
       {ghost && (
@@ -614,7 +723,7 @@ export function Canvas(p: CanvasProps) {
         <span aria-hidden="true" className="mx-0.5 h-4 w-px bg-rule" />
         <button
           type="button"
-          onClick={() => setView(fitView(), true)}
+          onClick={fit}
           className="h-7 rounded-control px-2 text-[12px] font-medium text-ink-2 hover:bg-hover hover:text-ink"
         >
           Fit
@@ -622,6 +731,7 @@ export function Canvas(p: CanvasProps) {
         <button
           type="button"
           onClick={() => {
+            moved.current = true
             const sel = props.current.selectedId
             if (sel && props.current.layout.byId.has(sel)) {
               const c = props.current.layout.byId.get(sel)!

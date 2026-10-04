@@ -1,16 +1,26 @@
 /**
  * Sources & offers: which channels bring people who get hired, how volume moved, where offers are
- * accepted or declined and why, and why candidates leave the process.
+ * accepted or declined and why, and why candidates leave the process. Every number opens the
+ * applications behind it; hidden rates (under 5) don't.
  */
 import { useState } from 'react'
-import { BarList, Figure, HBars, Lines } from '@/charts'
+import { BarList, type Column, Figure, HBars, Lines } from '@/charts'
 import { Section, Segmented } from '@/components'
 import { STAGES } from '@/data/schema'
+import { drill } from '@/drill'
 import { formatDate } from '@/lib/dates'
 import { fmt, plural } from '@/lib/format'
-import type { GroupAcceptance } from '../engine/sources'
+import {
+  declineReasonDrill,
+  exitReasonDrill,
+  locationOffersDrill,
+  type SourceMeasure,
+  sourceDrill,
+  sourceMonthDrill,
+} from '../engine/drills'
+import type { ExitReasonRow, GroupAcceptance, ReasonRow, SourceMonthRow, SourceRow } from '../engine/sources'
 import { useRecruitingUi } from '../state'
-import { asOfNote, NEED_CANDIDATES, NoRecruitingData, windowText } from './common'
+import { asOfNote, drillIf, NEED_CANDIDATES, NoRecruitingData, windowText } from './common'
 import { useRecruiting } from './hooks'
 
 type ExitKind = 'Rejected' | 'Withdrawn'
@@ -53,6 +63,22 @@ export function SourcesTab() {
   const offersN = byLocation.reduce((n, r) => n + r.offers, 0)
   const periodWords = b.windowWords[0].toUpperCase() + b.windowWords.slice(1)
 
+  // Drills. A hidden rate or median (under 5) has no records behind it, so it never drills.
+  const src = (measure: SourceMeasure, n: (r: SourceRow) => number | boolean | null) => (r: SourceRow) =>
+    drillIf(n(r), () => sourceDrill(b, r, measure))
+  const basisWindow = basis === 'quarter' ? { start: q.start, end: q.end } : b.window
+  const locDrill = (only?: 'Hired' | 'Declined') => (r: GroupAcceptance) =>
+    drillIf(only ? r.apps.some((a) => a.outcome === only) : r.apps.length, () =>
+      locationOffersDrill(b, r, basisWindow, only),
+    )
+  const reasonDrill = (r: ReasonRow) => drillIf(r.apps.length, () => declineReasonDrill(b, r, declinedTotal))
+  const exitDrill = (r: ExitReasonRow) =>
+    drillIf(r.apps.length, () => exitReasonDrill(b, r.apps, r.outcome, r.reason, r.stage))
+  const exitReasonAll = (r: ExitReasonRow) => {
+    const apps = exits.filter((x) => x.reason === r.reason).flatMap((x) => x.apps)
+    return drillIf(apps.length, () => exitReasonDrill(b, apps, r.outcome, r.reason))
+  }
+
   return (
     <>
       <Section
@@ -64,17 +90,54 @@ export function SourcesTab() {
           title="Source effectiveness"
           subtitle={`Share of applications hired, by source, applications received ${windowText(b.window)}. The table view has volume, offer acceptance, time to hire and change.`}
           data={m.sources}
-          columns={[
-            { key: 'source', label: 'Source' },
-            { key: 'applications', label: 'Applications', format: 'int' },
-            { key: 'share', label: 'Share', format: 'pct' },
-            { key: 'hires', label: 'Hires', format: 'int' },
-            { key: 'hireRate', label: 'Hire rate', format: 'pct' },
-            { key: 'offerAcceptance', label: 'Offer acceptance', format: 'pct' },
-            { key: 'medianTimeToHire', label: 'Median time to hire', format: 'days' },
-            { key: 'priorApplications', label: 'Applications, prior period', format: 'int' },
-            { key: 'change', label: 'Change in applications', format: 'pct' },
-          ]}
+          columns={
+            [
+              { key: 'source', label: 'Source' },
+              {
+                key: 'applications',
+                label: 'Applications',
+                format: 'int',
+                drill: src('applications', (r) => r.applications),
+              },
+              {
+                key: 'share',
+                label: 'Share',
+                format: 'pct',
+                drill: src('applications', (r) => r.applications),
+              },
+              { key: 'hires', label: 'Hires', format: 'int', drill: src('hires', (r) => r.hires) },
+              {
+                key: 'hireRate',
+                label: 'Hire rate',
+                format: 'pct',
+                drill: src('hireRate', (r) => r.hireRate != null && r.hires),
+              },
+              {
+                key: 'offerAcceptance',
+                label: 'Offer acceptance',
+                format: 'pct',
+                drill: src('offerAcceptance', (r) => r.offerAcceptance != null),
+              },
+              {
+                key: 'medianTimeToHire',
+                label: 'Median time to hire',
+                format: 'days',
+                drill: src('medianTimeToHire', (r) => r.medianTimeToHire != null),
+              },
+              {
+                key: 'priorApplications',
+                label: 'Applications, prior period',
+                format: 'int',
+                drill: src('priorApplications', (r) => r.priorApplications),
+              },
+              {
+                key: 'change',
+                label: 'Change in applications',
+                format: 'pct',
+                drill: src('change', (r) => r.change != null),
+              },
+            ] satisfies Column<SourceRow>[]
+          }
           span={6}
           empty={noCands ? NEED_CANDIDATES : m.sources.length ? null : 'No applications in this period.'}
           definitions={[
@@ -112,6 +175,7 @@ export function SourcesTab() {
                 : undefined
             }
             nullNote="Fewer than 5 applications"
+            onSelect={(d) => drill(src('hireRate', (r) => r.hireRate != null && r.hires)(d))}
             ariaLabel="Source effectiveness: hire rate by source"
           />
         </Figure>
@@ -120,11 +184,18 @@ export function SourcesTab() {
           title="Applications by source by month"
           subtitle={`Applications received per month, 24 months to ${formatDate(b.window.end)}${changed?.change != null ? `. ${changed.source}: ${signedPct(changed.change)} ${b.compareLabel}, the biggest move against the overall trend` : ''}`}
           data={m.sourcesByMonth}
-          columns={[
-            { key: 'month', label: 'Month' },
-            { key: 'source', label: 'Source' },
-            { key: 'applications', label: 'Applications', format: 'int' },
-          ]}
+          columns={
+            [
+              { key: 'month', label: 'Month' },
+              { key: 'source', label: 'Source' },
+              {
+                key: 'applications',
+                label: 'Applications',
+                format: 'int',
+                drill: (r) => drillIf(r.applications, () => sourceMonthDrill(b, r)),
+              },
+            ] satisfies Column<SourceMonthRow>[]
+          }
           span={6}
           empty={noCands ? NEED_CANDIDATES : null}
           definitions={[
@@ -144,6 +215,7 @@ export function SourcesTab() {
             emphasize={m.changedSource ?? undefined}
             format="int"
             zero
+            onSelect={(d) => drill(drillIf(d.applications, () => sourceMonthDrill(b, d)))}
             ariaLabel="Applications by source by month"
           />
         </Figure>
@@ -158,13 +230,15 @@ export function SourcesTab() {
           title="Offer acceptance by location"
           subtitle={`Offers accepted ÷ offers resolved ${basis === 'quarter' ? `in ${quarterWords}` : windowText(b.window)}, by work site, largest first`}
           data={byLocation}
-          columns={[
-            { key: 'group', label: 'Location' },
-            { key: 'rate', label: 'Offer acceptance', format: 'pct' },
-            { key: 'hired', label: 'Accepted', format: 'int' },
-            { key: 'declined', label: 'Declined', format: 'int' },
-            { key: 'offers', label: 'Offers resolved', format: 'int' },
-          ]}
+          columns={
+            [
+              { key: 'group', label: 'Location' },
+              { key: 'rate', label: 'Offer acceptance', format: 'pct', drill: locDrill() },
+              { key: 'hired', label: 'Accepted', format: 'int', drill: locDrill('Hired') },
+              { key: 'declined', label: 'Declined', format: 'int', drill: locDrill('Declined') },
+              { key: 'offers', label: 'Offers resolved', format: 'int', drill: locDrill() },
+            ] satisfies Column<GroupAcceptance>[]
+          }
           span={6}
           actions={
             hasQuarterView ? (
@@ -222,6 +296,7 @@ export function SourcesTab() {
               d.rate != null && companyAcc != null && d.rate <= companyAcc - 0.1 ? 'warning' : 'default'
             }
             nullNote="Fewer than 5 resolved offers"
+            onSelect={(d) => drill(locDrill()(d))}
             ariaLabel="Offer acceptance by location"
           />
         </Figure>
@@ -230,11 +305,13 @@ export function SourcesTab() {
           title="Why offers were declined"
           subtitle={`Declined offers ${windowText(b.window)}, by reason`}
           data={m.declineReasons}
-          columns={[
-            { key: 'reason', label: 'Reason' },
-            { key: 'candidates', label: 'Declined offers', format: 'int' },
-            { key: 'share', label: 'Share', format: 'pct' },
-          ]}
+          columns={
+            [
+              { key: 'reason', label: 'Reason' },
+              { key: 'candidates', label: 'Declined offers', format: 'int', drill: reasonDrill },
+              { key: 'share', label: 'Share', format: 'pct', drill: reasonDrill },
+            ] satisfies Column<ReasonRow>[]
+          }
           span={6}
           empty={
             noCands ? NEED_CANDIDATES : m.declineReasons.length ? null : 'No declined offers in this period.'
@@ -250,6 +327,7 @@ export function SourcesTab() {
             value="candidates"
             format="int"
             secondary={(d) => fmt(d.share, 'pct0')}
+            onSelect={(d) => drill(reasonDrill(d))}
             ariaLabel="Why offers were declined"
           />
         </Figure>
@@ -264,12 +342,14 @@ export function SourcesTab() {
           title={exitKind === 'Rejected' ? 'Why candidates were rejected' : 'Why candidates withdrew'}
           subtitle={`${exitKind} ${windowText(b.window)}, by reason and the stage they left from`}
           data={m.exitReasons}
-          columns={[
-            { key: 'outcome', label: 'Outcome' },
-            { key: 'reason', label: 'Reason' },
-            { key: 'stage', label: 'Stage left from', format: 'text' },
-            { key: 'candidates', label: 'Candidates', format: 'int' },
-          ]}
+          columns={
+            [
+              { key: 'outcome', label: 'Outcome' },
+              { key: 'reason', label: 'Reason' },
+              { key: 'stage', label: 'Stage left from', format: 'text' },
+              { key: 'candidates', label: 'Candidates', format: 'int', drill: exitDrill },
+            ] satisfies Column<ExitReasonRow>[]
+          }
           span={12}
           actions={
             <Segmented<ExitKind>
@@ -305,6 +385,8 @@ export function SourcesTab() {
             seriesOrder={STAGES.slice(0, 5)}
             yOrder={reasonOrder}
             format="int"
+            onSelect={(d) => drill(exitReasonAll(d))}
+            onSelectSegment={(d) => drill(exitDrill(d))}
             ariaLabel={exitKind === 'Rejected' ? 'Why candidates were rejected' : 'Why candidates withdrew'}
           />
         </Figure>

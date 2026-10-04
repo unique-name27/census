@@ -3,7 +3,8 @@
  * the range, with the two out-of-range buckets in status colors at either end (below minimum on
  * the left, above maximum on the right), so position reads from left to right like the range.
  * The ramp runs seq-400 to seq-700 so even the first quarter holds 3:1 against the sheet in both
- * themes (the dark tokens invert, so Q4 is the lightest there).
+ * themes (the dark tokens invert, so Q4 is the lightest there). A click on a segment drills into
+ * the people at that position in that group; elsewhere on the row, everyone in the group.
  */
 import * as Plot from '@observablehq/plot'
 import {
@@ -18,6 +19,8 @@ import {
   maxTextWidth,
   type PlotBuildContext,
   PlotChart,
+  type PlotElement,
+  type PlotPointer,
   scalePos,
   type TipContent,
   textWidth,
@@ -74,7 +77,16 @@ function segmentsOf(rows: readonly PositionMixRow[]): Segment[] {
   return out
 }
 
-export function PositionBars({ rows, ariaLabel }: { rows: readonly PositionMixRow[]; ariaLabel?: string }) {
+export function PositionBars({
+  rows,
+  ariaLabel,
+  onSelect,
+}: {
+  rows: readonly PositionMixRow[]
+  ariaLabel?: string
+  /** Click-to-drill: the group, and the position under the pointer (null between segments). */
+  onSelect?: (row: PositionMixRow, position: Position | null) => void
+}) {
   const theme = useChartTheme()
   const segments = segmentsOf(rows)
   const height = 6 + rows.length * ROW + 26
@@ -158,7 +170,15 @@ export function PositionBars({ rows, ariaLabel }: { rows: readonly PositionMixRo
     )
   }
 
-  const tip = (i: number): TipContent | null => {
+  /** The position whose segment of row `i` sits under the pointer. */
+  const pick = (i: number, at: PlotPointer, plot: PlotElement): string | null => {
+    const v = plot.scale('x')?.invert?.(at.x)
+    if (typeof v !== 'number') return null
+    return segments.find((s) => s.row === i && v >= s.lo && v <= s.hi)?.position ?? null
+  }
+  const canSelect = (i: number) => !!onSelect && (rows[i]?.members.length ?? 0) > 0
+
+  const tip = (i: number, part: string | null): TipContent | null => {
     const r = rows[i]
     if (!r) return null
     return {
@@ -168,10 +188,22 @@ export function PositionBars({ rows, ariaLabel }: { rows: readonly PositionMixRo
         label: p,
         color: positionColor(theme, p),
         shape: 'rect' as const,
+        strong: p === part,
       })),
-      note: `${fmt(r.n, 'int')} people`,
+      note: `${fmt(r.n, 'int')} people${canSelect(i) ? '. Click to see the records' : ''}`,
     }
   }
 
-  return <PlotChart<number> build={build} height={height} legend={legend} tip={tip} ariaLabel={ariaLabel} />
+  return (
+    <PlotChart<number>
+      build={build}
+      height={height}
+      legend={legend}
+      tip={tip}
+      pick={pick}
+      selectable={canSelect}
+      onSelect={onSelect ? (i, part) => onSelect(rows[i], part as Position | null) : undefined}
+      ariaLabel={ariaLabel}
+    />
+  )
 }

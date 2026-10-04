@@ -1,7 +1,9 @@
 /**
  * Rating mix as 100% bars, one row per group plus a "Guideline" row on top for comparison.
  * Ratings are ordinal, so segments use the sequential blue ramp (1 lightest, 5 darkest), not
- * categorical colors. Shares sit inside segments where they fit; the tooltip lists all five.
+ * categorical colors. Shares sit inside segments where they fit; the tooltip lists all five and
+ * bolds the one under the pointer. Clicking a segment opens the people at that rating; clicking
+ * elsewhere on the row opens everyone rated in the group.
  */
 import * as Plot from '@observablehq/plot'
 import {
@@ -17,6 +19,8 @@ import {
   ordinalColors,
   type PlotBuildContext,
   PlotChart,
+  type PlotElement,
+  type PlotPointer,
   scalePos,
   type TipContent,
   textWidth,
@@ -24,6 +28,7 @@ import {
   useChartTheme,
 } from '@/charts'
 import { RATING_GUIDELINE } from '@/data/schema'
+import { type DrillSource, drill } from '@/drill'
 import { DASH, fmt } from '@/lib/format'
 import { RATINGS, ratingLabel } from '../engine/performance'
 
@@ -53,7 +58,32 @@ export function ratingColors(t: ChartTheme): string[] {
   return ordinalColors(t, 5)
 }
 
-export function RatingMix({ data, ariaLabel }: { data: readonly MixInput[]; ariaLabel?: string }) {
+/** 100% segments per row, left to right by rating; rows with a hidden share have none. */
+function segmentsOf(rows: readonly Row[]): Segment[] {
+  return rows.flatMap((r) => {
+    if (r.shares.some((s) => s == null)) return []
+    const total = r.shares.reduce<number>((a, b) => a + (b ?? 0), 0) || 1
+    let acc = 0
+    const lastIdx = r.shares.reduce<number>((li, s, i) => ((s ?? 0) > 0 ? i : li), -1)
+    return r.shares.map((s, i) => {
+      const share = (s ?? 0) / total
+      const seg = { key: r.key, rating: i + 1, lo: acc, hi: acc + share, share, last: i === lastIdx }
+      acc += share
+      return seg
+    })
+  })
+}
+
+export function RatingMix({
+  data,
+  drillFor,
+  ariaLabel,
+}: {
+  data: readonly MixInput[]
+  /** The records behind a group (rating null) or one rating in it; clicking opens them. */
+  drillFor?: (group: string, rating: number | null) => DrillSource
+  ariaLabel?: string
+}) {
   const theme = useChartTheme()
   const rows: Row[] = [
     {
@@ -65,6 +95,7 @@ export function RatingMix({ data, ariaLabel }: { data: readonly MixInput[]; aria
     },
     ...data.map((d, i) => ({ ...d, key: `r${i}`, guideline: false })),
   ]
+  const segments = segmentsOf(rows)
   const pitch = 30
   const height = 6 + rows.length * pitch + 26
   const legend: LegendSpec = {
@@ -78,18 +109,6 @@ export function RatingMix({ data, ariaLabel }: { data: readonly MixInput[]; aria
     const labelMax = Math.max(64, width * 0.32)
     const shown = rows.map((r) => truncateText(r.group, labelMax, 12))
     const marginLeft = Math.ceil(maxTextWidth(shown, 12)) + 14
-    const segments: Segment[] = rows.flatMap((r) => {
-      if (r.shares.some((s) => s == null)) return []
-      const total = r.shares.reduce<number>((a, b) => a + (b ?? 0), 0) || 1
-      let acc = 0
-      const lastIdx = r.shares.reduce<number>((li, s, i) => ((s ?? 0) > 0 ? i : li), -1)
-      return r.shares.map((s, i) => {
-        const share = (s ?? 0) / total
-        const seg = { key: r.key, rating: i + 1, lo: acc, hi: acc + share, share, last: i === lastIdx }
-        acc += share
-        return seg
-      })
-    })
     const inset = (pitch - Math.min(24, pitch * 0.5)) / 2
     const bar = (last: boolean): Plot.BarXOptions => ({
       x1: (s: Segment) => s.lo,
@@ -157,19 +176,51 @@ export function RatingMix({ data, ariaLabel }: { data: readonly MixInput[]; aria
     )
   }
 
-  const tip = (r: Row): TipContent => {
+  /** The rating whose segment is under the pointer, from the x scale. */
+  const pick = (r: Row, at: PlotPointer, plot: PlotElement): string | null => {
+    if (r.guideline) return null
+    const v = plot.scale('x')?.invert?.(at.x)
+    if (typeof v !== 'number') return null
+    const s = segments.find((g) => g.key === r.key && g.share > 0 && v >= g.lo && v <= g.hi)
+    return s ? String(s.rating) : null
+  }
+  const sourceOf = (r: Row, part: string | null): DrillSource =>
+    r.guideline || !drillFor ? null : drillFor(r.group, part ? Number(part) : null)
+
+  const tip = (r: Row, part: string | null): TipContent => {
     const colors = ratingColors(theme)
+    const hidden = r.shares.some((s) => s == null)
     return {
       title: r.guideline ? 'Rating guideline' : r.group,
-      rows: RATINGS.map((rating, i) => ({
-        value: r.shares[i] == null ? DASH : fmt(r.shares[i], 'pct'),
-        label: ratingLabel(rating),
-        color: colors[i],
-        shape: 'rect' as const,
-      })),
-      note: r.guideline ? 'Target share of rated people' : `${fmt(r.rated)} people rated`,
+      rows: [
+        ...RATINGS.map((rating, i) => ({
+          value: r.shares[i] == null ? DASH : fmt(r.shares[i], 'pct'),
+          label: ratingLabel(rating),
+          color: colors[i],
+          shape: 'rect' as const,
+          ...(part === String(rating) ? { strong: true } : {}),
+        })),
+        ...(r.guideline ? [] : [{ value: fmt(r.rated), label: 'People rated' }]),
+      ],
+      // Without a note the chart says "Click to see the records" on rows that open them.
+      note: r.guideline
+        ? 'Target share of rated people'
+        : hidden
+          ? 'Hidden to protect anonymity (n < 5)'
+          : undefined,
     }
   }
 
-  return <PlotChart<Row> build={build} height={height} legend={legend} tip={tip} ariaLabel={ariaLabel} />
+  return (
+    <PlotChart<Row>
+      build={build}
+      height={height}
+      legend={legend}
+      tip={tip}
+      pick={pick}
+      selectable={(r, part) => sourceOf(r, part) != null}
+      onSelect={(r, part) => drill(sourceOf(r, part))}
+      ariaLabel={ariaLabel}
+    />
+  )
 }

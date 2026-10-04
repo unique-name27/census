@@ -179,18 +179,21 @@ export interface RefLine {
  * Vertical (axis 'x') or horizontal (axis 'y') reference rule with its label. Vertical rules are
  * labeled above the plot. Horizontal rules are labeled above the line at the right end ('end'),
  * the left start ('start'), or in the right margin beside the line ('outside', which needs a
- * right margin of `refLabelWidth(ref)`), where it can never collide with marks.
+ * right margin of `refLabelWidth(ref)`), where it can never collide with marks; 'none' draws the
+ * rule alone, for charts that place the label themselves. Push it after the marks it measures
+ * against and before their value labels, so labels sit on top of the rule.
  */
 export function refRule(
   ref: RefLine,
   axis: 'x' | 'y',
   t: ChartTheme,
-  labelAt: 'start' | 'end' | 'outside' = 'end',
+  labelAt: 'start' | 'end' | 'outside' | 'none' = 'end',
 ): Plot.Markish[] {
   const rule =
     axis === 'x'
       ? Plot.ruleX([ref.value], { stroke: t.ink2, strokeWidth: 1 })
       : Plot.ruleY([ref.value], { stroke: t.ink2, strokeWidth: 1 })
+  if (labelAt === 'none') return [rule]
   const label = labelsMark((scales, dims) => {
     const p = scalePos(scales, axis, ref.value)
     const part = { text: ref.label, color: t.ink2, size: 11, weight: 500 }

@@ -283,6 +283,35 @@ export function foldSmallGroups<R>(
   return [...kept.filter((r) => stay.has(r)), combine(folded, otherLabel(folded.length))]
 }
 
+/**
+ * The records behind each row of a folded breakdown, keyed by the row's label: a kept group keeps
+ * its own records, the "Other (k)" row gets every group not shown on its own, and a row whose
+ * numbers are hidden (`shown` false) gets none, so a hidden number never opens its records.
+ */
+export function recordsByLabel<R, T>(
+  rows: readonly R[],
+  byGroup: ReadonlyMap<string, readonly T[]>,
+  opts: { label: (r: R) => string; folded: (r: R) => boolean; shown: (r: R) => boolean },
+): Map<string, T[]> {
+  const kept = new Set(rows.filter((r) => !opts.folded(r)).map(opts.label))
+  const out = new Map<string, T[]>()
+  for (const r of rows) {
+    if (!opts.shown(r)) continue
+    const list = opts.folded(r)
+      ? [...byGroup].flatMap(([g, v]) => (kept.has(g) ? [] : v))
+      : [...(byGroup.get(opts.label(r)) ?? [])]
+    out.set(opts.label(r), list)
+  }
+  return out
+}
+
+/** Push onto the list at key, creating it. */
+export function pushTo<K, T>(m: Map<K, T[]>, key: K, item: T): void {
+  const arr = m.get(key)
+  if (arr) arr.push(item)
+  else m.set(key, [item])
+}
+
 /** "A, B and C" */
 export function listText(items: readonly string[]): string {
   if (items.length <= 1) return items.join('')

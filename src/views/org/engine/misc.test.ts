@@ -194,7 +194,7 @@ describe('export rows', () => {
 
 describe('org slides', () => {
   const scheme = colorScheme('department', [...base.people.values()], AS_OF)
-  it('fits each leader’s org inside the slide content area', () => {
+  it("fits each leader's org inside the slide content area", () => {
     const plans = planSlides(base, ['CEO', 'VP-A', 'NOPE'], { levels: 2, scheme, asOf: AS_OF })
     expect(plans.map((p) => p.leaderId)).toEqual(['CEO', 'VP-A'])
     for (const p of plans) {

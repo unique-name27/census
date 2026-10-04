@@ -1,13 +1,49 @@
 import { BarList, type Column, Figure, HBars, Heatmap, RangeBars } from '@/charts'
 import { Section } from '@/components'
 import type { AnalyticsContext } from '@/data/context'
+import { drill } from '@/drill'
+import { formatDate } from '@/lib/dates'
 import { fmt } from '@/lib/format'
 import type { ServicesModel } from '../engine'
-import { isRowPrivate, openedIn } from '../engine/cases'
+import {
+  type AgedCaseRow,
+  type ArrivalRow,
+  type CategoryRow,
+  type ChannelRow,
+  isRowPrivate,
+  openedIn,
+  type ReopenRow,
+  type ResolveRow,
+} from '../engine/cases'
 import { RESOLUTION_SLA_TARGET } from '../engine/catalog'
+import {
+  caseDrill,
+  csatDrill,
+  drillWhen,
+  escalateDrill,
+  firstContactDrill,
+  oneCaseDrill,
+  openDrill,
+  reopenDrill,
+  resolutionDrill,
+  resolutionOutcomeDrill,
+  resolveTimeDrill,
+  responseDrill,
+} from '../engine/drills'
 import type { CaseFact } from '../engine/facts'
 import { duration, isOther, WEEKDAYS } from '../engine/util'
-import { asOfNote, count, DEF, NeedData, NO_CASES, period, rateTone, SMALL_SCOPE } from './shared'
+import {
+  asOfNote,
+  count,
+  DEF,
+  NeedData,
+  NO_CASES,
+  period,
+  rateTone,
+  SMALL_SCOPE,
+  titled,
+  useProcessHref,
+} from './shared'
 
 const CASE_DETAIL_COLUMNS = [
   { key: 'caseId', label: 'Case ID' },
@@ -22,6 +58,16 @@ const CASE_DETAIL_COLUMNS = [
   { key: 'resolutionHours', label: 'Hours to resolve', format: 'num1' as const },
   { key: 'sla', label: 'Resolution SLA' },
 ]
+
+const WEEKDAY_NAMES: Record<string, string> = {
+  Mon: 'Mondays',
+  Tue: 'Tuesdays',
+  Wed: 'Wednesdays',
+  Thu: 'Thursdays',
+  Fri: 'Fridays',
+  Sat: 'Saturdays',
+  Sun: 'Sundays',
+}
 
 /**
  * Case rows for a detail export: no requester or subcategory is ever included, and employee
@@ -43,8 +89,11 @@ function lowestFirst<T>(rows: readonly T[], label: (r: T) => string, rate: (r: T
 }
 
 export function CasesTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext }) {
+  const processHref = useProcessHref()
   if (!m.hasCases) return <NeedData {...NO_CASES} />
+  const s = m.scope
   const per = period(ctx)
+  const asOf = formatDate(m.asOf)
   const opened = openedIn(m.cases, m.window)
   const categories = lowestFirst(
     m.categories,
@@ -61,23 +110,216 @@ export function CasesTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext }
     return others.reduce((a, o) => a + (o.csat as number) * o.responses, 0) / n - c.csat
   }
   const reopenLong = m.reopen.flatMap((r) => [
-    { category: r.category, measure: 'Reopened', rate: r.reopenRate },
-    { category: r.category, measure: 'Escalated', rate: r.escalateRate },
+    { category: r.category, measure: 'Reopened', rate: r.reopenRate, row: r },
+    { category: r.category, measure: 'Escalated', rate: r.escalateRate, row: r },
   ])
   const teams = m.teams.map((t) => {
     const d = duration(t.medianHours)
     return { ...t, median: d.value, medianFormat: d.format }
   })
   type TeamOut = (typeof teams)[number]
+
+  /* Drill sources, shared by the charts and their table views. */
+  const slaCategory = (d: CategoryRow) =>
+    d.slaRate == null
+      ? null
+      : () => resolutionDrill(s, d.records, titled('Cases judged on resolution SLA', d.category, per))
+  const responseCategory = (d: CategoryRow) =>
+    d.responseRate == null
+      ? null
+      : () => responseDrill(s, d.records, titled('Cases judged on first response SLA', d.category, per))
+  const resolveCategory = (d: ResolveRow) => () =>
+    resolveTimeDrill(s, d.records, titled('Cases resolved', d.category, per))
+  const arrivalCell = (d: ArrivalRow) =>
+    d.share == null
+      ? null
+      : drillWhen(s, d.records, () =>
+          caseDrill(s, d.records, {
+            title: titled(
+              `Cases opened on ${WEEKDAY_NAMES[d.weekday] ?? d.weekday}`,
+              `${d.hour}:00 to ${d.hour}:59`,
+              per,
+            ),
+          }),
+        )
+  const channelCsat = (d: ChannelRow) =>
+    d.csat == null
+      ? null
+      : () => csatDrill(s, d.resolvedRecords, titled('Cases rated for satisfaction', d.channel, per))
+  const reopened = (d: ReopenRow) =>
+    d.reopenRate == null ? null : () => reopenDrill(s, d.records, titled('Reopened cases', d.category, per))
+  const escalated = (d: ReopenRow) =>
+    d.escalateRate == null
+      ? null
+      : () => escalateDrill(s, d.records, titled('Escalated cases', d.category, per))
+  const categoryOpened = (d: ReopenRow) =>
+    drillWhen(s, d.records, () =>
+      caseDrill(s, d.records, {
+        title: titled('Cases opened', d.category, per),
+        flags: ['reopened', 'escalated'],
+      }),
+    )
+
   const teamColumns: Column<TeamOut>[] = [
     { key: 'team', label: 'Team' },
-    { key: 'opened', label: 'Cases opened', format: 'int' },
-    { key: 'resolved', label: 'Resolved', format: 'int' },
-    { key: 'open', label: 'Open now', format: 'int' },
-    { key: 'slaRate', label: 'Resolution SLA met', format: 'pct' },
-    { key: 'median', label: 'Median time to resolve', format: (r) => r.medianFormat },
-    { key: 'csat', label: 'Satisfaction', format: 'num1' },
-    { key: 'firstContact', label: 'First-contact resolution', format: 'pct' },
+    {
+      key: 'opened',
+      label: 'Cases opened',
+      format: 'int',
+      drill: (r) =>
+        drillWhen(s, r.openedRecords, () =>
+          caseDrill(s, r.openedRecords, { title: titled('Cases opened', r.team, per) }),
+        ),
+    },
+    {
+      key: 'resolved',
+      label: 'Resolved',
+      format: 'int',
+      drill: (r) =>
+        drillWhen(s, r.resolvedRecords, () =>
+          caseDrill(s, r.resolvedRecords, { title: titled('Cases resolved', r.team, per) }),
+        ),
+    },
+    {
+      key: 'open',
+      label: 'Open now',
+      format: 'int',
+      drill: (r) =>
+        drillWhen(s, r.openRecords, () =>
+          openDrill(s, r.openRecords, titled('Open cases', r.team, `at ${asOf}`)),
+        ),
+    },
+    {
+      key: 'slaRate',
+      label: 'Resolution SLA met',
+      format: 'pct',
+      drill: (r) =>
+        r.slaRate == null
+          ? null
+          : () => resolutionDrill(s, r.openedRecords, titled('Cases judged on resolution SLA', r.team, per)),
+    },
+    {
+      key: 'median',
+      label: 'Median time to resolve',
+      format: (r) => r.medianFormat,
+      drill: (r) =>
+        r.median == null
+          ? null
+          : () => resolveTimeDrill(s, r.resolvedRecords, titled('Cases resolved', r.team, per)),
+    },
+    {
+      key: 'csat',
+      label: 'Satisfaction',
+      format: 'num1',
+      drill: (r) =>
+        r.csat == null
+          ? null
+          : () => csatDrill(s, r.resolvedRecords, titled('Cases rated for satisfaction', r.team, per)),
+    },
+    {
+      key: 'firstContact',
+      label: 'First-contact resolution',
+      format: 'pct',
+      drill: (r) =>
+        r.firstContact == null
+          ? null
+          : () => firstContactDrill(s, r.resolvedRecords, titled('First-contact resolution', r.team, per)),
+    },
+  ]
+  const slaColumns: Column<CategoryRow>[] = [
+    { key: 'category', label: 'Category' },
+    { key: 'processId', label: 'Atlas process', href: (r) => processHref(r.processId) },
+    { key: 'slaN', label: 'Cases with an outcome', format: 'int', drill: slaCategory },
+    {
+      key: 'slaMet',
+      label: 'Met target',
+      format: 'int',
+      drill: (r) =>
+        r.slaMet
+          ? () =>
+              resolutionOutcomeDrill(
+                s,
+                r.records,
+                true,
+                titled('Cases that met the resolution SLA', r.category, per),
+              )
+          : null,
+    },
+    { key: 'slaRate', label: 'Resolution SLA met', format: 'pct', drill: slaCategory },
+    { key: 'responseRate', label: 'First response SLA met', format: 'pct', drill: responseCategory },
+  ]
+  const resolveDrill = (r: ResolveRow) => resolveCategory(r)
+  const resolveColumns: Column<ResolveRow>[] = [
+    { key: 'category', label: 'Category' },
+    { key: 'n', label: 'Cases resolved', format: 'int', drill: resolveDrill },
+    { key: 'targetDays', label: 'Target (d)', format: 'num1' },
+    { key: 'p10', label: '10th percentile (d)', format: 'num1', drill: resolveDrill },
+    { key: 'q1', label: '25th percentile (d)', format: 'num1', drill: resolveDrill },
+    { key: 'median', label: 'Median (d)', format: 'num1', drill: resolveDrill },
+    { key: 'q3', label: '75th percentile (d)', format: 'num1', drill: resolveDrill },
+    { key: 'p90', label: '90th percentile (d)', format: 'num1', drill: resolveDrill },
+    { key: 'medianShare', label: 'Median, share of target', format: 'pct0', drill: resolveDrill },
+    { key: 'p90Share', label: '90th percentile, share of target', format: 'pct0', drill: resolveDrill },
+  ]
+  const channelColumns: Column<ChannelRow>[] = [
+    { key: 'channel', label: 'Channel' },
+    {
+      key: 'cases',
+      label: 'Cases opened',
+      format: 'int',
+      drill: (r) =>
+        drillWhen(s, r.records, () =>
+          caseDrill(s, r.records, { title: titled('Cases opened', r.channel, per) }),
+        ),
+    },
+    { key: 'responses', label: 'Responses', format: 'int', drill: channelCsat },
+    { key: 'csat', label: 'Satisfaction', format: 'num2', drill: channelCsat },
+    {
+      key: 'slaRate',
+      label: 'Resolution SLA met',
+      format: 'pct',
+      drill: (r) =>
+        r.slaRate == null
+          ? null
+          : () => resolutionDrill(s, r.records, titled('Cases judged on resolution SLA', r.channel, per)),
+    },
+  ]
+  const reopenColumns: Column<ReopenRow>[] = [
+    { key: 'category', label: 'Category' },
+    { key: 'opened', label: 'Cases opened', format: 'int', drill: categoryOpened },
+    {
+      key: 'resolved',
+      label: 'Resolved',
+      format: 'int',
+      drill: (r) =>
+        drillWhen(s, r.records, () =>
+          caseDrill(
+            s,
+            r.records.filter((f) => f.resolved != null),
+            {
+              title: titled('Cases resolved', r.category, per),
+              gate: r.records,
+              flags: ['reopened', 'escalated'],
+            },
+          ),
+        ),
+    },
+    { key: 'reopened', label: 'Reopened', format: 'int', drill: reopened },
+    { key: 'reopenRate', label: 'Reopen rate', format: 'pct', drill: reopened },
+    { key: 'escalated', label: 'Escalated', format: 'int', drill: escalated },
+    { key: 'escalateRate', label: 'Escalation rate', format: 'pct', drill: escalated },
+  ]
+  const agedColumns: Column<AgedCaseRow>[] = [
+    { key: 'caseId', label: 'Case ID', drill: (r) => (s.on ? () => oneCaseDrill(s, r.fact) : null) },
+    { key: 'category', label: 'Category' },
+    { key: 'processId', label: 'Atlas process', href: (r) => processHref(r.processId) },
+    { key: 'status', label: 'Case status' },
+    { key: 'team', label: 'Team' },
+    { key: 'assignee', label: 'Assignee' },
+    { key: 'opened', label: 'Opened', format: 'date' },
+    { key: 'ageDays', label: 'Age (d)', format: 'int' },
+    { key: 'targetDays', label: 'Target (d)', format: 'num1' },
+    { key: 'daysPastTarget', label: 'Days past target', format: 'int' },
   ]
   // Employee relations cases this old are given as a count only (and not at all in a small scope).
   const erAged = m.small ? 0 : m.agedPrivate.reduce((a, r) => a + r.cases, 0)
@@ -95,14 +337,7 @@ export function CasesTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext }
           title="Resolution SLA by category"
           subtitle={`Share of cases opened in the ${per} resolved within the category target, lowest first`}
           data={categories}
-          columns={[
-            { key: 'category', label: 'Category' },
-            { key: 'processId', label: 'Atlas process' },
-            { key: 'slaN', label: 'Cases with an outcome', format: 'int' },
-            { key: 'slaMet', label: 'Met target', format: 'int' },
-            { key: 'slaRate', label: 'Resolution SLA met', format: 'pct' },
-            { key: 'responseRate', label: 'First response SLA met', format: 'pct' },
-          ]}
+          columns={slaColumns}
           definitions={[
             DEF.resolutionSla,
             {
@@ -131,6 +366,7 @@ export function CasesTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext }
             ref={{ value: RESOLUTION_SLA_TARGET, label: `Target ${fmt(RESOLUTION_SLA_TARGET, 'pct0')}` }}
             secondary={(d) => count(d.slaN, 'case')}
             tone={(d) => rateTone(d.slaRate, RESOLUTION_SLA_TARGET)}
+            onSelect={(d) => drill(slaCategory(d))}
           />
         </Figure>
         <Figure
@@ -139,18 +375,7 @@ export function CasesTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext }
           title="Time to resolve against target"
           subtitle={`Time from opened to resolved as a share of each category's resolution target (100% = on target), cases resolved in the ${per}`}
           data={m.resolve}
-          columns={[
-            { key: 'category', label: 'Category' },
-            { key: 'n', label: 'Cases resolved', format: 'int' },
-            { key: 'targetDays', label: 'Target (d)', format: 'num1' },
-            { key: 'p10', label: '10th percentile (d)', format: 'num1' },
-            { key: 'q1', label: '25th percentile (d)', format: 'num1' },
-            { key: 'median', label: 'Median (d)', format: 'num1' },
-            { key: 'q3', label: '75th percentile (d)', format: 'num1' },
-            { key: 'p90', label: '90th percentile (d)', format: 'num1' },
-            { key: 'medianShare', label: 'Median, share of target', format: 'pct0' },
-            { key: 'p90Share', label: '90th percentile, share of target', format: 'pct0' },
-          ]}
+          columns={resolveColumns}
           definitions={[
             DEF.timeToResolve,
             {
@@ -180,6 +405,7 @@ export function CasesTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext }
             markers={[{ key: 'targetShare', label: 'Target (100%)' }]}
             format="pct0"
             labels={{ min: '10th percentile', max: '90th percentile', mid: 'Median', range: 'Middle 50%' }}
+            onSelect={(d) => drill(resolveCategory(d))}
           />
         </Figure>
       </Section>
@@ -197,8 +423,8 @@ export function CasesTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext }
           columns={[
             { key: 'weekday', label: 'Weekday' },
             { key: 'hour', label: 'Hour' },
-            { key: 'cases', label: 'Cases opened', format: 'int' },
-            { key: 'share', label: 'Share of cases', format: 'pct' },
+            { key: 'cases', label: 'Cases opened', format: 'int', drill: arrivalCell },
+            { key: 'share', label: 'Share of cases', format: 'pct', drill: arrivalCell },
           ]}
           definitions={[
             {
@@ -224,6 +450,7 @@ export function CasesTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext }
             xOrder={hours}
             yOrder={days}
             rowHeight={32}
+            onSelect={(d) => drill(arrivalCell(d))}
           />
         </Figure>
         <Figure
@@ -232,13 +459,7 @@ export function CasesTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext }
           title="Satisfaction by channel"
           subtitle={`Mean score (1 to 5) on cases resolved in the ${per}`}
           data={m.channels}
-          columns={[
-            { key: 'channel', label: 'Channel' },
-            { key: 'cases', label: 'Cases opened', format: 'int' },
-            { key: 'responses', label: 'Responses', format: 'int' },
-            { key: 'csat', label: 'Satisfaction', format: 'num2' },
-            { key: 'slaRate', label: 'Resolution SLA met', format: 'pct' },
-          ]}
+          columns={channelColumns}
           definitions={[DEF.csat, DEF.anonymity]}
           note={asOfNote(m.asOf, count(m.summary.csat.n, 'response'))}
           empty={m.caseCols.csat ? null : 'Upload HR cases with a satisfaction column to see this.'}
@@ -256,6 +477,7 @@ export function CasesTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext }
             }
             secondary={(d) => count(d.responses, 'response')}
             tone={(d) => (channelGap(d) >= 0.5 ? 'warning' : 'default')}
+            onSelect={(d) => drill(channelCsat(d))}
           />
         </Figure>
       </Section>
@@ -270,15 +492,7 @@ export function CasesTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext }
           title="Reopened and escalated by category"
           subtitle={`Cases opened in the ${per}: reopened after resolution, and escalated to a higher tier`}
           data={m.reopen}
-          columns={[
-            { key: 'category', label: 'Category' },
-            { key: 'opened', label: 'Cases opened', format: 'int' },
-            { key: 'resolved', label: 'Resolved', format: 'int' },
-            { key: 'reopened', label: 'Reopened', format: 'int' },
-            { key: 'reopenRate', label: 'Reopen rate', format: 'pct' },
-            { key: 'escalated', label: 'Escalated', format: 'int' },
-            { key: 'escalateRate', label: 'Escalation rate', format: 'pct' },
-          ]}
+          columns={reopenColumns}
           definitions={[DEF.reopen, DEF.escalation, DEF.anonymity]}
           note={asOfNote(m.asOf, count(m.summary.opened, 'case'))}
           empty={
@@ -295,6 +509,8 @@ export function CasesTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext }
             seriesOrder={['Reopened', 'Escalated']}
             yOrder={m.reopen.map((r) => r.category)}
             format="pct"
+            onSelect={(d) => drill(categoryOpened(d.row))}
+            onSelectSegment={(d) => drill(d.measure === 'Reopened' ? reopened(d.row) : escalated(d.row))}
           />
         </Figure>
         <Figure
@@ -325,18 +541,7 @@ export function CasesTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext }
           title="Cases open longer than 14 days"
           subtitle="Open at the as-of date, with the days past the category resolution target"
           data={m.aged}
-          columns={[
-            { key: 'caseId', label: 'Case ID' },
-            { key: 'category', label: 'Category' },
-            { key: 'processId', label: 'Atlas process' },
-            { key: 'status', label: 'Case status' },
-            { key: 'team', label: 'Team' },
-            { key: 'assignee', label: 'Assignee' },
-            { key: 'opened', label: 'Opened', format: 'date' },
-            { key: 'ageDays', label: 'Age (d)', format: 'int' },
-            { key: 'targetDays', label: 'Target (d)', format: 'num1' },
-            { key: 'daysPastTarget', label: 'Days past target', format: 'int' },
-          ]}
+          columns={agedColumns}
           definitions={[
             DEF.backlog,
             {

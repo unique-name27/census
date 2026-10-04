@@ -95,6 +95,8 @@ export interface RetentionResult {
     byQuarter: number[]
   }
   hipoExits: { window: Window; available: boolean; missing: string | null; people: ExitPerson[] }
+  /** Active scored employees in scope per band (the band chart's people). */
+  bandPeople: Record<RiskBand, Employee[]>
 }
 
 /** Main reason: the top factor by points that most of the high band does not share; then the next one. */
@@ -171,8 +173,11 @@ export function computeRetention(base: TalentBase, model: RiskModel): RetentionR
   }
   const scored = scopedScores.length
   const companyCount = model.scores.size
+  const bandPeople = Object.fromEntries(
+    RISK_BANDS.map((band) => [band, scopedScores.filter((s) => s.r.band === band).map((s) => s.e)]),
+  ) as Record<RiskBand, Employee[]>
   const bands: BandRow[] = RISK_BANDS.map((band) => {
-    const k = scopedScores.filter((s) => s.r.band === band).length
+    const k = bandPeople[band].length
     let all = 0
     for (const s of model.scores.values()) if (s.band === band) all++
     return {
@@ -256,5 +261,6 @@ export function computeRetention(base: TalentBase, model: RiskModel): RetentionR
     keyTalentTop,
     regrettedHigh: { available, missing, current, prior, byQuarter },
     hipoExits: { window: hipoWindow, available: hipoMissing == null, missing: hipoMissing, people: hipo },
+    bandPeople,
   }
 }

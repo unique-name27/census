@@ -2,24 +2,29 @@
  * The open state of a manifest row: what each field's fill rate is, the checks in full, what the
  * last upload changed (with its log as CSV) and how the importer fills gaps for this dataset.
  */
-import { useState } from 'react'
+import { type ReactNode, useMemo, useState } from 'react'
 import { Meter } from '@/charts'
 import { IconDownload, IconGood } from '@/components/icons'
 import { toast } from '@/components/toast'
 import { Button, SeverityIcon, Tag } from '@/components/ui'
 import { DOCUMENTED_DEFAULTS } from '@/data/import/defaults'
 import { summarizeIssues } from '@/data/import/issues'
-import { datasetDef } from '@/data/schema'
+import { type Datasets, datasetDef } from '@/data/schema'
 import { useCensus } from '@/data/store'
+import { Drill } from '@/drill/Drill'
+import type { DrillKind, DrillRecordMap } from '@/drill/types'
 import { formatDate } from '@/lib/dates'
 import { fmt } from '@/lib/format'
 import { coverageText, type FieldCoverage, REQUIREMENT_LABEL } from '../engine/coverage'
 import { actionSeverity, issuesFileStem, redactPayIssues } from '../engine/flow'
 import type { ManifestRow } from '../engine/manifest'
+import { issueGroupKey, issueRecordsByGroup } from '../engine/records'
 import { type ImportLog, logFor, useImportLogs } from '../state/importLog'
 import { useSavedChoices } from '../state/savedChoices'
 import { loadImportLib } from '../state/session'
+import { CheckSentence, DrillSentence } from './DrillSentence'
 import { downloadIssuesCsv } from './downloads'
+import { fieldSpec, issueSpec, midSentence, rowsSpec } from './drillSpecs'
 
 function RequirementTag({ f }: { f: FieldCoverage }) {
   if (f.requirement === 'required') return <Tag tone="outline">{REQUIREMENT_LABEL.required}</Tag>
@@ -54,7 +59,39 @@ function FillNote({ f }: { f: FieldCoverage }) {
   return null
 }
 
-function CoverageTable({ row }: { row: ManifestRow }) {
+const rowsWord = (n: number) => (n === 1 ? 'row' : 'rows')
+
+/** "34 blank": opens the rows the field applies to that hold no value. */
+function BlankDrill({ row, f, data }: { row: ManifestRow; f: FieldCoverage; data: Datasets }) {
+  const n = fmt(f.blank, 'int')
+  return (
+    <Drill
+      spec={() => fieldSpec(row, f, data, 'blank')}
+      label={`Show the ${n} ${rowsWord(f.blank)} with no ${midSentence(f.label)}`}
+      className="whitespace-nowrap"
+    >
+      {n} blank
+    </Drill>
+  )
+}
+
+/** "212 leavers": a date that is blank until something happens opens the rows where it happened. */
+function EventText({ row, f, data }: { row: ManifestRow; f: FieldCoverage; data: Datasets }) {
+  const text = `${fmt(f.filled, 'int')} ${f.event}`
+  // Defaulted values can not be told apart from the file's, so the listed rows would not match.
+  if (!f.filled || f.defaulted > 0) return <>{text}</>
+  return (
+    <Drill
+      spec={() => fieldSpec(row, f, data, 'filled')}
+      label={`Show the ${text} in ${row.label}`}
+      className="whitespace-nowrap"
+    >
+      {text}
+    </Drill>
+  )
+}
+
+function CoverageTable({ row, data }: { row: ManifestRow; data: Datasets }) {
   return (
     <div className="scroll-x">
       {/* Below sm the share and counts sit under the field name, so nothing scrolls sideways. */}
@@ -81,7 +118,8 @@ function CoverageTable({ row }: { row: ManifestRow }) {
             const share = coverageText(f.share)
             const counts = `${fmt(f.filled, 'int')} of ${fmt(f.expected, 'int')}`
             // A date that is blank until something happens: a count of events, not a gap.
-            const event = f.event ? `${fmt(f.filled, 'int')} ${f.event}` : null
+            const event = f.event ? <EventText row={row} f={f} data={data} /> : null
+            const blank = !f.event && f.blank > 0 ? <BlankDrill row={row} f={f} data={data} /> : null
             return (
               <tr key={f.key} className="border-b border-rule last:border-b-0">
                 <td className="py-1.5 pr-3 align-top">
@@ -91,7 +129,10 @@ function CoverageTable({ row }: { row: ManifestRow }) {
                   <FillNote f={f} />
                   <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 sm:hidden">
                     <RequirementTag f={f} />
-                    <span className="tnum text-[12px] text-ink-2">{event ?? `${share} · ${counts}`}</span>
+                    <span className="tnum text-[12px] text-ink-2">
+                      {event ?? `${share} · ${counts}`}
+                      {blank && <> · {blank}</>}
+                    </span>
                   </span>
                 </td>
                 <td className="hidden py-1.5 pr-3 align-top sm:table-cell">
@@ -120,6 +161,7 @@ function CoverageTable({ row }: { row: ManifestRow }) {
                 </td>
                 <td className="tnum hidden py-1.5 text-right align-top text-[12px] text-ink-2 sm:table-cell">
                   {counts}
+                  {blank && <span className="block">{blank}</span>}
                 </td>
               </tr>
             )
@@ -130,23 +172,56 @@ function CoverageTable({ row }: { row: ManifestRow }) {
   )
 }
 
-function LastImport({ row, log }: { row: ManifestRow; log: ImportLog }) {
+type Rec = DrillRecordMap[DrillKind]
+
+interface Fact {
+  key: string
+  node: ReactNode
+}
+
+function LastImport({ row, log, data }: { row: ManifestRow; log: ImportLog; data: Datasets }) {
   const showPay = useCensus((s) => s.showPay)
   const def = datasetDef(row.key)
-  const issues = redactPayIssues(log.issues, def, showPay)
+  const rows: readonly Rec[] = data[row.key]
+  // The log's lines and the loaded rows each one is about, matched once per upload.
+  const { issues, matched } = useMemo(() => {
+    const redacted = redactPayIssues(log.issues, def, showPay)
+    return { issues: redacted, matched: issueRecordsByGroup(def, rows, redacted) }
+  }, [log, def, rows, showPay])
   const summaries = summarizeIssues(issues)
   const s = log.stats
-  const facts = [
-    `${fmt(s.rowsIn, 'int')} rows read`,
-    `${fmt(s.rowsOut, 'int')} imported`,
-    s.skippedMissingRequired ? `${fmt(s.skippedMissingRequired, 'int')} skipped` : null,
+  const imported = `${fmt(s.rowsOut, 'int')} imported`
+  const listed: (Fact | null)[] = [
+    { key: 'read', node: `${fmt(s.rowsIn, 'int')} rows read` },
+    {
+      key: 'imported',
+      // Still the rows loaded now, unless they were changed since.
+      node:
+        s.rowsOut > 0 && s.rowsOut === rows.length ? (
+          <Drill spec={() => rowsSpec(row, data)} label={`Show the ${imported} rows`}>
+            {imported}
+          </Drill>
+        ) : (
+          imported
+        ),
+    },
+    s.skippedMissingRequired
+      ? { key: 'skipped', node: `${fmt(s.skippedMissingRequired, 'int')} skipped` }
+      : null,
     s.duplicates
-      ? `${fmt(s.duplicates, 'int')} ${s.duplicates === 1 ? 'duplicate' : 'duplicates'} merged`
+      ? {
+          key: 'dupes',
+          node: `${fmt(s.duplicates, 'int')} ${s.duplicates === 1 ? 'duplicate' : 'duplicates'} merged`,
+        }
       : null,
     s.defaulted
-      ? `${fmt(s.defaulted, 'int')} ${s.defaulted === 1 ? 'value' : 'values'} filled by a default`
+      ? {
+          key: 'defaulted',
+          node: `${fmt(s.defaulted, 'int')} ${s.defaulted === 1 ? 'value' : 'values'} filled by a default`,
+        }
       : null,
-  ].filter(Boolean)
+  ]
+  const facts = listed.filter((f): f is Fact => f != null)
   return (
     <div>
       <h4 className="eyebrow">Last upload</h4>
@@ -155,15 +230,36 @@ function LastImport({ row, log }: { row: ManifestRow; log: ImportLog }) {
         {log.sheetName ? ` › ${log.sheetName}` : ''}
         <span className="text-muted"> · {formatDate(log.importedAt.slice(0, 10))}</span>
       </p>
-      <p className="mt-0.5 text-[12px] text-ink-2">{facts.join(' · ')}</p>
+      <p className="mt-0.5 text-[12px] text-ink-2">
+        {facts.map((f, i) => (
+          <span key={f.key}>
+            {i > 0 && ' · '}
+            {f.node}
+          </span>
+        ))}
+      </p>
       {summaries.length ? (
         <ul className="mt-2 space-y-1">
-          {summaries.slice(0, 5).map((m) => (
-            <li key={`${m.code}|${m.field}|${m.action}`} className="flex gap-2 text-[13px]">
-              <SeverityIcon severity={actionSeverity(m.action)} className="mt-0.5 size-3.5 shrink-0" />
-              <span>{m.message}</span>
-            </li>
-          ))}
+          {summaries.slice(0, 5).map((m) => {
+            const found = matched.get(issueGroupKey(m))
+            const n = found?.records.length ?? 0
+            const rowsText = `${fmt(n, 'int')} ${rowsWord(n)}`
+            return (
+              <li key={issueGroupKey(m)} className="flex gap-2 text-[13px]">
+                <SeverityIcon severity={actionSeverity(m.action)} className="mt-0.5 size-3.5 shrink-0" />
+                <span>
+                  <DrillSentence
+                    text={m.message}
+                    // The count is underlined in place only when every logged row is still loaded.
+                    figure={n === m.count ? m.count.toLocaleString('en-US') : null}
+                    spec={n ? () => issueSpec(row, log, m, found) : null}
+                    label={`Show the ${rowsText} this is about`}
+                    link={`${rowsText} still loaded`}
+                  />
+                </span>
+              </li>
+            )
+          })}
           {summaries.length > 5 && (
             <li className="pl-5.5 text-[12px] text-muted">
               {summaries.length - 5} more kinds of change in the log.
@@ -196,7 +292,7 @@ function LastImport({ row, log }: { row: ManifestRow; log: ImportLog }) {
   )
 }
 
-export function DatasetDetail({ row, id }: { row: ManifestRow; id: string }) {
+export function DatasetDetail({ row, data, id }: { row: ManifestRow; data: Datasets; id: string }) {
   const logs = useImportLogs((s) => s.logs)
   const source = useCensus((s) => s.sources[row.key])
   const log = logFor(logs, row.key, source)
@@ -225,7 +321,7 @@ export function DatasetDetail({ row, id }: { row: ManifestRow; id: string }) {
           filled by a default count as blank.
         </p>
         <div className="mt-2">
-          <CoverageTable row={row} />
+          <CoverageTable row={row} data={data} />
         </div>
       </div>
       <div className="min-w-0 space-y-5 lg:col-span-5">
@@ -236,7 +332,9 @@ export function DatasetDetail({ row, id }: { row: ManifestRow; id: string }) {
               {row.checks.map((c) => (
                 <li key={`${c.kind}|${c.text}`} className="flex gap-2 text-[13px]">
                   <SeverityIcon severity={c.severity} className="mt-0.5 size-3.5 shrink-0" />
-                  <span>{c.text}</span>
+                  <span>
+                    <CheckSentence check={c} row={row} data={data} />
+                  </span>
                 </li>
               ))}
             </ul>
@@ -247,7 +345,7 @@ export function DatasetDetail({ row, id }: { row: ManifestRow; id: string }) {
             </p>
           )}
         </div>
-        {log && <LastImport row={row} log={log} />}
+        {log && <LastImport row={row} log={log} data={data} />}
         {defaults.length > 0 && (
           <div>
             <h4 className="eyebrow">How blanks are filled on upload</h4>

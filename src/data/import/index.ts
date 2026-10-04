@@ -14,7 +14,7 @@
  *   summarizeIssues(result.issues)
  */
 export { type ApplyArgs, applyMapping, suggestOptions } from './apply'
-export { autoMap, confidenceOf, MIN_SCORE, rankHeaders, withChoice } from './automap'
+export { autoMap, confidenceOf, knownShare, MIN_SCORE, rankHeaders, withChoice } from './automap'
 export { canonicalText, normalizeCurrency } from './canonical'
 export { cycleDateFromName, DOCUMENTED_DEFAULTS, REFERENCE_FX_TO_USD, UNKNOWN } from './defaults'
 export { guessDataset, isTemplateHelpSheet, TEMPLATE_HELP_SHEETS } from './detect'
@@ -38,6 +38,7 @@ export { readWorkbook, sheetFromRows, WorkbookReadError } from './parse'
 export {
   applyProfile,
   deleteProfile,
+  forgetAllProfiles,
   forgetLearnedSynonyms,
   headerFingerprint,
   learnSynonym,

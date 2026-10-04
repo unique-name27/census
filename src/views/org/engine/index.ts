@@ -1,7 +1,9 @@
 /** Org chart engine: pure functions over the roster, no React and no DOM. */
 export * from './colorBy'
 export * from './detail'
+export * from './drill'
 export * from './expand'
+export * from './figures'
 export * from './flags'
 export * from './layout'
 export * from './model'

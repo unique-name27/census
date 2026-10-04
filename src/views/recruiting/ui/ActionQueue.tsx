@@ -1,18 +1,19 @@
 /**
  * The action queue: active candidates lacking a timely next step, grouped by who owns the next
  * action. The owners panel lists each owner with a "Copy note" button (a polite, ready-to-send
- * ask composed per needed action); the table beside it is the exportable queue itself.
+ * ask composed per needed action); the table beside it is the exportable queue itself. Every
+ * count and every row opens the candidates behind it in the drill panel.
  */
 import { type Column, Figure } from '@/charts'
 import { Button, cx, IconClose, IconCopy, SeverityIcon, spanClass, toast } from '@/components'
-import { STAGES } from '@/data/schema'
+import { Drill } from '@/drill'
 import { formatDate } from '@/lib/dates'
 import { writeClipboard } from '@/lib/export'
 import { fmt, plural } from '@/lib/format'
+import type { RecruitingBase } from '../engine/base'
+import { activeDrill, candidateDrill, queueOwnerDrill } from '../engine/drills'
 import { ownerNote } from '../engine/messages'
-import { STATE_NAME } from '../engine/nextStep'
 import { type QueueGroup, type QueueRow, queueRows } from '../engine/pipeline'
-import type { NextState } from '../engine/types'
 import { useRecruitingUi } from '../state'
 import { TABLET_FULL } from './common'
 
@@ -23,14 +24,17 @@ import { TABLET_FULL } from './common'
  * owner and next step onto two lines. The full rows (state, aging, job title, department, owner
  * role) export as the detail rows.
  */
-const QUEUE_COLUMNS: Column<QueueRow>[] = [
-  { key: 'owner', label: 'Owner', width: 24 },
-  { key: 'candidate', label: 'Candidate', width: 26 },
-  { key: 'reqId', label: 'Req', width: 10 },
-  { key: 'stage', label: 'Stage' },
-  { key: 'days', label: 'Waiting', format: 'days' },
-  { key: 'nextStep', label: 'Next step', width: 41 },
-]
+function queueColumns(b: RecruitingBase): Column<QueueRow>[] {
+  const one = (r: QueueRow) => () => candidateDrill(b, r.item)
+  return [
+    { key: 'owner', label: 'Owner', width: 24 },
+    { key: 'candidate', label: 'Candidate', width: 26, drill: one },
+    { key: 'reqId', label: 'Req', width: 10 },
+    { key: 'stage', label: 'Stage' },
+    { key: 'days', label: 'Waiting', format: 'days', drill: one },
+    { key: 'nextStep', label: 'Next step', width: 41 },
+  ]
+}
 
 const QUEUE_DETAIL_COLUMNS: Column<QueueRow>[] = [
   { key: 'owner', label: 'Owner' },
@@ -64,9 +68,18 @@ async function copyNote(g: QueueGroup) {
   }
 }
 
-function OwnersPanel({ groups, total }: { groups: QueueGroup[]; total: number }) {
+function OwnersPanel({
+  base: b,
+  groups,
+  total,
+}: {
+  base: RecruitingBase
+  groups: QueueGroup[]
+  total: number
+}) {
   const owner = useRecruitingUi((s) => s.owner)
-  const filterQueue = useRecruitingUi((s) => s.filterQueue)
+  const filterOwner = useRecruitingUi((s) => s.filterOwner)
+  const all = groups.flatMap((g) => g.items)
   return (
     <section
       aria-label="Owners"
@@ -77,8 +90,18 @@ function OwnersPanel({ groups, total }: { groups: QueueGroup[]; total: number })
       <header className="border-b border-rule px-4 pt-3.5 pb-2.5">
         <h3 className="cut-head text-[15px] leading-snug font-semibold">Who owns the next step</h3>
         <p className="mt-0.5 text-[13px] leading-snug text-ink-2">
-          {plural(total, 'candidate')} across {plural(groups.length, 'owner')}. Copy a note to send an owner
-          their list.
+          {total > 0 ? (
+            <Drill
+              spec={() => activeDrill(b, all, { title: 'Action queue: candidates lacking a next step' })}
+              label={`Show the ${plural(total, 'candidate')} in the action queue`}
+            >
+              {plural(total, 'candidate')}
+            </Drill>
+          ) : (
+            plural(total, 'candidate')
+          )}{' '}
+          across {plural(groups.length, 'owner')}. Select an owner to filter the queue; select a count to see
+          their candidates. Copy a note to send an owner their list.
         </p>
       </header>
       {groups.length === 0 ? (
@@ -92,7 +115,8 @@ function OwnersPanel({ groups, total }: { groups: QueueGroup[]; total: number })
                 <button
                   type="button"
                   aria-pressed={active}
-                  onClick={() => filterQueue({ owner: active ? null : g.owner })}
+                  aria-label={`Filter the queue to ${g.owner}`}
+                  onClick={() => filterOwner(active ? null : g.owner)}
                   className={cx(
                     'flex min-w-0 flex-1 items-center gap-2 rounded-control px-2 py-1.5 text-left hover:bg-hover',
                     active && 'bg-hover',
@@ -104,17 +128,27 @@ function OwnersPanel({ groups, total }: { groups: QueueGroup[]; total: number })
                       {g.role} · oldest {fmt(g.oldest, 'days')}
                     </span>
                   </span>
-                  {g.red > 0 && (
-                    <span className="inline-flex items-center gap-1 text-[12px] text-ink-2">
-                      <SeverityIcon severity="critical" className="size-3" />
-                      <span className="tnum">{g.red}</span>
-                      <span className="sr-only">overdue</span>
-                    </span>
-                  )}
-                  <span className="tnum w-7 text-right text-[13px] font-semibold text-ink">
-                    {g.items.length}
-                  </span>
                 </button>
+                {g.red > 0 && (
+                  <span className="inline-flex items-center gap-1 text-[12px] text-ink-2">
+                    <SeverityIcon severity="critical" className="size-3" />
+                    <Drill
+                      spec={() => queueOwnerDrill(b, g, true)}
+                      className="tnum"
+                      label={`Show the ${plural(g.red, 'overdue item')} owned by ${g.owner}`}
+                    >
+                      {g.red}
+                    </Drill>
+                    <span className="sr-only">overdue</span>
+                  </span>
+                )}
+                <Drill
+                  spec={() => queueOwnerDrill(b, g)}
+                  className="tnum min-w-7 text-right text-[13px] font-semibold text-ink"
+                  label={`Show the ${plural(g.items.length, 'candidate')} owned by ${g.owner}`}
+                >
+                  {g.items.length}
+                </Drill>
                 <Button
                   variant="ghost"
                   size="sm"
@@ -150,48 +184,27 @@ function Chip({ label, onClear }: { label: string; onClear: () => void }) {
   )
 }
 
-export function ActionQueue({ groups, asOf }: { groups: QueueGroup[]; asOf: string }) {
-  const { queueStage, queueState, owner, filterQueue, clearQueue } = useRecruitingUi()
+export function ActionQueue({ base: b, groups }: { base: RecruitingBase; groups: QueueGroup[] }) {
+  const owner = useRecruitingUi((s) => s.owner)
+  const filterOwner = useRecruitingUi((s) => s.filterOwner)
+  const asOf = b.asOf
   const rows = queueRows(groups)
-  const shown = rows.filter(
-    (r) =>
-      (queueStage == null || r.stageIndex === queueStage) &&
-      (queueState == null || r.state === queueState) &&
-      (owner == null || r.owner === owner),
-  )
-  const filtered = queueStage != null || queueState != null || owner != null
-  const chips = (
-    <div className="flex flex-wrap items-center gap-1.5">
-      {queueStage != null && (
-        <Chip label={`Stage: ${STAGES[queueStage]}`} onClear={() => filterQueue({ stage: null })} />
-      )}
-      {queueState != null && (
-        <Chip
-          label={`${STATE_NAME[queueState as NextState]}, past the usual time`}
-          onClear={() => filterQueue({ state: null })}
-        />
-      )}
-      {owner != null && <Chip label={`Owner: ${owner}`} onClear={() => filterQueue({ owner: null })} />}
-      {filtered && (
-        <Button variant="ghost" size="sm" onClick={clearQueue}>
-          Show all
-        </Button>
-      )}
-    </div>
-  )
+  const shown = rows.filter((r) => owner == null || r.owner === owner)
+  const filtered = owner != null
+  const chips = owner != null && <Chip label={`Owner: ${owner}`} onClear={() => filterOwner(null)} />
   return (
     <>
-      <OwnersPanel groups={groups} total={rows.length} />
+      <OwnersPanel base={b} groups={groups} total={rows.length} />
       <Figure
         id="recruiting-action-queue"
         title="Action queue"
         subtitle={`Active candidates who lack a next step (past the usual time) on ${formatDate(asOf)}, by owner of the next action`}
         data={shown}
-        columns={QUEUE_COLUMNS}
+        columns={queueColumns(b)}
         detail={{ label: 'Queue with states', columns: QUEUE_DETAIL_COLUMNS, rows: () => shown }}
         tableOnly
         span={8}
-        actions={filtered ? chips : undefined}
+        actions={chips || undefined}
         table={{
           rowTone: (r) => r.severity,
           search: 'Search candidates, reqs or owners',

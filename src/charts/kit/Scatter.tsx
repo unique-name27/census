@@ -7,7 +7,7 @@
 import * as Plot from '@observablehq/plot'
 import { type Format, fmt } from '@/lib/format'
 import { toneColor } from '../core/color'
-import { HOVER_CLASS, labelsMark, type PixelLabel, refRule } from '../core/marks'
+import { HOVER_CLASS, labelsMark, type PixelLabel, refLabelWidth, refRule } from '../core/marks'
 import { textWidth, truncateText } from '../core/measure'
 import type { TipContent, TipRow } from '../core/tooltip'
 import { axisX, axisY, gridX, gridY, housePlot, type PlotBuildContext, PlotChart } from '../plot'
@@ -125,7 +125,8 @@ export function Scatter<T extends object>({
     const ye = extent([...pts.map((p) => p.y), refY?.value])
     const yAxis = numericAxis(ye?.[0] ?? 0, ye?.[1] ?? 1, yFormat, height < 240 ? 4 : 5, yDomain)
     const marginLeft = Math.ceil(yAxis.labelWidth) + 12
-    const marginRight = 14
+    // A horizontal reference is labeled in the right margin, beside its rule and clear of the dots.
+    const marginRight = refY ? Math.max(14, refLabelWidth(refY)) : 14
     const xAxis = numericAxis(
       xe?.[0] ?? 0,
       xe?.[1] ?? 1,
@@ -140,7 +141,7 @@ export function Scatter<T extends object>({
       gridX(t, { ticks: xAxis.ticks }),
       gridY(t, { ticks: yAxis.ticks }),
       ...(refX ? refRule(refX, 'x', t) : []),
-      ...(refY ? refRule(refY, 'y', t) : []),
+      ...(refY ? refRule(refY, 'y', t, 'outside') : []),
       Plot.dot(pts, {
         x: (p) => p.x,
         y: (p) => p.y,

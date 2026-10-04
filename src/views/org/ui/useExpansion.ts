@@ -35,11 +35,14 @@ export function useExpansion(
     ids: cur.ids,
     preset: cur.preset,
     levelsPicked,
+    // Functional update: quick repeated toggles (keyboard) each see the previous one.
     toggle: (id) => {
-      const ids = new Set(cur.ids)
-      if (ids.has(id)) ids.delete(id)
-      else ids.add(id)
-      setExp({ key: cur.key, ids, preset: 'custom' })
+      setExp((prev) => {
+        const ids = new Set(prev && prev.key === cur.key ? prev.ids : cur.ids)
+        if (ids.has(id)) ids.delete(id)
+        else ids.add(id)
+        return { key: cur.key, ids, preset: 'custom' }
+      })
     },
     setLevels: (v) => {
       setExp({ key: cur.key, ids: defaultExpanded(tree, rootId, v, matches), preset: v })

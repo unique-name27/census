@@ -117,6 +117,29 @@ describe('riverLayout', () => {
     expect(L.fades).toHaveLength(5)
   })
 
+  it.each([375, 1200])('points every number label at the part of the flow it counts at %ipx', (width) => {
+    const L = riverLayout(FLOW, STAGES, width, measure)
+    const counted = (t: NonNullable<RiverLabel['target']>): number => {
+      if (t.kind === 'node') return t.stage === 5 ? FLOW.hired : FLOW.stages[t.stage].entered
+      const s = FLOW.stages[t.stage]
+      return t.kind === 'left' ? s.rejected + s.withdrawn + s.declined : s[t.kind]
+    }
+    for (const l of L.labels) {
+      if (l.role === 'note') {
+        expect(l.target).toEqual({ kind: 'node', stage: 5 })
+        continue
+      }
+      expect(l.target, l.id).toBeDefined()
+      // A label that leads with a count (not a pass rate) shows the number its drill lists.
+      const lead = /^([\d,]+)(?![\d,%])/.exec(l.text)
+      if (lead && l.role !== 'kicker')
+        expect(Number(lead[1].replace(/,/g, '')), l.id).toBe(counted(l.target!))
+    }
+    // Exit lines name their own outcome.
+    for (const l of L.labels.filter((x) => x.role === 'exit'))
+      expect(l.text.endsWith(l.target!.kind) || l.text.endsWith('left')).toBe(true)
+  })
+
   it('handles an empty cohort without NaN', () => {
     const empty: Flow = {
       stages: [0, 1, 2, 3, 4].map((i) => stage(i, {})),

@@ -9,6 +9,7 @@ import { Button, Segmented, Switch, TooltipProvider } from '@/components/ui'
 import { AnalyticsProvider, useAnalytics } from '@/data/context'
 import { useCensus } from '@/data/store'
 import { exportViewDeck, exportViewWorkbook } from '@/lib/export/view'
+import { DataTable } from '../DataTable'
 import { Figure } from '../Figure'
 import { BarList } from '../kit/BarList'
 import { Columns } from '../kit/Columns'
@@ -20,8 +21,10 @@ import { Lines } from '../kit/Lines'
 import { Meter } from '../kit/Meter'
 import { RangeBars } from '../kit/RangeBars'
 import { Scatter } from '../kit/Scatter'
+import { Legend } from '../Legend'
 import { FigureRegistryProvider, useFigureRegistry } from '../registry'
-import type { ExportMeta } from '../types'
+import { useChartTheme } from '../theme'
+import type { Column, ExportMeta } from '../types'
 import * as D from './data'
 
 type ThemeChoice = 'system' | 'light' | 'dark'
@@ -82,12 +85,21 @@ function Toolbar() {
   )
 }
 
+const signedPct = (v: number) => `${v > 0 ? '+' : v < 0 ? '−' : ''}${(Math.abs(v) * 100).toFixed(1)}%`
+
+const reqColumns: Column<(typeof D.reqLinks)[number]>[] = [
+  { key: 'id', label: 'Req ID', href: (r) => r.url },
+  { key: 'title', label: 'Title' },
+  { key: 'daysOpen', label: 'Days open', format: 'days' },
+]
+
 function Charts() {
   const [picked, setPicked] = useState('')
+  const theme = useChartTheme()
   return (
     <div className="grid grid-cols-12 gap-4">
       <p className="col-span-12 text-[13px] text-ink-2" aria-live="polite">
-        Click a bar in the first chart to test drill-down. {picked && `Selected: ${picked}`}
+        Click a bar, segment, line or Other row to test drill-down. {picked && `Selected: ${picked}`}
       </p>
       <Figure
         id="gal-attrition-by-dept"
@@ -121,6 +133,7 @@ function Charts() {
           tone={(d) => ((d.rate ?? 0) > 0.14 ? 'critical' : (d.rate ?? 0) > 0.12 ? 'warning' : 'default')}
           top={8}
           onSelect={(d) => setPicked(d.department)}
+          onSelectOther={(rows) => setPicked(`Other: ${rows.map((r) => r.department).join(', ')}`)}
           other={(rest) => {
             const l = rest.reduce((a, b) => a + b.leavers, 0)
             const h = rest.reduce((a, b) => a + b.headcount, 0)
@@ -179,6 +192,8 @@ function Charts() {
           series="source"
           stack
           seriesOrder={D.SOURCES}
+          onSelect={(d) => setPicked(`${d.month} (all sources)`)}
+          onSelectSegment={(d) => setPicked(`${d.month} · ${d.source}: ${d.hires}`)}
         />
       </Figure>
 
@@ -213,6 +228,7 @@ function Charts() {
           y="hires"
           series="source"
           seriesOrder={D.SOURCES}
+          onSelectSegment={(d) => setPicked(`${d.month} · ${d.source}: ${d.hires}`)}
         />
       </Figure>
 
@@ -254,7 +270,14 @@ function Charts() {
         ]}
         span={8}
       >
-        <Lines data={D.headcountTrend} x="date" y="headcount" series="unit" format="int" />
+        <Lines
+          data={D.headcountTrend}
+          x="date"
+          y="headcount"
+          series="unit"
+          format="int"
+          onSelect={(d) => setPicked(`${d.unit} on ${d.date}: ${d.headcount}`)}
+        />
       </Figure>
 
       <Figure
@@ -341,6 +364,8 @@ function Charts() {
           series="priority"
           stack
           seriesOrder={D.PRIORITIES}
+          onSelect={(d) => setPicked(`${d.category} (all priorities)`)}
+          onSelectSegment={(d) => setPicked(`${d.category} · ${d.priority}: ${d.cases}`)}
         />
       </Figure>
 
@@ -593,6 +618,107 @@ function Charts() {
       </Figure>
 
       <Figure
+        id="gal-attrition-change"
+        title="Attrition change by department"
+        subtitle="Signed value labels from valueText"
+        data={D.attritionChange}
+        columns={[
+          { key: 'department', label: 'Department' },
+          { key: 'change', label: 'Change', format: 'pts' },
+        ]}
+        span={6}
+      >
+        <BarList
+          data={D.attritionChange}
+          label="department"
+          value="change"
+          format="pct"
+          valueText={(d) => signedPct(d.change)}
+          ref={{ value: 0.006, label: 'Company +0.6%' }}
+          onSelect={(d) => setPicked(d.department)}
+        />
+      </Figure>
+
+      <Figure
+        id="gal-successor-counts"
+        title="Successors by readiness"
+        subtitle="Small counts tick whole numbers; Q1 2026 is hidden (fewer than 5 roles)"
+        data={D.successorCounts}
+        columns={[
+          { key: 'quarter', label: 'Quarter' },
+          { key: 'band', label: 'Readiness' },
+          { key: 'people', label: 'Successors', format: 'int' },
+        ]}
+        span={6}
+      >
+        <Columns
+          data={D.successorCounts}
+          x="quarter"
+          y="people"
+          series="band"
+          stack
+          seriesOrder={D.READINESS}
+          scheme="ordinal"
+          ref={{ value: 3, label: 'Plan 3' }}
+          height={200}
+          onSelectSegment={(d) => setPicked(`${d.quarter} · ${d.band}`)}
+        />
+      </Figure>
+
+      <Figure
+        id="gal-hidden-grid"
+        title="Attrition in small groups"
+        subtitle="Every group is under 5 people: no color legend"
+        data={D.hiddenGrid}
+        columns={[
+          { key: 'department', label: 'Department' },
+          { key: 'level', label: 'Level' },
+          { key: 'rate', label: 'Attrition', format: 'pct' },
+        ]}
+        span={6}
+      >
+        <Heatmap data={D.hiddenGrid} x="level" y="department" value="rate" n="n" format="pct" />
+      </Figure>
+
+      <Figure
+        id="gal-req-links"
+        title="Open requisitions"
+        subtitle="Body is a table with links: no table toggle"
+        data={D.reqLinks}
+        columns={reqColumns}
+        span={6}
+        image={false}
+        tableToggle={false}
+      >
+        <DataTable columns={reqColumns} rows={D.reqLinks} caption="Open requisitions" />
+      </Figure>
+
+      <Figure
+        id="gal-legend-shapes"
+        title="Legend swatches"
+        subtitle="Rect, line, dot and diamond"
+        data={D.legendShapes}
+        columns={[
+          { key: 'shape', label: 'Shape' },
+          { key: 'label', label: 'Use' },
+        ]}
+        span={6}
+        image={false}
+        tableToggle={false}
+      >
+        <Legend
+          spec={{
+            kind: 'swatch',
+            items: D.legendShapes.map((s, i) => ({
+              label: s.label,
+              color: theme.series[i] ?? theme.ink,
+              shape: s.shape,
+            })),
+          }}
+        />
+      </Figure>
+
+      <Figure
         id="gal-meters"
         title="Training completion"
         subtitle="Required courses completed on time, target 95%"
@@ -610,7 +736,13 @@ function Charts() {
               <span className="text-[13px] text-ink-2">{m.course}</span>
               <span className="text-[13px] font-medium">{Math.round(m.rate * 100)}%</span>
               <div className="col-span-2">
-                <Meter value={m.rate} target={0.95} tone={m.tone} label={m.course} />
+                <Meter
+                  value={m.rate}
+                  target={0.95}
+                  tone={m.tone}
+                  label={m.course}
+                  targetLabel="on-time target"
+                />
               </div>
             </li>
           ))}

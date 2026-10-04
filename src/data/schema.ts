@@ -224,8 +224,10 @@ export const CASE_CATEGORIES: CaseCategory[] = [
   { category: 'HR data & records', processId: 'DS-01', team: 'HRIS', responseHours: 24, resolutionHours: 72 },
   { category: 'Systems access', processId: 'DS-04', team: 'HRIS', responseHours: 8, resolutionHours: 48 },
   {
+    // General pay and equity questions sit with Total Rewards under the annual compensation review
+    // (CO-02); EQ-01 is equity grant administration only.
     category: 'Compensation & equity',
-    processId: 'EQ-01',
+    processId: 'CO-02',
     team: 'Total rewards',
     responseHours: 24,
     resolutionHours: 120,
@@ -238,8 +240,10 @@ export const CASE_CATEGORIES: CaseCategory[] = [
     resolutionHours: 240,
   },
   {
+    // Questions about HR policies go to the policy owners under policy lifecycle governance (DS-08);
+    // ER-01 is the speak-up intake for workplace concerns.
     category: 'Policy question',
-    processId: 'ER-01',
+    processId: 'DS-08',
     team: 'People operations',
     responseHours: 24,
     resolutionHours: 72,
@@ -562,7 +566,7 @@ export const DATASETS: DatasetDef[] = [
     sheet: 'Employees',
     description:
       'Roster of current and former workers. One row per person; leavers keep their termination fields.',
-    usedBy: ['hrbp', 'org', 'talent', 'comp', 'services', 'recruiting'],
+    usedBy: ['hrbp', 'org', 'services', 'talent', 'comp'],
     rowKey: ['employeeId'],
     fields: [
       f(
@@ -696,7 +700,7 @@ export const DATASETS: DatasetDef[] = [
     label: 'Job changes',
     sheet: 'Job changes',
     description: 'Job history events: promotions, transfers, lateral moves, demotions and manager changes.',
-    usedBy: ['hrbp', 'talent'],
+    usedBy: ['hrbp', 'org', 'talent', 'comp'],
     rowKey: ['employeeId', 'effectiveDate', 'changeType'],
     fields: [
       f(
@@ -766,7 +770,7 @@ export const DATASETS: DatasetDef[] = [
     label: 'Requisitions',
     sheet: 'Requisitions',
     description: 'Job requisitions from the ATS. Time to fill runs from opened date to filled date.',
-    usedBy: ['recruiting'],
+    usedBy: ['recruiting', 'org'],
     rowKey: ['reqId'],
     fields: [
       f(
@@ -915,7 +919,7 @@ export const DATASETS: DatasetDef[] = [
         'reqId',
         'Req ID',
         'id',
-        ['req id', 'requisition id', 'job id', 'requisition', 'job req id'],
+        ['requisition id', 'req id', 'requisition', 'job req id', 'job id'],
         'Requisition the application belongs to.',
         { required: true },
       ),
@@ -1273,7 +1277,7 @@ export const DATASETS: DatasetDef[] = [
     label: 'Performance reviews',
     sheet: 'Reviews',
     description: 'Calibrated performance ratings and potential, one row per person per cycle.',
-    usedBy: ['talent', 'comp', 'hrbp'],
+    usedBy: ['hrbp', 'org', 'talent', 'comp'],
     rowKey: ['employeeId', 'cycle'],
     fields: [
       f('employeeId', 'Employee ID', 'id', ['employee id', 'emp id', 'worker id', 'id'], 'Reviewed worker.', {
@@ -1466,7 +1470,7 @@ export const DATASETS: DatasetDef[] = [
     label: 'Compensation',
     sheet: 'Compensation',
     description: 'Current pay, salary range and cycle proposals for active employees.',
-    usedBy: ['comp'],
+    usedBy: ['talent', 'comp'],
     rowKey: ['employeeId'],
     fields: [
       f('employeeId', 'Employee ID', 'id', ['employee id', 'emp id', 'worker id', 'id'], 'Paid worker.', {

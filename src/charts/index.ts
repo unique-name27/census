@@ -4,6 +4,8 @@
  * and exports. The building blocks (PlotChart, housePlot, axis helpers, labelsMark, colors)
  * are exported for custom visuals that still sit inside a Figure.
  */
+
+export { type CellAction, cellAction, safeHref } from './cells'
 export {
   divergingScale,
   inkOn,
@@ -41,6 +43,7 @@ export { DotStrip, type DotStripProps } from './kit/DotStrip'
 export { HBars, type HBarsProps } from './kit/HBars'
 export { Heatmap, type HeatmapProps } from './kit/Heatmap'
 export { Histogram, type HistogramProps } from './kit/Histogram'
+export { clearOfRules, type GroupLayout, groupIndexAt, groupLayout, nearestBy, segmentAt } from './kit/hit'
 export { Lines, type LinesProps } from './kit/Lines'
 export { Meter, type MeterProps } from './kit/Meter'
 export { type BarRow, type Category, type FoldRule, type HistogramBin, quarterLabel } from './kit/prepare'
@@ -68,6 +71,7 @@ export {
   PlotChart,
   type PlotChartProps,
   type PlotElement,
+  type PlotPointer,
   tickFormat,
 } from './plot'
 export { FigureRegistryProvider, nextFigureOrder, useFigureRegistry } from './registry'

@@ -34,10 +34,45 @@ import {
   type ServiceLevelId,
 } from './catalog'
 import { type CaseFact, dueIn, onTimeRate, type TxFact } from './facts'
-import { retroShare } from './transactions'
+import { retroCandidates, retroShare } from './transactions'
 import { isShowable, type Personal, peopleIn } from './util'
 
 export type LevelStatus = 'Met' | 'At risk' | 'Missed'
+
+/** The rows a measure judged: cases or transactions. */
+export type LevelRecords = { kind: 'cases'; rows: CaseFact[] } | { kind: 'transactions'; rows: TxFact[] }
+
+/** A business-day clock on cases: the clock stops at resolution or at the first response. */
+export interface LevelClock {
+  category: string
+  days: number
+  stop: 'resolved' | 'responded'
+}
+
+/** The case measures timed on a business-day clock. */
+export const LEVEL_CLOCKS: Partial<Record<ServiceLevelId, LevelClock>> = {
+  'py05-payroll-2bd': { category: 'Payroll', days: 2, stop: 'resolved' },
+  'ds07-verification-2bd': { category: 'Employment verification', days: 2, stop: 'resolved' },
+  'ds04-access-2bd': { category: 'Systems access', days: 2, stop: 'resolved' },
+  'bn03-benefits-5bd': { category: 'Benefits', days: 5, stop: 'resolved' },
+  'lv01-leave-response-1bd': { category: 'Leave & accommodation', days: 1, stop: 'responded' },
+  'lv01-leave-designation-5bd': { category: 'Leave & accommodation', days: 5, stop: 'resolved' },
+  'mv06-immigration-response-1bd': { category: 'Immigration & mobility', days: 1, stop: 'responded' },
+}
+
+/** The date a clock stops for a case, or null while it runs. */
+export const clockStop = (f: CaseFact, c: Pick<LevelClock, 'stop'>): string | null =>
+  c.stop === 'resolved' ? f.resolved : f.responded
+
+/**
+ * A case against a business-day clock: true when it stopped in time, false when it stopped late
+ * or is still open past the clock, null while still inside it.
+ */
+export function clockMet(f: CaseFact, c: Pick<LevelClock, 'days' | 'stop'>, asOf: string): boolean | null {
+  const end = clockStop(f, c)
+  if (end) return businessDaysBetween(f.opened, end) <= c.days
+  return f.open && businessDaysBetween(f.opened, asOf) > c.days ? false : null
+}
 
 export interface LevelRow {
   id: ServiceLevelId
@@ -67,6 +102,12 @@ export interface LevelRow {
   caseSla: number | null
   /** Case rows: that clock's target, e.g. "48 h" or "7 d". */
   caseSlaTarget: string | null
+  /** The cases or transactions judged (the drill's rows); null when the measure has no data. */
+  records: LevelRecords | null
+  /** The business-day clock of a case measure, or null. */
+  clock: LevelClock | null
+  /** Case rows: the category's cases opened in the window (behind the case SLA). */
+  caseRecords: CaseFact[]
 }
 
 export interface LevelInputs {
@@ -86,75 +127,65 @@ interface Measured {
   /** Distinct people behind the judged rows. */
   people: number
   misses: string[]
+  records: LevelRecords | null
 }
 
-const none: Measured = { actual: null, n: 0, people: 0, misses: [] }
+const none: Measured = { actual: null, n: 0, people: 0, misses: [], records: null }
 
 /** A share of the judged rows; null below MIN_GROUP rows or people. */
-function measured(hits: number, judged: readonly Personal[], misses: string[]): Measured {
+function measured(hits: number, judged: CaseFact[], misses: string[]): Measured {
   const people = peopleIn(judged)
   return {
     actual: isShowable(judged.length, people) ? hits / judged.length : null,
     n: judged.length,
     people,
     misses,
+    records: { kind: 'cases', rows: judged },
   }
 }
 
 /** Share of cases opened in the window whose clock (in business days) stopped in time. */
-function businessDayShare(
-  rows: readonly CaseFact[],
-  days: number,
-  stop: (f: CaseFact) => string | null,
-  asOf: string,
-): Measured {
+function businessDayShare(rows: readonly CaseFact[], clock: LevelClock, asOf: string): Measured {
   let hits = 0
   const judged: CaseFact[] = []
   const misses: string[] = []
   for (const f of rows) {
-    const end = stop(f)
-    if (end) {
-      judged.push(f)
-      if (businessDaysBetween(f.opened, end) <= days) hits++
-      else misses.push(f.caseId)
-    } else if (f.open && businessDaysBetween(f.opened, asOf) > days) {
-      judged.push(f)
-      misses.push(f.caseId)
-    }
+    const met = clockMet(f, clock, asOf)
+    if (met == null) continue
+    judged.push(f)
+    if (met) hits++
+    else misses.push(f.caseId)
   }
   return measured(hits, judged, misses)
 }
+
+const isJudgedTx = (f: TxFact) => f.outcome === 'on-time' || f.outcome === 'late' || f.outcome === 'overdue'
 
 function txShare(rows: readonly TxFact[]): Measured {
   const r = onTimeRate(rows)
   const misses = rows
     .filter((f) => f.outcome === 'late' || f.outcome === 'overdue')
     .map((f) => f.transactionId)
-  return { actual: r.rate, n: r.n, people: r.people, misses }
+  return {
+    actual: r.rate,
+    n: r.n,
+    people: r.people,
+    misses,
+    records: { kind: 'transactions', rows: rows.filter(isJudgedTx) },
+  }
 }
 
 function measure(def: ServiceLevelDef, x: LevelInputs): Measured {
-  const opened = openedIn(x.cases, x.window)
-  const cat = (name: string) => opened.filter((f) => f.category === name)
-  const resolvedBy = (f: CaseFact) => f.resolved
-  const respondedBy = (f: CaseFact) => f.responded
   const due = dueIn(x.tx, x.window)
   const txOf = (type: string) => due.filter((f) => f.type === type)
+  const clock = LEVEL_CLOCKS[def.id]
+  if (clock) {
+    const ok = clock.stop === 'resolved' ? x.hasResolved : x.hasResponse
+    if (!ok) return none
+    const opened = openedIn(x.cases, x.window).filter((f) => f.category === clock.category)
+    return businessDayShare(opened, clock, x.asOf)
+  }
   switch (def.id) {
-    case 'py05-payroll-2bd':
-      return x.hasResolved ? businessDayShare(cat('Payroll'), 2, resolvedBy, x.asOf) : none
-    case 'ds07-verification-2bd':
-      return x.hasResolved ? businessDayShare(cat('Employment verification'), 2, resolvedBy, x.asOf) : none
-    case 'ds04-access-2bd':
-      return x.hasResolved ? businessDayShare(cat('Systems access'), 2, resolvedBy, x.asOf) : none
-    case 'bn03-benefits-5bd':
-      return x.hasResolved ? businessDayShare(cat('Benefits'), 5, resolvedBy, x.asOf) : none
-    case 'lv01-leave-response-1bd':
-      return x.hasResponse ? businessDayShare(cat('Leave & accommodation'), 1, respondedBy, x.asOf) : none
-    case 'lv01-leave-designation-5bd':
-      return x.hasResolved ? businessDayShare(cat('Leave & accommodation'), 5, resolvedBy, x.asOf) : none
-    case 'mv06-immigration-response-1bd':
-      return x.hasResponse ? businessDayShare(cat('Immigration & mobility'), 1, respondedBy, x.asOf) : none
     case 'er02-median-days': {
       if (!x.hasResolved) return none
       const closed = resolvedIn(x.cases, x.window).filter(
@@ -170,6 +201,7 @@ function measure(def: ServiceLevelDef, x: LevelInputs): Measured {
         n: days.length,
         people,
         misses,
+        records: { kind: 'cases', rows: closed },
       }
     }
     case 'on03-hire-day-minus-3':
@@ -184,9 +216,18 @@ function measure(def: ServiceLevelDef, x: LevelInputs): Measured {
       return x.hasDue ? txShare(txOf('Return from leave')) : none
     case 'ds01-retro-share': {
       const r = retroShare(x.tx, x.window)
-      const misses = due.filter((f) => f.retro === true).map((f) => f.transactionId)
-      return { actual: r.rate, n: r.n, people: r.people, misses }
+      const judged = retroCandidates(due)
+      const misses = judged.filter((f) => f.retro === true).map((f) => f.transactionId)
+      return {
+        actual: r.rate,
+        n: r.n,
+        people: r.people,
+        misses,
+        records: { kind: 'transactions', rows: judged },
+      }
     }
+    default:
+      return none
   }
 }
 
@@ -242,6 +283,9 @@ export function scorecard(x: LevelInputs): LevelRow[] {
       misses: m.misses,
       caseSla: def.caseCategory && x.hasResolved ? resolutionSla(inCat).rate : null,
       caseSlaTarget: def.caseCategory && target != null ? hoursText(target) : null,
+      records: m.records,
+      clock: LEVEL_CLOCKS[def.id] ?? null,
+      caseRecords: inCat,
     }
   })
 }
@@ -258,6 +302,9 @@ export interface ProcessRow {
   cases: number | null
   /** Transactions due in the window; null when behind fewer than 5 people (hidden). */
   transactions: number | null
+  /** The cases and transactions behind the counts. */
+  caseRecords: CaseFact[]
+  txRecords: TxFact[]
 }
 
 /** A count shown when it is zero or behind at least MIN_GROUP people; otherwise hidden (null). */
@@ -291,14 +338,18 @@ export function processCoverage(cases: readonly CaseFact[], tx: readonly TxFact[
   return [...covers]
     .map(([id, what]) => {
       const p = ATLAS_PROCESSES.get(id)
+      const caseRecords = caseRows.get(id) ?? []
+      const txRecords = txRows.get(id) ?? []
       return {
         processId: id,
         process: p?.name ?? id,
         owner: p?.owner ?? '—',
         sla: p?.sla ?? '—',
         covers: what.join(', '),
-        cases: countOf(caseRows.get(id)),
-        transactions: countOf(txRows.get(id)),
+        cases: countOf(caseRecords),
+        transactions: countOf(txRecords),
+        caseRecords,
+        txRecords,
       }
     })
     .sort((a, b) => (a.processId < b.processId ? -1 : 1))

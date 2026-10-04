@@ -40,12 +40,18 @@ export interface Ripple extends CheckResult {
   changes: { id: string; from: string | null; to: string | null }[]
   /** People who move with the action (the person, plus their org in team mode). */
   peopleMoving: number
+  /** Their ids, the person first. */
+  movingIds: string[]
   /** Direct reports who roll up to the old manager (person mode and exits). */
   rolledUp: string[]
   oldManager: { id: string; before: number; after: number } | null
   newManager: { id: string; before: number; after: number } | null
-  /** Moving people who would sit under a manager from another department. */
+  /**
+   * People whose manager changes to one in another department (and whose old manager was not in
+   * that department either). Same rule as the scenario diff, so the preview and the diff agree.
+   */
   crossDept: number
+  crossDeptIds: string[]
 }
 
 /** Mutable working copy of the reporting lines. */
@@ -155,7 +161,7 @@ function check(w: Working, a: ScenarioAction): CheckResult {
     return {
       ok: false,
       code: 'cycle',
-      reason: `${target.name} is in ${person.name}'s reporting line (${path}). Moving ${person.name} under ${target.name} would create a reporting loop. Move ${target.name} out of ${person.name}'s org first.`,
+      reason: `${target.name} already reports up to ${person.name} (${path}). Moving ${person.name} under ${target.name} would create a reporting loop. Move ${target.name} out of ${person.name}'s org first.`,
       warnings: [],
     }
   }
@@ -202,6 +208,28 @@ export function checkAction(tree: OrgTree, action: ScenarioAction): CheckResult 
   return check(working(tree), action)
 }
 
+/** Who moves with an action: the person, plus everyone below them when they move with their org. */
+export function movingIds(tree: OrgTree, action: ScenarioAction): string[] {
+  if (!tree.people.has(action.personId)) return []
+  if (action.kind === 'move' && action.mode === 'team') return orgIds(working(tree), action.personId)
+  return [action.personId]
+}
+
+/** People whose new manager sits in another department (the scenario diff's rule). */
+function crossDeptOf(
+  people: ReadonlyMap<string, Employee>,
+  changes: readonly { id: string; from: string | null; to: string | null }[],
+): string[] {
+  const out: string[] = []
+  for (const c of changes) {
+    const e = people.get(c.id)
+    const mgr = c.to ? people.get(c.to) : undefined
+    const oldMgr = c.from ? people.get(c.from) : undefined
+    if (e && mgr && mgr.department !== e.department && oldMgr?.department !== mgr.department) out.push(c.id)
+  }
+  return out
+}
+
 /** What an action would change, for the live preview while dragging and the move dialog. */
 export function rippleOf(tree: OrgTree, action: ScenarioAction): Ripple {
   const w = working(tree)
@@ -214,42 +242,61 @@ export function rippleOf(tree: OrgTree, action: ScenarioAction): Ripple {
     action,
     changes: [],
     peopleMoving: 0,
+    movingIds: [],
     rolledUp: [],
     oldManager: null,
     newManager: null,
     crossDept: 0,
+    crossDeptIds: [],
   }
   if (!res.ok || !person) return base
 
   if (action.kind === 'exit') {
     const before = old ? directsOf(w, old).length : 0
+    const changes = directs.map((id) => ({ id, from: action.personId, to: old }))
+    const crossDeptIds = crossDeptOf(w.people, changes)
     return {
       ...base,
-      changes: directs.map((id) => ({ id, from: action.personId, to: old })),
+      changes,
       peopleMoving: 1,
+      movingIds: [action.personId],
       rolledUp: directs,
       oldManager: old ? { id: old, before, after: before - 1 + directs.length } : null,
+      crossDept: crossDeptIds.length,
+      crossDeptIds,
     }
   }
 
   const team = action.mode === 'team'
   const moving = team ? orgIds(w, action.personId) : [action.personId]
-  const target = w.people.get(action.toManagerId)!
   const oldBefore = old ? directsOf(w, old).length : 0
   const newBefore = directsOf(w, action.toManagerId).length
   const changes: Ripple['changes'] = [{ id: action.personId, from: old, to: action.toManagerId }]
   if (!team) for (const c of directs) changes.push({ id: c, from: action.personId, to: old })
+  const crossDeptIds = crossDeptOf(w.people, changes)
   return {
     ...base,
     changes,
     peopleMoving: moving.length,
+    movingIds: moving,
     rolledUp: team ? [] : directs,
     oldManager: old
       ? { id: old, before: oldBefore, after: oldBefore - 1 + (team ? 0 : directs.length) }
       : null,
     newManager: { id: action.toManagerId, before: newBefore, after: newBefore + 1 },
-    crossDept: moving.filter((id) => w.people.get(id)!.department !== target.department).length,
+    crossDept: crossDeptIds.length,
+    crossDeptIds,
   }
+}
+
+/** The direct reports of the old and the new manager after a previewed action. */
+export function rippleTeams(tree: OrgTree, r: Ripple): { oldAfter: string[]; newAfter: string[] } {
+  const a = r.action
+  const kidsOf = (id: string | undefined) => (id ? [...(tree.children.get(id) ?? [])] : [])
+  const oldAfter = kidsOf(r.oldManager?.id).filter((id) => id !== a.personId)
+  if (a.kind === 'exit' || a.mode === 'person') oldAfter.push(...r.rolledUp)
+  const newAfter = r.newManager ? [...kidsOf(r.newManager.id), a.personId] : []
+  return { oldAfter, newAfter }
 }
 
 export interface ScenarioResult {

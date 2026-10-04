@@ -60,23 +60,30 @@ export interface QuarterAcceptance {
   label: string
   /** Last day of the quarter (or the window end for the quarter in progress). */
   end: string
+  /** Null with the rate under 5 resolved offers, so the counts can't give the hidden rate away. */
   rate: number | null
-  hired: number
-  declined: number
+  hired: number | null
+  declined: number | null
   offers: number
+  /** The resolved offers behind the rate; empty when the rate is hidden, so it never drills. */
+  apps: App[]
 }
 
 export function acceptanceByQuarter(apps: readonly App[], end: string, n = 8): QuarterAcceptance[] {
   return quarterWindows(end, n).map((q) => {
-    const acc = acceptance(resolvedOffers(apps, q))
+    const list = resolvedOffers(apps, q)
+    const acc = acceptance(list)
     const offers = acc.hired + acc.declined
+    const show = offers >= MIN_GROUP
     return {
       quarter: q.key,
       label: q.key.replace(/^(\d{4}) (Q\d)$/, '$2 $1'),
       end: q.end,
-      ...acc,
-      rate: offers >= MIN_GROUP ? acc.rate : null,
+      rate: show ? acc.rate : null,
+      hired: show ? acc.hired : null,
+      declined: show ? acc.declined : null,
       offers,
+      apps: show ? list : [],
     }
   })
 }
@@ -89,6 +96,8 @@ export interface GroupAcceptance {
   hired: number | null
   declined: number | null
   offers: number
+  /** The resolved offers behind the rate; empty when the rate is hidden, so it never drills. */
+  apps: App[]
 }
 
 /**
@@ -122,6 +131,7 @@ export function acceptanceBy(offers: readonly App[], key: (a: App) => string | n
       hired: show ? acc.hired : null,
       declined: show ? acc.declined : null,
       offers: n,
+      apps: show ? list : [],
     }
   })
 }
@@ -130,19 +140,34 @@ export interface ReasonRow {
   reason: string
   candidates: number
   share: number
+  /** The declined offers counted (for the drill panel; not exported). */
+  apps: App[]
 }
 
 export function declineReasons(offers: readonly App[]): ReasonRow[] {
   const declined = offers.filter((a) => a.outcome === 'Declined')
-  const m = new Map<string, number>()
-  for (const a of declined)
-    m.set(a.reason || 'No reason given', (m.get(a.reason || 'No reason given') ?? 0) + 1)
+  const m = new Map<string, App[]>()
+  for (const a of declined) {
+    const k = a.reason || 'No reason given'
+    const arr = m.get(k)
+    if (arr) arr.push(a)
+    else m.set(k, [a])
+  }
   return [...m]
-    .map(([reason, candidates]) => ({ reason, candidates, share: candidates / declined.length }))
+    .map(([reason, apps]) => ({
+      reason,
+      candidates: apps.length,
+      share: apps.length / declined.length,
+      apps,
+    }))
     .sort((a, b) => b.candidates - a.candidates)
 }
 
 /* ───────── sources ───────── */
+
+/** Days from application to offer accepted. */
+export const daysToHire = (a: App): number =>
+  Math.max(0, daysBetween(a.appliedDate, a.exitDate ?? a.appliedDate))
 
 export interface SourceRow {
   source: string
@@ -153,10 +178,14 @@ export interface SourceRow {
   hireRate: number | null
   offerAcceptance: number | null
   offers: number
+  /** Null under 5 hires (each is a person's outcome). */
   medianTimeToHire: number | null
   priorApplications: number
   /** Applications vs the prior window (−0.48 = 48% fewer). */
   change: number | null
+  /** The applications behind the counts, this window and the prior one (for the drill panel). */
+  apps: App[]
+  priorApps: App[]
 }
 
 export function sourceRows(current: readonly App[], prior: readonly App[]): SourceRow[] {
@@ -166,8 +195,12 @@ export function sourceRows(current: readonly App[], prior: readonly App[]): Sour
     if (arr) arr.push(a)
     else by.set(a.source, [a])
   }
-  const priorBy = new Map<string, number>()
-  for (const a of prior) priorBy.set(a.source, (priorBy.get(a.source) ?? 0) + 1)
+  const priorBy = new Map<string, App[]>()
+  for (const a of prior) {
+    const arr = priorBy.get(a.source)
+    if (arr) arr.push(a)
+    else priorBy.set(a.source, [a])
+  }
   for (const s of priorBy.keys()) if (!by.has(s)) by.set(s, [])
   const total = current.length
   return [...by]
@@ -175,7 +208,8 @@ export function sourceRows(current: readonly App[], prior: readonly App[]): Sour
       const hired = list.filter((a) => a.furthest === HIRED)
       const acc = acceptance(list.filter((a) => a.outcome === 'Hired' || a.outcome === 'Declined'))
       const offers = acc.hired + acc.declined
-      const p = priorBy.get(source) ?? 0
+      const priorApps = priorBy.get(source) ?? []
+      const p = priorApps.length
       return {
         source,
         applications: list.length,
@@ -184,9 +218,11 @@ export function sourceRows(current: readonly App[], prior: readonly App[]): Sour
         hireRate: list.length >= MIN_GROUP ? hired.length / list.length : null,
         offerAcceptance: offers >= MIN_GROUP ? acc.rate : null,
         offers,
-        medianTimeToHire: median(hired.map((a) => daysBetween(a.appliedDate, a.exitDate ?? a.appliedDate))),
+        medianTimeToHire: hired.length >= MIN_GROUP ? median(hired.map(daysToHire)) : null,
         priorApplications: p,
         change: p > 0 ? list.length / p - 1 : null,
+        apps: list,
+        priorApps,
       }
     })
     .sort((a, b) => b.applications - a.applications)
@@ -196,6 +232,8 @@ export interface SourceMonthRow {
   month: string
   source: string
   applications: number
+  /** The applications counted (for the drill panel; not exported). */
+  apps: App[]
 }
 
 /** Applications per source per month, 24 months ending with the month of `end`. */
@@ -206,15 +244,20 @@ export function sourcesByMonth(
 ): SourceMonthRow[] {
   const months = monthsBetween(addMonths(monthStart(end), -23), end)
   const keep = new Set(months)
-  const m = new Map<string, number>()
+  const m = new Map<string, App[]>()
   for (const a of apps) {
     const mk = monthKey(a.appliedDate)
     if (!keep.has(mk) || a.appliedDate > end) continue
     const k = `${mk}|${a.source}`
-    m.set(k, (m.get(k) ?? 0) + 1)
+    const arr = m.get(k)
+    if (arr) arr.push(a)
+    else m.set(k, [a])
   }
   return months.flatMap((month) =>
-    sources.map((source) => ({ month, source, applications: m.get(`${month}|${source}`) ?? 0 })),
+    sources.map((source) => {
+      const list = m.get(`${month}|${source}`) ?? []
+      return { month, source, applications: list.length, apps: list }
+    }),
   )
 }
 
@@ -225,6 +268,8 @@ export interface ExitReasonRow {
   reason: string
   stage: string
   candidates: number
+  /** The applications counted (for the drill panel; not exported). */
+  apps: App[]
 }
 
 /** Rejections and withdrawals dated in the window, by reason and the stage they left from. */
@@ -245,17 +290,19 @@ export function exitReasons(
         .slice(0, totals.size > top + 1 ? top : top + 1)
         .map(([r]) => r),
     )
-    const cells = new Map<string, Map<number, number>>()
+    const cells = new Map<string, Map<number, App[]>>()
     for (const a of list) {
       const r = a.reason || 'No reason given'
       const reason = keep.has(r) ? r : 'Other reasons'
-      const byStage = cells.get(reason) ?? new Map<number, number>()
-      byStage.set(a.furthest, (byStage.get(a.furthest) ?? 0) + 1)
+      const byStage = cells.get(reason) ?? new Map<number, App[]>()
+      const arr = byStage.get(a.furthest)
+      if (arr) arr.push(a)
+      else byStage.set(a.furthest, [a])
       cells.set(reason, byStage)
     }
     for (const [reason, byStage] of cells) {
-      for (const [s, candidates] of byStage) {
-        out.push({ outcome, reason, stage: STAGES[s] ?? 'Applied', candidates })
+      for (const [s, apps] of byStage) {
+        out.push({ outcome, reason, stage: STAGES[s] ?? 'Applied', candidates: apps.length, apps })
       }
     }
   }

@@ -36,6 +36,9 @@ export interface OpenReqRow {
   lacking: number
   health: string
   severity: Severity | null
+  /** The requisition and its active candidates (for the drill panel; not exported). */
+  req: Requisition
+  items: ActiveItem[]
 }
 
 export interface ReqFacts {
@@ -83,7 +86,7 @@ export function reqFacts(
       per[x.stage]++
       if (x.tier) lacking++
     }
-    const daysOpen = Math.max(0, daysBetween(r.openedDate, asOf))
+    const daysOpen = reqAge(r, asOf)
     const empty = checkFunnel && daysOpen > EMPTY_FUNNEL_DAYS && !pastScreen.has(r.reqId)
     const health = empty
       ? 'Empty funnel'
@@ -111,6 +114,8 @@ export function reqFacts(
       lacking,
       health,
       severity: empty ? 'critical' : lacking ? 'warning' : null,
+      req: r,
+      items: list,
     }
   })
   const rank = (s: Severity | null) => (s === 'critical' ? 0 : s === 'warning' ? 1 : 2)
@@ -131,6 +136,9 @@ export function filledIn(reqs: readonly Requisition[], w: Pick<Window, 'start' |
 
 export const ttfDays = (r: Requisition): number => Math.max(0, daysBetween(r.openedDate, r.filledDate!))
 
+/** Days a req has been open on `asOf`. */
+export const reqAge = (r: Requisition, asOf: ISODate): number => Math.max(0, daysBetween(r.openedDate, asOf))
+
 export function medianTtf(reqs: readonly Requisition[]): number | null {
   return median(reqs.map(ttfDays))
 }
@@ -139,6 +147,8 @@ export interface TtfRow {
   group: string
   days: number | null
   reqs: number
+  /** The filled reqs measured; empty when the median is hidden (fewer than 5), so it never drills. */
+  filled: Requisition[]
 }
 
 /** Median time to fill per group; groups with fewer than 5 filled reqs show no median. */
@@ -147,18 +157,22 @@ export function ttfBy(
   key: (r: Requisition) => string | null | undefined,
   order?: readonly string[],
 ): TtfRow[] {
-  const m = new Map<string, number[]>()
+  const m = new Map<string, Requisition[]>()
   for (const r of filled) {
     const k = key(r) || 'Not set'
     const arr = m.get(k)
-    if (arr) arr.push(ttfDays(r))
-    else m.set(k, [ttfDays(r)])
+    if (arr) arr.push(r)
+    else m.set(k, [r])
   }
-  const rows = [...m].map(([group, xs]) => ({
-    group,
-    days: xs.length >= MIN_GROUP ? median(xs) : null,
-    reqs: xs.length,
-  }))
+  const rows: TtfRow[] = [...m].map(([group, list]) => {
+    const shown = list.length >= MIN_GROUP
+    return {
+      group,
+      days: shown ? median(list.map(ttfDays)) : null,
+      reqs: list.length,
+      filled: shown ? list : [],
+    }
+  })
   if (order) {
     const idx = (g: string) => {
       const i = order.indexOf(g)
@@ -174,24 +188,29 @@ export interface OpenByDeptRow {
   open: number
   oldest: number
   medianAge: number
+  /** The open reqs counted (for the drill panel; not exported). */
+  reqs: Requisition[]
 }
 
 export function openByDepartment(open: readonly Requisition[], asOf: ISODate): OpenByDeptRow[] {
-  const m = new Map<string, number[]>()
+  const m = new Map<string, Requisition[]>()
   for (const r of open) {
     const k = r.department || 'Not set'
-    const age = Math.max(0, daysBetween(r.openedDate, asOf))
     const arr = m.get(k)
-    if (arr) arr.push(age)
-    else m.set(k, [age])
+    if (arr) arr.push(r)
+    else m.set(k, [r])
   }
   return [...m]
-    .map(([department, ages]) => ({
-      department,
-      open: ages.length,
-      oldest: Math.max(...ages),
-      medianAge: median(ages) ?? 0,
-    }))
+    .map(([department, reqs]) => {
+      const ages = reqs.map((r) => reqAge(r, asOf))
+      return {
+        department,
+        open: reqs.length,
+        oldest: Math.max(...ages),
+        medianAge: median(ages) ?? 0,
+        reqs,
+      }
+    })
     .sort((a, b) => b.open - a.open || b.oldest - a.oldest)
 }
 
@@ -199,23 +218,28 @@ export interface MonthReqRow {
   month: string
   series: 'Opened' | 'Filled'
   reqs: number
+  /** The reqs counted (for the drill panel; not exported). */
+  list: Requisition[]
 }
 
 /** Reqs opened and filled per month over the last 12 months of the window. */
 export function openedFilledByMonth(reqs: readonly Requisition[], end: string): MonthReqRow[] {
   const months = monthsBetween(addMonths(monthStart(end), -11), end)
-  const opened = new Map(months.map((m) => [m, 0]))
-  const filled = new Map(months.map((m) => [m, 0]))
+  const opened = new Map(months.map((m) => [m, [] as Requisition[]]))
+  const filled = new Map(months.map((m) => [m, [] as Requisition[]]))
   for (const r of reqs) {
-    if (r.openedDate && r.openedDate <= end && opened.has(monthKey(r.openedDate)))
-      opened.set(monthKey(r.openedDate), (opened.get(monthKey(r.openedDate)) ?? 0) + 1)
-    if (r.filledDate && r.filledDate <= end && r.status !== 'Cancelled' && filled.has(monthKey(r.filledDate)))
-      filled.set(monthKey(r.filledDate), (filled.get(monthKey(r.filledDate)) ?? 0) + 1)
+    if (r.openedDate && r.openedDate <= end) opened.get(monthKey(r.openedDate))?.push(r)
+    if (r.filledDate && r.filledDate <= end && r.status !== 'Cancelled')
+      filled.get(monthKey(r.filledDate))?.push(r)
   }
-  return months.flatMap((m) => [
-    { month: m, series: 'Opened' as const, reqs: opened.get(m) ?? 0 },
-    { month: m, series: 'Filled' as const, reqs: filled.get(m) ?? 0 },
-  ])
+  return months.flatMap((m) => {
+    const o = opened.get(m) ?? []
+    const f = filled.get(m) ?? []
+    return [
+      { month: m, series: 'Opened' as const, reqs: o.length, list: o },
+      { month: m, series: 'Filled' as const, reqs: f.length, list: f },
+    ]
+  })
 }
 
 export interface RecruiterRow {
@@ -228,6 +252,10 @@ export interface RecruiterRow {
   /** "Heavy load", "Long waits" or both; null when neither. */
   flag: string | null
   flagged: boolean
+  /** The records behind each count (for the drill panel; not exported). */
+  openList: Requisition[]
+  activeList: ActiveItem[]
+  hireList: App[]
 }
 
 export interface RecruiterLoad {
@@ -253,25 +281,43 @@ export function recruiterLoad(
 ): RecruiterLoad {
   const rows = new Map<
     string,
-    { open: number; active: number; hires: number; waits: number[]; lacking: number }
+    {
+      open: number
+      active: number
+      hires: number
+      waits: number[]
+      lacking: number
+      openList: Requisition[]
+      activeList: ActiveItem[]
+      hireList: App[]
+    }
   >()
   const get = (k: string) => {
     let e = rows.get(k)
     if (!e) {
-      e = { open: 0, active: 0, hires: 0, waits: [], lacking: 0 }
+      e = { open: 0, active: 0, hires: 0, waits: [], lacking: 0, openList: [], activeList: [], hireList: [] }
       rows.set(k, e)
     }
     return e
   }
-  for (const r of open) get(r.recruiter || UNASSIGNED).open++
+  for (const r of open) {
+    const e = get(r.recruiter || UNASSIGNED)
+    e.open++
+    e.openList.push(r)
+  }
   for (const x of actives) {
     const e = get(x.app.recruiter || UNASSIGNED)
     e.active++
+    e.activeList.push(x)
     e.waits.push(x.daysInStage)
     if (x.tier) e.lacking++
   }
   for (const a of apps)
-    if (a.outcome === 'Hired' && inWin(a.exitDate, w)) get(a.recruiter || UNASSIGNED).hires++
+    if (a.outcome === 'Hired' && inWin(a.exitDate, w)) {
+      const e = get(a.recruiter || UNASSIGNED)
+      e.hires++
+      e.hireList.push(a)
+    }
   const named = [...rows].filter(([k]) => k !== UNASSIGNED).map(([, e]) => e)
   const medians = named.map((e) => median(e.waits)).filter((v): v is number => v != null)
   const team = median(medians)
@@ -292,6 +338,9 @@ export function recruiterLoad(
       lacking: e.lacking,
       flag,
       flagged: flag != null,
+      openList: e.openList,
+      activeList: e.activeList,
+      hireList: e.hireList,
     }
   })
   out.sort((a, b) => b.openReqs - a.openReqs || b.active - a.active || a.recruiter.localeCompare(b.recruiter))

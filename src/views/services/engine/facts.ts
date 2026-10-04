@@ -61,6 +61,8 @@ export interface CaseFact {
   csat: number | null
   reopened: boolean | null
   escalated: boolean | null
+  /** The uploaded row, for the drill panel (which reads raw schema records). */
+  record: HrCase
 }
 
 /** Which optional case columns carry any value. A missing column makes its metric null, never 0. */
@@ -164,6 +166,7 @@ export function caseFacts(cases: readonly HrCase[], asOf: ISODate, cols: CaseCol
       csat: typeof c.csat === 'number' && c.csat >= 1 && c.csat <= 5 ? c.csat : null,
       reopened: c.reopened ?? null,
       escalated: c.escalated ?? null,
+      record: c,
     })
   }
   return out
@@ -209,6 +212,8 @@ export interface TxFact {
   /** completed − due in calendar days (negative = early), completed only. */
   daysVsDue: number | null
   retro: boolean | null
+  /** The uploaded row, for the drill panel (which reads raw schema records). */
+  record: HrTransaction
 }
 
 export interface TxColumns {
@@ -259,6 +264,7 @@ export function txFacts(
       outcome,
       daysVsDue: completed && due ? daysBetween(due, completed) : null,
       retro: t.retro ?? null,
+      record: t,
     })
   }
   return out

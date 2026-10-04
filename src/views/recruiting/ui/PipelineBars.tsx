@@ -2,14 +2,23 @@
  * "Pipeline today": one bar per stage of the active candidates, split by next-step state. The
  * three states that need someone to act sit at the left in categorical slots 1-3; scheduled
  * candidates, already in motion, close the bar in gray. A warning diamond at the end of each bar
- * counts the candidates who lack a next step (past the usual time). Segments with such candidates
- * open them in the action queue; scheduled segments are never in the queue, so they don't click.
+ * counts the candidates who lack a next step (past the usual time).
+ *
+ * Every number drills: a segment lists its candidates, the stage name and the count at the end of
+ * the bar list everyone at the stage, the diamond count lists those lacking a next step, and the
+ * legend counts list a state across all stages.
  */
-import { type FocusEvent, type KeyboardEvent, type PointerEvent, useRef, useState } from 'react'
+import {
+  type FocusEvent,
+  type KeyboardEvent,
+  type PointerEvent,
+  type ReactNode,
+  useRef,
+  useState,
+} from 'react'
 import {
   glyphPath,
   LEGEND_ATTR,
-  Legend,
   type LegendSpec,
   TIP_CLASS,
   type TipContent,
@@ -17,10 +26,12 @@ import {
   useChartTheme,
   useFontsVersion,
 } from '@/charts'
+import { type DrillSource, drill } from '@/drill'
 import { fmt, plural } from '@/lib/format'
 import { STATE_NAME } from '../engine/nextStep'
 import type { PipelineCell, PipelineStage } from '../engine/pipeline'
 import { NEXT_STATES, type NextState } from '../engine/types'
+import { DrillLegend } from './DrillLegend'
 import { useTip, useWidth } from './hooks'
 
 const ROW = 52
@@ -29,9 +40,6 @@ const GAP = 2
 
 /** The legend words for the diamond; the state names never use "lack". */
 export const LACKS_LABEL = 'Lacks a next step (past the usual time)'
-
-/** Only segments with candidates in the action queue open it (scheduled ones never are). */
-const opens = (c: PipelineCell) => c.state !== 'scheduled' && c.lacking > 0
 
 function cellTip(c: PipelineCell, total: number): TipContent {
   return {
@@ -44,22 +52,30 @@ function cellTip(c: PipelineCell, total: number): TipContent {
         label: c.state === 'scheduled' ? 'median days in stage' : 'median days waiting',
       },
     ],
-    note:
-      c.state === 'scheduled'
-        ? 'In motion: not in the action queue.'
-        : opens(c)
-          ? `Click to open the ${plural(c.lacking, 'candidate')} who ${c.lacking === 1 ? 'lacks' : 'lack'} a next step in the action queue.`
-          : 'None past the usual time: nothing to open in the action queue.',
+    note: `${c.state === 'scheduled' ? 'In motion: not in the action queue. ' : ''}Click to see the ${plural(c.candidates, 'candidate')}.`,
   }
 }
 
-export function PipelineBars({
-  stages,
-  onOpen,
-}: {
+const activate = (e: KeyboardEvent, src: DrillSource) => {
+  if (e.key === 'Enter' || e.key === ' ') {
+    e.preventDefault()
+    drill(src)
+  }
+}
+
+export interface PipelineBarsProps {
   stages: readonly PipelineStage[]
-  onOpen: (stage: number, state: NextState) => void
-}) {
+  /** The candidates behind a segment. */
+  cellDrill: (c: PipelineCell) => DrillSource
+  /** Everyone at a stage, or only those lacking a next step. */
+  stageDrill: (s: PipelineStage, lackingOnly: boolean) => DrillSource
+  /** Everyone in a state, all stages (the legend counts). */
+  stateDrill: (state: NextState) => DrillSource
+  /** Everyone lacking a next step (the diamond's legend count). */
+  lackingDrill: DrillSource
+}
+
+export function PipelineBars({ stages, cellDrill, stageDrill, stateDrill, lackingDrill }: PipelineBarsProps) {
   // Layout reads text widths that change when fonts load; skip compiler memoization so it re-measures.
   'use no memo'
   const t = useChartTheme()
@@ -68,6 +84,8 @@ export function PipelineBars({
   const width = useWidth(wrapRef)
   const tip = useTip()
   const [hover, setHover] = useState<string | null>(null)
+  // Segment ids are "stage-state" ("3-needs-step"); hovering one dims the others.
+  const hoverSeg = hover && /^\d/.test(hover) ? hover : null
 
   // Categorical identities (slots 1-3), not opacity steps of one blue: those blur in dark mode.
   const fill: Record<NextState, string> = {
@@ -80,25 +98,22 @@ export function PipelineBars({
   for (const s of stages)
     for (const c of s.cells) totals.set(c.state, (totals.get(c.state) ?? 0) + c.candidates)
   const lackingTotal = stages.reduce((n, s) => n + s.lacking, 0)
-  const legend: LegendSpec = {
-    kind: 'swatch',
-    items: NEXT_STATES.filter((s) => totals.get(s)).map((s) => ({
-      label: `${STATE_NAME[s]} ${fmt(totals.get(s) ?? 0, 'int')}`,
-      color: fill[s],
-      shape: 'rect' as const,
-    })),
-  }
-  // Exported images get the diamond as a status dot (the shared legend has no diamond swatch).
+  const states = NEXT_STATES.filter((s) => totals.get(s))
+  // Exported images draw the same legend, counts included.
   const exportLegend: LegendSpec = {
     kind: 'swatch',
     items: [
-      ...legend.items,
+      ...states.map((s) => ({
+        label: `${STATE_NAME[s]} ${fmt(totals.get(s) ?? 0, 'int')}`,
+        color: fill[s],
+        shape: 'rect' as const,
+      })),
       ...(lackingTotal
         ? [
             {
               label: `${LACKS_LABEL} ${fmt(lackingTotal, 'int')}`,
               color: t.status.warning,
-              shape: 'dot' as const,
+              shape: 'diamond' as const,
             },
           ]
         : []),
@@ -133,27 +148,50 @@ export function PipelineBars({
   const height = stages.length * ROW + 4
   const scale = barMax / maxActive
 
-  const onKey = (e: KeyboardEvent, c: PipelineCell) => {
-    if (!opens(c)) return
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault()
-      onOpen(c.stageIndex, c.state)
-    }
-  }
+  /** A number drawn in the SVG that opens its records: underlined on hover and focus. */
+  const textButton = (id: string, label: string, src: DrillSource, children: ReactNode) => (
+    // biome-ignore lint/a11y/useSemanticElements: SVG text can't be an HTML button; the group takes the button role and keys
+    <g
+      role="button"
+      tabIndex={0}
+      aria-label={label}
+      style={{ cursor: 'pointer', outline: 'none', textDecoration: hover === id ? 'underline' : 'none' }}
+      onPointerEnter={() => setHover(id)}
+      onPointerLeave={() => setHover(null)}
+      onFocus={() => setHover(id)}
+      onBlur={() => setHover(null)}
+      onClick={() => drill(src)}
+      onKeyDown={(e) => activate(e, src)}
+    >
+      <title>{label}</title>
+      {children}
+    </g>
+  )
 
   return (
     <div>
-      <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1">
-        <Legend spec={legend} />
-        {lackingTotal > 0 && (
-          <span className="inline-flex items-center gap-1.5 text-[12px] text-ink-2">
-            <svg aria-hidden="true" width={10} height={10} viewBox="0 0 10 10" className="shrink-0">
-              <path d={glyphPath('diamond', 5, 5, 10)} fill={t.status.warning} />
-            </svg>
-            {LACKS_LABEL} {fmt(lackingTotal, 'int')}
-          </span>
-        )}
-      </div>
+      <DrillLegend
+        className="mb-3"
+        items={[
+          ...states.map((s) => ({
+            label: STATE_NAME[s],
+            count: totals.get(s) ?? 0,
+            color: fill[s],
+            drill: stateDrill(s),
+          })),
+          ...(lackingTotal
+            ? [
+                {
+                  label: LACKS_LABEL,
+                  count: lackingTotal,
+                  color: t.status.warning,
+                  shape: 'diamond' as const,
+                  drill: lackingDrill,
+                },
+              ]
+            : []),
+        ]}
+      />
       <div ref={wrapRef} className="min-w-0">
         <div ref={tip.boxRef} className="relative">
           {width > 0 && (
@@ -183,14 +221,28 @@ export function PipelineBars({
                 const end = x
                 const tl = tail(s)
                 const glyphX = end + 8 + textWidth(tl.count, 13, 650) + 10 + 6
+                const everyone = stageDrill(s, false)
                 return (
                   <g key={s.stage}>
-                    <text x={0} y={cy - 1} fontSize={13} fontWeight={500} fill={t.ink}>
-                      {s.stage}
-                    </text>
-                    <text x={0} y={cy + 13} fontSize={11} fill={t.muted}>
-                      {subLabel(s)}
-                    </text>
+                    {s.active > 0 ? (
+                      textButton(
+                        `stage-${s.stageIndex}`,
+                        `${s.stage}: show the ${plural(s.active, 'active candidate')}`,
+                        everyone,
+                        <>
+                          <text x={0} y={cy - 1} fontSize={13} fontWeight={500} fill={t.ink}>
+                            {s.stage}
+                          </text>
+                          <text x={0} y={cy + 13} fontSize={11} fill={t.muted}>
+                            {subLabel(s)}
+                          </text>
+                        </>,
+                      )
+                    ) : (
+                      <text x={0} y={cy - 1} fontSize={13} fontWeight={500} fill={t.ink}>
+                        {s.stage}
+                      </text>
+                    )}
                     {segs.map(({ c, x: sx, w, last }) => {
                       const id = `${c.stageIndex}-${c.state}`
                       const r = last ? Math.min(4, w / 2) : 0
@@ -198,36 +250,17 @@ export function PipelineBars({
                       const d = last
                         ? `M${sx},${y}H${sx + inner - r}Q${sx + inner},${y} ${sx + inner},${y + r}V${y + BAR - r}Q${sx + inner},${y + BAR} ${sx + inner - r},${y + BAR}H${sx}Z`
                         : `M${sx},${y}H${sx + inner}V${y + BAR}H${sx}Z`
-                      if (!opens(c)) {
-                        return (
-                          <path
-                            key={id}
-                            d={d}
-                            fill={fill[c.state]}
-                            opacity={hover && hover !== id ? 0.5 : 1}
-                            aria-label={`${c.stage}, ${c.label}: ${c.candidates} candidates`}
-                            onPointerEnter={(e: PointerEvent) => {
-                              setHover(id)
-                              tip.show(cellTip(c, s.active), e)
-                            }}
-                            onPointerMove={(e: PointerEvent) => tip.show(cellTip(c, s.active), e)}
-                            onPointerLeave={() => {
-                              setHover(null)
-                              tip.hide()
-                            }}
-                          />
-                        )
-                      }
+                      const src = cellDrill(c)
                       return (
                         // biome-ignore lint/a11y/useSemanticElements: SVG marks can't be HTML buttons; the path takes the button role and keys
                         <path
                           key={id}
                           d={d}
                           fill={fill[c.state]}
-                          opacity={hover && hover !== id ? 0.5 : 1}
+                          opacity={hoverSeg && hoverSeg !== id ? 0.5 : 1}
                           role="button"
                           tabIndex={0}
-                          aria-label={`${c.stage}, ${c.label}: ${c.candidates} candidates, ${c.lacking} lack a next step. Open them in the action queue.`}
+                          aria-label={`${c.stage}, ${c.label}: ${c.candidates} candidates, ${c.lacking} lack a next step. Show them.`}
                           style={{ cursor: 'pointer', outline: 'none' }}
                           onPointerEnter={(e: PointerEvent) => {
                             setHover(id)
@@ -246,29 +279,39 @@ export function PipelineBars({
                             setHover(null)
                             tip.hide()
                           }}
-                          onClick={() => onOpen(c.stageIndex, c.state)}
-                          onKeyDown={(e) => onKey(e, c)}
+                          onClick={() => drill(src)}
+                          onKeyDown={(e) => activate(e, src)}
                         />
                       )
                     })}
-                    <text
-                      x={end + 8}
-                      y={cy + 4.5}
-                      fontSize={13}
-                      fontWeight={650}
-                      fill={t.ink}
-                      style={{ fontVariantNumeric: 'tabular-nums' }}
-                    >
-                      {tl.count}
-                    </text>
-                    {s.lacking > 0 && (
-                      <g>
-                        <path d={glyphPath('diamond', glyphX, cy, 10)} fill={t.status.warning} />
-                        <text x={glyphX + 9} y={cy + 4} fontSize={12} fontWeight={500} fill={t.ink2}>
-                          {longFits ? tl.long : tl.short}
-                        </text>
-                      </g>
-                    )}
+                    {s.active > 0 &&
+                      textButton(
+                        `count-${s.stageIndex}`,
+                        `Show the ${plural(s.active, 'active candidate')} at ${s.stage.toLowerCase()}`,
+                        everyone,
+                        <text
+                          x={end + 8}
+                          y={cy + 4.5}
+                          fontSize={13}
+                          fontWeight={650}
+                          fill={t.ink}
+                          style={{ fontVariantNumeric: 'tabular-nums' }}
+                        >
+                          {tl.count}
+                        </text>,
+                      )}
+                    {s.lacking > 0 &&
+                      textButton(
+                        `lacking-${s.stageIndex}`,
+                        `Show the ${plural(s.lacking, 'candidate')} at ${s.stage.toLowerCase()} who lack a next step`,
+                        stageDrill(s, true),
+                        <>
+                          <path d={glyphPath('diamond', glyphX, cy, 10)} fill={t.status.warning} />
+                          <text x={glyphX + 9} y={cy + 4} fontSize={12} fontWeight={500} fill={t.ink2}>
+                            {longFits ? tl.long : tl.short}
+                          </text>
+                        </>,
+                      )}
                   </g>
                 )
               })}

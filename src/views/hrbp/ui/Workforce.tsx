@@ -1,23 +1,47 @@
 import { useState } from 'react'
-import { BarList, Columns, Figure, HBars } from '@/charts'
+import { BarList, type Column, Columns, Figure, HBars } from '@/charts'
 import { Section, Segmented } from '@/components'
 import { useAnalytics } from '@/data/context'
 import { LEVELS } from '@/data/schema'
+import { Drill, drill } from '@/drill/Drill'
 import { formatDate } from '@/lib/dates'
 import { fmt } from '@/lib/format'
 import { TENURE_BANDS } from '@/lib/people'
 import type { HrbpModel } from '../engine'
-import { NO_HISTORY } from '../engine/base'
-import { CONTINGENT } from '../engine/workforce'
+import { NO_HISTORY, type Prep } from '../engine/base'
+import {
+  type CountDim,
+  countOtherSpec,
+  countSpec,
+  engineeringSpec,
+  type GrowthCell,
+  growthCellSpec,
+  mixGroupSpec,
+  mixSpec,
+} from '../engine/buckets'
+import { CONTINGENT, type CountRow, type GrowthRow } from '../engine/workforce'
 import { DEF } from './defs'
+import { drillWhen } from './drill'
 import { EngineeringStat } from './EngineeringStat'
-import { rescope } from './model'
 
-const COUNT_COLS = [
-  { key: 'label', label: 'Group', format: 'text' as const },
-  { key: 'headcount', label: 'Employees', format: 'int' as const },
-  { key: 'share', label: 'Share', format: 'pct' as const },
-]
+/** Group, employees (each count opens the people) and share, for a headcount breakdown. */
+function countCols(p: Prep, dim: CountDim, label: string): Column<CountRow>[] {
+  return [
+    { key: 'label', label, format: 'text' },
+    {
+      key: 'headcount',
+      label: 'Employees',
+      format: 'int',
+      drill: (r) => drillWhen(r.records.length > 0, () => countSpec(p, dim, r)),
+    },
+    {
+      key: 'share',
+      label: 'Share',
+      format: 'pct',
+      drill: (r) => drillWhen(r.records.length > 0, () => countSpec(p, dim, r)),
+    },
+  ]
+}
 
 /** Departments shown before the rest fold into "Other". Above the sample's 22, so every department shows. */
 const DEPARTMENTS_SHOWN = 25
@@ -29,6 +53,7 @@ type MixDim = 'location' | 'businessUnit'
 export function Workforce({ m }: { m: HrbpModel }) {
   const ctx = useAnalytics()
   const [mixDim, setMixDim] = useState<MixDim>('location')
+  const p = m.prep
   const asOf = formatDate(ctx.asOf)
   const wf = m.workforce
   const n = wf.headcount
@@ -45,6 +70,16 @@ export function Workforce({ m }: { m: HrbpModel }) {
   const contingentTotal = [...contingentBy.values()].reduce((a, v) => a + v, 0)
   const mixGroups = new Set(mixRows.map((r) => r.group)).size
   const mixNoun = mixDim === 'location' ? ['site', 'sites'] : ['business unit', 'business units']
+  const growthCell = (cell: GrowthCell) => (r: GrowthRow) => {
+    const has =
+      cell === 'yearAgo'
+        ? r.records.before.length > 0
+        : cell === 'now'
+          ? r.records.now.length > 0
+          : r.records.joined.length + r.records.left.length > 0
+    return drillWhen(has, () => growthCellSpec(p, r, cell))
+  }
+  const [engRow, otherRow] = eng.rows
 
   return (
     <>
@@ -57,7 +92,7 @@ export function Workforce({ m }: { m: HrbpModel }) {
           title="Headcount by department"
           subtitle={`Employees on ${asOf}${departments > DEPARTMENTS_SHOWN ? `, largest ${DEPARTMENTS_SHOWN} departments` : ''}`}
           data={wf.byDepartment}
-          columns={[{ ...COUNT_COLS[0], label: 'Department' }, COUNT_COLS[1], COUNT_COLS[2]]}
+          columns={countCols(p, 'department', 'Department')}
           definitions={[DEF.headcount]}
           note={`${note} · ${departments} departments`}
           span={6}
@@ -69,9 +104,8 @@ export function Workforce({ m }: { m: HrbpModel }) {
             value="headcount"
             top={DEPARTMENTS_SHOWN}
             secondary={(d) => fmt(d.share, 'pct0')}
-            onSelect={(d) => {
-              if (!d.label.startsWith('Other')) rescope(ctx, { department: [d.label] })
-            }}
+            onSelect={(d) => drill(() => countSpec(p, 'department', d))}
+            onSelectOther={(rows) => drill(() => countOtherSpec(p, 'department', rows))}
           />
         </Figure>
         <div className="col-span-full flex min-w-0 flex-col gap-4 md:col-span-6">
@@ -80,7 +114,7 @@ export function Workforce({ m }: { m: HrbpModel }) {
             title="Headcount by location"
             subtitle={`Employees on ${asOf} by work site`}
             data={wf.byLocation}
-            columns={[{ ...COUNT_COLS[0], label: 'Location' }, COUNT_COLS[1], COUNT_COLS[2]]}
+            columns={countCols(p, 'location', 'Location')}
             definitions={[DEF.headcount]}
             note={note}
             empty={none}
@@ -91,9 +125,8 @@ export function Workforce({ m }: { m: HrbpModel }) {
               value="headcount"
               top={12}
               secondary={(d) => fmt(d.share, 'pct0')}
-              onSelect={(d) => {
-                if (!d.label.startsWith('Other')) rescope(ctx, { location: [d.label] })
-              }}
+              onSelect={(d) => drill(() => countSpec(p, 'location', d))}
+              onSelectOther={(rows) => drill(() => countOtherSpec(p, 'location', rows))}
             />
           </Figure>
           <Figure
@@ -101,7 +134,7 @@ export function Workforce({ m }: { m: HrbpModel }) {
             title="Headcount by level"
             subtitle={`Employees on ${asOf}, L1 to E3`}
             data={wf.byLevel}
-            columns={[{ ...COUNT_COLS[0], label: 'Level' }, COUNT_COLS[1], COUNT_COLS[2]]}
+            columns={countCols(p, 'level', 'Level')}
             definitions={[
               DEF.headcount,
               {
@@ -112,7 +145,14 @@ export function Workforce({ m }: { m: HrbpModel }) {
             note={note}
             empty={none}
           >
-            <Columns data={wf.byLevel} x="label" y="headcount" xOrder={[...LEVELS]} height={200} />
+            <Columns
+              data={wf.byLevel}
+              x="label"
+              y="headcount"
+              xOrder={[...LEVELS]}
+              height={200}
+              onSelect={(d) => drill(() => countSpec(p, 'level', d))}
+            />
           </Figure>
         </div>
         <Figure
@@ -120,7 +160,7 @@ export function Workforce({ m }: { m: HrbpModel }) {
           title="Tenure"
           subtitle={`Employees on ${asOf} by years since hire`}
           data={wf.tenure}
-          columns={[{ ...COUNT_COLS[0], label: 'Tenure' }, COUNT_COLS[1], COUNT_COLS[2]]}
+          columns={countCols(p, 'tenure', 'Tenure')}
           definitions={[
             { term: 'Tenure', text: 'Years from hire date to the as-of date (365.25 days a year).' },
           ]}
@@ -128,7 +168,14 @@ export function Workforce({ m }: { m: HrbpModel }) {
           span={5}
           empty={none}
         >
-          <Columns data={wf.tenure} x="label" y="headcount" xOrder={[...TENURE_BANDS]} height={300} />
+          <Columns
+            data={wf.tenure}
+            x="label"
+            y="headcount"
+            xOrder={[...TENURE_BANDS]}
+            height={300}
+            onSelect={(d) => drill(() => countSpec(p, 'tenure', d))}
+          />
         </Figure>
         <Figure
           id="hrbp-worker-mix"
@@ -138,11 +185,17 @@ export function Workforce({ m }: { m: HrbpModel }) {
           columns={[
             { key: 'group', label: mixDim === 'location' ? 'Location' : 'Business unit', format: 'text' },
             { key: 'workerType', label: 'Worker type', format: 'text' },
-            { key: 'people', label: 'People', format: 'int' },
+            {
+              key: 'people',
+              label: 'People',
+              format: 'int',
+              drill: (r) => drillWhen(r.records.length > 0, () => mixSpec(p, r)),
+            },
             {
               key: 'share',
               label: mixDim === 'location' ? 'Share of site' : 'Share of unit',
               format: 'pct',
+              drill: (r) => drillWhen(r.records.length > 0, () => mixSpec(p, r)),
             },
           ]}
           definitions={[
@@ -175,6 +228,8 @@ export function Workforce({ m }: { m: HrbpModel }) {
             series="workerType"
             stack
             seriesOrder={CONTINGENT}
+            onSelect={(d) => drill(() => mixGroupSpec(p, contingentRows, d.group))}
+            onSelectSegment={(d) => drill(() => mixSpec(p, d))}
           />
         </Figure>
       </Section>
@@ -194,10 +249,10 @@ export function Workforce({ m }: { m: HrbpModel }) {
               label: growthBy === 'department' ? 'Department' : 'Business unit',
               format: 'text',
             },
-            { key: 'yearAgo', label: '12 months ago', format: 'int' },
-            { key: 'now', label: 'Today', format: 'int' },
-            { key: 'change', label: 'Change', format: 'int' },
-            { key: 'growth', label: 'Growth', format: 'pct' },
+            { key: 'yearAgo', label: '12 months ago', format: 'int', drill: growthCell('yearAgo') },
+            { key: 'now', label: 'Today', format: 'int', drill: growthCell('now') },
+            { key: 'change', label: 'Change', format: 'int', drill: growthCell('change') },
+            { key: 'growth', label: 'Growth', format: 'pct', drill: growthCell('growth') },
           ]}
           definitions={[
             DEF.headcount,
@@ -227,6 +282,7 @@ export function Workforce({ m }: { m: HrbpModel }) {
             format="pct"
             sort="none"
             secondary={(d) => `${d.yearAgo} to ${d.now}`}
+            onSelect={(d) => drill(() => growthCellSpec(p, d, 'growth'))}
           />
         </Figure>
         <Figure
@@ -236,8 +292,18 @@ export function Workforce({ m }: { m: HrbpModel }) {
           data={eng.rows}
           columns={[
             { key: 'group', label: 'Function', format: 'text' },
-            { key: 'headcount', label: 'Employees', format: 'int' },
-            { key: 'share', label: 'Share', format: 'pct' },
+            {
+              key: 'headcount',
+              label: 'Employees',
+              format: 'int',
+              drill: (r) => drillWhen(r.records.length > 0, () => engineeringSpec(p, r)),
+            },
+            {
+              key: 'share',
+              label: 'Share',
+              format: 'pct',
+              drill: (r) => drillWhen(r.records.length > 0, () => engineeringSpec(p, r)),
+            },
           ]}
           definitions={[
             {
@@ -253,7 +319,27 @@ export function Workforce({ m }: { m: HrbpModel }) {
           span={4}
           empty={eng.share == null ? 'Fewer than 5 employees in this scope.' : null}
         >
-          {eng.share != null && <EngineeringStat share={eng.share} reference={ENGINEERING_REFERENCE} />}
+          {eng.share != null && (
+            <>
+              <EngineeringStat share={eng.share} reference={ENGINEERING_REFERENCE} />
+              {/* The counts behind the share, each opening its people. */}
+              <p className="mt-2 text-[13px] text-ink-2">
+                <Drill
+                  spec={() => engineeringSpec(p, engRow)}
+                  label={`Show the ${eng.engineering} employees in engineering`}
+                >
+                  {eng.engineering.toLocaleString('en-US')} in engineering
+                </Drill>
+                {' · '}
+                <Drill
+                  spec={() => engineeringSpec(p, otherRow)}
+                  label={`Show the ${otherRow.headcount} employees in other functions`}
+                >
+                  {otherRow.headcount.toLocaleString('en-US')} in other functions
+                </Drill>
+              </p>
+            </>
+          )}
         </Figure>
       </Section>
     </>

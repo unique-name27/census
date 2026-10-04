@@ -512,6 +512,8 @@ describe('backTestSummary', () => {
     learnedLeavers: 0,
     defaults: [],
     highShare: 0.1,
+    scored: new Map(),
+    leaverIds: new Set(),
   })
   it('says plainly when the bands separate leavers', () => {
     expect(backTestSummary(bt(0.05, 0.2, 4))).toBe(

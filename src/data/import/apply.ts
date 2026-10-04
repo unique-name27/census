@@ -153,6 +153,10 @@ interface Built {
   rec: Record<string, unknown>
   row: number
   issues: ImportIssue[]
+  /** Field keys a default filled in this row. */
+  filled: string[]
+  /** Defaults applied because no column is mapped to the field (summarized, not logged per row). */
+  unmappedFills: { key: string; what: string }[]
 }
 
 /** Required fields a default can supply, so an unmapped column doesn't block the import. */
@@ -231,7 +235,6 @@ export function applyMapping<K extends DatasetKey = DatasetKey>(args: ApplyArgs)
     hourly,
   }
   const fieldByKey = new Map(def.fields.map((f) => [f.key, f]))
-  const unmappedDefaults = new Map<string, { key: string; count: number; what: string }>()
 
   const built: Built[] = []
   sheet.rows.forEach((raw, i) => {
@@ -325,20 +328,27 @@ export function applyMapping<K extends DatasetKey = DatasetKey>(args: ApplyArgs)
       }
       return
     }
-    for (const key of filled) {
+    for (const x of rowIssues) x.id = id
+    built.push({ rec, row, issues: rowIssues, filled, unmappedFills })
+  })
+
+  const kept = dedupe(def, built, issues, stats)
+
+  // Defaults are counted on the rows that are imported, after duplicates are dropped, so the
+  // counts add up against rowsOut.
+  const unmappedDefaults = new Map<string, { key: string; count: number; what: string }>()
+  for (const b of kept) {
+    for (const key of b.filled) {
       stats.defaulted++
       stats.defaults[key] = (stats.defaults[key] ?? 0) + 1
     }
-    for (const u of unmappedFills) {
+    for (const u of b.unmappedFills) {
       const id = `${u.key}|${u.what}`
       const agg = unmappedDefaults.get(id) ?? { key: u.key, count: 0, what: u.what }
       agg.count++
       unmappedDefaults.set(id, agg)
     }
-    for (const x of rowIssues) x.id = id
-    built.push({ rec, row, issues: rowIssues })
-  })
-
+  }
   const fieldOrder = (key: string) => def.fields.findIndex((f) => f.key === key)
   for (const u of [...unmappedDefaults.values()].sort((a, b) => fieldOrder(a.key) - fieldOrder(b.key))) {
     const label = fieldByKey.get(u.key)?.label ?? u.key
@@ -354,7 +364,6 @@ export function applyMapping<K extends DatasetKey = DatasetKey>(args: ApplyArgs)
     })
   }
 
-  const kept = dedupe(def, built, issues, stats)
   for (const b of kept) {
     issues.push(...b.issues)
     stats.blanked += b.issues.filter((x) => x.action === 'left-blank').length

@@ -99,14 +99,17 @@ export function Heatmap<T extends object>({
     scheme === 'diverging' ? divergingScale(t, lo, mid, hi) : sequentialScale(t, lo, hi)
 
   const theme = useChartTheme()
-  const legend: LegendSpec = {
-    kind: 'ramp',
-    colors: scheme === 'diverging' ? theme.div : seqStops(theme),
-    labels:
-      scheme === 'diverging'
-        ? [fmt(lo, format), fmt(mid, format), fmt(hi, format)]
-        : [fmt(lo, format), fmt(hi, format)],
-  }
+  // A ramp with nothing on it would label made-up end values: no legend when every cell is hidden.
+  const legend: LegendSpec | null = cells.some((c) => c.value != null)
+    ? {
+        kind: 'ramp',
+        colors: scheme === 'diverging' ? theme.div : seqStops(theme),
+        labels:
+          scheme === 'diverging'
+            ? [fmt(lo, format), fmt(mid, format), fmt(hi, format)]
+            : [fmt(lo, format), fmt(hi, format)],
+      }
+    : null
   const marginTopFlat = 22
 
   const build = ({ width, theme: t }: PlotBuildContext) => {

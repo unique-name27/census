@@ -74,6 +74,11 @@ export interface FigureProps<T extends object> {
    * (lists, meters, cards): the PNG and SVG menu items are hidden and view decks use the table.
    */
   image?: boolean
+  /**
+   * Offer the chart/table toggle (default true). Set false when the body already is a table (or
+   * a list that reads as one), so a second table view would only repeat it.
+   */
+  tableToggle?: boolean
   /** Table view options. */
   table?: FigureTableOptions<T>
   className?: string
@@ -96,6 +101,7 @@ export function Figure<T extends object>({
   detail,
   tableOnly = false,
   image = true,
+  tableToggle = true,
   table,
   className,
   children,
@@ -277,7 +283,7 @@ export function Figure<T extends object>({
             {status?.text}
           </span>
           {actions && <div className="mr-1 flex items-center gap-2">{actions}</div>}
-          {hasChart && (
+          {hasChart && tableToggle && (
             <IconButton
               label={showTable ? 'Show chart' : 'Show table'}
               aria-pressed={showTable}
@@ -326,10 +332,10 @@ export function Figure<T extends object>({
         ) : (
           <>
             {/* biome-ignore lint/a11y/useSemanticElements: a named group around the chart, not a form fieldset */}
-            <div ref={chartRef} hidden={showTable} role="group" aria-label={`${title}, chart`}>
+            <div ref={chartRef} hidden={showTable && tableToggle} role="group" aria-label={`${title}, chart`}>
               {children}
             </div>
-            {showTable && tableView}
+            {showTable && tableToggle && tableView}
           </>
         )}
       </div>

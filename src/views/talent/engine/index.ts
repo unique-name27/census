@@ -8,6 +8,7 @@ import type { Datasets, ISODate } from '@/data/schema'
 import { fmt } from '@/lib/format'
 import type { Headline } from '../../types'
 import { buildBase, type FieldCoverage, type TalentBase } from './base'
+import { buildDrills, type TalentDrills } from './drills'
 import { buildFindings } from './findings'
 import { buildKpis } from './kpis'
 import { computeLearning, type LearningResult } from './learning'
@@ -32,6 +33,8 @@ export interface TalentModel {
   learning: LearningResult
   kpis: Kpi[]
   findings: Finding[]
+  /** The records behind every number, opened on click. */
+  drill: TalentDrills
 }
 
 /**
@@ -73,7 +76,8 @@ export function computeTalent(ctx: AnalyticsContext): TalentModel {
   const retention = computeRetention(base, risk)
   const overdue = computeOverdue(base, risk.scores)
   const learning = computeLearning(base)
-  const inputs = { base, performance, succession, retention, overdue, learning, risk }
+  const drill = buildDrills({ base, performance, nineBox, succession, retention, overdue, learning, risk })
+  const inputs = { base, performance, succession, retention, overdue, learning, risk, drill }
   return {
     asOf: ctx.asOf,
     has: base.has,
@@ -87,6 +91,7 @@ export function computeTalent(ctx: AnalyticsContext): TalentModel {
     learning,
     kpis: buildKpis(inputs),
     findings: buildFindings(inputs),
+    drill,
   }
 }
 

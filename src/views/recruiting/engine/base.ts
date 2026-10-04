@@ -3,7 +3,7 @@
  * active pipeline with next-step states, the window cohorts and the requisition facts.
  */
 import type { AnalyticsContext } from '@/data/context'
-import type { ISODate, Requisition } from '@/data/schema'
+import type { Candidate, Employee, ISODate, Requisition } from '@/data/schema'
 import type { Window } from '@/data/scope'
 import { fmt } from '@/lib/format'
 import { cohort, type Flow, stageFlow } from './flow'
@@ -21,7 +21,11 @@ export interface RecruitingBase {
   compareLabel: string
   /** "last 12 months", "this quarter", … for sentences. */
   windowWords: string
+  /** "Whole company", "Design Verification · Hsinchu": the scope line for drill subtitles. */
+  scopeLabel: string
   isCompany: boolean
+  /** The unscoped roster, to link hires to the employee they became (drill person cards). */
+  roster: readonly Employee[]
   reqs: Requisition[]
   apps: App[]
   /** Unscoped applications, for company norms and benchmarks. */
@@ -43,6 +47,8 @@ export interface RecruitingBase {
   req: ReqFacts
   /** How many candidate rows (company-wide) carry a req ID that exists in Requisitions. */
   join: { candidates: number; matched: number }
+  /** Candidate rows (company-wide) whose req ID matches no requisition. */
+  unmatched: Candidate[]
   /** "0 of 9,279 applications match a requisition ID" when fewer than half match; else null. */
   joinNote: string | null
 }
@@ -73,7 +79,11 @@ export function computeBase(ctx: AnalyticsContext): RecruitingBase {
   const cov = coverage(ctx.all.candidates, companyReqs)
   const actives = activeItems(apps, asOf, norms)
   let matched = 0
-  for (const c of ctx.all.candidates) if (companyIndex.has(c.reqId)) matched++
+  const unmatched: Candidate[] = []
+  for (const c of ctx.all.candidates) {
+    if (companyIndex.has(c.reqId)) matched++
+    else unmatched.push(c)
+  }
   const join = { candidates: ctx.all.candidates.length, matched }
   const joins = join.candidates > 0 && matched / join.candidates >= MIN_JOIN_SHARE
   const joinNote =
@@ -89,7 +99,9 @@ export function computeBase(ctx: AnalyticsContext): RecruitingBase {
     prior,
     compareLabel,
     windowWords,
+    scopeLabel: ctx.scopeLabel,
     isCompany: ctx.isCompany,
+    roster: ctx.all.employees,
     reqs,
     apps,
     companyApps,
@@ -109,6 +121,7 @@ export function computeBase(ctx: AnalyticsContext): RecruitingBase {
     offersPrior: resolvedOffers(apps, prior),
     req: reqFacts(reqs, apps, actives, asOf, joins),
     join,
+    unmatched,
     joinNote,
   }
 }

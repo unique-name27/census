@@ -31,6 +31,7 @@ import {
   teamWorkload,
   timeToResolve,
 } from './cases'
+import { type DrillScope, drillScope } from './drills'
 import {
   type CaseColumns,
   type CaseFact,
@@ -75,6 +76,8 @@ export interface ServicesModel {
    * executives can't be read case by case.
    */
   small: boolean
+  /** What the drill-downs need (off in a small scope); see engine/drills.ts. */
+  scope: DrillScope
   caseCols: CaseColumns
   txCols: TxColumns
   cases: CaseFact[]
@@ -123,6 +126,7 @@ export function compute(ctx: AnalyticsContext): ServicesModel {
   const hasTx = tx.length > 0
   const people = peopleIn([...cases, ...tx])
   const small = (hasCases || hasTx) && people < MIN_GROUP
+  const scope = drillScope(ctx, caseCols, small)
   const months = trailingMonths(asOf, 24)
   const slaMonths = slaByMonth(cases, months)
   const last12 = slaMonths.slice(-12)
@@ -150,6 +154,7 @@ export function compute(ctx: AnalyticsContext): ServicesModel {
     sparkSla: last12.map((m) => m.slaRate),
     sparkResponse: last12.map((m) => m.responseRate),
     sparkTx: txMonths.slice(-12).map((m) => m.rate),
+    scope,
   })
 
   const findings = buildFindings({
@@ -165,6 +170,7 @@ export function compute(ctx: AnalyticsContext): ServicesModel {
     newHireSites,
     newHireRegions,
     small,
+    scope,
   })
 
   return {
@@ -174,6 +180,7 @@ export function compute(ctx: AnalyticsContext): ServicesModel {
     hasTx,
     people,
     small,
+    scope,
     caseCols,
     txCols,
     cases,

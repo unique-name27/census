@@ -3,16 +3,28 @@
  * nearest date and lists every series in one tooltip, end labels for up to four series (dodged
  * apart with short leader lines), a legend for two or more series, and emphasis (one series in
  * the accent, the rest gray) when the story is about one of them. Missing values break the line.
+ * A reference rule is labeled in the right margin (dodged with the end labels), never over the
+ * data. Clicking drills the series nearest the pointer at the hovered date.
  */
 import * as Plot from '@observablehq/plot'
 import { formatDate, formatMonth, formatMonthShort, iso } from '@/lib/dates'
 import { DASH, type Format, fmt } from '@/lib/format'
 import type { LegendSpec } from '../core/legend'
-import { HOVER_CLASS, labelsMark, refRule, svgEl } from '../core/marks'
+import { HOVER_CLASS, labelsMark, refLabelWidth, refRule, svgEl } from '../core/marks'
 import { textWidth, truncateText } from '../core/measure'
 import type { TipContent } from '../core/tooltip'
-import { axisX, axisY, gridY, housePlot, type PlotBuildContext, PlotChart } from '../plot'
+import {
+  axisX,
+  axisY,
+  gridY,
+  housePlot,
+  type PlotBuildContext,
+  PlotChart,
+  type PlotElement,
+  type PlotPointer,
+} from '../plot'
 import { type ChartTheme, seriesColor, useChartTheme } from '../theme'
+import { nearestBy } from './hit'
 import { dodge, parseTime, timeTicks } from './prepare'
 import { extent, numericAxis } from './scale'
 import { isOtherSeries, otherLast } from './series'
@@ -152,7 +164,14 @@ export function Lines<T extends object>({
           }),
         ) + 16
       : 12
-    const marginRight = Math.ceil(Math.min(endWidth, width * 0.32))
+    // The reference label sits in the right margin too: beside the rule, or among the end labels.
+    const refText = refLine ? truncateText(refLine.label, nameMax, 11, 500) : ''
+    const refWidth = refLine
+      ? labelEnds
+        ? textWidth(refText, 11, 500) + 16
+        : refLabelWidth({ value: refLine.value, label: refText })
+      : 0
+    const marginRight = Math.ceil(Math.min(Math.max(endWidth, refWidth), width * 0.32))
     const plotW = width - marginLeft - marginRight
     const tickCount = Math.max(2, Math.floor(plotW / 84))
 
@@ -208,7 +227,9 @@ export function Lines<T extends object>({
       )
     }
     if (axis.domain[0] <= 0 && axis.domain[1] >= 0) marks.push(Plot.ruleY([0], { stroke: t.axis }))
-    if (refLine) marks.push(...refRule(refLine, 'y', t, 'start'))
+    if (refLine) {
+      marks.push(...refRule({ value: refLine.value, label: refText }, 'y', t, labelEnds ? 'none' : 'outside'))
+    }
     marks.push(
       Plot.line(lineData, {
         x: (p) => new Date(p.t),
@@ -232,7 +253,19 @@ export function Lines<T extends object>({
         const g = svgEl(context.document, 'g', { 'aria-label': 'end labels' })
         const xEnd = Number(scales.x?.(new Date(lastT)))
         const targets = ends.map((e) => Number(scales.y?.(e.y)))
-        const placed = dodge(targets, 13, dims.marginTop + 4, dims.height - dims.marginBottom - 4)
+        // The reference label is dodged with the end labels so the two never overlap.
+        const refY = refLine ? Number(scales.y?.(refLine.value)) : Number.NaN
+        const all = Number.isFinite(refY) ? [...targets, refY] : targets
+        const placedAll = dodge(all, 13, dims.marginTop + 4, dims.height - dims.marginBottom - 4)
+        const placed = placedAll.slice(0, targets.length)
+        const refAt = placedAll[targets.length]
+        if (refAt !== undefined && Math.abs(refAt - refY) > 2) {
+          const leader = svgEl(context.document, 'path', { d: `M${xEnd + 2},${refY}L${xEnd + 9},${refAt}` })
+          leader.style.stroke = t.muted
+          leader.style.fill = 'none'
+          leader.style.strokeWidth = '1px'
+          g.append(leader)
+        }
         ends.forEach((e, k) => {
           const color = colorOf(t, e.name)
           const dot = svgEl(context.document, 'circle', { cx: xEnd, cy: targets[k], r: 3.5 })
@@ -251,8 +284,8 @@ export function Lines<T extends object>({
           }
         })
         const labelG = labelsMark(
-          () =>
-            ends.map((e, k) => {
+          () => [
+            ...ends.map((e, k) => {
               const tx = endText(e)
               return {
                 x: xEnd + 11,
@@ -263,6 +296,10 @@ export function Lines<T extends object>({
                 ],
               }
             }),
+            ...(refAt !== undefined
+              ? [{ x: xEnd + 11, y: refAt, parts: [{ text: refText, color: t.ink2, size: 11, weight: 500 }] }]
+              : []),
+          ],
           'end values',
         )(index, scales, values, dims, context)
         if (labelG) g.append(labelG)
@@ -299,7 +336,7 @@ export function Lines<T extends object>({
       { width, theme: t },
       {
         height,
-        marginTop: refLine ? 16 : 10,
+        marginTop: 10,
         marginRight,
         marginBottom: 24,
         marginLeft,
@@ -310,11 +347,28 @@ export function Lines<T extends object>({
     )
   }
 
-  const tip = (s: Slice<T>): TipContent => {
+  /** The series whose point at the hovered date is nearest the pointer (vertically). */
+  const pick = (s: Slice<T>, at: PlotPointer, plot: PlotElement): string | null => {
+    const y = plot.scale('y')
+    if (!y) return null
+    const near = nearestBy(
+      s.points.filter((p) => p.y != null),
+      (p) => Number(y.apply(p.y)),
+      at.y,
+    )
+    return near?.series ?? null
+  }
+  /** The row to drill: the picked series' point at this date, else the date's first row. */
+  const datumOf = (s: Slice<T>, part: string | null): T | undefined =>
+    (part == null ? undefined : s.points.find((p) => p.series === part && p.y != null)?.datum) ??
+    s.points[0]?.datum
+
+  const tip = (s: Slice<T>, part: string | null): TipContent => {
     if (!multi) {
       const v = s.points[0]?.y ?? null
       return { title: when(s.t), rows: [{ value: fmt(v, format) }] }
     }
+    const strongName = part ?? emphasize
     const rows = names.map((name) => {
       const p = s.points.find((q) => q.series === name)
       return {
@@ -322,7 +376,7 @@ export function Lines<T extends object>({
         label: name,
         color: colorOf(theme, name),
         shape: 'line' as const,
-        strong: emphasize === name ? true : undefined,
+        strong: strongName === name ? true : undefined,
         sort: p?.y ?? Number.NEGATIVE_INFINITY,
       }
     })
@@ -336,11 +390,13 @@ export function Lines<T extends object>({
       height={height}
       legend={legend}
       tip={tip}
+      pick={multi ? pick : undefined}
+      selectable={(s) => s.points.length > 0}
       onSelect={
         onSelect
-          ? (s) => {
-              const first = s.points[0]
-              if (first) onSelect(first.datum)
+          ? (s, part) => {
+              const d = datumOf(s, part)
+              if (d) onSelect(d)
             }
           : undefined
       }

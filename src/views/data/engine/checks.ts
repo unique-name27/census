@@ -8,7 +8,7 @@ import { type DatasetKey, type Datasets, datasetDef, type ISODate } from '@/data
 import type { SourceMeta } from '@/data/store'
 import { daysBetween, formatDate } from '@/lib/dates'
 import { fmt } from '@/lib/format'
-import type { DatasetCoverage, FieldCoverage, FieldFills } from './coverage'
+import { type DatasetCoverage, type FieldCoverage, type FieldFills, fieldRecords } from './coverage'
 
 export type CheckKind =
   | 'empty'
@@ -19,12 +19,31 @@ export type CheckKind =
   | 'stale'
   | 'import-warnings'
 
+/** Which loaded rows a check is about, so its number can open them (`checkRecords`). */
+export type CheckSelect =
+  /** Rows the field applies to that hold no value. */
+  | { by: 'blank'; field: string }
+  /** Every row: the field was not in the file, so each one holds the importer's default. */
+  | { by: 'defaulted'; field: string }
+  /** Rows with a reference that does not resolve in the linked dataset. */
+  | { by: 'unlinked' }
+
+export interface CheckRecords {
+  select: CheckSelect
+  /** How many rows `checkRecords` returns for this check. */
+  count: number
+  /** The number in the check's text that stands for those rows, or null when the text has none. */
+  figure: string | null
+}
+
 export interface DatasetCheck {
   kind: CheckKind
   severity: Exclude<Severity, 'good'>
   text: string
   /** Rows or fields the check is about, for sorting and exports. */
   count: number
+  /** The loaded rows behind the check, when it is about rows that are loaded. */
+  records?: CheckRecords
 }
 
 /** Below this share a required or recommended field is called out as thinly filled. */
@@ -97,6 +116,28 @@ export function unlinkedRows(
 }
 
 /**
+ * For rows of dataset `key`: the references in a row that do not resolve in the target dataset
+ * loaded in `data` (empty when they all do). With nothing loaded to link to, nothing is called
+ * missing. Null when the dataset links to nothing.
+ */
+export function missingRefs(key: DatasetKey, data: Datasets): ((row: object) => string[]) | null {
+  const link = LINKS[key]
+  if (!link) return null
+  const targetRows = data[link.target] as unknown as readonly Row[]
+  if (!targetRows.length) return () => []
+  const ids = new Set<unknown>()
+  for (const t of targetRows) ids.add(t[link.targetKey])
+  return (row) => {
+    const out: string[] = []
+    for (const f of link.fields) {
+      const v = (row as Row)[f]
+      if (v != null && v !== '' && !ids.has(v)) out.push(String(v))
+    }
+    return out
+  }
+}
+
+/**
  * Of `candidates` (rows of dataset `key`, loaded or about to be), how many hold a reference that
  * does not resolve in the target dataset loaded in `data`. Null when the dataset links to nothing.
  */
@@ -106,27 +147,21 @@ export function countUnlinked(
   data: Datasets,
 ): { rows: number; total: number; withRef: number } | null {
   const link = LINKS[key]
-  if (!link) return null
-  const rows = candidates as readonly Row[]
-  const targetRows = data[link.target] as unknown as readonly Row[]
-  const ids = new Set<unknown>()
-  for (const t of targetRows) ids.add(t[link.targetKey])
+  const missing = missingRefs(key, data)
+  if (!link || !missing) return null
   let n = 0
   let withRef = 0
-  for (const r of rows) {
-    let any = false
-    let missing = false
-    for (const f of link.fields) {
-      const v = r[f]
-      if (v == null || v === '') continue
-      any = true
-      if (!ids.has(v)) missing = true
-    }
-    if (any) withRef++
-    // With nothing loaded to link to, there is nothing to call missing.
-    if (missing && targetRows.length) n++
+  for (const r of candidates as readonly Row[]) {
+    if (link.fields.some((f) => r[f] != null && r[f] !== '')) withRef++
+    if (missing(r).length) n++
   }
-  return { rows: n, total: rows.length, withRef }
+  return { rows: n, total: candidates.length, withRef }
+}
+
+/** The loaded rows of `key` with a reference that does not resolve (`unlinkedRows().rows` of them). */
+export function unlinkedRecords<R extends object>(key: DatasetKey, rows: readonly R[], data: Datasets): R[] {
+  const missing = missingRefs(key, data)
+  return missing ? rows.filter((r) => missing(r).length > 0) : []
 }
 
 /** Latest event date on or before the as-of date, or null when there is none. */
@@ -146,6 +181,20 @@ export function latestDate(key: DatasetKey, rows: readonly object[], asOf: ISODa
 }
 
 const pctText = (share: number) => fmt(share, share > 0 && share < 0.01 ? 'pct' : 'pct0')
+
+/**
+ * The rows a field leaves blank, for a check about that field. `shown` is the row count the
+ * check's sentence prints, if any: the number is underlined in place only when it is exactly the
+ * rows listed, otherwise the text gets its own link.
+ */
+function blankRecords(f: FieldCoverage | undefined, shown?: number): CheckRecords | undefined {
+  if (!f || f.blank === 0) return undefined
+  return {
+    select: { by: 'blank', field: f.key },
+    count: f.blank,
+    figure: shown === f.blank ? fmt(shown, 'int') : null,
+  }
+}
 
 function fieldChecks(coverage: DatasetCoverage): DatasetCheck[] {
   const out: DatasetCheck[] = []
@@ -183,6 +232,7 @@ function fieldChecks(coverage: DatasetCoverage): DatasetCheck[] {
           ? `${f.label} is filled from the file for ${pctText(f.share)} of ${f.rowsNoun}; the rest hold a default or are blank.`
           : `${f.label} is filled ${f.scope ? 'for' : 'in'} ${pctText(f.share)} of ${f.rowsNoun}.`,
       count: f.expected - f.filled,
+      records: blankRecords(f),
     })
   return out
 }
@@ -205,6 +255,7 @@ function rosterChecks(
       severity: 'warning',
       text: `Termination date is blank in all ${fmt(rows.length, 'int')} ${rowsWord(rows.length)}, so attrition reads as zero. Include the people who left to measure it.`,
       count: rows.length,
+      records: blankRecords(field('terminationDate'), rows.length),
     })
   const metric = (key: string, who: string, lost: string, partly: string) => {
     const f = field(key)
@@ -216,12 +267,14 @@ function rosterChecks(
             severity: 'warning',
             text: `${f.label} is blank for all ${fmt(f.expected, 'int')} ${who}, so ${lost} can’t be shown.`,
             count: f.expected,
+            records: blankRecords(f, f.expected),
           }
         : {
             kind: 'metric-field',
             severity: 'info',
             text: `${f.label} is filled for ${pctText(f.share)} of ${who}, so ${partly}.`,
             count: f.expected - f.filled,
+            records: blankRecords(f),
           },
     )
   }
@@ -238,6 +291,11 @@ function rosterChecks(
       severity: 'warning',
       text: `Employment type was not in the file, so all ${fmt(rows.length, 'int')} people count as employees in headcount and rates.`,
       count: rows.length,
+      records: {
+        select: { by: 'defaulted', field: 'employmentType' },
+        count: rows.length,
+        figure: fmt(rows.length, 'int'),
+      },
     })
   return out
 }
@@ -286,6 +344,7 @@ export function datasetChecks(args: {
       severity: share > UNLINKED_WARNING ? 'warning' : 'info',
       text: `${fmt(unlinked.rows, 'int')} ${rowsWord(unlinked.rows)} (${fmt(share, share < 0.01 ? 'pct' : 'pct0')}) ${unlinked.rows === 1 ? 'refers' : 'refer'} to ${TARGET_NOUN[link.target]}.${hint}`,
       count: unlinked.rows,
+      records: { select: { by: 'unlinked' }, count: unlinked.rows, figure: fmt(unlinked.rows, 'int') },
     })
   }
 
@@ -340,4 +399,18 @@ export function worstSeverity(checks: readonly DatasetCheck[]): Severity {
   if (checks.some((c) => c.severity === 'warning')) return 'warning'
   if (checks.length) return 'info'
   return 'good'
+}
+
+/** A row of any dataset. */
+export type DatasetRecord = Datasets[DatasetKey][number]
+
+/**
+ * The loaded rows a check's number stands for, in file order: `check.records.count` of them.
+ * Called when someone opens the rows, not on every render.
+ */
+export function checkRecords(key: DatasetKey, data: Datasets, select: CheckSelect): DatasetRecord[] {
+  const rows: readonly DatasetRecord[] = data[key]
+  if (select.by === 'unlinked') return unlinkedRecords(key, rows, data)
+  if (select.by === 'defaulted') return [...rows]
+  return fieldRecords(datasetDef(key), rows, select.field).blank
 }

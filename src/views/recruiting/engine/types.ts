@@ -1,7 +1,7 @@
 /**
  * Shapes shared by the recruiting engine modules. Pure types and small constants; no React.
  */
-import type { Requisition } from '@/data/schema'
+import type { Candidate, Requisition } from '@/data/schema'
 
 /** Index of the last stage a candidate can wait in (Offer); Hired (5) is terminal. */
 export const LAST_OPEN_STAGE = 4
@@ -12,6 +12,8 @@ export type Outcome = 'Active' | 'Rejected' | 'Withdrawn' | 'Declined' | 'Hired'
 
 /** One application, joined to its requisition and evaluated on the as-of date. */
 export interface App {
+  /** The candidate row this application came from (what the drill panel lists). */
+  raw: Candidate
   id: string
   name: string
   reqId: string

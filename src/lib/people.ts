@@ -74,13 +74,38 @@ export interface RateResult {
   reason?: string
 }
 
+/** Reason an attrition rate is null when the Employees data carries no termination dates at all. */
+export const NO_EXIT_DATA = 'No termination dates in the Employees data'
+
+/** True when any employee row has a termination date (the roster includes leavers). */
+export function hasExitData(employees: readonly Employee[]): boolean {
+  return employees.some((e) => !!e.terminationDate)
+}
+
+export interface AttritionOptions {
+  /**
+   * Whether the Employees data carries termination dates at all (usually checked on the unscoped
+   * roster, e.g. `hasExitData(ctx.all.employees)`). When false, the rate is null with
+   * `NO_EXIT_DATA` instead of a misleading 0%. Omitted: no check.
+   */
+  exitDataPresent?: boolean
+}
+
 /**
  * Annualized attrition for a population over a window. Voluntary, involuntary and regretted
  * rates are null when no exit in the window carries a termination type (a missing column must
- * never read as 0%).
+ * never read as 0%). Every rate is null when `opts.exitDataPresent === false` (a roster of
+ * active people only).
  */
-export function attrition(employees: readonly Employee[], w: Window, kind: ExitKind = 'all'): RateResult {
+export function attrition(
+  employees: readonly Employee[],
+  w: Window,
+  kind: ExitKind = 'all',
+  opts?: AttritionOptions,
+): RateResult {
   const avg = avgHeadcount(employees, w)
+  if (opts?.exitDataPresent === false)
+    return { rate: null, events: 0, avgHeadcount: avg, reason: NO_EXIT_DATA }
   const exits = exitsIn(employees, w)
   if (kind !== 'all' && exits.length > 0 && !exits.some((e) => e.terminationType)) {
     return { rate: null, events: 0, avgHeadcount: avg, reason: 'Termination type is missing' }

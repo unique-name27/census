@@ -3,10 +3,20 @@ import { BarList, Columns, Figure } from '@/charts'
 import { KpiStrip, Section, Segmented } from '@/components'
 import type { Kpi, Severity } from '@/components/types'
 import { useAnalytics } from '@/data/context'
+import { drill } from '@/drill/Drill'
 import { formatDate } from '@/lib/dates'
 import type { HrbpModel } from '../engine'
+import {
+  chainBelowSpec,
+  layerBuSpec,
+  type ManagerCell,
+  managerCellSpec,
+  orgTileSpec,
+  spanBucketSpec,
+} from '../engine/buckets'
 import { type ManagerFlag, type ManagerRow, SPAN_BUCKETS } from '../engine/org'
 import { DEF } from './defs'
+import { drillWhen } from './drill'
 import { rescope } from './model'
 
 type ManagerFilter = 'all' | 'wide' | 'light' | 'new'
@@ -30,8 +40,14 @@ export function OrgDesign({ m }: { m: HrbpModel }) {
   const ctx = useAnalytics()
   const [filter, setFilter] = useState<ManagerFilter>('all')
   const org = m.org
+  const p = m.prep
   const asOf = formatDate(ctx.asOf)
   const managers = org.managers.filter(FILTERS[filter])
+  const hasManagers = org.managers.length > 0
+  const tile = (t: Parameters<typeof orgTileSpec>[2], has: boolean) =>
+    drillWhen(has, () => orgTileSpec(p, org, t))
+  const managerCell = (cell: ManagerCell, count: (r: ManagerRow) => number) => (r: ManagerRow) =>
+    drillWhen(count(r) > 0, () => managerCellSpec(p, org, r, cell))
 
   const kpis: Kpi[] = [
     {
@@ -41,6 +57,7 @@ export function OrgDesign({ m }: { m: HrbpModel }) {
       format: 'int',
       note: `${org.activeWorkers.toLocaleString('en-US')} active workers`,
       definition: 'Active people in scope with at least one active direct report.',
+      drill: tile('managers', hasManagers),
     },
     {
       id: 'mean-span',
@@ -49,6 +66,7 @@ export function OrgDesign({ m }: { m: HrbpModel }) {
       format: 'num1',
       note: 'Direct reports per manager',
       definition: DEF.span.text,
+      drill: tile('meanSpan', hasManagers),
     },
     {
       id: 'median-span',
@@ -60,6 +78,7 @@ export function OrgDesign({ m }: { m: HrbpModel }) {
           ? `Half of managers have ${Math.ceil(org.medianSpan)} or more direct reports`
           : 'Direct reports per manager',
       definition: DEF.span.text,
+      drill: tile('medianSpan', hasManagers),
     },
     {
       id: 'manager-ratio',
@@ -68,6 +87,7 @@ export function OrgDesign({ m }: { m: HrbpModel }) {
       format: 'num1',
       note: 'Individual contributors per manager',
       definition: 'Active workers who manage nobody, divided by the number of managers.',
+      drill: tile('managerRatio', org.managerRatio != null && org.individuals.length > 0),
     },
     {
       id: 'layers',
@@ -76,6 +96,7 @@ export function OrgDesign({ m }: { m: HrbpModel }) {
       format: 'int',
       note: 'From the top of this scope',
       definition: DEF.layers.text,
+      drill: tile('layers', org.layers != null),
     },
   ]
 
@@ -94,8 +115,18 @@ export function OrgDesign({ m }: { m: HrbpModel }) {
           data={org.spanBuckets}
           columns={[
             { key: 'bucket', label: 'Direct reports', format: 'text' },
-            { key: 'managers', label: 'Managers', format: 'int' },
-            { key: 'share', label: 'Share', format: 'pct' },
+            {
+              key: 'managers',
+              label: 'Managers',
+              format: 'int',
+              drill: (r) => drillWhen(r.records.length > 0, () => spanBucketSpec(p, r)),
+            },
+            {
+              key: 'share',
+              label: 'Share',
+              format: 'pct',
+              drill: (r) => drillWhen(r.records.length > 0, () => spanBucketSpec(p, r)),
+            },
           ]}
           definitions={[DEF.span]}
           note={`${org.managers.length} managers · as of ${asOf}`}
@@ -108,6 +139,7 @@ export function OrgDesign({ m }: { m: HrbpModel }) {
             y="managers"
             xOrder={[...SPAN_BUCKETS]}
             tone={(d) => (d.bucket === '12+' || d.bucket === '1' ? 'warning' : 'default')}
+            onSelect={(d) => drill(() => spanBucketSpec(p, d))}
           />
         </Figure>
         <Figure
@@ -117,8 +149,18 @@ export function OrgDesign({ m }: { m: HrbpModel }) {
           data={org.layersByBu}
           columns={[
             { key: 'businessUnit', label: 'Business unit', format: 'text' },
-            { key: 'layers', label: 'Layers', format: 'int' },
-            { key: 'people', label: 'Active workers', format: 'int' },
+            {
+              key: 'layers',
+              label: 'Layers',
+              format: 'int',
+              drill: (r) => drillWhen(r.records.length > 0, () => layerBuSpec(p, org, r)),
+            },
+            {
+              key: 'people',
+              label: 'Active workers',
+              format: 'int',
+              drill: (r) => drillWhen(r.records.length > 0, () => layerBuSpec(p, org, r)),
+            },
           ]}
           definitions={[DEF.layers]}
           note={`Counted from each unit's top person · as of ${asOf}`}
@@ -130,6 +172,7 @@ export function OrgDesign({ m }: { m: HrbpModel }) {
             label="businessUnit"
             value="layers"
             secondary={(d) => `${d.people} people`}
+            onSelect={(d) => drill(() => layerBuSpec(p, org, d))}
           />
         </Figure>
       </Section>
@@ -149,11 +192,26 @@ export function OrgDesign({ m }: { m: HrbpModel }) {
             { key: 'jobTitle', label: 'Title', format: 'text' },
             { key: 'department', label: 'Department', format: 'text' },
             { key: 'location', label: 'Location', format: 'text' },
-            { key: 'directs', label: 'Directs', format: 'int' },
-            { key: 'totalOrg', label: 'Total org', format: 'int' },
+            {
+              key: 'directs',
+              label: 'Directs',
+              format: 'int',
+              drill: managerCell('directs', (r) => r.directs),
+            },
+            {
+              key: 'totalOrg',
+              label: 'Total org',
+              format: 'int',
+              drill: managerCell('totalOrg', (r) => r.totalOrg),
+            },
             { key: 'tenureMonths', label: 'Tenure (mo)', format: 'int' },
             { key: 'managerSince', label: 'Managing since', format: 'date' },
-            { key: 'regretted12', label: 'Regretted exits, 12 mo', format: 'int' },
+            {
+              key: 'regretted12',
+              label: 'Regretted exits, 12 mo',
+              format: 'int',
+              drill: managerCell('regretted12', (r) => r.regretted12),
+            },
             { key: 'flag', label: 'Flag', format: 'text' },
           ]}
           definitions={[
@@ -198,7 +256,12 @@ export function OrgDesign({ m }: { m: HrbpModel }) {
             { key: 'department', label: 'Department', format: 'text' },
             { key: 'report', label: 'Only direct report', format: 'text' },
             { key: 'reportTitle', label: 'Their title', format: 'text' },
-            { key: 'below', label: 'People below them', format: 'int' },
+            {
+              key: 'below',
+              label: 'People below them',
+              format: 'int',
+              drill: (r) => drillWhen(r.below > 0, () => chainBelowSpec(p, org, r)),
+            },
           ]}
           definitions={[
             {

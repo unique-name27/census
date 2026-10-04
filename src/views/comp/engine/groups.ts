@@ -51,6 +51,14 @@ export function groupRows<T>(
   return out
 }
 
+/**
+ * The people behind a statistic over `n` values, for the drill-down: none when the statistic is
+ * hidden for anonymity (n < min), so a suppressed number never opens the records behind it.
+ */
+export function behind<T>(rows: readonly T[], n: number, min = MIN_GROUP): T[] {
+  return n < min ? [] : rows.slice()
+}
+
 /** Finite values of a field. */
 export function values<T>(rows: readonly T[], f: (r: T) => number | null | undefined): number[] {
   const out: number[] = []

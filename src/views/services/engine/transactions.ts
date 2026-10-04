@@ -30,6 +30,8 @@ export interface TypeRow {
   late: number | null
   open: number | null
   rate: number | null
+  /** The judged transactions behind the row (on time, late or open past due). */
+  records: TxFact[]
 }
 
 const typeOrder = (t: string) => {
@@ -54,6 +56,7 @@ export function onTimeByType(facts: readonly TxFact[], w: Window): TypeRow[] {
       late: hitsOf(r.rate, rows.filter((f) => f.outcome === 'late').length),
       open: hitsOf(r.rate, rows.filter((f) => f.outcome === 'overdue').length),
       rate: r.rate,
+      records: rows,
     }
   })
 }
@@ -76,6 +79,8 @@ export interface FinalPayRow {
   voluntaryN: number
   /** Median days past the deadline, late payments only (null below 5 late payments or people). */
   medianDaysLate: number | null
+  /** The judged exits behind the row. */
+  records: TxFact[]
 }
 
 const sitesOf = (jur: string) =>
@@ -121,6 +126,7 @@ export function finalPayRow(jur: string, list: readonly TxFact[]): FinalPayRow {
     voluntaryRate: vol.rate,
     voluntaryN: vol.n,
     medianDaysLate: isShowable(lateDays.length, peopleIn(late)) ? median(lateDays) : null,
+    records: list.slice(),
   }
 }
 
@@ -134,6 +140,8 @@ export interface SiteRow {
   ready: number | null
   late: number | null
   rate: number | null
+  /** The judged new hires behind the row. */
+  records: TxFact[]
 }
 
 const siteRow = (location: string, region: Region | '—', list: readonly TxFact[]): SiteRow => {
@@ -145,6 +153,7 @@ const siteRow = (location: string, region: Region | '—', list: readonly TxFact
     ready: hitsOf(r.rate, r.onTime),
     late: hitsOf(r.rate, r.late),
     rate: r.rate,
+    records: list.slice(),
   }
 }
 
@@ -189,18 +198,20 @@ export interface TimingRow {
   transactions: number
   share: number | null
   late: boolean
+  /** The completed transactions in the bin. */
+  records: TxFact[]
 }
 
 /** completed − due in calendar days; shares are hidden behind fewer than 5 people. */
 export function timingBins(facts: readonly TxFact[], w: Window): TimingRow[] {
-  const counts = TIMING_BINS.map(() => 0)
+  const bins: TxFact[][] = TIMING_BINS.map(() => [])
   const done: TxFact[] = []
   for (const f of dueIn(facts, w)) {
     const d = f.daysVsDue
     if (d == null) continue
     const i = TIMING_BINS.findIndex((b) => d >= b.lo && d <= b.hi)
     if (i < 0) continue
-    counts[i]++
+    bins[i].push(f)
     done.push(f)
   }
   const n = done.length
@@ -208,9 +219,10 @@ export function timingBins(facts: readonly TxFact[], w: Window): TimingRow[] {
   const shown = isShowable(n, peopleIn(done))
   return TIMING_BINS.map((b, i) => ({
     timing: b.label,
-    transactions: counts[i],
-    share: shown ? counts[i] / n : null,
+    transactions: bins[i].length,
+    share: shown ? bins[i].length / n : null,
     late: b.lo > 0,
+    records: bins[i],
   }))
 }
 
@@ -223,6 +235,8 @@ export interface TxMonthRow {
   onTime: number | null
   late: number | null
   rate: number | null
+  /** Every transaction due in the month (including those not yet due at the as-of date). */
+  records: TxFact[]
 }
 
 /** Transactions on time by the month of their due date (pending ones left out). */
@@ -232,8 +246,16 @@ export function onTimeByMonth(facts: readonly TxFact[], months: readonly string[
     (f) => (f.due as string).slice(0, 7),
   )
   return months.map((month) => {
-    const r = onTimeRate(groups.get(month) ?? [])
-    return { month, due: r.n, onTime: hitsOf(r.rate, r.onTime), late: hitsOf(r.rate, r.late), rate: r.rate }
+    const records = groups.get(month) ?? []
+    const r = onTimeRate(records)
+    return {
+      month,
+      due: r.n,
+      onTime: hitsOf(r.rate, r.onTime),
+      late: hitsOf(r.rate, r.late),
+      rate: r.rate,
+      records,
+    }
   })
 }
 
@@ -252,6 +274,8 @@ export interface RetroMonthRow {
   retro: number | null
   /** Retro ÷ changes; null below 5 changes or 5 employees. */
   share: number | null
+  /** The job and pay changes due in the month that carry the retro flag. */
+  records: TxFact[]
 }
 
 /** Retro adjustments by the month of the payroll cut-off they missed (due month). */
@@ -261,8 +285,9 @@ export function retroByMonth(facts: readonly TxFact[], months: readonly string[]
     (f) => (f.due as string).slice(0, 7),
   )
   return months.map((month) => {
-    const s = shareOf(groups.get(month) ?? [], (f) => f.retro)
-    return { month, changes: s.n, retro: hitsOf(s.rate, s.hits), share: s.rate }
+    const records = groups.get(month) ?? []
+    const s = shareOf(records, (f) => f.retro)
+    return { month, changes: s.n, retro: hitsOf(s.rate, s.hits), share: s.rate, records }
   })
 }
 

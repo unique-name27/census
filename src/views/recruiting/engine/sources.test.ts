@@ -55,18 +55,24 @@ describe('offer acceptance', () => {
     const offers = resolvedOffers(apps, { start: '2026-07-01', end: '2026-09-30' })
     // Bengaluru (4 offers) and Austin (3) are both under 5: they fold into one row that has 7.
     const by = acceptanceBy(offers, (a) => a.location)
-    expect(by).toEqual([{ group: 'Other (2)', rate: 4 / 7, hired: 4, declined: 3, offers: 7 }])
+    expect(by).toMatchObject([{ group: 'Other (2)', rate: 4 / 7, hired: 4, declined: 3, offers: 7 }])
+    // The folded row drills to the offers of both sites.
+    expect(by[0].apps).toHaveLength(7)
     // One small group keeps its name, but shows neither the rate nor the counts behind it.
     const one = acceptanceBy(
       offers.filter((a) => a.location === 'Bengaluru'),
       (a) => a.location,
     )
-    expect(one).toEqual([{ group: 'Bengaluru', rate: null, hired: null, declined: null, offers: 4 }])
+    expect(one).toEqual([
+      { group: 'Bengaluru', rate: null, hired: null, declined: null, offers: 4, apps: [] },
+    ])
     const q = acceptanceByQuarter(apps, AS_OF, 2)
     expect(q.map((x) => x.label)).toEqual(['Q2 2026', 'Q3 2026'])
     expect(q[1]).toMatchObject({ offers: 7, end: '2026-09-30' })
     expect(q[1].rate).toBeCloseTo(4 / 7)
-    expect(q[0].rate).toBeNull()
+    expect(q[1].apps).toHaveLength(7)
+    // A hidden quarter shows no counts that would give the rate away, and carries no records.
+    expect(q[0]).toMatchObject({ rate: null, hired: null, declined: null, apps: [] })
   })
 
   it('counts decline reasons', () => {
@@ -141,23 +147,26 @@ describe('sources and exits', () => {
       AS_OF,
     )
     const rows = exitReasons(exits, { start: '2025-10-01', end: '2026-09-30' }, 1)
-    expect(rows).toContainEqual({
+    const plain = rows.map(({ apps, ...r }) => r)
+    expect(plain).toContainEqual({
       outcome: 'Rejected',
       reason: 'Skills mismatch',
       stage: 'Applied',
       candidates: 3,
     })
-    expect(rows).toContainEqual({
+    expect(plain).toContainEqual({
       outcome: 'Rejected',
       reason: 'Other reasons',
       stage: 'Applied',
       candidates: 2,
     })
-    expect(rows).toContainEqual({
+    expect(plain).toContainEqual({
       outcome: 'Withdrawn',
       reason: 'Unresponsive',
       stage: 'Screen',
       candidates: 1,
     })
+    // Every bar segment drills to exactly the applications it counts.
+    for (const r of rows) expect(r.apps).toHaveLength(r.candidates)
   })
 })

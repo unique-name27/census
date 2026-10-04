@@ -80,6 +80,10 @@ export interface CategoryRow {
   open: number
   /** Open cases waiting on a third party. */
   waitingThirdParty: number
+  /** The cases opened in the period behind the row (the drill's rows). */
+  records: CaseFact[]
+  /** The category's cases open at the as-of date. */
+  openRecords: CaseFact[]
 }
 
 /** Groups sorted largest first, then folded by people ("Other (k)" last). */
@@ -106,6 +110,8 @@ export function byCategory(facts: readonly CaseFact[], w: Window): CategoryRow[]
       responseRate: responseSla(rows).rate,
       open: mine.length,
       waitingThirdParty: mine.filter((f) => f.status === 'Waiting on third party').length,
+      records: rows,
+      openRecords: mine,
     }
   })
 }
@@ -116,6 +122,8 @@ export interface MonthCategoryRow {
   month: string
   category: string
   cases: number
+  /** The cases behind the count. */
+  records: CaseFact[]
 }
 
 /** The series label when no category is large enough to show on its own. */
@@ -142,17 +150,21 @@ export function openedByMonth(
   const keep = new Set(all ? eligible : eligible.slice(0, top))
   const rest = keep.size ? 'Other' : ALL_CATEGORIES
   const series = [...keep, ...(ranked.length > keep.size ? [rest] : [])]
-  const counts = new Map<string, number>()
+  const cells = new Map<string, CaseFact[]>()
   for (const f of facts) {
     if (!inMonths.has(f.month)) continue
     const s = keep.has(f.category) ? f.category : rest
     const k = `${f.month}|${s}`
-    counts.set(k, (counts.get(k) ?? 0) + 1)
+    const list = cells.get(k)
+    if (list) list.push(f)
+    else cells.set(k, [f])
   }
   const rows: MonthCategoryRow[] = []
   for (const month of months)
-    for (const category of series)
-      rows.push({ month, category, cases: counts.get(`${month}|${category}`) ?? 0 })
+    for (const category of series) {
+      const records = cells.get(`${month}|${category}`) ?? []
+      rows.push({ month, category, cases: records.length, records })
+    }
   return { rows, series }
 }
 
@@ -164,6 +176,8 @@ export interface MonthSlaRow {
   slaMet: number | null
   slaN: number
   responseRate: number | null
+  /** Every case opened in the month. */
+  records: CaseFact[]
 }
 
 export function slaByMonth(facts: readonly CaseFact[], months: readonly string[]): MonthSlaRow[] {
@@ -179,6 +193,7 @@ export function slaByMonth(facts: readonly CaseFact[], months: readonly string[]
       slaMet: hitsOf(sla.rate, sla.hits),
       slaN: sla.n,
       responseRate: responseSla(list).rate,
+      records: list,
     }
   })
 }
@@ -210,21 +225,28 @@ export interface BacklogRow {
   age: AgeBucket
   status: string
   cases: number
+  /** The open cases behind the count. */
+  records: CaseFact[]
 }
 
 export function backlogByAge(facts: readonly CaseFact[]): BacklogRow[] {
-  const counts = new Map<string, number>()
+  const cells = new Map<string, CaseFact[]>()
   const statuses = new Set<string>()
   for (const f of facts) {
     if (!f.open || f.ageDays == null) continue
     const s = openStatusLabel(f)
     statuses.add(s)
     const k = `${ageBucket(f.ageDays)}|${s}`
-    counts.set(k, (counts.get(k) ?? 0) + 1)
+    const list = cells.get(k)
+    if (list) list.push(f)
+    else cells.set(k, [f])
   }
   const order = BACKLOG_STATUSES.filter((s) => statuses.has(s))
   return AGE_BUCKETS.flatMap((age) =>
-    order.map((status) => ({ age, status, cases: counts.get(`${age}|${status}`) ?? 0 })),
+    order.map((status) => {
+      const records = cells.get(`${age}|${status}`) ?? []
+      return { age, status, cases: records.length, records }
+    }),
   )
 }
 
@@ -239,6 +261,8 @@ export interface AgedCaseRow {
   ageDays: number
   targetDays: number | null
   daysPastTarget: number | null
+  /** The case itself, for its drill. */
+  fact: CaseFact
 }
 
 /** Open cases older than `minAge` days, oldest first. Employee relations cases are never listed. */
@@ -259,6 +283,7 @@ export function agedCases(facts: readonly CaseFact[], minAge = 14): AgedCaseRow[
         ageDays: age,
         targetDays: targetDays == null ? null : Math.round(targetDays * 10) / 10,
         daysPastTarget: targetDays == null ? null : Math.max(0, Math.round(age - targetDays)),
+        fact: f,
       }
     })
     .sort((a, b) => b.ageDays - a.ageDays)
@@ -301,6 +326,8 @@ export interface ResolveRow {
   p90Share: number | null
   /** Always 1 when the shares exist: the target, as a marker on the share-of-target axis. */
   targetShare: number | null
+  /** The resolved cases measured. */
+  records: CaseFact[]
 }
 
 /**
@@ -336,6 +363,7 @@ export function timeToResolve(facts: readonly CaseFact[], w: Window): ResolveRow
         q3Share: q(ratios, 0.75, shares),
         p90Share: q(ratios, 0.9, shares),
         targetShare: shares ? 1 : null,
+        records: list,
       }
     })
     .sort((a, b) => (b.medianShare ?? -1) - (a.medianShare ?? -1) || (b.median ?? 0) - (a.median ?? 0))
@@ -348,13 +376,15 @@ export interface ArrivalRow {
   hour: string
   cases: number
   share: number | null
+  /** The cases opened in the cell. */
+  records: CaseFact[]
 }
 
 /** Weekday × hour of opening for cases opened in the window, trimmed to the hours in use. */
 export function arrivals(facts: readonly CaseFact[], w: Window): ArrivalRow[] {
   const opened = openedIn(facts, w).filter((f) => f.hour != null)
   if (!opened.length) return []
-  const grid = new Map<string, number>()
+  const grid = new Map<string, CaseFact[]>()
   let lo = 23
   let hi = 0
   for (const f of opened) {
@@ -362,7 +392,9 @@ export function arrivals(facts: readonly CaseFact[], w: Window): ArrivalRow[] {
     lo = Math.min(lo, h)
     hi = Math.max(hi, h)
     const k = `${f.weekday}|${h}`
-    grid.set(k, (grid.get(k) ?? 0) + 1)
+    const list = grid.get(k)
+    if (list) list.push(f)
+    else grid.set(k, [f])
   }
   const weekend = opened.some((f) => f.weekday >= 5)
   const days = weekend ? 7 : 5
@@ -371,12 +403,13 @@ export function arrivals(facts: readonly CaseFact[], w: Window): ArrivalRow[] {
   const rows: ArrivalRow[] = []
   for (let d = 0; d < days; d++) {
     for (let h = lo; h <= hi; h++) {
-      const cases = grid.get(`${d}|${h}`) ?? 0
+      const records = grid.get(`${d}|${h}`) ?? []
       rows.push({
         weekday: WEEKDAYS[d],
         hour: String(h).padStart(2, '0'),
-        cases,
-        share: shown ? cases / opened.length : null,
+        cases: records.length,
+        share: shown ? records.length / opened.length : null,
+        records,
       })
     }
   }
@@ -391,6 +424,10 @@ export interface ChannelRow {
   responses: number
   csat: number | null
   slaRate: number | null
+  /** Cases opened in the period through the channel. */
+  records: CaseFact[]
+  /** Cases resolved in the period through the channel (satisfaction is scored on these). */
+  resolvedRecords: CaseFact[]
 }
 
 /** Satisfaction and resolution SLA by channel; channels behind fewer than 5 requesters fold into Other. */
@@ -399,13 +436,16 @@ export function byChannel(facts: readonly CaseFact[], w: Window): ChannelRow[] {
   const resolved = resolvedIn(facts, w)
   return foldedBy(openedIn(facts, w), channelOf).map(({ key, rows }) => {
     const names = new Set(rows.map(channelOf))
-    const c = csat(resolved.filter((f) => names.has(channelOf(f))))
+    const mine = resolved.filter((f) => names.has(channelOf(f)))
+    const c = csat(mine)
     return {
       channel: key,
       cases: rows.length,
       responses: c.n,
       csat: c.mean,
       slaRate: resolutionSla(rows).rate,
+      records: rows,
+      resolvedRecords: mine,
     }
   })
 }
@@ -422,6 +462,8 @@ export interface ReopenRow {
   /** Hidden (null) with the escalation rate. */
   escalated: number | null
   escalateRate: number | null
+  /** The cases opened in the period behind the row. */
+  records: CaseFact[]
 }
 
 /**
@@ -449,6 +491,7 @@ export function reopenRow(category: string, list: readonly CaseFact[]): ReopenRo
     reopenRate: reopen.rate,
     escalated: hitsOf(escalate.rate, escalate.hits),
     escalateRate: escalate.rate,
+    records: list.slice(),
   }
 }
 
@@ -464,6 +507,10 @@ export interface TeamRow {
   csat: number | null
   csatN: number
   firstContact: number | null
+  /** The cases behind the opened, resolved and open counts. */
+  openedRecords: CaseFact[]
+  resolvedRecords: CaseFact[]
+  openRecords: CaseFact[]
 }
 
 /** Workload by owning team, most cases opened first; teams behind fewer than 5 requesters fold into Other. */
@@ -481,17 +528,21 @@ export function teamWorkload(facts: readonly CaseFact[], w: Window, tierKnown: b
     const mine = (f: CaseFact) => teams.has(f.team)
     const o = opened.filter(mine)
     const r = resolved.filter(mine)
+    const now = openNow.filter(mine)
     const c = csat(r)
     return {
       team: key,
       opened: o.length,
       resolved: r.length,
-      open: openNow.filter(mine).length,
+      open: now.length,
       slaRate: resolutionSla(o).rate,
       medianHours: medianHours(r).hours,
       csat: c.mean,
       csatN: c.n,
       firstContact: tierKnown ? shareOf(r, (f) => isFirstContact(f)).rate : null,
+      openedRecords: o,
+      resolvedRecords: r,
+      openRecords: now,
     }
   })
 }

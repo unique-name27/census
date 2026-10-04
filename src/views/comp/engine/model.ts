@@ -9,8 +9,8 @@ import { type ISODate, LEVELS } from '@/data/schema'
 import { daysBetween } from '@/lib/dates'
 import {
   type Bin,
+  binBy,
   binDomain,
-  binValues,
   type ExceptionRow,
   guidelineExceptions,
   meritSpend,
@@ -93,6 +93,8 @@ export interface CompModel {
   payAsOf: ISODate | null
   /** People are counted on a date more than a month away from the pay data (an as-of override, or an old upload). */
   payStale: boolean
+  /** "Whole company", or the filters in words: the scope line of every drill-down. */
+  scopeLabel: string
   pop: Population
   /** The whole company (the same object when no org filter is set). */
   company: Population
@@ -101,7 +103,7 @@ export interface CompModel {
   kpis: Kpi[]
   findings: Finding[]
   overview: {
-    hist: Bin[]
+    hist: Bin<CompPerson>[]
     histDomain: [number, number] | null
     median: number | null
     /** Company median, for the reference rule when a filter is on. */
@@ -146,7 +148,7 @@ export interface CompModel {
     spend: SpendSummary
     companySpend: SpendSummary
     byBu: SpendRow[]
-    hist: Bin[]
+    hist: Bin<CompPerson>[]
     histDomain: [number, number] | null
     exceptions: ExceptionRow[]
     promotions: { rows: PromotionRow[]; share: number | null; median: number | null }
@@ -194,6 +196,8 @@ export function computeComp(ctx: AnalyticsContext, settings: CycleSettings): Com
   const histDomain = binDomain(compas, COMPA_STEP)
   const merits = values(people, (p) => p.merit)
   const meritDomain = binDomain(merits, MERIT_STEP)
+  const valued = people.filter((p) => p.compa != null)
+  const proposed = people.filter((p) => p.merit != null)
   const below = belowMinimum(people)
 
   const performance = {
@@ -213,7 +217,7 @@ export function computeComp(ctx: AnalyticsContext, settings: CycleSettings): Com
     spend,
     companySpend,
     byBu: spendBy(people, (p) => p.businessUnit, s),
-    hist: meritDomain ? binValues(merits, meritDomain[0], meritDomain[1], MERIT_STEP) : [],
+    hist: meritDomain ? binBy(proposed, (p) => p.merit!, meritDomain[0], meritDomain[1], MERIT_STEP) : [],
     histDomain: meritDomain,
     exceptions: guidelineExceptions(people, s, ratingPeerStats(company.people)),
     promotions: promotions(people),
@@ -236,7 +240,7 @@ export function computeComp(ctx: AnalyticsContext, settings: CycleSettings): Com
     jobs: jobsBelowMarket(people),
   }
   const overview = {
-    hist: histDomain ? binValues(compas, histDomain[0], histDomain[1], COMPA_STEP) : [],
+    hist: histDomain ? binBy(valued, (p) => p.compa!, histDomain[0], histDomain[1], COMPA_STEP) : [],
     histDomain,
     median: safeMedian(compas),
     companyMedian: safeMedian(values(company.people, (p) => p.compa)),
@@ -248,12 +252,17 @@ export function computeComp(ctx: AnalyticsContext, settings: CycleSettings): Com
     byDepartment: compaBy(people, (p) => p.department, s),
   }
 
-  const cycleModel = { ...cycle, kpis: buildCycleKpis(pop, cycle) }
+  const scopeLabel = ctx.isCompany ? 'Whole company' : ctx.scopeLabel
+  const cycleModel = {
+    ...cycle,
+    kpis: buildCycleKpis(pop, cycle, { scopeLabel, asOf: ctx.asOf, settings: s, pop }),
+  }
   const core = {
     settings: s,
     asOf: ctx.asOf,
     payAsOf,
     payStale,
+    scopeLabel,
     pop,
     company,
     isCompany: ctx.isCompany,

@@ -2,12 +2,15 @@
  * Reorg sandbox: drag a person (or their whole org) onto a new manager, or use "Move to…". Every
  * change is a step in a local scenario (undo, redo, reset) that never touches the datasets. A
  * live ripple preview follows the drag; the diff below compares the scenario with today; the
- * scenario exports as an Excel workbook of moves and the resulting roster.
+ * scenario exports as an Excel workbook of moves and the resulting roster. Every number (card
+ * counts, the diff, the moves, the span changes) opens the people it affects.
  */
-import { useDeferredValue, useEffect, useMemo, useState } from 'react'
-import { Figure, useExportMeta } from '@/charts'
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
+import { type Column, DataTable, Figure, useExportMeta } from '@/charts'
 import { Button, Grid, IconDownload, IconReset, Segmented, toast } from '@/components'
 import { useAnalytics } from '@/data/context'
+import type { Employee } from '@/data/schema'
+import { Drill } from '@/drill'
 import { formatDate } from '@/lib/dates'
 import { fileStem } from '@/lib/export/names'
 import { downloadXlsx } from '@/lib/export/xlsx'
@@ -17,22 +20,33 @@ import {
   canExpand,
   colorScheme,
   computeFlags,
+  type DrillScope,
   describeAction,
   diffSummary,
   diffTrees,
+  directsDrill,
   entryPoints,
+  exportCut,
   layoutTree,
   MOVE_COLUMNS,
   type MoveMode,
   moveRows,
+  movingIds,
   type OrgTree,
-  PERSON_COLUMNS,
+  orgDrill,
+  peopleDrill,
   ROSTER_COLUMNS,
+  removedDrill,
+  reportingChangesDrill,
   rippleOf,
   rosterRows,
   type ScenarioAction,
+  scopeLine,
   shownRows,
+  spanChangesDrill,
   subtreeOf,
+  teamChangeDrill,
+  teamDrill,
   visibleIds,
   visibleTree,
 } from '../engine'
@@ -47,16 +61,28 @@ import { MovesPanel } from './MovesPanel'
 import { PersonSearch } from './PersonSearch'
 import { RipplePreview } from './Ripple'
 import { useChartPrefs, useScenario } from './state'
+import { personColumns, TableToggle } from './tables'
 import { useExpansion } from './useExpansion'
 import { useOrgModel } from './useOrgModel'
 
-const SPAN_COLUMNS = [
+interface SpanRow {
+  id: string
+  name: string
+  before: number
+  after: number
+  delta: number
+}
+
+const SPAN_COLUMNS: Column<SpanRow>[] = [
   { key: 'name', label: 'Manager' },
   { key: 'id', label: 'Employee ID' },
-  { key: 'before', label: 'Direct reports today', format: 'int' as const },
-  { key: 'after', label: 'In the scenario', format: 'int' as const },
-  { key: 'delta', label: 'Change', format: 'int' as const },
+  { key: 'before', label: 'Direct reports today', format: 'int' },
+  { key: 'after', label: 'In the scenario', format: 'int' },
+  { key: 'delta', label: 'Change', format: 'int' },
 ]
+
+const isPerson = (e: Employee | undefined): e is Employee => !!e
+const panelBelow = () => typeof window !== 'undefined' && !window.matchMedia('(min-width: 1024px)').matches
 
 export function SandboxTab() {
   const ctx = useAnalytics()
@@ -74,6 +100,8 @@ export function SandboxTab() {
   const [drag, setDrag] = useState<{ id: string; over: string | null } | null>(null)
   const [moveId, setMoveId] = useState<string | null>(null)
   const [exitId, setExitId] = useState<string | null>(null)
+  const [showTable, setShowTable] = useState(false)
+  const panelRef = useRef<HTMLDivElement>(null)
 
   const result = useMemo(() => applyScenario(base, sc.active), [base, sc.active])
   const tree = result.tree
@@ -93,14 +121,33 @@ export function SandboxTab() {
     [diff],
   )
   const orgIds = useMemo(() => subtreeOf(tree, rootId), [tree, rootId])
+  // Color slots come from the roster today, so colors match the Chart tab and stay put.
+  const allPeople = useMemo(() => [...base.people.values()], [base])
   const scheme = useMemo(
-    () => colorScheme(prefs.colorBy, orgIds.map((id) => tree.people.get(id)!).filter(Boolean), ctx.asOf),
-    [prefs.colorBy, orgIds, tree, ctx.asOf],
+    () =>
+      colorScheme(
+        prefs.colorBy,
+        allPeople,
+        ctx.asOf,
+        orgIds.map((id) => tree.people.get(id)).filter(isPerson),
+      ),
+    [prefs.colorBy, allPeople, orgIds, tree, ctx.asOf],
   )
   const vtree = useMemo(() => visibleTree(tree, rootId, expanded.ids), [tree, rootId, expanded.ids])
   const layout = useMemo(() => layoutTree(vtree), [vtree])
+  // The image export keeps to a readable number of cards: the top levels of a bigger chart.
+  const exportImage = useMemo(() => {
+    const cut = exportCut(tree, rootId, expanded.ids, { vtree, layout })
+    return {
+      layout: cut.layout,
+      caption:
+        cut.depth == null
+          ? null
+          : `Top ${cut.depth + 1} levels of the scenario. Pick fewer levels to export a team.`,
+    }
+  }, [tree, rootId, expanded.ids, vtree, layout])
   // The export mirror catches up after the chart paints.
-  const exportLayout = useDeferredValue(layout)
+  const exportView = useDeferredValue(exportImage)
   const rows = useMemo(() => shownRows(tree, visibleIds(vtree), flags), [tree, vtree, flags])
   const selected = selectedId && tree.people.has(selectedId) ? selectedId : null
   const orgPeople = useMemo(() => new Map(orgIds.map((id) => [id, tree.people.get(id)!])), [orgIds, tree])
@@ -118,11 +165,59 @@ export function SandboxTab() {
     return out
   }, [base, result.applied])
   const moves = useMemo(() => moveRows(stepTrees, result.applied), [stepTrees, result.applied])
-  const spanRows = diff.spanChanges
+  const spanRows: SpanRow[] = diff.spanChanges
+
+  const scope: DrillScope = { label: 'Reorg sandbox', asOf: ctx.asOf, scenario: true }
+  const countDrill = (id: string, which: 'directs' | 'org') =>
+    which === 'directs' ? directsDrill(tree, id, scope) : orgDrill(tree, id, scope)
+  const spanColumns: Column<SpanRow>[] = SPAN_COLUMNS.map((c) =>
+    c.key === 'before'
+      ? {
+          ...c,
+          drill: (r: SpanRow) =>
+            r.before ? () => teamDrill(base, r.id, `${r.name}'s direct reports today`, scope) : null,
+        }
+      : c.key === 'after'
+        ? {
+            ...c,
+            drill: (r: SpanRow) =>
+              r.after
+                ? () => teamDrill(tree, r.id, `${r.name}'s direct reports in the scenario`, scope)
+                : null,
+          }
+        : c.key === 'delta'
+          ? { ...c, drill: (r: SpanRow) => () => teamChangeDrill(base, tree, r.id, scope) }
+          : c,
+  )
+  const movingDrill = (step: number) => () => {
+    const a = result.applied[step - 1]
+    const t = stepTrees[step - 1]
+    if (!a || !t) return null
+    return peopleDrill(t, movingIds(t, a), {
+      title: `People moving in step ${step}`,
+      subtitle: scopeLine(scope),
+      note: describeAction(t, a),
+      columns: ['directs', 'totalOrg'],
+    })
+  }
+
+  // On narrow screens the panel sits below the chart: bring it into view once it shows the card
+  // the reader just picked on the chart.
+  const revealPanel = useRef(false)
+  const select = (id: string | null) => {
+    setSelectedId(id)
+    revealPanel.current = !!id && panelBelow()
+  }
+  useEffect(() => {
+    if (!revealPanel.current || !selectedId) return
+    revealPanel.current = false
+    panelRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+  }, [selectedId])
 
   const jump = (id: string) => {
     if (!tree.people.has(id)) return
     expanded.reveal(id)
+    setShowTable(false)
     setSelectedId(id)
     setCenterReq((r) => ({ id, n: (r?.n ?? 0) + 1 }))
   }
@@ -216,7 +311,7 @@ export function SandboxTab() {
       {ripple ? (
         <RipplePreview tree={tree} ripple={ripple} />
       ) : (
-        <p className="text-[13px] text-ink-2">Hover over the new manager’s card.</p>
+        <p className="text-[13px] text-ink-2">Hover over the new manager's card.</p>
       )}
     </div>
   ) : selected ? (
@@ -226,6 +321,7 @@ export function SandboxTab() {
       id={selected}
       employees={ctx.all.employees}
       mode="sandbox"
+      scope={scope}
       onClose={() => setSelectedId(null)}
       onJump={jump}
       onExit={setExitId}
@@ -238,7 +334,7 @@ export function SandboxTab() {
         Drag a card onto the person who should become their manager. The panel shows who gains and loses
         reports while you drag.
       </p>
-      <p>Or select a card and use “Move to…”, which also works from the keyboard.</p>
+      <p>Or select a card and use "Move to…", which also works from the keyboard.</p>
       <p>Moving someone under a person in their own reporting line is blocked, with the reason shown.</p>
       <p className="text-muted">Changes stay in this browser. The data is never edited.</p>
     </div>
@@ -276,9 +372,12 @@ export function SandboxTab() {
             icon={<IconReset />}
             disabled={!sc.actions.length && !sc.blocked.length}
             onClick={() => {
-              const prev = sc.actions.length
-              sc.reset()
-              if (prev) toast('Scenario cleared', { description: `${plural(prev, 'step')} removed.` })
+              const cleared = sc.reset()
+              const n = cleared.actions.length
+              toast('Scenario cleared', {
+                description: n ? `${plural(n, 'step')} removed.` : 'Blocked moves cleared.',
+                action: { label: 'Undo', onClick: () => sc.restore(cleared) },
+              })
             }}
           >
             Reset
@@ -293,7 +392,30 @@ export function SandboxTab() {
           Export scenario
         </Button>
         <span className="text-[13px] text-muted">
-          {moves.length ? `${plural(moves.length, 'step')} · ${diffSummary(diff)}` : 'No changes yet'}
+          {moves.length ? (
+            <>
+              {plural(moves.length, 'step')} ·{' '}
+              <Drill spec={() => reportingChangesDrill(tree, diff.reportingChanges, scope)}>
+                {plural(diff.reportingChanges.length, 'person changes manager', 'people change manager')}
+              </Drill>{' '}
+              ·{' '}
+              <Drill spec={() => spanChangesDrill(base, tree, diff.spanChanges, scope)}>
+                {plural(diff.spanChanges.length, 'span changes', 'spans change')}
+              </Drill>
+              {diff.removed.length > 0 && (
+                <>
+                  {' · '}
+                  <Drill spec={() => removedDrill(base, diff.removed, scope)}>
+                    {plural(diff.removed.length, 'exit')}
+                  </Drill>
+                </>
+              )}
+              {diff.layers.before !== diff.layers.after &&
+                ` · layers ${diff.layers.before} → ${diff.layers.after}`}
+            </>
+          ) : (
+            'No changes yet'
+          )}
         </span>
       </div>
 
@@ -310,61 +432,80 @@ export function SandboxTab() {
           title="Reorg sandbox"
           subtitle={`The org on ${formatDate(ctx.asOf)} with the scenario applied. Outlined cards changed.`}
           data={rows}
-          columns={PERSON_COLUMNS}
-          note={`${plural(rows.length, 'person', 'people')} shown. Drag a card onto a new manager; drag the background to pan.`}
+          columns={personColumns(tree, scope)}
+          note={`${plural(rows.length, 'person', 'people')} shown. Drag a card onto a new manager; drag the background, or click the chart and scroll, to pan. Click a count on a card to list those people.`}
+          tableToggle={false}
+          actions={<TableToggle showTable={showTable} onChange={setShowTable} />}
         >
           <div className="relative">
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-              <PersonSearch
-                people={orgPeople}
-                orgSize={(id) => tree.total.get(id) ?? 0}
-                onPick={jump}
-                slashKey
-                className="w-full sm:w-64"
+            {showTable && (
+              <DataTable
+                columns={personColumns(tree, scope)}
+                rows={rows}
+                caption="Reorg sandbox"
+                maxRows={15}
+                search="Search people"
+                onRowClick={(r) => jump(r.employeeId)}
               />
-              <LevelsControl value={expanded.preset} onChange={expanded.setLevels} />
-              <ColorControl value={prefs.colorBy} onChange={(c) => setPrefs({ colorBy: c })} />
-              <ColorLegend scheme={scheme} className="ml-auto" />
-            </div>
-            <div className="mt-3 flex flex-col gap-3 lg:flex-row">
-              <Canvas
-                tree={tree}
-                layout={layout}
-                rootId={rootId}
-                expanded={expanded.ids}
-                canOpen={(id) => canExpand(tree, id)}
-                onToggle={expanded.toggle}
-                selectedId={selected}
-                onSelect={setSelectedId}
-                flags={flags}
-                showFlags
-                scheme={scheme}
-                matches={model.matches}
-                reqByCardId={model.reqByCardId}
-                centerRequest={centerReq}
-                placeKey={String(expanded.levelsPicked)}
-                changed={changed}
-                label="Reorg sandbox chart"
-                drag={{
-                  dragId: drag?.id ?? null,
-                  onHover: (id, over) =>
-                    setDrag((d) => (d && d.id === id && d.over === over ? d : { id, over })),
-                  onDrop: (id, target) => {
-                    setDrag(null)
-                    if (target && target !== id)
-                      commit({ kind: 'move', personId: id, toManagerId: target, mode })
-                  },
-                  dropState: (id) => (drag?.over === id && ripple ? (ripple.ok ? 'ok' : 'blocked') : null),
-                }}
-                className="h-[60vh] min-h-[360px] min-w-0 flex-1 lg:h-[min(72vh,760px)]"
-              />
-              <div className="flex max-h-[70vh] min-h-0 shrink-0 flex-col overflow-y-auto rounded-control shadow-[0_0_0_1px_var(--rule)] lg:max-h-[min(72vh,760px)] lg:w-[320px]">
-                {side}
+            )}
+            <div hidden={showTable}>
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+                <PersonSearch
+                  people={orgPeople}
+                  orgSize={(id) => tree.total.get(id) ?? 0}
+                  onPick={jump}
+                  slashKey
+                  className="w-full sm:w-64"
+                />
+                <LevelsControl value={expanded.preset} onChange={expanded.setLevels} />
+                <ColorControl value={prefs.colorBy} onChange={(c) => setPrefs({ colorBy: c })} />
+                <ColorLegend scheme={scheme} className="ml-auto" />
+              </div>
+              <div className="mt-3 flex flex-col gap-3 lg:flex-row">
+                <Canvas
+                  tree={tree}
+                  layout={layout}
+                  rootId={rootId}
+                  expanded={expanded.ids}
+                  canOpen={(id) => canExpand(tree, id)}
+                  onToggle={expanded.toggle}
+                  selectedId={selected}
+                  onSelect={select}
+                  flags={flags}
+                  showFlags
+                  scheme={scheme}
+                  matches={model.matches}
+                  reqByCardId={model.reqByCardId}
+                  centerRequest={centerReq}
+                  placeKey={String(expanded.levelsPicked)}
+                  changed={changed}
+                  countDrill={countDrill}
+                  label="Reorg sandbox chart"
+                  drag={{
+                    dragId: drag?.id ?? null,
+                    onHover: (id, over) =>
+                      setDrag((d) => (d && d.id === id && d.over === over ? d : { id, over })),
+                    onDrop: (id, target) => {
+                      setDrag(null)
+                      if (target && target !== id)
+                        commit({ kind: 'move', personId: id, toManagerId: target, mode })
+                    },
+                    dropState: (id) => (drag?.over === id && ripple ? (ripple.ok ? 'ok' : 'blocked') : null),
+                  }}
+                  className="h-[60vh] min-h-[360px] min-w-0 flex-1 lg:h-[min(72vh,760px)]"
+                />
+                <div
+                  ref={panelRef}
+                  className="flex max-h-[70vh] min-h-0 shrink-0 scroll-mt-4 flex-col overflow-y-auto rounded-control shadow-[0_0_0_1px_var(--rule)] lg:max-h-[min(72vh,760px)] lg:w-[320px]"
+                >
+                  {side}
+                </div>
               </div>
             </div>
             <ExportSvg
               tree={tree}
-              layout={exportLayout}
+              layout={exportView.layout}
+              caption={exportView.caption}
               scheme={scheme}
               matches={model.matches}
               flags={flags}
@@ -377,6 +518,7 @@ export function SandboxTab() {
 
         <MovesPanel
           moves={moves}
+          drillMoving={movingDrill}
           undone={sc.actions.slice(sc.cursor).map((a) => describeAction(tree, a))}
           onUndo={sc.undo}
           onRedo={sc.redo}
@@ -385,6 +527,9 @@ export function SandboxTab() {
         />
         <DiffPanel
           diff={diff}
+          before={base}
+          after={tree}
+          scope={scope}
           blocked={sc.blocked}
           describe={(b) => describeAction(base, b.action)}
           onJump={jump}
@@ -395,7 +540,7 @@ export function SandboxTab() {
           title="Span changes"
           subtitle="Managers whose number of direct reports changes in the scenario"
           data={spanRows}
-          columns={SPAN_COLUMNS}
+          columns={spanColumns}
           tableOnly
           empty={spanRows.length ? null : 'No spans change yet.'}
           table={{ maxRows: 10, onRowClick: (r) => jump(r.id) }}
@@ -404,6 +549,7 @@ export function SandboxTab() {
 
       <MoveDialog
         tree={{ ...tree, people: orgPeople }}
+        scope={scope}
         personId={moveId}
         mode={mode}
         onClose={() => setMoveId(null)}
@@ -415,6 +561,7 @@ export function SandboxTab() {
         model={model}
         tree={tree}
         id={exitId}
+        scope={scope}
         onClose={() => setExitId(null)}
         onAddToScenario={(id) => {
           if (commit({ kind: 'exit', personId: id })) setExitId(null)

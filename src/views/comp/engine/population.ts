@@ -3,7 +3,7 @@
  * every ratio the view reports already derived. Amounts are converted to USD with fxToUsd; a row
  * without a rate keeps its ratios but has null USD amounts (and is counted in `noFx`).
  */
-import type { Datasets, ISODate, Review } from '@/data/schema'
+import type { CompRecord, Datasets, Employee, ISODate, Review } from '@/data/schema'
 import { addMonths } from '@/lib/dates'
 import { isNum } from '@/lib/format'
 import {
@@ -22,6 +22,8 @@ export type Position = (typeof POSITIONS)[number]
 
 export interface CompPerson {
   id: string
+  /** The raw comp row behind this person: what a drill-down lists (kind 'comp'). */
+  record: CompRecord
   name: string
   jobTitle: string
   /** Job family, falling back to department when the roster has none. */
@@ -69,6 +71,8 @@ export interface Population {
   people: CompPerson[]
   /** Active employees in scope with no comp row. */
   missingComp: number
+  /** Those employees, for the drill-down behind the count. */
+  missing: Employee[]
   /** People whose comp row has no FX rate: left out of every amount total. */
   noFx: number
   /** Which optional fields exist in at least one row (missing columns give null, not 0). */
@@ -144,6 +148,7 @@ export function buildPopulation(
     const tenure = tenureYears(e, asOf)
     people.push({
       id: e.employeeId,
+      record: c,
       name: e.name,
       jobTitle: e.jobTitle,
       jobFamily: e.jobFamily || e.department,
@@ -180,10 +185,12 @@ export function buildPopulation(
     })
   }
   const some = (f: (p: CompPerson) => unknown) => people.some((p) => f(p) != null)
+  const missing = [...active.values()].filter((e) => !seen.has(e.employeeId))
   return {
     asOf,
     people,
-    missingComp: [...active.keys()].filter((id) => !seen.has(id)).length,
+    missingComp: missing.length,
+    missing,
     noFx,
     has: {
       ranges: people.some((p) => p.position != null),

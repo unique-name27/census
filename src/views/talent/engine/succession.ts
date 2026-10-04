@@ -3,9 +3,18 @@
  * readiness and where high potentials sit. Successors who have left are not counted.
  * Pure: no React, no DOM.
  */
-import { LEVELS, MIN_GROUP, READINESS, type Readiness, type SuccessionPlan } from '@/data/schema'
+import { LEVELS, MIN_GROUP, READINESS, type Readiness, type Review, type SuccessionPlan } from '@/data/schema'
 import { isActiveAt } from '@/lib/people'
-import { type Cycle, foldSmallGroups, nameOf, reviewIn, type TalentBase, UNKNOWN } from './base'
+import {
+  type Cycle,
+  foldSmallGroups,
+  nameOf,
+  pushTo,
+  recordsByLabel,
+  reviewIn,
+  type TalentBase,
+  UNKNOWN,
+} from './base'
 import type { PersonRisk, RiskBand } from './risk'
 
 export type RoleStatus = 'Covered' | 'Thin' | 'No successor'
@@ -78,6 +87,22 @@ export interface HipoGroupRow {
   other?: boolean
 }
 
+/**
+ * The records behind each Succession number, for drill-down. Potential groups whose numbers are
+ * hidden (fewer than 5 assessed) carry no records.
+ */
+export interface SuccessionRecords {
+  /** Every plan row of each role, as loaded, by role ID. */
+  plans: Map<string, SuccessionPlan[]>
+  /** The plan rows of the successors counted on each role's bench: still employed, one per person. */
+  bench: Map<string, SuccessionPlan[]>
+  /** Potential assessments in the latest annual cycle of active employees in scope. */
+  assessed: Review[]
+  /** Assessments per row label of the folded level and business unit breakdowns. */
+  hipoByLevel: Map<string, Review[]>
+  hipoByUnit: Map<string, Review[]>
+}
+
 export interface SuccessionResult {
   roles: RoleRow[]
   critical: number
@@ -95,6 +120,7 @@ export interface SuccessionResult {
   hipoAssessed: number
   /** Successors named in the plan who have since left. */
   departedSuccessors: number
+  records: SuccessionRecords
 }
 
 const STATUS_RANK: Record<RoleStatus, number> = { 'No successor': 0, Thin: 1, Covered: 2 }
@@ -110,11 +136,13 @@ export function computeSuccession(base: TalentBase, risk: Map<string, PersonRisk
   }
   let departedSuccessors = 0
   const roles: RoleRow[] = []
+  const benchPlans = new Map<string, SuccessionPlan[]>()
   for (const [roleId, rows] of byRole) {
     const first = rows[0]
     const inc = base.byId.get(first.incumbentId)
     const seen = new Set<string>()
     const bench: { id: string; readiness: Readiness | null }[] = []
+    const counted: SuccessionPlan[] = []
     for (const r of rows) {
       if (!r.successorId || seen.has(r.successorId)) continue
       seen.add(r.successorId)
@@ -124,7 +152,9 @@ export function computeSuccession(base: TalentBase, risk: Map<string, PersonRisk
         continue
       }
       bench.push({ id: r.successorId, readiness: r.readiness ?? null })
+      counted.push(r)
     }
+    benchPlans.set(roleId, counted)
     const count = (k: Readiness) => bench.filter((b) => b.readiness === k).length
     const readyNow = count('Ready now')
     const ready1to2 = count('Ready in 1-2 years')
@@ -235,53 +265,40 @@ export function computeSuccession(base: TalentBase, risk: Map<string, PersonRisk
 
   // High potentials: active employees assessed in the latest annual cycle.
   const potentialCycle = base.latestAnnual
-  const levelGroups = new Map<string, { assessed: number; high: number }>()
-  const unitGroups = new Map<string, { assessed: number; high: number }>()
-  let assessed = 0
-  let high = 0
+  const levelGroups = new Map<string, Review[]>()
+  const unitGroups = new Map<string, Review[]>()
+  const assessedReviews: Review[] = []
   if (potentialCycle) {
     for (const e of base.active) {
       const r = reviewIn(base, e.employeeId, potentialCycle.cycle)
       if (!r?.potential) continue
-      assessed++
-      const isHigh = r.potential === 'High'
-      if (isHigh) high++
-      const key = e.level ?? 'Unknown'
-      const g = levelGroups.get(key) ?? { assessed: 0, high: 0 }
-      g.assessed++
-      if (isHigh) g.high++
-      levelGroups.set(key, g)
-      const u = unitGroups.get(e.businessUnit) ?? { assessed: 0, high: 0 }
-      u.assessed++
-      if (isHigh) u.high++
-      unitGroups.set(e.businessUnit, u)
+      assessedReviews.push(r)
+      pushTo(levelGroups, e.level ?? 'Unknown', r)
+      pushTo(unitGroups, e.businessUnit, r)
     }
+  }
+  const assessed = assessedReviews.length
+  const high = assessedReviews.filter(isHipo).length
+  const groupRow = (group: string, list: readonly Review[]): HipoGroupRow => {
+    const h = list.filter(isHipo).length
+    return { group, assessed: list.length, high: h, share: list.length >= MIN_GROUP ? h / list.length : null }
   }
   const levelOrder = [...LEVELS, 'Unknown']
   const hipoByLevel = foldHipo(
-    levelOrder
-      .filter((l) => levelGroups.has(l))
-      .map((level) => {
-        const g = levelGroups.get(level)!
-        return {
-          group: level,
-          assessed: g.assessed,
-          high: g.high,
-          share: g.assessed >= MIN_GROUP ? g.high / g.assessed : null,
-        }
-      }),
+    levelOrder.filter((l) => levelGroups.has(l)).map((level) => groupRow(level, levelGroups.get(level)!)),
   )
 
   const hipoByUnit = foldHipo(
     [...unitGroups.entries()]
-      .map(([group, g]) => ({
-        group,
-        assessed: g.assessed,
-        high: g.high,
-        share: g.assessed >= MIN_GROUP ? g.high / g.assessed : null,
-      }))
+      .map(([group, list]) => groupRow(group, list))
       .sort((a, b) => (b.share ?? -1) - (a.share ?? -1)),
   )
+  const hipoRecords = (rows: readonly HipoGroupRow[], byGroup: Map<string, Review[]>) =>
+    recordsByLabel(rows, byGroup, {
+      label: (r) => r.group,
+      folded: (r) => !!r.other,
+      shown: (r) => r.high != null,
+    })
 
   return {
     roles,
@@ -298,8 +315,17 @@ export function computeSuccession(base: TalentBase, risk: Map<string, PersonRisk
     hipoHigh: high,
     hipoAssessed: assessed,
     departedSuccessors,
+    records: {
+      plans: byRole,
+      bench: benchPlans,
+      assessed: assessedReviews,
+      hipoByLevel: hipoRecords(hipoByLevel, levelGroups),
+      hipoByUnit: hipoRecords(hipoByUnit, unitGroups),
+    },
   }
 }
+
+const isHipo = (r: Review) => r.potential === 'High'
 
 /** Groups under 5 assessed fold into a last "Other (k)" row, so no count over fewer than 5 people is exported. */
 function foldHipo(rows: HipoGroupRow[]): HipoGroupRow[] {

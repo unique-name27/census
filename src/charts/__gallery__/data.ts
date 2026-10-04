@@ -203,3 +203,44 @@ export const quarterlyAttrition = ['Logic', 'Memory', 'Other'].flatMap((unit, u)
     '2026-09-30',
   ].map((date, i) => ({ date, unit, rate: [0.1, 0.13, 0.09][u] + 0.01 * Math.sin(i + u) })),
 )
+
+/* Follow-up demos: signed values, small counts, all-hidden groups, links. */
+
+export const attritionChange = DEPARTMENTS.slice(0, 7).map((department, i) => ({
+  department,
+  change: [0.008, -0.004, 0.012, -0.011, 0.002, 0, 0.006][i],
+}))
+
+export const READINESS = ['Ready now', 'Ready later']
+/** Successor counts by quarter: small integers, and one quarter hidden (fewer than 5 roles). */
+export const successorCounts = ['Q4 2025', 'Q1 2026', 'Q2 2026', 'Q3 2026'].flatMap((quarter, q) =>
+  READINESS.map((band, b) => ({
+    quarter,
+    band,
+    people: q === 1 ? null : [1, 2, 2, 3][q] - b,
+  })),
+)
+
+/** A grid where every group is under 5 people, so every value is hidden. */
+export const hiddenGrid = ['Finance', 'People', 'Facilities'].flatMap((department) =>
+  ['L5', 'L6'].map((level) => ({ department, level, rate: null as number | null, n: 3 })),
+)
+
+export const reqLinks = [
+  { id: 'R-1042', title: 'Process engineer', daysOpen: 48, url: 'https://ats.example.com/reqs/R-1042' },
+  {
+    id: 'R-1057',
+    title: 'Design verification lead',
+    daysOpen: 71,
+    url: 'https://ats.example.com/reqs/R-1057',
+  },
+  { id: 'R-1063', title: 'Test technician', daysOpen: 12, url: null },
+  { id: 'R-1071', title: 'Fab shift supervisor', daysOpen: 33, url: 'javascript:alert(1)' },
+]
+
+export const legendShapes = [
+  { shape: 'rect' as const, label: 'Bars and areas' },
+  { shape: 'line' as const, label: 'Lines and ticks' },
+  { shape: 'dot' as const, label: 'Points' },
+  { shape: 'diamond' as const, label: 'Diamond markers' },
+]

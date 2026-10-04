@@ -43,6 +43,8 @@ function keyEl(color: string, shape: LegendShape = 'line'): HTMLElement {
   k.style.background = color
   if (shape === 'line') Object.assign(k.style, { width: '12px', height: '2px', borderRadius: '1px' })
   else if (shape === 'dot') Object.assign(k.style, { width: '8px', height: '8px', borderRadius: '50%' })
+  else if (shape === 'diamond')
+    Object.assign(k.style, { width: '7px', height: '7px', margin: '0 1px', transform: 'rotate(45deg)' })
   else Object.assign(k.style, { width: '9px', height: '9px', borderRadius: '2px' })
   return k
 }

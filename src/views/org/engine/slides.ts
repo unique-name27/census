@@ -4,7 +4,8 @@
  * slide matches the screen. Pure: positions in inches and text; the PowerPoint writer only draws.
  *
  * "Two levels" adds each direct report's team when it still reads at slide size; when it would
- * shrink the text below ~7 pt the slide falls back to direct reports and says so.
+ * shrink the smallest text (title, department and counts lines) below 7 pt the slide falls back
+ * to direct reports and says so.
  */
 import type { ISODate } from '@/data/schema'
 import { formatDate } from '@/lib/dates'
@@ -39,7 +40,10 @@ const TWO_LEVEL_SIZES: LayoutSizes = { ...SLIDE_SIZES, stack: 2 }
 
 /** Name size on the card, in layout pixels; the slide font is this times the scale. */
 export const NAME_PX = 14
-const MIN_NAME_PT = 7
+/** The smallest text on a card (title, meta and counts lines), in layout pixels. */
+export const SMALL_PX = 11.5
+/** The smallest point size a slide may use before two levels fall back to one. */
+export const MIN_SLIDE_PT = 7
 
 export interface SlideCard {
   id: string
@@ -80,10 +84,9 @@ export interface SlideOptions {
   asOf: ISODate
 }
 
-const countsText = (tree: OrgTree, id: string) => {
-  const d = tree.directs.get(id) ?? 0
-  const t = tree.total.get(id) ?? 0
-  return d ? `${d} direct · ${t} org` : ''
+/** "6 direct · 1,557 org" (empty for people without reports); the same text as the screen cards. */
+export function countsText(directs: number, total: number): string {
+  return directs ? `${directs.toLocaleString('en-US')} direct · ${total.toLocaleString('en-US')} org` : ''
 }
 
 function expandedFor(tree: OrgTree, leaderId: string): Set<string> {
@@ -113,7 +116,7 @@ export function planSlides(tree: OrgTree, leaderIds: readonly string[], opts: Sl
     let levels: 1 | 2 = opts.levels
     let note = ''
     let { lay, k } = make(levels)
-    if (levels === 2 && NAME_PX * k * 72 < MIN_NAME_PT) {
+    if (levels === 2 && SMALL_PX * k * 72 < MIN_SLIDE_PT) {
       levels = 1
       ;({ lay, k } = make(1))
       note = 'Two levels would not fit at a readable size, so this slide shows direct reports.'
@@ -164,7 +167,7 @@ export function planSlides(tree: OrgTree, leaderIds: readonly string[], opts: Sl
         meta: [e.level, e.department === leaderDept ? null : e.department, e.location]
           .filter(Boolean)
           .join(' · '),
-        counts: countsText(tree, c.id),
+        counts: countsText(tree.directs.get(c.id) ?? 0, tree.total.get(c.id) ?? 0),
         swatch: opts.scheme.swatchOf(e),
       }
     })

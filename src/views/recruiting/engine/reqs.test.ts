@@ -51,9 +51,10 @@ describe('open requisitions and health', () => {
   })
 
   it('counts open reqs per department with the oldest age', () => {
-    expect(openByDepartment(b.req.open, AS_OF)).toEqual([
-      { department: 'Design Verification', open: 3, oldest: 121, medianAge: 121 },
-    ])
+    const rows = openByDepartment(b.req.open, AS_OF)
+    expect(rows).toMatchObject([{ department: 'Design Verification', open: 3, oldest: 121, medianAge: 121 }])
+    // The bar drills to exactly the reqs it counts.
+    expect(rows[0].reqs.map((r) => r.reqId).sort()).toEqual(['REQ-EMPTY', 'REQ-NEW', 'REQ-OK'])
   })
 })
 

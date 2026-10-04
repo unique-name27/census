@@ -1,12 +1,13 @@
 import { Figure, HBars, useChartTheme } from '@/charts'
-import { Grid, goTo, KpiStrip, Readout, Section } from '@/components'
+import { Grid, KpiStrip, Readout, Section } from '@/components'
 import { useAnalytics } from '@/data/context'
+import { drill, openPerson } from '@/drill'
 import { formatDate } from '@/lib/dates'
 import { fmt, plural } from '@/lib/format'
 import type { TalentModel } from '../engine'
 import { COVERAGE_ORDER } from '../engine/succession'
 import { readinessColors } from './colors'
-import { COVERAGE_COLUMNS, DISTRIBUTION_COLUMNS, riskPersonColumns } from './columns'
+import { coverageColumns, distributionColumns, riskPersonColumns } from './columns'
 import { DEF } from './defs'
 import { GuidelineColumns } from './GuidelineColumns'
 import { NineBoxFigure } from './NineBoxFigure'
@@ -43,7 +44,7 @@ export function OverviewTab({ m }: { m: TalentModel }) {
           title="Rating distribution vs guideline"
           subtitle={cycle ? `Share of people at each rating, ${cycle}` : 'Share of people at each rating'}
           data={perf.distribution}
-          columns={DISTRIBUTION_COLUMNS}
+          columns={distributionColumns(m.drill)}
           definitions={[DEF.latestCycle, DEF.guideline, DEF.highPerformer]}
           note={`${plural(perf.rated, 'person', 'people')} rated${left ? `, including ${fmt(left)} who ${left === 1 ? 'has' : 'have'} left since` : ''} · as of ${asOf}`}
           span={6}
@@ -57,6 +58,7 @@ export function OverviewTab({ m }: { m: TalentModel }) {
         >
           <GuidelineColumns
             data={perf.distribution}
+            drillFor={(d) => m.drill.rating(d.rating)}
             height={260}
             ariaLabel="Rating distribution compared with the guideline"
           />
@@ -66,7 +68,7 @@ export function OverviewTab({ m }: { m: TalentModel }) {
           title="Succession coverage by business unit"
           subtitle="Critical and key roles by the readiness of their best successor, as of the latest plans"
           data={succ.coverageByUnit.filter((r) => r.roles > 0)}
-          columns={COVERAGE_COLUMNS}
+          columns={coverageColumns(m.drill)}
           definitions={[DEF.coverage, DEF.roleStatus]}
           note={`${plural(succ.roles.length, 'role')} planned, ${succ.critical} critical · ${fmt(succ.coverage, 'pct')} of critical roles covered · as of ${asOf}`}
           span={6}
@@ -86,7 +88,8 @@ export function OverviewTab({ m }: { m: TalentModel }) {
             stack
             seriesOrder={COVERAGE_ORDER}
             colors={readinessColors(t)}
-            onSelect={() => goTo('talent', 'succession')}
+            onSelect={(d) => drill(m.drill.coverageCell(d.businessUnit, null))}
+            onSelectSegment={(d) => drill(m.drill.coverageCell(d.businessUnit, d.coverage))}
             ariaLabel="Roles by best successor readiness, per business unit"
           />
         </Figure>
@@ -105,7 +108,7 @@ export function OverviewTab({ m }: { m: TalentModel }) {
           definitions={[DEF.keyTalent, DEF.flightRisk, DEF.mainReason, DEF.bands]}
           note={`${plural(m.retention.keyTalent.length, 'person', 'people')} in total · points learned from the last two years of exits`}
           tableOnly
-          table={{ maxRows: 10, onRowClick: () => goTo('talent', 'retention') }}
+          table={{ maxRows: 10, onRowClick: (r) => openPerson(r.employeeId) }}
           empty={
             !m.has.reviews
               ? 'Upload Reviews to see who is rated 4 or 5.'

@@ -1,7 +1,8 @@
 /**
  * Two medians per row joined by a line: incumbents and new hires at the same department and
  * level. The gap is printed at the right; rows past the compression threshold carry a warning
- * glyph so the flag does not rest on color.
+ * glyph so the flag does not rest on color. A click on a dot drills into that side (new hires or
+ * incumbents); elsewhere on the row, both.
  */
 import * as Plot from '@observablehq/plot'
 import { ticks as d3ticks } from 'd3'
@@ -16,6 +17,8 @@ import {
   maxTextWidth,
   type PlotBuildContext,
   PlotChart,
+  type PlotElement,
+  type PlotPointer,
   scalePos,
   seriesColor,
   type TipContent,
@@ -30,8 +33,21 @@ import type { CompressionRow } from '../engine/ranges'
 const ROW = 30
 
 const gapText = (g: number) => `${g >= 0 ? '+' : '−'}${fmt(Math.abs(g), 'num2')}`
+/** A dot counts as hovered within this many px of the pointer. */
+const DOT_HIT = 10
 
-export function Dumbbell({ rows, ariaLabel }: { rows: readonly CompressionRow[]; ariaLabel?: string }) {
+export type DumbbellSide = 'hires' | 'incumbents'
+
+export function Dumbbell({
+  rows,
+  ariaLabel,
+  onSelect,
+}: {
+  rows: readonly CompressionRow[]
+  ariaLabel?: string
+  /** Click-to-drill: the row, and the side whose dot is under the pointer (null elsewhere). */
+  onSelect?: (row: CompressionRow, side: DumbbellSide | null) => void
+}) {
   const theme = useChartTheme()
   const height = 6 + rows.length * ROW + 26
   const legend: LegendSpec = {
@@ -125,7 +141,18 @@ export function Dumbbell({ rows, ariaLabel }: { rows: readonly CompressionRow[];
     )
   }
 
-  const tip = (i: number): TipContent | null => {
+  /** The side whose dot sits under the pointer: the nearer one, within DOT_HIT px. */
+  const pick = (i: number, at: PlotPointer, plot: PlotElement): string | null => {
+    const r = rows[i]
+    const x = plot.scale('x')
+    if (!r || !x) return null
+    const dNew = Math.abs(Number(x.apply(r.newMedian)) - at.x)
+    const dInc = Math.abs(Number(x.apply(r.incMedian)) - at.x)
+    if (Math.min(dNew, dInc) > DOT_HIT) return null
+    return dNew <= dInc ? 'hires' : 'incumbents'
+  }
+
+  const tip = (i: number, part: string | null): TipContent | null => {
     const r = rows[i]
     if (!r) return null
     return {
@@ -136,18 +163,35 @@ export function Dumbbell({ rows, ariaLabel }: { rows: readonly CompressionRow[];
           label: `hired in the last 12 months (${fmt(r.newN, 'int')})`,
           color: seriesColor(theme, 0),
           shape: 'dot',
+          strong: part === 'hires',
         },
         {
           value: fmt(r.incMedian, 'ratio'),
           label: `incumbents (${fmt(r.incN, 'int')})`,
           color: seriesColor(theme, 1),
           shape: 'dot',
+          strong: part === 'incumbents',
         },
-        { value: gapText(r.gap), label: 'gap', strong: true },
+        { value: gapText(r.gap), label: 'gap', strong: part == null },
       ],
-      note: r.flagged ? 'New hires are 0.05 or more above incumbents' : undefined,
+      note: [
+        r.flagged ? 'New hires are 0.05 or more above incumbents' : null,
+        onSelect ? 'Click to see the records' : null,
+      ]
+        .filter(Boolean)
+        .join('. '),
     }
   }
 
-  return <PlotChart<number> build={build} height={height} legend={legend} tip={tip} ariaLabel={ariaLabel} />
+  return (
+    <PlotChart<number>
+      build={build}
+      height={height}
+      legend={legend}
+      tip={tip}
+      pick={pick}
+      onSelect={onSelect ? (i, part) => onSelect(rows[i], part as DumbbellSide | null) : undefined}
+      ariaLabel={ariaLabel}
+    />
+  )
 }

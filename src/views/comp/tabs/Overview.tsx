@@ -1,22 +1,17 @@
-/** Overview: headline tiles, the readout, the compa-ratio distribution and where pay sits. */
+/**
+ * Overview: headline tiles, the readout, the compa-ratio distribution and where pay sits. Every
+ * tile, bar, bin, segment and table count opens the people behind it.
+ */
 import { BarList, Figure, Histogram, type RefLine } from '@/charts'
 import { cx, Grid, KpiStrip, Readout, Section } from '@/components'
+import { drill } from '@/drill'
 import { formatDate } from '@/lib/dates'
 import { fmt } from '@/lib/format'
 import { spanClass } from '@/lib/spans'
 import { PositionBars } from '../charts/PositionBars'
-import {
-  BIN_COLUMNS,
-  bandDefinition,
-  COMPA_BY_DEPARTMENT,
-  COMPA_BY_LEVEL,
-  COMPA_BY_LOCATION,
-  DEF_COMPA,
-  DEF_POPULATION,
-  DEF_POSITION,
-  PERSON_COLUMNS,
-  POSITION_COLUMNS,
-} from '../columns'
+import { bandDefinition, DEF_COMPA, DEF_POPULATION, DEF_POSITION, PERSON_COLUMNS } from '../columns'
+import { binColumns, binItems, compaGroupColumns, positionColumns } from '../drillColumns'
+import { compaBinDrill, compaGroupDrill, positionDrill } from '../engine/drill'
 import { isLowCompa, LOW_COMPA } from '../engine/findings'
 import { COMPA_STEP, type CompModel } from '../engine/model'
 import type { CompaGroupRow } from '../engine/ranges'
@@ -33,6 +28,9 @@ export function edges(domain: [number, number] | null, step: number): number[] {
 const lowTone = (d: CompaGroupRow) => (isLowCompa(d.median) ? 'serious' : 'default')
 const nText = (d: { n: number }) => `n = ${fmt(d.n, 'int')}`
 
+/** Click-to-drill on a compa-ratio group (a bar of a BarList). */
+const compaBar = (m: CompModel) => (d: CompaGroupRow) => drill(compaGroupDrill(m, d, 'measured'))
+
 export function companyRef(m: CompModel): RefLine | undefined {
   const v = m.overview.companyMedian
   return v == null ? undefined : { value: v, label: `Company ${fmt(v, 'ratio')}` }
@@ -48,7 +46,7 @@ export function Overview({ m }: { m: CompModel }) {
     refs.push({ value: o.companyMedian, label: `Company ${fmt(o.companyMedian, 'ratio')}` })
   // A total row only adds information when there is more than one business unit to compare.
   const positionRows = o.positionByBu.length > 1 ? [o.positionAll, ...o.positionByBu] : o.positionByBu
-  const compas = o.people.map((p) => p.compa).filter((v): v is number => v != null)
+  const lastBin = o.hist.length - 1
 
   const location = (
     <Figure
@@ -56,7 +54,7 @@ export function Overview({ m }: { m: CompModel }) {
       title="Median compa-ratio by location"
       subtitle={`Lowest first; a square marks ${fmt(LOW_COMPA, 'ratio')} or lower, as of ${asOf}`}
       data={o.byLocation}
-      columns={COMPA_BY_LOCATION}
+      columns={compaGroupColumns('Location', m)}
       definitions={[DEF_COMPA, DEF_POPULATION]}
       note={note(m, n)}
       empty={emptyIf(o.byLocation, null, 'No compa-ratios in this scope.')}
@@ -70,6 +68,7 @@ export function Overview({ m }: { m: CompModel }) {
         ref={companyRef(m)}
         tone={lowTone}
         secondary={nText}
+        onSelect={compaBar(m)}
       />
     </Figure>
   )
@@ -87,14 +86,15 @@ export function Overview({ m }: { m: CompModel }) {
             title="Compa-ratio distribution"
             subtitle={`People per ${fmt(COMPA_STEP, 'ratio')} of compa-ratio (base salary ÷ range midpoint), active employees as of ${asOf}`}
             data={o.hist}
-            columns={BIN_COLUMNS}
+            columns={binColumns(m, o.hist, 'compa')}
             definitions={[DEF_COMPA, bandDefinition(s), DEF_POPULATION]}
             note={`${note(m, n)}${o.median == null ? '' : ` · ${fmt(o.median, 'ratio')} median`}`}
             empty={emptyIf(o.hist, null, 'No compa-ratios in this scope.')}
             detail={{ label: 'People', columns: PERSON_COLUMNS, rows: () => o.people }}
           >
             <Histogram
-              values={compas}
+              data={binItems(o.hist)}
+              value="v"
               thresholds={edges(o.histDomain, COMPA_STEP)}
               domain={o.histDomain ?? undefined}
               format="ratio"
@@ -104,6 +104,10 @@ export function Overview({ m }: { m: CompModel }) {
               height={260}
               unit="people"
               ariaLabel="Histogram of compa-ratios"
+              onSelect={(b) => {
+                const i = b.rows[0]?.bin
+                if (i != null) drill(compaBinDrill(m, o.hist[i], i === lastBin))
+              }}
             />
           </Figure>
           <Figure
@@ -111,7 +115,7 @@ export function Overview({ m }: { m: CompModel }) {
             title="Range position by business unit"
             subtitle="Share of people below minimum, in each quarter of the range and above maximum"
             data={positionRows}
-            columns={POSITION_COLUMNS}
+            columns={positionColumns(m)}
             definitions={[DEF_POSITION, DEF_POPULATION]}
             note={note(m, o.positionAll.n)}
             empty={emptyIf(
@@ -120,7 +124,11 @@ export function Overview({ m }: { m: CompModel }) {
               'No range data in this scope.',
             )}
           >
-            <PositionBars rows={positionRows} ariaLabel="Range position by business unit" />
+            <PositionBars
+              rows={positionRows}
+              ariaLabel="Range position by business unit"
+              onSelect={(row, pos) => drill(positionDrill(m, row, pos))}
+            />
           </Figure>
           {location}
         </div>
@@ -135,7 +143,7 @@ export function Overview({ m }: { m: CompModel }) {
           title="Median compa-ratio by level"
           subtitle={`In level order, as of ${asOf}`}
           data={o.byLevel}
-          columns={COMPA_BY_LEVEL}
+          columns={compaGroupColumns('Level', m)}
           definitions={[DEF_COMPA, DEF_POPULATION]}
           note={note(m, n)}
           span={5}
@@ -152,6 +160,7 @@ export function Overview({ m }: { m: CompModel }) {
             ref={companyRef(m)}
             tone={lowTone}
             secondary={nText}
+            onSelect={compaBar(m)}
           />
         </Figure>
         <Figure
@@ -159,7 +168,7 @@ export function Overview({ m }: { m: CompModel }) {
           title="Median compa-ratio by department"
           subtitle={`Lowest first, as of ${asOf}`}
           data={o.byDepartment}
-          columns={COMPA_BY_DEPARTMENT}
+          columns={compaGroupColumns('Department', m)}
           definitions={[DEF_COMPA, DEF_POPULATION]}
           note={note(m, n)}
           span={7}
@@ -175,6 +184,7 @@ export function Overview({ m }: { m: CompModel }) {
             tone={lowTone}
             secondary={nText}
             rowHeight={26}
+            onSelect={compaBar(m)}
           />
         </Figure>
       </Section>

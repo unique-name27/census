@@ -58,6 +58,17 @@ export interface DatasetGuess {
   missingRequired: string[]
 }
 
+/**
+ * Values already loaded for a field (e.g. the req IDs of the loaded requisitions, for
+ * `candidates.reqId`). When two columns match a field equally well by name, the one whose values
+ * are found here more often wins.
+ */
+export interface KnownValues {
+  /** Field key in the dataset being mapped. */
+  field: string
+  values: Set<string>
+}
+
 export interface HeaderCandidate {
   header: string
   score: number

@@ -4,6 +4,7 @@
 import { Button, EmptyState, goTo, IconFilter, IconUpload } from '@/components'
 import { useAnalytics } from '@/data/context'
 import { useCensus } from '@/data/store'
+import type { DrillSpec } from '@/drill'
 import { formatDate } from '@/lib/dates'
 
 /**
@@ -17,6 +18,17 @@ export const NEED_CANDIDATES = 'Upload Candidates to see this.'
 export const NEED_REQS = 'Upload Requisitions to see this.'
 
 export const asOfNote = (asOf: string): string => `as of ${formatDate(asOf)}`
+
+/**
+ * The drill for a number, only when there are records behind it: a table cell or chart mark with
+ * none (0, or hidden under 5) gets no drill, so it never looks clickable and opens nothing.
+ */
+export function drillIf(
+  n: number | boolean | null | undefined,
+  spec: () => DrillSpec | null,
+): (() => DrillSpec | null) | null {
+  return n ? spec : null
+}
 
 export function windowText(w: { start: string; end: string }): string {
   return `${formatDate(w.start)} to ${formatDate(w.end)}`

@@ -13,10 +13,22 @@ import { type Dimension, decomposeMedian, decomposeRate, type Segment } from '@/
 import { fmt } from '@/lib/format'
 import { median } from '@/lib/stats'
 import type { RecruitingBase } from './base'
+import {
+  activeDrill,
+  appDrill,
+  exitExtra,
+  filledReqsDrill,
+  offersDrill,
+  openReqsDrill,
+  sourceDrill,
+  stepExtra,
+  unmatchedDrill,
+  windowSub,
+} from './drills'
 import { TRANSITIONS, transitionsIn } from './flow'
 import { breakdownParts, inQueue, joinAnd } from './nextStep'
 import { inWin } from './prepare'
-import { ttfDays } from './reqs'
+import { EMPTY_FUNNEL_DAYS, ttfDays } from './reqs'
 import { acceptance, quarterWindows, resolvedOffers, sourceRows } from './sources'
 import type { ActiveItem, App } from './types'
 
@@ -165,6 +177,8 @@ function bottleneck(b: RecruitingBase): Scored | null {
   const step = TRANSITIONS[i]
   const fromStage = i
   const inSeg = (a: App) => !seg || a[seg.s.dim as DimKey] === seg.s.value
+  // The steps the headline median is measured over.
+  const measured = byT[i].filter((e) => inSeg(e.app)).sort((x, y) => y.days - x.days)
   const waiting = b.actives
     .filter((x) => x.stage === fromStage && inSeg(x.app))
     .sort((x, y) => y.daysInStage - x.daysInStage)
@@ -199,6 +213,19 @@ function bottleneck(b: RecruitingBase): Scored | null {
     people: waiting.map((x) => person(x, `${x.app.reqId} · ${days(x.daysInStage)} at ${stageWord}`)),
     filter: seg ? filterFor(seg.s, b.apps) : undefined,
     tab: 'pipeline',
+    drill: () =>
+      appDrill(
+        b,
+        measured.map((e) => e.app),
+        {
+          title: `${step}${seg ? ` ${where(seg.s)}` : ''}, ${recent.words.replace(/^the /, '')}`,
+          subtitle: windowSub(b, recent),
+          note: seg
+            ? `Median ${days(seg.s.segValue)} over ${plural(measured.length, 'step')} completed in the window, vs ${days(seg.s.compValue)} elsewhere.`
+            : `Median ${days(stage!.m)} over ${plural(measured.length, 'step')} completed in the window, vs ${days(stage!.others)} for the other steps.`,
+          extras: [stepExtra(measured, i)],
+        },
+      ),
     score: 100 + ratio,
   }
 }
@@ -264,6 +291,7 @@ function lacksNextStep(b: RecruitingBase): Scored | null {
         ? filterFor(seg, b.apps)
         : undefined,
     tab: 'pipeline',
+    drill: () => activeDrill(b, lacking, { title: 'Candidates lacking a next step' }),
     score: 95 + Math.min(10, (n / Math.max(1, b.actives.length)) * 20),
   }
 }
@@ -278,6 +306,8 @@ function offersWaiting(b: RecruitingBase): { items: ActiveItem[]; oldest: number
 export interface AcceptanceDrop {
   /** 'quarter' when the latest quarter fell vs the one before; 'period' when the window fell vs the prior. */
   basis: 'quarter' | 'period'
+  /** The window the latest rate is measured over. */
+  window: { start: string; end: string }
   offers: App[]
   now: number
   before: number
@@ -300,6 +330,7 @@ export function acceptanceDrop(b: RecruitingBase): AcceptanceDrop | null {
   if (big(a1) && big(a0) && a0.rate! - a1.rate! >= 0.05) {
     return {
       basis: 'quarter',
+      window: { start: q1.start, end: q1.end },
       offers: cur,
       now: a1.rate!,
       before: a0.rate!,
@@ -312,6 +343,7 @@ export function acceptanceDrop(b: RecruitingBase): AcceptanceDrop | null {
   if (big(w1) && big(w0) && w0.rate! - w1.rate! >= 0.05)
     return {
       basis: 'period',
+      window: b.window,
       offers: b.offers,
       now: w1.rate!,
       before: w0.rate!,
@@ -366,11 +398,16 @@ function offerAcceptance(b: RecruitingBase, waiting: ReturnType<typeof offersWai
     })),
     filter: seg ? filterFor(seg, b.apps) : undefined,
     tab: 'sources',
+    drill: () =>
+      offersDrill(b, period.offers, `Offers resolved ${period.nowWords}`, windowSub(b, period.window)),
     score: 90 + drop * 100,
   }
 }
 
-function offersWaitingFinding(waiting: NonNullable<ReturnType<typeof offersWaiting>>): Scored {
+function offersWaitingFinding(
+  b: RecruitingBase,
+  waiting: NonNullable<ReturnType<typeof offersWaiting>>,
+): Scored {
   const byRecruiter = new Map<string, number>()
   for (const x of waiting.items) if (x.owner) byRecruiter.set(x.owner, (byRecruiter.get(x.owner) ?? 0) + 1)
   const top = [...byRecruiter].sort((a, c) => c[1] - a[1])[0]
@@ -383,6 +420,7 @@ function offersWaitingFinding(waiting: NonNullable<ReturnType<typeof offersWaiti
     action: 'Follow up with each candidate this week to answer any open questions.',
     people: waiting.items.map((x) => person(x, `${x.app.reqId} · offer out ${days(x.days)}`)),
     tab: 'pipeline',
+    drill: () => activeDrill(b, waiting.items, { title: 'Offers waiting more than 5 days for an answer' }),
     score: 75 + n,
   }
 }
@@ -391,7 +429,7 @@ function offersWaitingFinding(waiting: NonNullable<ReturnType<typeof offersWaiti
 
 /** A group that fills slowly: median time to fill ≥ 1.5 × the scope's, over 5+ filled reqs. */
 interface SlowGroup {
-  dim: DimKey
+  dim: 'department' | 'level' | 'location'
   value: string
   days: number
   n: number
@@ -460,9 +498,22 @@ function emptyFunnel(
       action: `Review the sourcing plan and screen criteria for ${n === 1 ? 'this req' : 'these reqs'} with ${n === 1 ? 'its recruiter' : 'their recruiters'}.`,
       filter: concentrated ? { department: [dept] } : undefined,
       tab: 'requisitions',
+      drill: () =>
+        openReqsDrill(
+          b,
+          rows.map((r) => r.req),
+          'Open reqs with nobody past the screen',
+          `Open more than ${EMPTY_FUNNEL_DAYS} days and no candidate has reached the hiring manager stage.`,
+        ),
       score: 80 + n,
     },
   }
+}
+
+const REQ_KEY: Record<'department' | 'level' | 'location', (r: Requisition) => string | null> = {
+  department: (r) => r.department,
+  level: (r) => r.level,
+  location: (r) => r.location,
 }
 
 function slowFill(b: RecruitingBase, skipDept: string | null): SlowFill | null {
@@ -471,15 +522,10 @@ function slowFill(b: RecruitingBase, skipDept: string | null): SlowFill | null {
   const overall = median(filled.map(ttfDays))
   if (overall == null || overall <= 0) return null
   const groups: SlowGroup[] = []
-  const keyOf: Record<'department' | 'level' | 'location', (r: Requisition) => string | null> = {
-    department: (r) => r.department,
-    level: (r) => r.level,
-    location: (r) => r.location,
-  }
   for (const dim of ['department', 'level', 'location'] as const) {
     const m = new Map<string, number[]>()
     for (const r of filled) {
-      const v = keyOf[dim](r)
+      const v = REQ_KEY[dim](r)
       if (!v) continue
       m.set(v, [...(m.get(v) ?? []), ttfDays(r)])
     }
@@ -520,6 +566,12 @@ function slowTimeToFill(b: RecruitingBase, slow: SlowFill): Scored {
     action: `Review the sourcing plan and interview loop for ${top.value} roles with the recruiters.`,
     filter: filterFor(top, b.apps),
     tab: 'requisitions',
+    drill: () =>
+      filledReqsDrill(
+        b,
+        b.filled.filter((r) => REQ_KEY[top.dim](r) === top.value),
+        `Reqs filled, ${top.value}, ${b.windowWords}`,
+      ),
     score: 65 + 10 * (ratio - 1),
   }
 }
@@ -535,6 +587,7 @@ function dataJoin(b: RecruitingBase): Scored | null {
       'Hires, offers and next steps still count every candidate, but empty funnels are not checked and candidates outside a matching req drop out of any filtered view.',
     action:
       'Check that Candidates and Requisitions use the same req IDs, then upload them again in the Data room.',
+    drill: () => unmatchedDrill(b),
     score: 99,
   }
 }
@@ -559,6 +612,7 @@ function sourceDryingUp(b: RecruitingBase): Scored | null {
     }
   }
   if (!pick || pick.change == null) return null
+  const picked = pick
   const drop = -pick.change
   return {
     id: 'rec-source-drying-up',
@@ -567,6 +621,7 @@ function sourceDryingUp(b: RecruitingBase): Scored | null {
     detail: `Applications from all other sources ${othersChange >= 0 ? 'rose' : 'fell'} ${pct0(Math.abs(othersChange))} over the same time.`,
     action: `Review ${lower(pick.source)} postings and spend with the sourcing team.`,
     tab: 'sources',
+    drill: () => sourceDrill(b, picked, 'change'),
     score: 40 + 50 * drop,
   }
 }
@@ -600,6 +655,14 @@ function withdrawalsRising(b: RecruitingBase): Scored | null {
         : undefined,
     action: `Review response times${stageName ? ` at ${stageName}` : ''} with the recruiters.`,
     tab: 'sources',
+    drill: () =>
+      appDrill(b, wd, {
+        title: `Withdrawals, ${b.windowWords}`,
+        subtitle: windowSub(b),
+        note: `Share = ${plural(wd.length, 'withdrawal')} ÷ ${plural(cur.length, 'rejection or withdrawal', 'rejections and withdrawals')} dated in the period.`,
+        extras: [exitExtra],
+        hide: ['nextEventDate', 'stageEnteredDate'],
+      }),
     score: 30 + share * 100,
   }
 }
@@ -624,6 +687,7 @@ function bestSource(b: RecruitingBase): Scored | null {
     detail: `${plural(best.hires, 'hire')} from ${plural(best.applications, 'application')} in the ${b.windowWords}${best.offerAcceptance != null ? `, with ${pct0(best.offerAcceptance)} of offers accepted` : ''}.`,
     action: `Share these results with hiring teams and keep ${lower(best.source)} in the sourcing plan.`,
     tab: 'sources',
+    drill: () => sourceDrill(b, best, 'hireRate'),
     score: 0,
   }
 }
@@ -654,7 +718,7 @@ function problemFindings(b: RecruitingBase, slots: number): Scored[] {
     bottleneck(b),
     lacksNextStep(b),
     acc,
-    acc || !waiting ? null : offersWaitingFinding(waiting),
+    acc || !waiting ? null : offersWaitingFinding(b, waiting),
     sourceDryingUp(b),
     withdrawalsRising(b),
   ].filter((f): f is Scored => f != null)
@@ -679,6 +743,16 @@ export function recruitingFindings(b: RecruitingBase): Finding[] {
 }
 
 function toFinding(s: Scored): Finding {
-  const { id, severity, title, detail, action, people, filter, tab } = s
-  return { id, severity, title, detail, action, people: people?.length ? people : undefined, filter, tab }
+  const { id, severity, title, detail, action, people, filter, tab, drill } = s
+  return {
+    id,
+    severity,
+    title,
+    detail,
+    action,
+    people: people?.length ? people : undefined,
+    filter,
+    tab,
+    drill,
+  }
 }

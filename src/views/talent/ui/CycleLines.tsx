@@ -1,7 +1,8 @@
 /**
  * Average rating per business unit across review cycles. Cycles are discrete events, so the x axis
  * names them ("2025 Annual") instead of spacing them on a calendar, and the tooltip lists every
- * unit for the hovered cycle. One unit can be emphasized in the series color, the rest in gray.
+ * unit for the hovered cycle, bolding the line nearest the pointer. One unit can be emphasized in
+ * the series color, the rest in gray. Clicking opens the ratings behind the nearest line's point.
  */
 import * as Plot from '@observablehq/plot'
 import {
@@ -11,9 +12,12 @@ import {
   housePlot,
   type LegendSpec,
   labelsMark,
+  nearestBy,
   numericAxis,
   type PlotBuildContext,
   PlotChart,
+  type PlotElement,
+  type PlotPointer,
   scalePos,
   seriesColor,
   seriesPalette,
@@ -21,6 +25,7 @@ import {
   textWidth,
   useChartTheme,
 } from '@/charts'
+import { type DrillSource, drill } from '@/drill'
 import { formatDate } from '@/lib/dates'
 import { DASH, fmt } from '@/lib/format'
 import type { CycleRow } from '../engine/performance'
@@ -35,11 +40,14 @@ export function CycleLines({
   emphasize,
   yDomain,
   height = 260,
+  drillFor,
   ariaLabel,
 }: {
   data: readonly CycleRow[]
   emphasize?: string | null
   yDomain: [number, number]
+  /** The ratings behind one unit's average in one cycle; clicking opens them. */
+  drillFor?: (cycle: string, businessUnit: string) => DrillSource
   height?: number
   ariaLabel?: string
 }) {
@@ -148,7 +156,17 @@ export function CycleLines({
     )
   }
 
-  const tip = (c: CyclePoint): TipContent => {
+  /** The unit whose point at the hovered cycle is nearest the pointer (units with an average only). */
+  const pick = (c: CyclePoint, at: PlotPointer, plot: PlotElement): string | null => {
+    const y = plot.scale('y')
+    if (!y?.apply) return null
+    const points = data.filter((d) => d.cycle === c.cycle && d.mean != null)
+    return nearestBy(points, (d) => Number(y.apply(d.mean)), at.y)?.businessUnit ?? null
+  }
+  const sourceOf = (c: CyclePoint, part: string | null): DrillSource =>
+    part && drillFor ? drillFor(c.cycle, part) : null
+
+  const tip = (c: CyclePoint, part: string | null): TipContent => {
     const colors = colorsFor(theme)
     const rows = data
       .filter((d) => d.cycle === c.cycle)
@@ -158,12 +176,26 @@ export function CycleLines({
         label: d.businessUnit,
         color: colors.get(d.businessUnit),
         shape: 'line' as const,
-        strong: d.businessUnit === emphasize,
+        strong: part ? d.businessUnit === part : d.businessUnit === emphasize,
       }))
-    return { title: c.cycle, rows, note: `Cycle closed ${formatDate(c.cycleDate)}` }
+    const closed = `Cycle closed ${formatDate(c.cycleDate)}`
+    return {
+      title: c.cycle,
+      rows,
+      note: sourceOf(c, part) ? `${closed} · Click to see the ${part} ratings` : closed,
+    }
   }
 
   return (
-    <PlotChart<CyclePoint> build={build} height={height} legend={legend} tip={tip} ariaLabel={ariaLabel} />
+    <PlotChart<CyclePoint>
+      build={build}
+      height={height}
+      legend={legend}
+      tip={tip}
+      pick={drillFor ? pick : undefined}
+      selectable={(c, part) => sourceOf(c, part) != null}
+      onSelect={(c, part) => drill(sourceOf(c, part))}
+      ariaLabel={ariaLabel}
+    />
   )
 }

@@ -2,13 +2,16 @@
  * The sub-org scorecard as a datasheet with benchmark shading: a cell is washed when the org is
  * materially off the company (red for higher attrition, green for lower, amber when the metric
  * has no good direction) and carries an arrow so the state never depends on color. Rows rescope
- * the app on click; the Other and Company rows stay pinned at the bottom. The organization column
+ * the app on click; each number opens the records behind it (the org's leavers, promotions,
+ * managers …). The Other and Company rows stay pinned at the bottom. The organization column
  * stays put while the rates scroll sideways on a narrow screen.
  */
 import { type KeyboardEvent, useState } from 'react'
 import { IconArrowDown, IconArrowUp } from '@/components/icons'
 import { cx } from '@/components/ui'
+import { Drill, type DrillSource } from '@/drill/Drill'
 import { type Format, fmt } from '@/lib/format'
+import type { ScoreCell } from '../engine/buckets'
 import {
   METRIC_POLARITY,
   type ScoreMetric,
@@ -18,7 +21,7 @@ import {
 } from '../engine/scorecard'
 
 interface Col {
-  key: keyof ScoreRow & string
+  key: ScoreCell
   label: string
   format: Format
   metric?: ScoreMetric
@@ -41,8 +44,19 @@ function washFor(metric: ScoreMetric, shade: Shade): string {
 
 const signed = (v: number) => (v > 0 ? `+${fmt(v, 'int')}` : fmt(v, 'int'))
 
-export function ScorecardTable({ rows, onPick }: { rows: ScoreRow[]; onPick: (row: ScoreRow) => void }) {
-  const [sort, setSort] = useState<{ key: Col['key']; dir: 1 | -1 } | null>(null)
+type SortKey = ScoreCell | 'label'
+
+export function ScorecardTable({
+  rows,
+  onPick,
+  drillFor,
+}: {
+  rows: ScoreRow[]
+  onPick: (row: ScoreRow) => void
+  /** The records behind a cell; null for cells with none (hidden values, zero counts). */
+  drillFor?: (row: ScoreRow, cell: ScoreCell) => DrillSource
+}) {
+  const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 } | null>(null)
   const pinned = rows.filter((r) => r.kind === 'other' || r.kind === 'company')
   let body = rows.filter((r) => r.kind !== 'other' && r.kind !== 'company')
   if (sort) {
@@ -55,11 +69,13 @@ export function ScorecardTable({ rows, onPick }: { rows: ScoreRow[]; onPick: (ro
       return String(av).localeCompare(String(bv)) * sort.dir
     })
   }
-  const toggle = (key: Col['key']) =>
+  const toggle = (key: SortKey) =>
     setSort((s) =>
       s?.key === key ? { key, dir: s.dir === 1 ? -1 : 1 } : { key, dir: key === 'label' ? 1 : -1 },
     )
   const onKey = (e: KeyboardEvent, row: ScoreRow) => {
+    // Keys on a cell's drill button belong to that button, not to the row.
+    if (e.target !== e.currentTarget) return
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault()
       onPick(row)
@@ -76,7 +92,7 @@ export function ScorecardTable({ rows, onPick }: { rows: ScoreRow[]; onPick: (ro
   const pin = 'sticky left-0 z-[1]'
   const edge = 'max-lg:shadow-[1px_0_0_var(--rule),-4px_0_0_var(--sheet)]'
   const edge2 = 'max-lg:shadow-[1px_0_0_var(--rule),-4px_0_0_var(--sheet-2)]'
-  const header = (key: Col['key'], label: string, right: boolean) => {
+  const header = (key: SortKey, label: string, right: boolean) => {
     const active = sort?.key === key
     return (
       <th
@@ -109,9 +125,11 @@ export function ScorecardTable({ rows, onPick }: { rows: ScoreRow[]; onPick: (ro
   }
 
   const cell = (row: ScoreRow, c: Col) => {
-    const v = row[c.key] as number | null
+    const v = row[c.key]
     const shade = c.metric ? row.shade[c.metric] : undefined
     const text = c.key === 'netChange' && typeof v === 'number' ? signed(v) : fmt(v, c.format)
+    // Hidden values ("—") never drill.
+    const source = v != null && drillFor ? drillFor(row, c.key) : null
     return (
       <td key={c.key} className={cx(td, 'tnum text-right whitespace-nowrap')}>
         <span
@@ -126,7 +144,13 @@ export function ScorecardTable({ rows, onPick }: { rows: ScoreRow[]; onPick: (ro
             ) : (
               <IconArrowDown size={11} strokeWidth={2} className="text-ink-2" />
             ))}
-          {text}
+          {source ? (
+            <Drill spec={source} label={`${row.label}, ${c.label}: ${text}. Show the records`}>
+              {text}
+            </Drill>
+          ) : (
+            text
+          )}
           {shade && <span className="sr-only">, {shade} the company</span>}
         </span>
       </td>

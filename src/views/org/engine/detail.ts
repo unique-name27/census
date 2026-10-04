@@ -50,6 +50,18 @@ export interface TeamStats {
   exits12: number
   /** Open requisitions where this person is the hiring manager. */
   openReqs: number
+  /** The records behind each number, for drill-down (same order as shown). */
+  ids: {
+    directs: string[]
+    /** Everyone below the person. */
+    org: string[]
+    /** The people the average tenure is measured over; empty when it is hidden (n < 5). */
+    tenure: string[]
+    contingent: string[]
+  }
+  /** The leavers behind `exits12` and `regrettedExits12` (raw roster rows). */
+  exits: Employee[]
+  regretted: Employee[]
 }
 
 export function teamStats(
@@ -60,25 +72,30 @@ export function teamStats(
 ): TeamStats {
   const asOf = tree.asOf
   const from = addMonths(asOf, -12)
-  let regretted = 0
-  let exits = 0
+  const exits: Employee[] = []
+  const regretted: Employee[] = []
   for (const e of employees) {
     if (e.managerId !== id || !e.terminationDate) continue
     if (e.terminationDate <= from || e.terminationDate > asOf) continue
-    exits++
-    if (e.terminationType === 'Voluntary' && e.regrettable === true) regretted++
+    exits.push(e)
+    if (e.terminationType === 'Voluntary' && e.regrettable === true) regretted.push(e)
   }
   const org = subtreeOf(tree, id).filter((x) => x !== id)
   const tenures = org.map((x) => tenureYears(tree.people.get(x)!, asOf))
-  const kids = tree.children.get(id) ?? []
+  const kids = [...(tree.children.get(id) ?? [])]
+  const contingent = kids.filter((k) => tree.people.get(k)?.employmentType !== 'Employee')
+  const shown = org.length >= MIN_GROUP
   return {
     directs: kids.length,
     totalOrg: tree.total.get(id) ?? 0,
-    avgTenure: org.length >= MIN_GROUP ? mean(tenures) : null,
-    contingentDirects: kids.filter((k) => tree.people.get(k)?.employmentType !== 'Employee').length,
-    regrettedExits12: regretted,
-    exits12: exits,
+    avgTenure: shown ? mean(tenures) : null,
+    contingentDirects: contingent.length,
+    regrettedExits12: regretted.length,
+    exits12: exits.length,
     openReqs,
+    ids: { directs: kids, org, tenure: shown ? org : [], contingent },
+    exits,
+    regretted,
   }
 }
 
@@ -101,27 +118,33 @@ export interface ExitImpact {
   wideAfter: boolean
   /** Peers (the manager's other direct reports) who lose a teammate. */
   peers: number
+  peerIds: string[]
+  /** The manager's direct reports after the person's reports roll up. */
+  managerTeamAfter: string[]
   /** The latest review cycle on or before the as-of date. */
   cycle: string | null
   /** Direct reports rated 4 or 5 in that cycle, best first. */
   backfills: BackfillCandidate[]
   /** Direct reports with no rating in that cycle. */
   unrated: number
+  unratedIds: string[]
 }
 
 /** What happens if `id` leaves: their reports roll up to their manager. */
 export function exitImpact(tree: OrgTree, id: string, reviews: ReviewIndex): ExitImpact {
   const managerId = tree.parent.get(id) ?? null
   const directs = [...(tree.children.get(id) ?? [])]
-  const mgrDirects = managerId ? (tree.children.get(managerId)?.length ?? 0) : 0
+  const mgrTeam = managerId ? (tree.children.get(managerId) ?? []) : []
+  const mgrDirects = mgrTeam.length
   const after = mgrDirects - 1 + directs.length
+  const peerIds = mgrTeam.filter((x) => x !== id)
   const cyc = latestCycle(reviews, tree.asOf)
   const backfills: BackfillCandidate[] = []
-  let unrated = 0
+  const unratedIds: string[] = []
   for (const d of directs) {
     const r = cyc ? (reviews.byEmployee.get(d) ?? []).find((x) => x.cycle === cyc.cycle) : undefined
     if (!r) {
-      unrated++
+      unratedIds.push(d)
       continue
     }
     if (r.rating >= 4) {
@@ -146,10 +169,13 @@ export function exitImpact(tree: OrgTree, id: string, reviews: ReviewIndex): Exi
     orgSize: tree.total.get(id) ?? 0,
     managerSpan: managerId ? { before: mgrDirects, after } : null,
     wideAfter: !!managerId && after >= WIDE_SPAN,
-    peers: Math.max(0, mgrDirects - 1),
+    peers: peerIds.length,
+    peerIds,
+    managerTeamAfter: managerId ? [...peerIds, ...directs] : [],
     cycle: cyc?.cycle ?? null,
     backfills,
-    unrated,
+    unrated: unratedIds.length,
+    unratedIds,
   }
 }
 

@@ -13,6 +13,9 @@ export type Format =
   | 'pct0' // fraction -> 12%
   | 'pct2' // fraction -> 3.54%
   | 'pts' // fraction difference -> +2.1 pts
+  | 'pts2' // fraction difference -> +0.81 pts
+  | 'deltaDays' // day difference -> +4 d, −1 d, ±0 d
+  | 'deltaPct' // relative change as a fraction -> +103%, −47.6%, ±0%
   | 'money' // USD compact, $1.2M
   | 'moneyFull' // USD, $123,456
   | 'days' // 12 d
@@ -35,6 +38,17 @@ const compactNf = new Intl.NumberFormat('en-US', { notation: 'compact', maximumF
 const usd = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
 
 export const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v)
+
+/** "+body" / "−body" / "±body": the sign of `v`, or ± when the shown body rounds to zero. */
+function withSign(v: number, body: string): string {
+  return `${!/[1-9]/.test(body) ? '±' : v > 0 ? '+' : MINUS}${body}`
+}
+
+/** A difference of two fractions in percentage points: "+2.1 pts", "−0.81 pts", "0.0 pts". */
+function points(v: number, nf: Intl.NumberFormat): string {
+  const s = nf.format(Math.abs(v * 100))
+  return `${!/[1-9]/.test(s) ? '' : v > 0 ? '+' : MINUS}${s} pts`
+}
 
 /** `body` of |v| with a true minus in front for negatives (none when the shown value rounds to zero). */
 function signed(v: number, body: (abs: number) => string): string {
@@ -68,9 +82,17 @@ export function fmt(v: unknown, format: Format = 'int'): string {
       return signed(v, (a) => `${nf0.format(a * 100)}%`)
     case 'pct2':
       return signed(v, (a) => `${nf2.format(a * 100)}%`)
-    case 'pts': {
-      const s = nf1.format(Math.abs(v * 100))
-      return `${!/[1-9]/.test(s) ? '' : v > 0 ? '+' : MINUS}${s} pts`
+    case 'pts':
+      return points(v, nf1)
+    case 'pts2':
+      return points(v, nf2)
+    case 'deltaDays':
+      return withSign(v, fmt(Math.abs(v), 'days'))
+    case 'deltaPct': {
+      // Changes of 100% or more read as whole percents ("+103%"); smaller ones keep a decimal.
+      const pct = Math.abs(v * 100)
+      const body = Math.round(pct * 10) / 10 >= 100 ? nf0.format(pct) : nf1.format(pct)
+      return /[1-9]/.test(body) ? withSign(v, `${body}%`) : '±0%'
     }
     case 'money':
       return signed(v, (a) => (a < 10_000 ? usd.format(a) : `$${compactNf.format(a)}`))
@@ -86,13 +108,26 @@ export function fmt(v: unknown, format: Format = 'int'): string {
   return String(v)
 }
 
-/** Signed delta in the unit of the format: "+3", "−1.2 pts", "+4 d", "±0" (always the true minus). */
+/**
+ * Signed delta in the unit of the format: "+3", "−1.2 pts", "+0.81 pts" (pct2), "+4 d", "±0"
+ * (always the true minus). A change in a rate is in points; a change in a delta format
+ * (deltaDays) is itself a delta in that format.
+ */
 export function fmtDelta(d: number | null | undefined, format: Format): string {
   if (!isNum(d)) return DASH
-  if (format === 'pct' || format === 'pct0' || format === 'pct2' || format === 'pts') return fmt(d, 'pts')
-  const body = fmt(Math.abs(d), format)
-  const sign = !/[1-9]/.test(body) ? '±' : d > 0 ? '+' : MINUS
-  return `${sign}${body}`
+  switch (format) {
+    case 'pct':
+    case 'pct0':
+    case 'pts':
+    case 'deltaPct':
+      return fmt(d, 'pts')
+    case 'pct2':
+    case 'pts2':
+      return fmt(d, 'pts2')
+    case 'deltaDays':
+      return fmt(d, 'deltaDays')
+  }
+  return withSign(d, fmt(Math.abs(d), format))
 }
 
 /** "1 person" / "12 people" */
@@ -122,6 +157,12 @@ export function excelNumFmt(format: Format | undefined): string | undefined {
       return '0%'
     case 'pct2':
       return '0.00%'
+    case 'pts2':
+      return '+0.00%;"−"0.00%;0.00%'
+    case 'deltaPct':
+      return '+0.0%;"−"0.0%;"±"0%'
+    case 'deltaDays':
+      return '+#,##0" d";"−"#,##0" d";"±"0" d"'
     case 'money':
     case 'moneyFull':
       return '"$"#,##0'

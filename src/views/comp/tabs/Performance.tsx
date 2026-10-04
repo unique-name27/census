@@ -1,22 +1,29 @@
-/** Pay for performance: compa-ratio and merit by rating, the merit matrix, differentiation, bonus and equity. */
+/**
+ * Pay for performance: compa-ratio and merit by rating, the merit matrix, differentiation, bonus
+ * and equity. Ratings, cells and departments open the proposals behind them; a dot opens the person.
+ */
 import { BarList, Columns, DotStrip, Figure, Heatmap } from '@/charts'
 import { Section } from '@/components'
+import { drill, openPerson } from '@/drill'
 import { formatDate } from '@/lib/dates'
 import { fmt } from '@/lib/format'
 import { MeritGuideline } from '../charts/MeritGuideline'
 import {
-  BONUS_COLUMNS,
   DEF_COMPA,
   DEF_DIFFERENTIATION,
   DEF_LATEST_RATING,
   DEF_POSITION,
-  DIFFERENTIATION_COLUMNS,
-  EQUITY_COLUMNS,
   guidelineDefinition,
-  MATRIX_COLUMNS,
-  MERIT_BY_RATING_COLUMNS,
   RATING_DOT_COLUMNS,
 } from '../columns'
+import {
+  bonusColumns,
+  differentiationColumns,
+  equityColumns,
+  matrixColumns,
+  meritRatingColumns,
+} from '../drillColumns'
+import { bonusDrill, differentiationDrill, equityDrill, matrixDrill, meritRatingDrill } from '../engine/drill'
 import type { CompModel } from '../engine/model'
 import { DIFFERENTIATION_FLOOR, type DifferentiationRow, RATING_ORDER } from '../engine/performance'
 import { POSITIONS } from '../engine/population'
@@ -25,6 +32,8 @@ import { asOfNote, emptyIf, MISSING, note } from '../shared'
 const RATING_TOP_DOWN = RATING_ORDER.slice().reverse()
 const flatTone = (d: DifferentiationRow) =>
   d.ratio != null && d.ratio < DIFFERENTIATION_FLOOR ? 'warning' : 'default'
+/** Person rows open that person's card. */
+const personRow = (r: { id: string }) => openPerson(r.id)
 
 export function Performance({ m }: { m: CompModel }) {
   const p = m.performance
@@ -51,6 +60,7 @@ export function Performance({ m }: { m: CompModel }) {
           note={note(m, p.ratingDots.length)}
           span={6}
           empty={emptyIf(p.ratingDots, noReviews, 'Nobody in this scope has a rating.')}
+          table={{ onRowClick: personRow, search: 'Search people' }}
         >
           <DotStrip
             data={p.ratingDots}
@@ -62,6 +72,7 @@ export function Performance({ m }: { m: CompModel }) {
             yOrder={RATING_TOP_DOWN}
             ref={{ value: 1, label: 'Midpoint' }}
             median
+            onSelect={personRow}
           />
         </Figure>
         <Figure
@@ -69,7 +80,7 @@ export function Performance({ m }: { m: CompModel }) {
           title="Merit by rating against the guideline"
           subtitle="Mean proposed merit % by rating, with the guideline for each rating marked, this cycle"
           data={p.meritByRating}
-          columns={MERIT_BY_RATING_COLUMNS}
+          columns={meritRatingColumns(m)}
           definitions={[guidelineDefinition(s), DEF_LATEST_RATING]}
           note={note(m, meritN, 'proposals')}
           span={6}
@@ -79,6 +90,7 @@ export function Performance({ m }: { m: CompModel }) {
             rows={p.meritByRating}
             order={RATING_ORDER}
             ariaLabel="Mean proposed merit by rating against the guideline"
+            onSelect={(row) => drill(meritRatingDrill(m, row))}
           />
         </Figure>
       </Section>
@@ -92,7 +104,7 @@ export function Performance({ m }: { m: CompModel }) {
           title="Merit matrix"
           subtitle="Mean merit minus the guideline, by rating and range position; blue above guideline, red below"
           data={p.matrix}
-          columns={MATRIX_COLUMNS}
+          columns={matrixColumns(m)}
           definitions={[guidelineDefinition(s), DEF_POSITION, DEF_LATEST_RATING]}
           note={`${note(
             m,
@@ -117,6 +129,7 @@ export function Performance({ m }: { m: CompModel }) {
             mid={0}
             xOrder={POSITIONS}
             yOrder={RATING_TOP_DOWN}
+            onSelect={(cell) => drill(matrixDrill(m, cell))}
           />
         </Figure>
         <Figure
@@ -124,7 +137,7 @@ export function Performance({ m }: { m: CompModel }) {
           title="Differentiation by department"
           subtitle="Mean merit for ratings 4-5 ÷ mean merit for rating 3, lowest first"
           data={p.byDepartment}
-          columns={DIFFERENTIATION_COLUMNS}
+          columns={differentiationColumns(m)}
           definitions={[DEF_DIFFERENTIATION, DEF_LATEST_RATING]}
           note={`Company ${fmt(p.companyDifferentiation.ratio, 'times')} · needs 5 people on each side · ${asOfNote(m)}`}
           span={5}
@@ -140,6 +153,7 @@ export function Performance({ m }: { m: CompModel }) {
             tone={flatTone}
             rowHeight={26}
             nullNote="Fewer than 5 people rated 3 or rated 4-5"
+            onSelect={(d) => drill(differentiationDrill(m, d, d.group, null))}
           />
         </Figure>
       </Section>
@@ -153,7 +167,7 @@ export function Performance({ m }: { m: CompModel }) {
           title="Bonus payout by rating"
           subtitle={`Mean last payout as a share of target, by ${m.pop.annualCycle ?? 'annual'} rating`}
           data={p.bonus}
-          columns={BONUS_COLUMNS}
+          columns={bonusColumns(m)}
           definitions={[
             {
               term: 'Payout of target',
@@ -182,6 +196,7 @@ export function Performance({ m }: { m: CompModel }) {
             xOrder={RATING_ORDER}
             format="pct"
             ref={{ value: 1, label: 'Target' }}
+            onSelect={(d) => drill(bonusDrill(m, d))}
           />
         </Figure>
         <Figure
@@ -189,7 +204,7 @@ export function Performance({ m }: { m: CompModel }) {
           title="Equity by rating"
           subtitle="Median annual equity as a share of base salary, both in USD"
           data={p.equity}
-          columns={EQUITY_COLUMNS}
+          columns={equityColumns(m)}
           definitions={[
             {
               term: 'Equity share',
@@ -211,7 +226,14 @@ export function Performance({ m }: { m: CompModel }) {
             'No equity grants with a rating in this scope.',
           )}
         >
-          <Columns data={p.equity} x="rating" y="median" xOrder={RATING_ORDER} format="pct" />
+          <Columns
+            data={p.equity}
+            x="rating"
+            y="median"
+            xOrder={RATING_ORDER}
+            format="pct"
+            onSelect={(d) => drill(equityDrill(m, d))}
+          />
         </Figure>
       </Section>
     </div>

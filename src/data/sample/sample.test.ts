@@ -46,6 +46,60 @@ const median = (xs: number[]): number => {
 const mean = (xs: number[]): number => xs.reduce((a, b) => a + b, 0) / xs.length
 const share = <T>(xs: T[], pred: (x: T) => boolean): number => xs.filter(pred).length / xs.length
 const activeOn = (e: Employee, d: string) => e.hireDate <= d && (!e.terminationDate || e.terminationDate > d)
+const isoOf = (ms: number) => new Date(ms).toISOString().slice(0, 10)
+const plusDays = (d: string, n: number) => isoOf(t(d) + n * DAY)
+const isWeekendDay = (d: string) => [0, 6].includes(new Date(t(d)).getUTCDay())
+const weekdayOnOrBefore = (d: string): string => (isWeekendDay(d) ? weekdayOnOrBefore(plusDays(d, -1)) : d)
+const workingDaysAfter = (d: string, n: number): string => {
+  let x = d
+  for (let left = n; left > 0; ) {
+    x = plusDays(x, 1)
+    if (!isWeekendDay(x)) left--
+  }
+  return x
+}
+const monthEndOf = (d: string) => isoOf(Date.UTC(+d.slice(0, 4), +d.slice(5, 7), 0))
+/** US and Canadian paydays: the 15th and the last day of each month, the weekday before when on a weekend. */
+function nextPayday(d: string): string {
+  for (let m = `${d.slice(0, 7)}-01`; ; m = plusDays(monthEndOf(m), 1)) {
+    for (const p of [`${m.slice(0, 7)}-15`, monthEndOf(m)].map(weekdayOnOrBefore)) if (p > d) return p
+  }
+}
+/** Final pay deadline by jurisdiction, as the Atlas states it (FINAL_PAY_RULES in the services catalog). */
+function finalPayDue(e: Employee): string {
+  const d = e.terminationDate!
+  const involuntary = e.terminationType === 'Involuntary'
+  const jurisdiction = siteByLocation.get(e.location)!.jurisdiction
+  switch (jurisdiction) {
+    case 'us-ca':
+    case 'tw':
+    case 'cn':
+      return d
+    case 'us-tx':
+      return involuntary ? plusDays(d, 6) : nextPayday(d)
+    case 'us-co':
+      return involuntary ? d : nextPayday(d)
+    case 'us-nc':
+      return nextPayday(d)
+    case 'us-wa':
+      return d.slice(8) <= '15' ? `${d.slice(0, 7)}-15` : monthEndOf(d)
+    case 'ca': {
+      if (e.location === 'Vancouver') return plusDays(d, involuntary ? 2 : 6)
+      const week = plusDays(d, 7)
+      return week > nextPayday(d) ? week : nextPayday(d)
+    }
+    case 'de':
+      return weekdayOnOrBefore(monthEndOf(d))
+    case 'il':
+      return `${plusDays(monthEndOf(d), 1).slice(0, 7)}-09`
+    case 'in':
+      return workingDaysAfter(d, 2)
+    case 'vn':
+      return workingDaysAfter(d, 14)
+    default:
+      throw new Error(`No final pay rule for ${jurisdiction}`)
+  }
+}
 /** Mean of 13 month-end snapshots ending at `end` (the Census convention). */
 function avgHeadcount(emps: Employee[], end: string): number {
   const e = new Date(t(end))
@@ -96,7 +150,8 @@ describe('sizes', () => {
       90,
       130,
     )
-    between(data.employees.filter((e) => e.terminationDate).length, 380, 480)
+    // Three years of background exits, planted stories and first-year exits in three hire cohorts.
+    between(data.employees.filter((e) => e.terminationDate).length, 450, 540)
     between(data.employees.length, 1900, 2100)
   })
   it('has the planned volumes in every dataset', () => {
@@ -332,6 +387,20 @@ describe('vocabularies', () => {
       if (s.readiness != null) expect(inList(READINESS, s.readiness)).toBe(true)
     for (const l of data.learning) expect(inList(LEARNING_CATEGORIES, l.category)).toBe(true)
   })
+  it('maps each case category to the Atlas process that governs it', () => {
+    const process = new Map(CASE_CATEGORIES.map((c) => [c.category, c.processId]))
+    // Policy questions belong to policy lifecycle governance, not the ER-01 speak-up intake.
+    expect(process.get('Policy question')).toBe('DS-08')
+    // General pay and equity questions sit with the annual compensation review, not EQ-01 grant administration.
+    expect(process.get('Compensation & equity')).toBe('CO-02')
+    expect(process.get('Employee relations')).toBe('ER-02')
+    for (const c of CASE_CATEGORIES) expect(c.processId).toMatch(/^[A-Z]{2}-\d{2}$/)
+    const used = new Set(data.cases.map((c) => c.processId))
+    expect(used.has('ER-01') || used.has('EQ-01')).toBe(false)
+    expect(
+      data.cases.filter((c) => c.category === 'Policy question').every((c) => c.processId === 'DS-08'),
+    ).toBe(true)
+  })
   it('only rates employees active and 90+ days in role at each cycle', () => {
     for (const r of data.reviews) {
       const e = emp(r.employeeId)
@@ -461,15 +530,36 @@ describe('story: HR business partners', () => {
       .map(([r]) => r)
     expect(top2.sort()).toEqual(['Base salary', 'Career growth or promotion'])
   })
+  /** Share of the people hired in [from, to] who left within 365 days of starting. */
+  const firstYear = (from: string, to: string, pred: (e: Employee) => boolean = () => true) => {
+    const c = employees.filter((e) => e.hireDate >= from && e.hireDate <= to && pred(e))
+    return share(c, (e) => !!e.terminationDate && days(e.hireDate, e.terminationDate) < 365)
+  }
+  const gtm = (e: Employee) => e.businessUnit === 'Go-to-Market'
   it('3. first-year attrition in Go-to-Market is about 28%', () => {
-    const cohort = (pred: (e: Employee) => boolean) => {
-      const c = employees.filter((e) => e.hireDate >= '2024-10-01' && e.hireDate <= PRIOR_END && pred(e))
-      return share(c, (e) => !!e.terminationDate && days(e.hireDate, e.terminationDate) < 365)
+    const rate = firstYear('2024-10-01', PRIOR_END, gtm)
+    expect(rate).toBeGreaterThan(0.24)
+    expect(rate).toBeLessThan(0.34)
+    expect(firstYear('2024-10-01', PRIOR_END, (e) => !gtm(e))).toBeLessThan(0.12)
+  })
+  it('3. first-year attrition was 10-12% in each earlier cohort, so the Go-to-Market jump is new', () => {
+    for (const [from, to] of [
+      ['2022-10-01', '2023-09-30'],
+      ['2023-10-01', '2024-09-30'],
+    ]) {
+      expect(firstYear(from, to)).toBeGreaterThan(0.1)
+      expect(firstYear(from, to)).toBeLessThan(0.12)
+      expect(firstYear(from, to, gtm)).toBeLessThan(0.15)
     }
-    const gtm = cohort((e) => e.businessUnit === 'Go-to-Market')
-    expect(gtm).toBeGreaterThan(0.24)
-    expect(gtm).toBeLessThan(0.34)
-    expect(cohort((e) => e.businessUnit !== 'Go-to-Market')).toBeLessThan(0.12)
+    // The comparison a year earlier is a real rate, not an artifact of missing exits.
+    const current = firstYear('2024-10-01', PRIOR_END)
+    expect(Math.abs(current - firstYear('2023-10-01', '2024-09-30'))).toBeLessThan(0.02)
+    // Every first-year exit falls inside its cohort's year, and the earlier cohorts all left before the last 12 months.
+    const early = employees.filter(
+      (e) => e.hireDate < '2024-10-01' && e.terminationDate && days(e.hireDate, e.terminationDate) < 365,
+    )
+    expect(early.length).toBeGreaterThan(40)
+    expect(early.every((e) => e.hireDate >= '2022-10-01' && e.terminationDate! < T12_START)).toBe(true)
   })
   it('4. span outliers: three 12+ spans, four single-report managers, one new manager with 8+', () => {
     const directs = new Map<string, number>()
@@ -551,7 +641,7 @@ describe('story: recruiting', () => {
       share(reasons, (r) => r === 'Accepted competing offer' || r === 'Compensation below expectations'),
     ).toBeGreaterThan(0.8)
   })
-  it('3. about 20% of active candidates have no next step; two hiring managers hold most feedback waits', () => {
+  it('3. about 20% have had no step booked for 14+ days (the tiered rule is tested in the view); two hiring managers hold most feedback waits', () => {
     const noStep = share(
       active,
       (c) => c.currentStage !== 'Offer' && !c.nextEventDate && days(c.stageEnteredDate!, AS_OF) > 14,
@@ -673,13 +763,38 @@ describe('story: employee services', () => {
     expect(late(caInvol)).toBeGreaterThan(0.18)
     expect(late(india)).toBeGreaterThan(0.18)
     expect(late((e) => !caInvol(e) && !india(e))).toBeLessThan(0.05)
-    // Deadlines follow the jurisdiction rules.
+    // Deadlines follow the jurisdiction rules (FINAL_PAY_RULES in the services catalog).
+    const rules = new Set<string>()
     for (const x of data.transactions.filter((y) => y.type === 'Termination')) {
       const e = emp(x.employeeId)
-      if (e.location === 'San Jose') expect(x.dueDate).toBe(e.terminationDate)
-      if (e.location === 'Austin' && e.terminationType === 'Involuntary')
-        expect(days(e.terminationDate!, x.dueDate)).toBe(6)
+      expect(x.effectiveDate).toBe(e.terminationDate)
+      expect(x.dueDate, `${e.location} ${e.terminationType} ${e.terminationDate}`).toBe(finalPayDue(e))
+      rules.add(siteByLocation.get(e.location)!.jurisdiction)
     }
+    expect(rules.size).toBe(new Set(SITES.map((s) => s.jurisdiction)).size)
+  })
+  it('3. final pay deadlines: semi-monthly paydays, month-end in Germany, the 9th in Israel', () => {
+    const exit = (location: string, terminationDate: string, terminationType: 'Voluntary' | 'Involuntary') =>
+      ({ location, terminationDate, terminationType }) as Employee
+    // Thursday 14 May 2026: the next payday is Friday 29 May (the 31st is a Sunday).
+    expect(finalPayDue(exit('Raleigh', '2026-05-14', 'Involuntary'))).toBe('2026-05-15')
+    expect(finalPayDue(exit('Raleigh', '2026-05-15', 'Voluntary'))).toBe('2026-05-29')
+    expect(finalPayDue(exit('Austin', '2026-05-15', 'Voluntary'))).toBe('2026-05-29')
+    expect(finalPayDue(exit('Austin', '2026-05-15', 'Involuntary'))).toBe('2026-05-21')
+    expect(finalPayDue(exit('Boulder', '2026-05-15', 'Involuntary'))).toBe('2026-05-15')
+    expect(finalPayDue(exit('Seattle', '2026-05-18', 'Voluntary'))).toBe('2026-05-31')
+    expect(finalPayDue(exit('Seattle', '2026-05-04', 'Involuntary'))).toBe('2026-05-15')
+    expect(finalPayDue(exit('Toronto', '2026-05-12', 'Voluntary'))).toBe('2026-05-19')
+    expect(finalPayDue(exit('Toronto', '2026-05-04', 'Voluntary'))).toBe('2026-05-15')
+    expect(finalPayDue(exit('Vancouver', '2026-05-04', 'Involuntary'))).toBe('2026-05-06')
+    expect(finalPayDue(exit('Vancouver', '2026-05-04', 'Voluntary'))).toBe('2026-05-10')
+    expect(finalPayDue(exit('Munich', '2026-05-12', 'Voluntary'))).toBe('2026-05-29')
+    expect(finalPayDue(exit('Haifa', '2026-05-12', 'Voluntary'))).toBe('2026-06-09')
+    expect(finalPayDue(exit('Hsinchu', '2026-05-12', 'Voluntary'))).toBe('2026-05-12')
+    expect(finalPayDue(exit('Shanghai', '2026-05-12', 'Involuntary'))).toBe('2026-05-12')
+    expect(finalPayDue(exit('Bengaluru', '2026-05-15', 'Voluntary'))).toBe('2026-05-19')
+    expect(finalPayDue(exit('Ho Chi Minh City', '2026-05-15', 'Voluntary'))).toBe('2026-06-04')
+    expect(finalPayDue(exit('San Jose', '2026-05-15', 'Voluntary'))).toBe('2026-05-15')
   })
   it('4. new hires in Asia Pacific are ready by Day -3 less than 90% of the time', () => {
     const apac = new Set(['Bengaluru', 'Hsinchu', 'Shanghai', 'Ho Chi Minh City'])

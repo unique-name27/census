@@ -1,8 +1,17 @@
 import { describe, expect, it } from 'vitest'
 import type { Column } from '@/charts/types'
 import { toTsv } from './clipboard'
-import { cellFormat, columnAlign, columnFormat, plainText, rowFormat, sampleRow } from './columns'
+import {
+  cellFormat,
+  columnAlign,
+  columnFormat,
+  exportNumber,
+  plainText,
+  rowFormat,
+  sampleRow,
+} from './columns'
 import { toCsv } from './csv'
+import { excelValue } from './xlsx'
 
 type MetricRow = {
   metric: string
@@ -63,5 +72,58 @@ describe('per-row column formats', () => {
       'Hidden,',
     ])
     expect(toTsv({ columns, rows }, { showPay: false }).split('\n')[1]).toBe('Offer acceptance\t85.43%')
+  })
+})
+
+describe('export precision', () => {
+  it('rounds ratios, decimals and multiples to 3 places', () => {
+    expect(exportNumber(0.987654321, 'ratio')).toBe(0.988)
+    expect(exportNumber(1.23456, 'num2')).toBe(1.235)
+    expect(exportNumber(1.58333333, 'times')).toBe(1.583)
+    expect(plainText(0.987654321, 'ratio')).toBe('0.988')
+    expect(plainText(1.58333333, 'times')).toBe('1.583')
+  })
+
+  it('rounds one-decimal measures to 1 place', () => {
+    expect(exportNumber(4.26666, 'num1')).toBe(4.3)
+    expect(exportNumber(7.04109589, 'years')).toBe(7)
+    expect(plainText(4.26666, 'num1')).toBe('4.3')
+    expect(plainText(7.04109589, 'years')).toBe('7')
+  })
+
+  it('rounds rates to 4 places of the fraction and stores the rounded value', () => {
+    expect(exportNumber(0.123456789, 'pct')).toBe(0.1235)
+    expect(exportNumber(0.123456789, 'pct0')).toBe(0.1235)
+    expect(exportNumber(0.035412, 'pct2')).toBe(0.0354)
+    expect(plainText(0.123456789, 'pct')).toBe('12.35%')
+    expect(plainText(0.123456789, 'pct0')).toBe('12.35%')
+    expect(plainText(0.035412, 'pct2')).toBe('3.54%')
+    expect(plainText(0.07, 'pct')).toBe('7%')
+  })
+
+  it('writes the same rounded value to Excel', () => {
+    expect(excelValue(0.123456789, 'pct')).toBe(0.1235)
+    expect(excelValue(0.035412, 'pct2')).toBe(0.0354)
+    expect(excelValue(0.987654321, 'ratio')).toBe(0.988)
+    expect(excelValue(1.58333333, 'times')).toBe(1.583)
+    expect(excelValue(4.26666, 'num1')).toBe(4.3)
+    expect(excelValue(7.04109589, 'years')).toBe(7)
+    expect(excelValue(412.38, 'int')).toBe(412)
+    expect(excelValue(-0.00001, 'pct')).toBe(0)
+    expect(Object.is(excelValue(-0.00001, 'pct'), -0)).toBe(false)
+  })
+
+  it('covers the delta formats and leaves unformatted numbers at 6 places', () => {
+    expect(plainText(0.008123, 'pts2')).toBe('0.81')
+    expect(excelValue(0.008123, 'pts2')).toBe(0.0081)
+    expect(plainText(1.03456, 'deltaPct')).toBe('103.46%')
+    expect(plainText(-2.46, 'deltaDays')).toBe('-2.5')
+    expect(exportNumber(2 / 3, undefined)).toBe(0.666667)
+    expect(plainText(0.1 + 0.2, undefined)).toBe('0.3')
+  })
+
+  it('rounds per row with a per-row format', () => {
+    expect(plainText(0.854349, valueFormat, rows[0])).toBe('85.43%')
+    expect(plainText(1.583333, valueFormat, rows[2])).toBe('1.583')
   })
 })

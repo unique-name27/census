@@ -160,6 +160,9 @@ Always use these instead of re-implementing them, so a number means the same thi
 - Regretted attrition counts voluntary exits with `regrettable === true`.
 - When a field needed for a metric is absent from every row (e.g. no `terminationType` anywhere), the
   metric is `null` with a note naming the missing column, never 0.
+- When the Employees data has no termination dates at all (an active-only roster), pass
+  `attrition(emps, w, kind, { exitDataPresent: hasExitData(ctx.all.employees) })`: every rate is `null` with
+  "No termination dates in the Employees data", never 0%.
 - KPI deltas compare to the prior window (`ctx.prior`); when an org filter is active, HRBP tiles may
   compare to the company instead. Color a delta only if material (`isMaterialChange` in
   `src/lib/stats.ts`, or a domain-specific threshold); otherwise gray.

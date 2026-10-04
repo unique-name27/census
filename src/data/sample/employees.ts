@@ -1,7 +1,8 @@
 /**
  * The people pipeline after the org is built: hire dates (shaped by business-unit growth),
  * leavers over the last three years (including the planted HRBP stories), contractors and interns,
- * job history consistent with today's levels and managers, and employee IDs in hire order.
+ * first-year exits in the earlier hire cohorts, job history consistent with today's levels and
+ * managers, and employee IDs in hire order.
  */
 import type { ChangeType, Employee, JobChange, Level, TerminationType } from '../schema'
 import { siteByLocation } from '../schema'
@@ -300,6 +301,39 @@ function experiencedHire(rng: Rng, term: Day, bu: string): Day {
 
 const exitDay = (rng: Rng, start: Day, end: Day): Day => onOrBeforeWeekday(rng.int(start, end))
 
+interface FirstYearBatch {
+  n: number
+  depts: DeptSpec[]
+  weights: number[]
+  /** Draws the hire day (a Monday) for the next leaver. */
+  hireDay: () => Day
+  /** Latest possible exit day. */
+  termMax: Day
+  tag: Tag
+}
+
+/** People who left 75-330 days after starting: 70% resignations, the rest dismissed for performance. */
+function addFirstYearLeavers(f: LeaverFactory, rng: Rng, b: FirstYearBatch): void {
+  for (let i = 0; i < b.n; i++) {
+    const spec = rng.weighted(b.depts, b.weights)
+    const hire = b.hireDay()
+    const term = Math.min(b.termMax, onOrBeforeWeekday(hire + rng.int(75, 330)))
+    const voluntary = rng.chance(0.7)
+    f.add({
+      spec,
+      site: rng.pickPair(spec.sites),
+      term,
+      hire,
+      type: voluntary ? 'Voluntary' : 'Involuntary',
+      reason: voluntary ? rng.pickPair(FIRST_YEAR_WEIGHTS) : 'Performance',
+      perf: voluntary ? rng.normal(-0.2, 0.9) : rng.normal(-1.5, 0.4),
+      level: rng.pick<IcLevel>(['L2', 'L3', 'L3', 'L4']),
+      regrettable: voluntary ? rng.chance(0.1) : false,
+      tag: b.tag,
+    })
+  }
+}
+
 export function addLeavers(w: World, names: NameBook, rng: Rng): void {
   const f = new LeaverFactory(w, names, rng)
   const exec = (k: string) => w.execs.get(k)!
@@ -509,26 +543,15 @@ export function addLeavers(w: World, names: NameBook, rng: Rng): void {
     hireLo: Day,
     hireHi: Day,
     termMax: Day,
-  ) => {
-    for (let i = 0; i < n; i++) {
-      const spec = rng.weighted(depts, weights)
-      const hire = mondayBetween(rng, hireLo, hireHi)
-      const term = Math.min(termMax, onOrBeforeWeekday(hire + rng.int(75, 330)))
-      const voluntary = rng.chance(0.7)
-      f.add({
-        spec,
-        site: rng.pickPair(spec.sites),
-        term,
-        hire,
-        type: voluntary ? 'Voluntary' : 'Involuntary',
-        reason: voluntary ? rng.pickPair(FIRST_YEAR_WEIGHTS) : 'Performance',
-        perf: voluntary ? rng.normal(-0.2, 0.9) : rng.normal(-1.5, 0.4),
-        level: rng.pick<IcLevel>(['L2', 'L3', 'L3', 'L4']),
-        regrettable: voluntary ? rng.chance(0.1) : false,
-        tag: 'first-year-leaver',
-      })
-    }
-  }
+  ) =>
+    addFirstYearLeavers(f, rng, {
+      n,
+      depts,
+      weights,
+      hireDay: () => mondayBetween(rng, hireLo, hireHi),
+      termMax,
+      tag: 'first-year-leaver',
+    })
   const gtmWeights = [70, 20, 10]
   firstYear(Math.round((0.3 / 0.7) * cohort(GTM)), gtmDepts, gtmWeights, T24_START, T12_START - 7, AS_OF - 3)
   firstYear(
@@ -732,6 +755,41 @@ export function addContingent(w: World, names: NameBook, rng: Rng): void {
   summer('2026-06-01', ['2026-08-14', '2026-08-21'], 16)
 }
 
+/* ───────────── step 5: first-year exits in earlier hire cohorts ───────────── */
+
+/**
+ * The two hire cohorts before the measured one (first-year attrition as of 30 Sep 2024 and
+ * 30 Sep 2025) and the share of each that left within a year. The measured cohort (hired
+ * 1 Oct 2024 to 30 Sep 2025) is planted in `addLeavers`, with Go-to-Market far above this rate.
+ */
+const PRIOR_FIRST_YEAR_COHORTS: readonly { from: Day; to: Day; rate: number }[] = [
+  { from: day('2022-10-01'), to: day('2023-09-30'), rate: 0.105 },
+  { from: day('2023-10-01'), to: day('2024-09-30'), rate: 0.11 },
+]
+
+/**
+ * Background first-year exits in the earlier cohorts, spread over departments by size, so the
+ * company's first-year attrition is about 11% in every prior year and the Go-to-Market jump is new.
+ * Runs once every employee has a hire date, so each cohort's rate lands on its target (to the
+ * nearest person). The exits all fall before the last 12 months; a few from the 2022-2023 cohort
+ * predate the three years of background exits. These people are tagged so the services generator
+ * gives them their own random stream (see `caseRows`).
+ */
+export function addPriorFirstYearLeavers(w: World, names: NameBook, rng: Rng): void {
+  const f = new LeaverFactory(w, names, rng)
+  for (const c of PRIOR_FIRST_YEAR_COHORTS) {
+    const size = w.people.filter((p) => p.type === 'Employee' && p.hire >= c.from && p.hire <= c.to).length
+    addFirstYearLeavers(f, rng, {
+      n: Math.round((c.rate * size) / (1 - c.rate)),
+      depts: EXIT_DEPTS,
+      weights: sizeWeights(EXIT_DEPTS),
+      hireDay: () => curveDay(rng, c.from, c.to),
+      termMax: T12_START - 1,
+      tag: 'prior-first-year-leaver',
+    })
+  }
+}
+
 /* ───────────── planted talent and pay populations ───────────── */
 
 /** Talent story 6: long-serving high performers who have not been promoted in 3+ years. */
@@ -783,7 +841,7 @@ export function plantLongTenureL4(w: World, rng: Rng, isConsecutiveHigh: (p: Per
   for (const p of rng.sample(pool, 42)) p.tags.add('long-l4')
 }
 
-/* ───────────── step 5: job history ───────────── */
+/* ───────────── step 6: job history ───────────── */
 
 /** Annual promotion rate out of each level, before the performance factor. */
 const PROMO_RATE: Record<Level, number> = {

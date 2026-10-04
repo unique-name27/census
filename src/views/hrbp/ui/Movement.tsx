@@ -3,17 +3,28 @@ import { EmptyState, KpiStrip, Section } from '@/components'
 import type { Kpi } from '@/components/types'
 import { useAnalytics } from '@/data/context'
 import { MIN_GROUP } from '@/data/schema'
+import { drill } from '@/drill/Drill'
+import { openPerson } from '@/drill/store'
 import { formatDate } from '@/lib/dates'
 import { fmt } from '@/lib/format'
 import type { HrbpModel } from '../engine'
 import { count, isMaterialGap } from '../engine/base'
-import { SINCE_BANDS } from '../engine/movement'
+import {
+  deptMoveSpec,
+  movementTileSpec,
+  promotionLevelSpec,
+  promotionQuarterSpec,
+  sinceSpec,
+} from '../engine/buckets'
+import { type DeptMoveRow, SINCE_BANDS } from '../engine/movement'
 import { DEF } from './defs'
+import { drillWhen } from './drill'
 
 export function Movement({ m }: { m: HrbpModel }) {
   const ctx = useAnalytics()
   const mv = m.movement
   const p = m.prep
+  const moveDrill = (rows: readonly DeptMoveRow[]) => drill(() => deptMoveSpec(p, rows))
   const asOf = formatDate(ctx.asOf)
   const window = ctx.window.label
 
@@ -28,6 +39,10 @@ export function Movement({ m }: { m: HrbpModel }) {
 
   const ref = ctx.isCompany ? mv.priorPromotions.rate : mv.companyPromotions.rate
   const delta = mv.promotions.rate != null && ref != null ? mv.promotions.rate - ref : null
+  const promoSuppressed = mv.promotions.avgHeadcount > 0 && mv.promotions.avgHeadcount < MIN_GROUP
+  const mobilitySuppressed = mv.mobility.rate == null && mv.promotions.avgHeadcount > 0
+  const tile = (t: Parameters<typeof movementTileSpec>[2], has: boolean) =>
+    drillWhen(has, () => movementTileSpec(p, mv, t))
   const kpis: Kpi[] = [
     {
       id: 'promotions',
@@ -39,6 +54,7 @@ export function Movement({ m }: { m: HrbpModel }) {
       goodDirection: null,
       note: window,
       definition: 'Promotion events in the period. A person promoted twice counts twice.',
+      drill: tile('promotions', mv.records.promotions.length > 0),
     },
     {
       id: 'promotion-rate',
@@ -50,8 +66,9 @@ export function Movement({ m }: { m: HrbpModel }) {
       goodDirection: null,
       deltaMaterial: isMaterialGap(delta, ref),
       note: `Over an average headcount of ${Math.round(mv.promotions.avgHeadcount).toLocaleString('en-US')}`,
-      suppressed: mv.promotions.avgHeadcount > 0 && mv.promotions.avgHeadcount < MIN_GROUP,
+      suppressed: promoSuppressed,
       definition: DEF.promotionRate.text,
+      drill: tile('promotionRate', !promoSuppressed && mv.promotions.rate != null),
     },
     {
       id: 'moves',
@@ -60,6 +77,7 @@ export function Movement({ m }: { m: HrbpModel }) {
       format: 'int',
       note: `${count(mv.transfers, 'transfer', 'transfers')}, ${count(mv.lateral, 'lateral move', 'lateral moves')}`,
       definition: 'Transfer and Lateral move events in the period.',
+      drill: tile('moves', mv.transfers + mv.lateral > 0),
     },
     {
       id: 'mobility',
@@ -67,8 +85,9 @@ export function Movement({ m }: { m: HrbpModel }) {
       value: mv.mobility.rate,
       format: 'pct',
       note: `${count(mv.mobility.movers, 'person', 'people')} moved at least once`,
-      suppressed: mv.mobility.rate == null && mv.promotions.avgHeadcount > 0,
+      suppressed: mobilitySuppressed,
       definition: DEF.mobility.text,
+      drill: tile('mobility', !mobilitySuppressed && mv.mobility.rate != null),
     },
   ]
   if (mv.demotions) {
@@ -79,6 +98,7 @@ export function Movement({ m }: { m: HrbpModel }) {
       format: 'int',
       note: window,
       definition: 'Demotion events in the period.',
+      drill: tile('demotions', true),
     })
   }
 
@@ -105,16 +125,32 @@ export function Movement({ m }: { m: HrbpModel }) {
             { key: 'quarter', label: 'Quarter', format: 'text' },
             { key: 'start', label: 'From', format: 'date' },
             { key: 'end', label: 'To', format: 'date' },
-            { key: 'promotions', label: 'Promotions', format: 'int' },
+            {
+              key: 'promotions',
+              label: 'Promotions',
+              format: 'int',
+              drill: (r) => drillWhen(r.records.length > 0, () => promotionQuarterSpec(p, r)),
+            },
             { key: 'avgHeadcount', label: 'Average headcount', format: 'num1' },
-            { key: 'rate', label: 'Promotion rate', format: 'pct' },
+            {
+              key: 'rate',
+              label: 'Promotion rate',
+              format: 'pct',
+              drill: (r) => drillWhen(r.records.length > 0, () => promotionQuarterSpec(p, r)),
+            },
           ]}
           definitions={[DEF.promotionRate, DEF.avgHeadcount]}
           note={`${qPromos} promotions in 8 quarters · as of ${asOf}`}
           span={6}
           empty={qPromos ? null : 'No promotions in the last 8 quarters.'}
         >
-          <Columns data={quarters} x="quarter" y="promotions" xOrder={quarters.map((q) => q.quarter)} />
+          <Columns
+            data={quarters}
+            x="quarter"
+            y="promotions"
+            xOrder={quarters.map((q) => q.quarter)}
+            onSelect={(d) => drill(() => promotionQuarterSpec(p, d))}
+          />
         </Figure>
         <Figure
           id="hrbp-promotion-level"
@@ -123,9 +159,19 @@ export function Movement({ m }: { m: HrbpModel }) {
           data={mv.byLevel}
           columns={[
             { key: 'level', label: 'Level promoted from', format: 'text' },
-            { key: 'promotions', label: 'Promotions', format: 'int' },
+            {
+              key: 'promotions',
+              label: 'Promotions',
+              format: 'int',
+              drill: (r) => drillWhen(r.records.length > 0, () => promotionLevelSpec(p, r)),
+            },
             { key: 'avgHeadcount', label: 'Average headcount', format: 'num1' },
-            { key: 'rate', label: 'Promotion rate', format: 'pct' },
+            {
+              key: 'rate',
+              label: 'Promotion rate',
+              format: 'pct',
+              drill: (r) => drillWhen(r.records.length > 0, () => promotionLevelSpec(p, r)),
+            },
           ]}
           definitions={[
             DEF.promotionRate,
@@ -153,6 +199,7 @@ export function Movement({ m }: { m: HrbpModel }) {
                 ? { value: companyRate, label: `Company ${fmt(companyRate, 'pct')}` }
                 : undefined
             }
+            onSelect={(d) => drill(() => promotionLevelSpec(p, d))}
           />
         </Figure>
       </Section>
@@ -169,7 +216,12 @@ export function Movement({ m }: { m: HrbpModel }) {
           columns={[
             { key: 'department', label: 'Department moved into', format: 'text' },
             { key: 'type', label: 'Move type', format: 'text' },
-            { key: 'moves', label: 'Moves', format: 'int' },
+            {
+              key: 'moves',
+              label: 'Moves',
+              format: 'int',
+              drill: (r) => drillWhen(r.records.length > 0, () => deptMoveSpec(p, [r])),
+            },
           ]}
           definitions={[
             {
@@ -189,6 +241,8 @@ export function Movement({ m }: { m: HrbpModel }) {
             series="type"
             stack
             seriesOrder={['Transfer', 'Lateral move']}
+            onSelect={(d) => moveDrill(mv.byDepartment.filter((r) => r.department === d.department))}
+            onSelectSegment={(d) => moveDrill([d])}
           />
         </Figure>
         <Figure
@@ -198,8 +252,18 @@ export function Movement({ m }: { m: HrbpModel }) {
           data={mv.sincePromotion}
           columns={[
             { key: 'band', label: 'Since last promotion', format: 'text' },
-            { key: 'people', label: 'Employees', format: 'int' },
-            { key: 'share', label: 'Share', format: 'pct' },
+            {
+              key: 'people',
+              label: 'Employees',
+              format: 'int',
+              drill: (r) => drillWhen(r.records.length > 0, () => sinceSpec(p, r)),
+            },
+            {
+              key: 'share',
+              label: 'Share',
+              format: 'pct',
+              drill: (r) => drillWhen(r.records.length > 0, () => sinceSpec(p, r)),
+            },
           ]}
           definitions={[
             {
@@ -211,12 +275,19 @@ export function Movement({ m }: { m: HrbpModel }) {
           span={5}
           empty={active ? null : 'No active employees in this scope.'}
         >
-          <Columns data={mv.sincePromotion} x="band" y="people" xOrder={[...SINCE_BANDS]} height={240} />
+          <Columns
+            data={mv.sincePromotion}
+            x="band"
+            y="people"
+            xOrder={[...SINCE_BANDS]}
+            height={240}
+            onSelect={(d) => drill(() => sinceSpec(p, d))}
+          />
         </Figure>
         <Figure
           id="hrbp-internal-moves"
           title="Internal moves"
-          subtitle={`Promotions, transfers, lateral moves and demotions, ${window}, newest first`}
+          subtitle={`Promotions, transfers, lateral moves and demotions, ${window}, newest first. Select a row to open the person.`}
           data={mv.moves}
           columns={[
             { key: 'date', label: 'Effective', format: 'date' },
@@ -231,7 +302,7 @@ export function Movement({ m }: { m: HrbpModel }) {
           definitions={[DEF.promotionRate, DEF.mobility]}
           note={`${mv.moves.length} moves · as of ${asOf}`}
           tableOnly
-          table={{ search: 'Search moves', maxRows: 12 }}
+          table={{ search: 'Search moves', maxRows: 12, onRowClick: (r) => openPerson(r.employeeId) }}
           empty={mv.moves.length ? null : 'No internal moves in this period.'}
         />
       </Section>

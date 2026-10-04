@@ -1,13 +1,25 @@
-import { BarList, Figure } from '@/charts'
+import { BarList, type Column, Figure } from '@/charts'
 import { Section, StatusPill } from '@/components'
 import type { AnalyticsContext } from '@/data/context'
+import { Drill, drill } from '@/drill'
 import { fmt } from '@/lib/format'
 import type { ServicesModel } from '../engine'
+import type { CategoryRow } from '../engine/cases'
 import { SERVICE_LEVELS, type ServiceLevelId } from '../engine/catalog'
+import {
+  caseDrill,
+  drillWhen,
+  isLateTx,
+  type LevelPart,
+  levelDrill,
+  resolutionDrill,
+  responseDrill,
+  txDrill,
+} from '../engine/drills'
 import type { LevelRow, LevelStatus, ProcessRow } from '../engine/levels'
 import { isOther } from '../engine/util'
 import { type AtlasColumn, AtlasTable, ProcessId } from './AtlasTable'
-import { asOfNote, count, DEF, period, STATUS_SEVERITY, STATUS_TONE } from './shared'
+import { asOfNote, count, DEF, period, STATUS_SEVERITY, STATUS_TONE, titled, useProcessHref } from './shared'
 
 /** Short names for chart labels, unique per measure (LV-01 has two). */
 const SHORT: Record<ServiceLevelId, string> = {
@@ -60,7 +72,11 @@ const ON_TIME_DEF = {
   formula: 'completedDate ≤ dueDate',
 }
 
+const CASE_CATEGORY = new Map(SERVICE_LEVELS.map((d) => [d.id, d.caseCategory ?? null]))
+
 export function LevelsTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext }) {
+  const s = m.scope
+  const processHref = useProcessHref()
   const per = period(ctx)
   const order = new Map(SERVICE_LEVELS.map((d, i) => [d.id, i]))
   const rank = (r: LevelRow) => (r.status ? STATUS_ORDER[r.status] : 3)
@@ -79,6 +95,26 @@ export function LevelsTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext 
   const response = m.categories
     .filter((c) => !isOther(c.category))
     .sort((a, b) => (a.responseRate ?? 2) - (b.responseRate ?? 2))
+
+  /* Drill sources, shared by the scorecard, the charts and their table views. */
+  const level = (r: LevelRow, part: LevelPart) => {
+    const shown = part === 'n' ? !!r.n : r.actual != null && (part === 'actual' || r.misses.length > 0)
+    return shown ? drillWhen(s, r.records?.rows, () => levelDrill(s, r, part)) : undefined
+  }
+  const caseSla = (r: LevelRow) => {
+    const category = CASE_CATEGORY.get(r.id)
+    return r.caseSla == null || !category
+      ? undefined
+      : drillWhen(s, r.caseRecords, () =>
+          resolutionDrill(s, r.caseRecords, titled('Cases judged on resolution SLA', category, per)),
+        )
+  }
+  const responseCategory = (d: CategoryRow) =>
+    d.responseRate == null
+      ? null
+      : () => responseDrill(s, d.records, titled('Cases judged on first response SLA', d.category, per))
+  const missesLabel = (r: LevelRow) =>
+    `Show the ${r.misses.length.toLocaleString('en-US')} ${r.misses.length === 1 ? 'miss' : 'misses'}`
 
   const screen: AtlasColumn<Row>[] = [
     {
@@ -107,8 +143,22 @@ export function LevelsTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext 
       ),
     },
     { key: 'target', label: 'Target', className: 'whitespace-nowrap', render: (r) => r.target },
-    { key: 'actual', label: 'Actual', align: 'right', render: (r) => fmt(r.actual, unitFormat(r)) },
-    { key: 'gap', label: 'Gap', align: 'right', render: gapText },
+    {
+      key: 'actual',
+      label: 'Actual',
+      align: 'right',
+      render: (r) => <Drill spec={level(r, 'actual')}>{fmt(r.actual, unitFormat(r))}</Drill>,
+    },
+    {
+      key: 'gap',
+      label: 'Gap',
+      align: 'right',
+      render: (r) => (
+        <Drill spec={level(r, 'misses')} label={missesLabel(r)}>
+          {gapText(r)}
+        </Drill>
+      ),
+    },
     {
       key: 'status',
       label: 'Status',
@@ -127,43 +177,75 @@ export function LevelsTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext 
       render: (r) =>
         r.caseSlaTarget ? (
           <>
-            {fmt(r.caseSla, 'pct')}
+            <Drill spec={caseSla(r)}>{fmt(r.caseSla, 'pct')}</Drill>
             <div className="mt-0.5 text-[12px] text-muted">within {r.caseSlaTarget}</div>
           </>
         ) : (
           <span className="text-muted">—</span>
         ),
     },
-    { key: 'n', label: 'n', align: 'right', render: (r) => fmt(r.n, 'int') },
+    {
+      key: 'n',
+      label: 'n',
+      align: 'right',
+      render: (r) => <Drill spec={level(r, 'n')}>{fmt(r.n, 'int')}</Drill>,
+    },
   ]
 
-  const processColumns: AtlasColumn<ProcessRow>[] = [
+  const scorecardColumns: Column<Row>[] = [
+    { key: 'processId', label: 'Process ID', href: (r) => processHref(r.processId) },
+    { key: 'process', label: 'Process' },
+    { key: 'measure', label: 'Measure' },
+    { key: 'target', label: 'Target' },
+    { key: 'actual', label: 'Actual', format: (r) => unitFormat(r), drill: (r) => level(r, 'actual') },
     {
-      key: 'processId',
-      label: 'Process ID',
-      className: 'whitespace-nowrap',
-      render: (r) => <ProcessId id={r.processId} />,
+      key: 'gap',
+      label: 'Gap to target',
+      format: (r) => (r.unit === 'days' ? 'days' : 'pts'),
+      drill: (r) => level(r, 'misses'),
+    },
+    { key: 'statusText', label: 'Status' },
+    { key: 'caseSla', label: 'Case SLA met (calendar hours)', format: 'pct', drill: caseSla },
+    { key: 'caseSlaTarget', label: 'Case SLA target' },
+    { key: 'n', label: 'n', format: 'int', drill: (r) => level(r, 'n') },
+    { key: 'team', label: 'Team' },
+    { key: 'window', label: 'Window' },
+    { key: 'atlas', label: 'Atlas wording' },
+    { key: 'basis', label: 'Basis' },
+  ]
+
+  const processName = (r: ProcessRow) => `${r.processId} ${r.process}`
+  const processColumns: Column<ProcessRow>[] = [
+    { key: 'processId', label: 'Process ID', href: (r) => processHref(r.processId) },
+    { key: 'process', label: 'Process', width: 22 },
+    { key: 'owner', label: 'Accountable' },
+    { key: 'covers', label: 'Covers', width: 26 },
+    {
+      key: 'cases',
+      label: 'Cases',
+      format: 'int',
+      drill: (r) =>
+        r.cases
+          ? drillWhen(s, r.caseRecords, () =>
+              caseDrill(s, r.caseRecords, { title: titled('Cases opened', processName(r), per) }),
+            )
+          : null,
     },
     {
-      key: 'process',
-      label: 'Process',
-      className: 'min-w-44',
-      render: (r) => (
-        <>
-          {r.process}
-          <div className="mt-0.5 text-[12px] text-muted">{r.owner}</div>
-        </>
-      ),
+      key: 'transactions',
+      label: 'Transactions',
+      format: 'int',
+      drill: (r) =>
+        r.transactions
+          ? drillWhen(s, r.txRecords, () =>
+              txDrill(s, r.txRecords, {
+                title: titled('Transactions due', processName(r), per),
+                order: (a, b) => Number(isLateTx(b)) - Number(isLateTx(a)),
+              }),
+            )
+          : null,
     },
-    { key: 'covers', label: 'Covers', className: 'min-w-44 text-ink-2', render: (r) => r.covers },
-    { key: 'cases', label: 'Cases', align: 'right', render: (r) => fmt(r.cases, 'int') },
-    { key: 'transactions', label: 'Transactions', align: 'right', render: (r) => fmt(r.transactions, 'int') },
-    {
-      key: 'sla',
-      label: 'Atlas service level',
-      className: 'min-w-64 text-[12px] text-ink-2',
-      render: (r) => r.sla,
-    },
+    { key: 'sla', label: 'Atlas service level', width: 40 },
   ]
 
   return (
@@ -178,22 +260,7 @@ export function LevelsTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext 
           title="Service level scorecard"
           subtitle={`${scored.length} Atlas measures with data, ${missed} missed, ${m.window.label}`}
           data={rows}
-          columns={[
-            { key: 'processId', label: 'Process ID' },
-            { key: 'process', label: 'Process' },
-            { key: 'measure', label: 'Measure' },
-            { key: 'target', label: 'Target' },
-            { key: 'actual', label: 'Actual', format: (r: Row) => unitFormat(r) },
-            { key: 'gap', label: 'Gap to target', format: (r: Row) => (r.unit === 'days' ? 'days' : 'pts') },
-            { key: 'statusText', label: 'Status' },
-            { key: 'caseSla', label: 'Case SLA met (calendar hours)', format: 'pct' },
-            { key: 'caseSlaTarget', label: 'Case SLA target' },
-            { key: 'n', label: 'n', format: 'int' },
-            { key: 'team', label: 'Team' },
-            { key: 'window', label: 'Window' },
-            { key: 'atlas', label: 'Atlas wording' },
-            { key: 'basis', label: 'Basis' },
-          ]}
+          columns={scorecardColumns}
           definitions={[STATUS_DEF, BUSINESS_DAYS_DEF, CASE_SLA_DEF, ON_TIME_DEF, ...adaptations]}
           note={asOfNote(
             m.asOf,
@@ -218,11 +285,11 @@ export function LevelsTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext 
           subtitle={`Actual minus target in points for each Atlas measure, ${per}; below zero misses the target`}
           data={gaps}
           columns={[
-            { key: 'processId', label: 'Process ID' },
+            { key: 'processId', label: 'Process ID', href: (r: Row) => processHref(r.processId) },
             { key: 'measure', label: 'Measure' },
             { key: 'target', label: 'Target' },
-            { key: 'actual', label: 'Actual', format: 'pct' },
-            { key: 'gap', label: 'Gap to target', format: 'pts' },
+            { key: 'actual', label: 'Actual', format: 'pct', drill: (r: Row) => level(r, 'actual') },
+            { key: 'gap', label: 'Gap to target', format: 'pts', drill: (r: Row) => level(r, 'misses') },
             { key: 'statusText', label: 'Status' },
           ]}
           definitions={[
@@ -248,6 +315,7 @@ export function LevelsTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext 
             format="pts"
             sort="asc"
             tone={(d) => (d.status ? STATUS_TONE[d.status] : 'deemph')}
+            onSelect={(d) => drill(level(d, 'actual'))}
           />
         </Figure>
         <Figure
@@ -258,9 +326,17 @@ export function LevelsTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext 
           data={response}
           columns={[
             { key: 'category', label: 'Category' },
-            { key: 'processId', label: 'Atlas process' },
-            { key: 'cases', label: 'Cases opened', format: 'int' },
-            { key: 'responseRate', label: 'First response SLA met', format: 'pct' },
+            { key: 'processId', label: 'Atlas process', href: (r: CategoryRow) => processHref(r.processId) },
+            {
+              key: 'cases',
+              label: 'Cases opened',
+              format: 'int',
+              drill: (r: CategoryRow) =>
+                drillWhen(s, r.records, () =>
+                  caseDrill(s, r.records, { title: titled('Cases opened', r.category, per), response: true }),
+                ),
+            },
+            { key: 'responseRate', label: 'First response SLA met', format: 'pct', drill: responseCategory },
           ]}
           definitions={[DEF.responseSla, DEF.anonymity]}
           note={asOfNote(m.asOf, count(m.summary.response.n, 'case'))}
@@ -282,6 +358,7 @@ export function LevelsTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext 
             sort="none"
             domain={[0, 1]}
             secondary={(d) => count(d.cases, 'case')}
+            onSelect={(d) => drill(responseCategory(d))}
           />
         </Figure>
       </Section>
@@ -296,15 +373,7 @@ export function LevelsTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext 
           title="Processes behind these measures"
           subtitle={`Cases opened and transactions due in the ${per}, by governing process`}
           data={m.processes}
-          columns={[
-            { key: 'processId', label: 'Process ID' },
-            { key: 'process', label: 'Process' },
-            { key: 'owner', label: 'Accountable' },
-            { key: 'covers', label: 'Covers' },
-            { key: 'cases', label: 'Cases', format: 'int' },
-            { key: 'transactions', label: 'Transactions', format: 'int' },
-            { key: 'sla', label: 'Atlas service level' },
-          ]}
+          columns={processColumns}
           definitions={[
             {
               term: 'Atlas process',
@@ -316,16 +385,9 @@ export function LevelsTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext 
             },
           ]}
           note={asOfNote(m.asOf, `${m.processes.length} processes`)}
-          image={false}
+          tableOnly
           table={{ maxRows: 20 }}
-        >
-          <AtlasTable
-            rows={m.processes}
-            columns={processColumns}
-            rowKey={(r) => r.processId}
-            caption="Processes behind these measures"
-          />
-        </Figure>
+        />
       </Section>
     </>
   )

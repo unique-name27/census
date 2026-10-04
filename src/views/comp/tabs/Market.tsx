@@ -1,17 +1,15 @@
-/** Market: base pay against the market median by job family, location and level, and the jobs furthest below. */
+/**
+ * Market: base pay against the market median by job family, location and level, and the jobs
+ * furthest below. Every bar and count opens the people behind it with their market ratio.
+ */
 import { BarList, Figure } from '@/charts'
 import { Section, type Severity } from '@/components'
+import { drill } from '@/drill'
 import { formatDate } from '@/lib/dates'
 import { fmt } from '@/lib/format'
-import {
-  DEF_MARKET,
-  DEF_MARKET_MID,
-  DEF_POPULATION,
-  JOBS_COLUMNS,
-  MARKET_BY_FAMILY,
-  MARKET_BY_LEVEL,
-  MARKET_BY_LOCATION,
-} from '../columns'
+import { DEF_MARKET, DEF_MARKET_MID, DEF_POPULATION } from '../columns'
+import { jobsColumns, marketDrillColumns } from '../drillColumns'
+import { marketDrill } from '../engine/drill'
 import { type JobMarketRow, MARKET_CHART_MIN, MARKET_FLAG, type MarketRow } from '../engine/market'
 import type { CompModel } from '../engine/model'
 import { asOfNote, emptyIf, MISSING, note } from '../shared'
@@ -33,6 +31,7 @@ export function Market({ m }: { m: CompModel }) {
       : { value: k.total.gap, label: `${m.isCompany ? 'Company' : 'Scope'} ${fmt(k.total.gap, 'pct')}` }
   const sub = `Median base ÷ market median minus 1, as of ${asOf}`
   const defs = [DEF_MARKET, DEF_MARKET_MID, DEF_POPULATION]
+  const onBar = (d: MarketRow) => drill(marketDrill(m, d))
 
   return (
     <div>
@@ -45,7 +44,7 @@ export function Market({ m }: { m: CompModel }) {
           title="Gap to market by job family"
           subtitle={`The 15 families of ${MARKET_CHART_MIN} or more people furthest below market, median base ÷ market median minus 1, as of ${asOf}`}
           data={k.familyChart}
-          columns={MARKET_BY_FAMILY}
+          columns={marketDrillColumns('Job family', m)}
           definitions={defs}
           note={note(m, k.total.n)}
           span={6}
@@ -61,6 +60,7 @@ export function Market({ m }: { m: CompModel }) {
             tone={gapTone}
             secondary={nText}
             rowHeight={26}
+            onSelect={onBar}
           />
         </Figure>
         <Figure
@@ -68,7 +68,7 @@ export function Market({ m }: { m: CompModel }) {
           title="Gap to market by location"
           subtitle={sub}
           data={k.byLocation}
-          columns={MARKET_BY_LOCATION}
+          columns={marketDrillColumns('Location', m)}
           definitions={defs}
           note={note(m, k.total.n)}
           span={6}
@@ -83,6 +83,7 @@ export function Market({ m }: { m: CompModel }) {
             ref={ref}
             tone={gapTone}
             secondary={nText}
+            onSelect={onBar}
           />
         </Figure>
       </Section>
@@ -96,7 +97,7 @@ export function Market({ m }: { m: CompModel }) {
           title="Gap to market by level"
           subtitle={sub}
           data={k.byLevel}
-          columns={MARKET_BY_LEVEL}
+          columns={marketDrillColumns('Level', m)}
           definitions={defs}
           note={note(m, k.total.n)}
           span={5}
@@ -111,6 +112,7 @@ export function Market({ m }: { m: CompModel }) {
             ref={ref}
             tone={gapTone}
             secondary={nText}
+            onSelect={onBar}
           />
         </Figure>
         <Figure
@@ -118,7 +120,7 @@ export function Market({ m }: { m: CompModel }) {
           title="Jobs furthest below market"
           subtitle={`Job family and level pairs with 5 or more people, lowest market ratio first; 10% or more below market is marked, as of ${asOf}`}
           data={k.jobs}
-          columns={JOBS_COLUMNS}
+          columns={jobsColumns(m)}
           definitions={defs}
           note={`Top ${fmt(k.jobs.length, 'int')} below market · ${asOfNote(m)}`}
           span={7}

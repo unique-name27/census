@@ -281,3 +281,48 @@ describe('time ticks', () => {
     ).toEqual(["Nov '25", 'Dec', "Jan '26", 'Feb'])
   })
 })
+
+describe('hidden totals', () => {
+  const data = [
+    { q: 'Q1', band: 'Low', n: 2 },
+    { q: 'Q1', band: 'High', n: 3 },
+    { q: 'Q2', band: 'Low', n: null },
+    { q: 'Q2', band: 'High', n: null },
+    { q: 'Q3', band: 'Low', n: null },
+    { q: 'Q3', band: 'High', n: 4 },
+  ]
+
+  it('gives a category whose values are all missing a null total, not 0', () => {
+    const m = categoryModel(data, { cat: 'q', value: 'n', series: 'band' })
+    expect(m.categories.map((c) => c.total)).toEqual([5, null, 4])
+  })
+
+  it('stacks no segments for a hidden category and shares against the known values', () => {
+    const m = categoryModel(data, { cat: 'q', value: 'n', series: 'band' })
+    const segs = stackSegments(m)
+    expect(segs.filter((s) => s.cat === 'Q2')).toEqual([])
+    const shares = stackSegments(m, true).filter((s) => s.cat === 'Q3')
+    expect(shares.map((s) => [s.series, s.share, s.hi])).toEqual([['High', 1, 1]])
+  })
+})
+
+describe('BarList value text and Other rows', () => {
+  it('prints valueText for rows with a value and leaves missing values alone', () => {
+    const rows = barListRows(depts, {
+      label: 'dept',
+      value: 'rate',
+      valueText: (d) => `+${((d.rate ?? 0) * 100).toFixed(1)}%`,
+    })
+    expect(rows.find((r) => r.label === 'Fab')?.text).toBe('+16.0%')
+    expect(rows.find((r) => r.label === 'Finance')).not.toHaveProperty('text')
+    expect(barListRows(depts, { label: 'dept', value: 'rate' })[0]).not.toHaveProperty('text')
+  })
+
+  it('keeps the folded source rows on the Other row for drilling', () => {
+    const rows = barListRows(depts, { label: 'dept', value: 'n', top: 3 })
+    const other = rows[rows.length - 1]
+    expect(other.label).toBe('Other (3)')
+    expect(other.foldedRows?.map((d) => d.dept).sort()).toEqual(['Finance', 'People', 'Sales'])
+    expect(rows[0]).not.toHaveProperty('foldedRows')
+  })
+})

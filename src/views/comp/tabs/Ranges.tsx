@@ -1,24 +1,27 @@
-/** Range position: penetration by level, compa-ratio by tenure, who is outside the range, compression. */
+/**
+ * Range position: penetration by level, compa-ratio by tenure, who is outside the range,
+ * compression. Levels, cells and counts open the people behind them; a person's mark or row opens
+ * their card.
+ */
 import { Figure, RangeBars } from '@/charts'
 import type { Severity } from '@/components'
 import { Section } from '@/components'
+import { drill, openPerson } from '@/drill'
 import { formatDate } from '@/lib/dates'
 import { fmt } from '@/lib/format'
 import { Dumbbell } from '../charts/Dumbbell'
 import { PositionStrip } from '../charts/PositionStrip'
 import {
-  ABOVE_MAX_COLUMNS,
-  BELOW_MIN_COLUMNS,
-  COMPRESSION_COLUMNS,
   DEF_COMPA,
   DEF_COMPRESSION,
   DEF_FX,
   DEF_PENETRATION,
   DEF_POPULATION,
   DEF_POSITION,
-  PENETRATION_COLUMNS,
   TENURE_DOT_COLUMNS,
 } from '../columns'
+import { compressionColumns, outsideColumns, penetrationColumns } from '../drillColumns'
+import { compressionDrill, penetrationDrill } from '../engine/drill'
 import type { CompModel } from '../engine/model'
 import { type OutsideRangeRow, TENURE_ORDER } from '../engine/ranges'
 import { asOfNote, emptyIf, MISSING, note } from '../shared'
@@ -26,6 +29,8 @@ import { asOfNote, emptyIf, MISSING, note } from '../shared'
 const COMPRESSION_SHOWN = 20
 
 const gapTone = (r: OutsideRangeRow): Severity => (r.gapPct >= 0.1 ? 'critical' : 'warning')
+/** Person rows open that person's card. */
+const personRow = (r: { id: string }) => openPerson(r.id)
 
 export function Ranges({ m }: { m: CompModel }) {
   const r = m.ranges
@@ -47,7 +52,7 @@ export function Ranges({ m }: { m: CompModel }) {
           title="Range penetration by level"
           subtitle="Box from the 25th to the 75th percentile, line from the 10th to the 90th, tick at the median"
           data={r.penetration}
-          columns={PENETRATION_COLUMNS}
+          columns={penetrationColumns(m)}
           definitions={[DEF_PENETRATION, DEF_POPULATION]}
           note={note(
             m,
@@ -66,6 +71,7 @@ export function Ranges({ m }: { m: CompModel }) {
             mid="median"
             format="pct0"
             labels={{ min: '10th percentile', max: '90th percentile', mid: 'Median' }}
+            onSelect={(row) => drill(penetrationDrill(m, row))}
           />
         </Figure>
         <Figure
@@ -78,11 +84,13 @@ export function Ranges({ m }: { m: CompModel }) {
           note={note(m, r.tenure.length)}
           span={5}
           empty={emptyIf(r.tenure, null, 'No compa-ratios in this scope.')}
+          table={{ onRowClick: personRow, search: 'Search people' }}
         >
           <PositionStrip
             data={r.tenure}
             yOrder={TENURE_ORDER}
             ariaLabel="Compa-ratio of each person by tenure band, shaped by range position"
+            onSelect={personRow}
           />
         </Figure>
       </Section>
@@ -96,7 +104,7 @@ export function Ranges({ m }: { m: CompModel }) {
           title="Below range minimum"
           subtitle={`Largest gap first, as of ${asOf}`}
           data={r.below}
-          columns={BELOW_MIN_COLUMNS}
+          columns={outsideColumns(m, 'below')}
           definitions={[
             DEF_POSITION,
             {
@@ -108,7 +116,7 @@ export function Ranges({ m }: { m: CompModel }) {
           ]}
           note={`${note(m, r.below.length, 'people', m.showPay)}${cost}`}
           tableOnly
-          table={{ rowTone: gapTone, search: 'Search people', maxRows: 12 }}
+          table={{ rowTone: gapTone, search: 'Search people', maxRows: 12, onRowClick: personRow }}
           empty={emptyIf(r.below, noRanges, 'Nobody in this scope is paid below range minimum.')}
         />
         <Figure
@@ -116,7 +124,7 @@ export function Ranges({ m }: { m: CompModel }) {
           title="Above range maximum"
           subtitle={`Largest overage first, as of ${asOf}`}
           data={r.above}
-          columns={ABOVE_MAX_COLUMNS}
+          columns={outsideColumns(m, 'above')}
           definitions={[
             DEF_POSITION,
             {
@@ -128,7 +136,7 @@ export function Ranges({ m }: { m: CompModel }) {
           ]}
           note={note(m, r.above.length, 'people', m.showPay)}
           tableOnly
-          table={{ search: 'Search people', maxRows: 12 }}
+          table={{ search: 'Search people', maxRows: 12, onRowClick: personRow }}
           empty={emptyIf(r.above, noRanges, 'Nobody in this scope is paid above range maximum.')}
         />
       </Section>
@@ -142,7 +150,7 @@ export function Ranges({ m }: { m: CompModel }) {
           title="New hires vs incumbents"
           subtitle={`Median compa-ratio by department and level, hired in the last 12 months vs before, as of ${asOf}`}
           data={r.compression}
-          columns={COMPRESSION_COLUMNS}
+          columns={compressionColumns(m)}
           definitions={[DEF_COMPRESSION, DEF_COMPA]}
           note={`${fmt(r.compression.length, 'int')} department and level pairs with 5 or more people on each side${r.compression.length > COMPRESSION_SHOWN ? `; the chart shows the ${COMPRESSION_SHOWN} largest gaps and the table has them all` : ''} · ${asOfNote(m)}`}
           empty={emptyIf(
@@ -154,6 +162,7 @@ export function Ranges({ m }: { m: CompModel }) {
           <Dumbbell
             rows={r.compression.slice(0, COMPRESSION_SHOWN)}
             ariaLabel="Median compa-ratio of new hires and incumbents"
+            onSelect={(row, side) => drill(compressionDrill(m, row, side))}
           />
         </Figure>
       </Section>

@@ -46,10 +46,13 @@ import {
   sourceRows,
   sourcesByMonth,
 } from './sources'
+import type { App } from './types'
 
 export interface HiresMonthRow {
   month: string
   hires: number
+  /** The hires counted (for the drill panel; not exported). */
+  apps: App[]
 }
 
 export interface RecruitingModel {
@@ -92,13 +95,15 @@ export interface RecruitingModel {
 
 function hiresByMonth(b: RecruitingBase): HiresMonthRow[] {
   const months = monthsBetween(addMonths(monthStart(b.window.end), -23), b.window.end)
-  const m = new Map(months.map((k) => [k, 0]))
+  const m = new Map(months.map((k) => [k, [] as App[]]))
   for (const a of b.apps) {
     if (a.outcome !== 'Hired' || !a.exitDate || a.exitDate > b.window.end) continue
-    const k = monthKey(a.exitDate)
-    if (m.has(k)) m.set(k, (m.get(k) ?? 0) + 1)
+    m.get(monthKey(a.exitDate))?.push(a)
   }
-  return months.map((month) => ({ month, hires: m.get(month) ?? 0 }))
+  return months.map((month) => {
+    const apps = m.get(month) ?? []
+    return { month, hires: apps.length, apps }
+  })
 }
 
 export function computeRecruitingUncached(ctx: AnalyticsContext): RecruitingModel {

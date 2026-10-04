@@ -10,7 +10,7 @@
  * (lowest priority first) rather than allowed to overlap or leave the canvas.
  */
 import { fmt } from '@/lib/format'
-import type { Flow } from './flow'
+import type { Flow, FlowKind } from './flow'
 
 export type RibbonKind = 'advanced' | 'active' | 'rejected' | 'withdrawn' | 'declined'
 export type Measure = (text: string, size: number, weight: number) => number
@@ -46,6 +46,13 @@ export interface RiverLabel {
   weight: number
   /** Letter spacing in px (uppercase kickers). */
   tracking?: number
+  /** The part of the flow the number belongs to: clicking the label drills to it. */
+  target?: LabelTarget
+}
+
+export interface LabelTarget {
+  kind: FlowKind
+  stage: number
 }
 
 export interface RiverLayout {
@@ -59,6 +66,12 @@ export interface RiverLayout {
   /** Where the active fades end (for the gradient). */
   fades: { id: string; x0: number; x1: number }[]
   twoRows: boolean
+}
+
+/** One line of exit counts under the band ("12 rejected"), or the short "20 left". */
+interface ExitLine {
+  text: string
+  kind: FlowKind
 }
 
 const NODE_W = 8
@@ -184,6 +197,7 @@ export function riverLayout(
             text: l.name,
             anchor: l.anchor,
             role: 'kicker',
+            target: { kind: 'node', stage: i },
             size: 11,
             weight: 600,
             tracking: 0.66,
@@ -195,6 +209,7 @@ export function riverLayout(
             text: fmt(counts[i], 'int'),
             anchor: l.anchor,
             role: 'count',
+            target: { kind: 'node', stage: i },
             size: 15,
             weight: 650,
           },
@@ -239,7 +254,7 @@ export function riverLayout(
   const fades: RiverLayout['fades'] = []
   const bandPts: [number, number][] = []
   let cum = 0
-  const exitLabelRows: { i: number; lines: string[]; left: number; x: number }[] = []
+  const exitLabelRows: { i: number; lines: ExitLine[]; left: number; x: number }[] = []
 
   flow.stages.forEach((s, i) => {
     const x0 = xs[i] + NODE_W
@@ -276,6 +291,7 @@ export function riverLayout(
               [
                 {
                   id: `active-label-${i}`,
+                  target: { kind: 'active' as const, stage: i },
                   x: x0 + 6,
                   y: mid + 4,
                   text,
@@ -290,6 +306,7 @@ export function riverLayout(
         [
           {
             id: `active-label-${i}`,
+            target: { kind: 'active' as const, stage: i },
             x: x0 + len + 4,
             y: Math.max(mid + 4, topY + g.advanced + 11),
             text,
@@ -345,11 +362,9 @@ export function riverLayout(
       bandPts.push([landStart, bandBottom - cum])
       cum += rise
       bandPts.push([landStart + landTotal, bandBottom - cum])
-      const lines = [
-        s.rejected ? `${fmt(s.rejected, 'int')} rejected` : '',
-        s.withdrawn ? `${fmt(s.withdrawn, 'int')} withdrawn` : '',
-        s.declined ? `${fmt(s.declined, 'int')} declined` : '',
-      ].filter(Boolean)
+      const lines = (['rejected', 'withdrawn', 'declined'] as const)
+        .filter((kind) => s[kind] > 0)
+        .map((kind) => ({ text: `${fmt(s[kind], 'int')} ${kind}`, kind }))
       exitLabelRows.push({ i, lines, left: s.rejected + s.withdrawn + s.declined, x: landStart })
     }
     // Pass-rate label on (or above) the advancing channel.
@@ -363,6 +378,7 @@ export function riverLayout(
         alts.push([
           {
             id: `adv-${i}`,
+            target: { kind: 'advanced' as const, stage: i },
             x: midX,
             y: topY + g.advanced / 2 - 2,
             text: main,
@@ -373,6 +389,7 @@ export function riverLayout(
           },
           {
             id: `adv-sub-${i}`,
+            target: { kind: 'advanced' as const, stage: i },
             x: midX,
             y: topY + g.advanced / 2 + 12,
             text: [pass, daysText].filter(Boolean).join(' · '),
@@ -386,6 +403,7 @@ export function riverLayout(
         alts.push([
           {
             id: `adv-${i}`,
+            target: { kind: 'advanced' as const, stage: i },
             x: midX,
             y: topY + g.advanced / 2 + 4,
             text: [fmt(s.advanced, 'int'), pass].filter(Boolean).join(' · '),
@@ -398,6 +416,7 @@ export function riverLayout(
       alts.push([
         {
           id: `adv-${i}`,
+          target: { kind: 'advanced' as const, stage: i },
           x: midX,
           y: topY - 6,
           text: [fmt(s.advanced, 'int'), pass].filter(Boolean).join(' · '),
@@ -411,6 +430,7 @@ export function riverLayout(
         alts.push([
           {
             id: `adv-${i}`,
+            target: { kind: 'advanced' as const, stage: i },
             x: midX,
             y: topY - 6,
             text: pass,
@@ -443,6 +463,7 @@ export function riverLayout(
       [15, 31, 47].map((dy) => [
         {
           id: 'hired-share',
+          target: { kind: 'node' as const, stage: n - 1 },
           x: xs[n - 1] + NODE_W,
           y: topY + nodeH[n - 1] + dy,
           text,
@@ -459,9 +480,10 @@ export function riverLayout(
   let maxLines = 0
   for (const row of exitLabelRows) {
     const left = row.left
-    const asLines = (texts: string[], anchorEnd: boolean) =>
-      texts.map((text, j) => ({
+    const asLines = (texts: readonly ExitLine[], anchorEnd: boolean) =>
+      texts.map(({ text, kind }, j) => ({
         id: `exit-${row.i}-${j}`,
+        target: { kind, stage: row.i },
         x: anchorEnd ? W : row.x,
         y: bandBottom + 15 + j * 14,
         text,
@@ -472,7 +494,7 @@ export function riverLayout(
       }))
     // Only the last stage may right-align against the edge; elsewhere that would sit under another stage.
     const last = row === exitLabelRows[exitLabelRows.length - 1]
-    const short = [`${fmt(left, 'int')} left`]
+    const short: ExitLine[] = [{ text: `${fmt(left, 'int')} left`, kind: 'left' }]
     const ok = place([
       asLines(row.lines, false),
       ...(last ? [asLines(row.lines, true)] : []),

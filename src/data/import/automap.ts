@@ -8,6 +8,11 @@
  *
  * Scale: 1.0 exact name · 0.92 same words in another order or spelling · 0.62-0.9 partial match
  * · ±0.4 from values. Matches below 0.5 are dropped. High ≥ 0.85, medium ≥ 0.65, else low.
+ *
+ * Ties (common once the score is capped at 1, e.g. "Job ID" and "Requisition ID" for the req ID)
+ * go to the column whose values match more of the records already loaded (`known`), then to the
+ * header that matches the earlier name in the field's list: its label, its key, then its synonyms
+ * in schema order.
  */
 import { median } from '@/lib/stats'
 import type { DatasetDef, DatasetKey, FieldDef } from '../schema'
@@ -15,7 +20,7 @@ import { readNumber } from './numbers'
 import { type ColumnProfile, profileColumn, vocabularyHit } from './sniff'
 import { EXTRA_SYNONYMS } from './synonyms'
 import { headerTokens, normalizeHeader } from './text'
-import type { Confidence, HeaderCandidate, Mapping } from './types'
+import type { Confidence, HeaderCandidate, KnownValues, Mapping } from './types'
 
 export const MIN_SCORE = 0.5
 export const confidenceOf = (score: number): Confidence =>
@@ -122,16 +127,18 @@ interface NameMatch {
   score: number
   phrase: Phrase
   how: 'exact' | 'equal' | 'partial'
+  /** Position of the phrase in the field's list (label 0, key 1, then synonyms): lower wins ties. */
+  rank: number
 }
 
-function matchPhrase(h: HeaderInfo, p: Phrase): NameMatch | null {
+function matchPhrase(h: HeaderInfo, p: Phrase, rank: number): NameMatch | null {
   if (!h.tokens.length) return null
   if (h.seq === p.seq) {
     const single = p.tokens.length === 1 && GENERIC.has(p.tokens[0])
     const score = p.kind === 'synonym' ? (single ? 0.94 : 0.98) : 1
-    return { score, phrase: p, how: 'exact' }
+    return { score, phrase: p, how: 'exact', rank }
   }
-  if (h.compact === p.compact || h.sorted === p.sorted) return { score: 0.92, phrase: p, how: 'equal' }
+  if (h.compact === p.compact || h.sorted === p.sorted) return { score: 0.92, phrase: p, how: 'equal', rank }
   if (p.short) return null
   const overlap = p.tokens.filter((t) => h.set.has(t))
   // A partial match needs a shared content word ("salary"), or every non-generic word of the
@@ -146,13 +153,14 @@ function matchPhrase(h: HeaderInfo, p: Phrase): NameMatch | null {
   let score = coverage >= 1 ? 0.62 + 0.28 * precision : 0.3 + 0.45 * coverage * precision
   if (h.tokens.some((t) => QUALIFIERS.has(t) && !p.tokens.includes(t))) score *= 0.6
   if (p.tokens.some((t) => TYPE_MARKERS.has(t) && !h.set.has(t))) score *= 0.7
-  return { score, phrase: p, how: 'partial' }
+  return { score, phrase: p, how: 'partial', rank }
 }
 
 function bestName(dataset: DatasetKey, field: FieldDef, h: HeaderInfo): NameMatch | null {
   let best: NameMatch | null = null
-  for (const p of fieldPhrases(dataset, field)) {
-    const m = matchPhrase(h, p)
+  const phrases = fieldPhrases(dataset, field)
+  for (let rank = 0; rank < phrases.length; rank++) {
+    const m = matchPhrase(h, phrases[rank], rank)
     if (m && (!best || m.score > best.score)) best = m
   }
   return best
@@ -226,12 +234,25 @@ function describe(m: NameMatch, note: string | null): string {
   return cap(note ? `${base}; ${note}` : base)
 }
 
-interface Candidate {
-  fieldIndex: number
-  headerIndex: number
+interface Scored {
   score: number
   reason: string
+  /** Name-list position of the matching phrase (see NameMatch.rank). */
+  rank: number
+  /** Share of sampled values found among the known values for the field (0 without a hint). */
+  known: number
 }
+
+interface Candidate extends Scored {
+  fieldIndex: number
+  headerIndex: number
+}
+
+/** Stronger first: score, then known-value matches, then the earlier name in the field's list. */
+const byStrength = (a: Scored, b: Scored) => b.score - a.score || b.known - a.known || a.rank - b.rank
+
+/** A content-only match has no name; it ranks after every named one on a tie. */
+const NO_RANK = Number.MAX_SAFE_INTEGER
 
 /** Score one (field, header) pair; null when it is not a plausible match. */
 function scorePair(
@@ -239,14 +260,60 @@ function scorePair(
   field: FieldDef,
   h: HeaderInfo,
   profile: ColumnProfile | undefined,
-): { score: number; reason: string } | null {
+): Omit<Scored, 'known'> | null {
   const name = bestName(dataset, field, h)
   if (name) {
     const adj = profile ? shapeAdjust(dataset, field, profile) : { delta: 0, note: null }
     const score = Math.max(0, Math.min(1, name.score + adj.delta))
-    return { score, reason: describe(name, adj.note) }
+    return { score, reason: describe(name, adj.note), rank: name.rank }
   }
   return null
+}
+
+/** Below this share, a few known values in a column are chance, not evidence for the reason line. */
+const KNOWN_NOTE_SHARE = 0.5
+
+const loweredSets = new WeakMap<Set<string>, Set<string>>()
+function lowerSet(values: Set<string>): Set<string> {
+  let out = loweredSets.get(values)
+  if (!out) {
+    out = new Set([...values].map((v) => v.trim().toLowerCase()))
+    loweredSets.set(values, out)
+  }
+  return out
+}
+
+/** Share of a column's sampled values found among the known values for a field (trimmed, any case). */
+export function knownShare(
+  fieldKey: string,
+  profile: ColumnProfile | undefined,
+  known: readonly KnownValues[] | undefined,
+): number {
+  if (!known?.length || !profile?.n) return 0
+  const sets = known.filter((k) => k.field === fieldKey && k.values.size).map((k) => lowerSet(k.values))
+  if (!sets.length) return 0
+  let hits = 0
+  for (const v of profile.values) {
+    if (typeof v !== 'string' && typeof v !== 'number') continue
+    const t = String(v).trim().toLowerCase()
+    if (t && sets.some((set) => set.has(t))) hits++
+  }
+  return hits / profile.n
+}
+
+/** A scored pair with its known-value share, noted in the reason when it is convincing. */
+function withKnown(
+  s: Omit<Scored, 'known'>,
+  fieldKey: string,
+  profile: ColumnProfile | undefined,
+  known: readonly KnownValues[] | undefined,
+): Scored {
+  const share = knownShare(fieldKey, profile, known)
+  return {
+    ...s,
+    known: share,
+    reason: share >= KNOWN_NOTE_SHARE ? `${s.reason}; values match records already loaded` : s.reason,
+  }
 }
 
 /**
@@ -257,11 +324,13 @@ function contentOnly(
   dataset: DatasetKey,
   field: FieldDef,
   profile: ColumnProfile | undefined,
-): { score: number; reason: string } | null {
+): Omit<Scored, 'known'> | null {
   if (!profile || profile.n < 5 || profile.letterShare < 0.8 || profile.distinct > 20) return null
   if (field.type !== 'enum' && field.type !== 'level') return null
   const hit = vocabularyHit(dataset, field, profile)
-  return hit >= 0.8 ? { score: 0.45 + 0.1 * hit, reason: 'Values match the allowed list' } : null
+  return hit >= 0.8
+    ? { score: 0.45 + 0.1 * hit, reason: 'Values match the allowed list', rank: NO_RANK }
+    : null
 }
 
 export function profileColumns(
@@ -277,6 +346,7 @@ export function autoMapProfiled(
   profiles: ReadonlyMap<string, ColumnProfile>,
   def: DatasetDef,
   learned?: Record<string, string>,
+  known?: readonly KnownValues[],
 ): Mapping {
   const infos = headers.map(headerInfo)
   const fields = def.fields
@@ -306,9 +376,10 @@ export function autoMapProfiled(
     if (usedFields.has(fi)) return
     for (const h of infos) {
       if (usedHeaders.has(h.index)) continue
-      const s = scorePair(def.key, field, h, profiles.get(h.raw))
+      const profile = profiles.get(h.raw)
+      const s = scorePair(def.key, field, h, profile)
       if (s && s.score >= MIN_SCORE) {
-        candidates.push({ fieldIndex: fi, headerIndex: h.index, ...s })
+        candidates.push({ fieldIndex: fi, headerIndex: h.index, ...withKnown(s, field.key, profile, known) })
         named.add(h.index)
       }
     }
@@ -317,12 +388,14 @@ export function autoMapProfiled(
     if (usedFields.has(fi)) return
     for (const h of infos) {
       if (usedHeaders.has(h.index) || named.has(h.index)) continue
-      const s = contentOnly(def.key, field, profiles.get(h.raw))
-      if (s) candidates.push({ fieldIndex: fi, headerIndex: h.index, ...s })
+      const profile = profiles.get(h.raw)
+      const s = contentOnly(def.key, field, profile)
+      if (s)
+        candidates.push({ fieldIndex: fi, headerIndex: h.index, ...withKnown(s, field.key, profile, known) })
     }
   })
 
-  candidates.sort((a, b) => b.score - a.score || a.fieldIndex - b.fieldIndex || a.headerIndex - b.headerIndex)
+  candidates.sort((a, b) => byStrength(a, b) || a.fieldIndex - b.fieldIndex || a.headerIndex - b.headerIndex)
   for (const c of candidates) {
     if (usedFields.has(c.fieldIndex) || usedHeaders.has(c.headerIndex)) continue
     const score = Math.round(c.score * 100) / 100
@@ -348,36 +421,40 @@ export function autoMapProfiled(
  * @param sampleRows  the sheet's rows (up to 50 values per column are sampled)
  * @param def         the dataset definition from `DATASETS`
  * @param learned     normalized header → field key picks the user made before; applied first
+ * @param known       values already loaded per field (e.g. the req IDs of the loaded requisitions
+ *                    for `candidates.reqId`); breaks ties between columns named equally well
  */
 export function autoMap(
   headers: readonly string[],
   sampleRows: readonly Record<string, unknown>[],
   def: DatasetDef,
   learned?: Record<string, string>,
+  known?: readonly KnownValues[],
 ): Mapping {
-  return autoMapProfiled(headers, profileColumns(headers, sampleRows), def, learned)
+  return autoMapProfiled(headers, profileColumns(headers, sampleRows), def, learned, known)
 }
 
-/** Every plausible column for one field, best first, for the mapping dropdown. */
+/** Every plausible column for one field, best first (ties broken as in `autoMap`), for the mapping dropdown. */
 export function rankHeaders(
   headers: readonly string[],
   sampleRows: readonly Record<string, unknown>[],
   def: DatasetDef,
   fieldKey: string,
+  known?: readonly KnownValues[],
 ): HeaderCandidate[] {
   const field = def.fields.find((f) => f.key === fieldKey)
   if (!field) return []
-  const out: HeaderCandidate[] = []
+  const out: (Scored & { header: string })[] = []
   headers.forEach((raw, i) => {
     const h = headerInfo(raw, i)
     const profile = profileColumn(raw, sampleRows)
     const s = scorePair(def.key, field, h, profile) ?? contentOnly(def.key, field, profile)
-    if (s && s.score >= 0.3) {
-      const score = Math.round(s.score * 100) / 100
-      out.push({ header: raw, score, confidence: confidenceOf(score), reason: s.reason })
-    }
+    if (s && s.score >= 0.3) out.push({ header: raw, ...withKnown(s, field.key, profile, known) })
   })
-  return out.sort((a, b) => b.score - a.score)
+  return out.sort(byStrength).map(({ header, score: raw, reason }) => {
+    const score = Math.round(raw * 100) / 100
+    return { header, score, confidence: confidenceOf(score), reason }
+  })
 }
 
 /**

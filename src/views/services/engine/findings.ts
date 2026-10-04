@@ -33,8 +33,20 @@ import {
   resolvedIn,
 } from './cases'
 import { ATLAS_PROCESSES, FINAL_PAY_RULES, RESOLUTION_SLA_TARGET } from './catalog'
+import {
+  caseDrill,
+  csatDrill,
+  type DrillScope,
+  drillWhen,
+  monthSub,
+  onTimeDrill,
+  openDrill,
+  reopenDrill,
+  resolutionDrill,
+  retroDrill,
+} from './drills'
 import { type CaseFact, dueIn, onTimeRate, type TxFact } from './facts'
-import { type FinalPayRow, retroShare, type SiteRow } from './transactions'
+import { type FinalPayRow, retroCandidates, retroShare, type SiteRow } from './transactions'
 import { duration, isOther } from './util'
 
 export interface FindingInputs {
@@ -51,6 +63,8 @@ export interface FindingInputs {
   newHireRegions: readonly SiteRow[]
   /** Fewer than 5 people in scope: any finding would be about individuals, so none is raised. */
   small?: boolean
+  /** Scope for the drill-downs behind each finding's number. */
+  scope: DrillScope
 }
 
 interface Ranked extends Finding {
@@ -156,6 +170,7 @@ function volumeSpikes(x: FindingInputs): Ranked[] {
       slaSpike.rate != null &&
       (slaSpike.rate < 0.8 || (slaRest.rate != null && slaRest.rate - slaSpike.rate >= 0.1))
     const seg = concentration(inWindow, (f) => f.month === month, x.people)
+    const monthRows = x.facts.filter((f) => f.category === category && f.month === month)
     const slaText =
       slaSpike.rate == null
         ? ''
@@ -170,6 +185,13 @@ function volumeSpikes(x: FindingInputs): Ranked[] {
       action: `Review ${stepsOf(spike[0]?.processId ?? null)} with the ${spike[0]?.team ?? category} team and confirm what drove the ${formatMonth(`${month}-01`)} volume.`,
       filter: segmentFilter(seg),
       tab: 'cases',
+      drill: drillWhen(x.scope, monthRows, () =>
+        caseDrill(x.scope, monthRows, {
+          title: `Cases opened, ${category}, ${formatMonth(`${month}-01`)}`,
+          subtitle: monthSub(x.scope, month),
+          order: (a, b) => Number(b.resolutionMet === false) - Number(a.resolutionMet === false),
+        }),
+      ),
       rank: 3,
       category,
     })
@@ -224,6 +246,9 @@ function slowCategories(x: FindingInputs, raised: ReadonlySet<string>): Ranked[]
       action,
       filter: segmentFilter(seg),
       tab: 'cases',
+      drill: drillWhen(x.scope, r.records, () =>
+        resolutionDrill(x.scope, r.records, `Cases judged on resolution SLA, ${r.category}, ${x.scope.per}`),
+      ),
       rank: 2,
       category: r.category,
     })
@@ -260,8 +285,12 @@ function finalPayLate(x: FindingInputs): Ranked[] {
         detail: `${r.late} of ${r.exits} were paid after the deadline (${FINAL_PAY_RULES.get(r.jurisdiction)?.phrase ?? 'the due date in the file'})${by}.${split}`,
         action: `Review the OF-05 final pay steps for ${r.name} with the Payroll team.`,
         people: late.slice(0, 50).map(personOfTx),
+        peopleTotal: late.length > 50 ? late.length : undefined,
         filter: sites.length ? { location: sites } : undefined,
         tab: 'transactions',
+        drill: drillWhen(x.scope, r.records, () =>
+          onTimeDrill(x.scope, r.records, `Final pay due, ${r.name}, ${x.scope.per}`, { exitType: true }),
+        ),
         rank: 1 + (r.rate ?? 1),
       }
     })
@@ -291,8 +320,12 @@ function newHireReadiness(x: FindingInputs): Ranked[] {
       }.${sites.length ? ` By site: ${sites.map((s) => `${s.location} ${pct(s.rate)}`).join(', ')}.` : ''}`,
       action: `Review the ON-03 hire entry steps for ${r.region} sites with the People operations team.`,
       people: late.slice(0, 50).map(personOfTx),
+      peopleTotal: late.length > 50 ? late.length : undefined,
       filter: sites.length ? { location: sites.map((s) => s.location) } : undefined,
       tab: 'transactions',
+      drill: drillWhen(x.scope, r.records, () =>
+        onTimeDrill(x.scope, r.records, `New hires due, ${r.region}, ${x.scope.per}`),
+      ),
       rank: 4,
     })
   }
@@ -309,8 +342,12 @@ function newHireReadiness(x: FindingInputs): Ranked[] {
       detail: `${s.late} of ${s.starts} hires were entered after Day −3.`,
       action: `Review the ON-03 hire entry steps for ${s.location} with the People operations team.`,
       people: late.slice(0, 50).map(personOfTx),
+      peopleTotal: late.length > 50 ? late.length : undefined,
       filter: { location: [s.location] },
       tab: 'transactions',
+      drill: drillWhen(x.scope, s.records, () =>
+        onTimeDrill(x.scope, s.records, `New hires due, ${s.location}, ${x.scope.per}`),
+      ),
       rank: 4,
     })
   }
@@ -335,6 +372,9 @@ function channelGap(x: FindingInputs): Ranked[] {
       detail: `Based on ${plural(c.responses, `${c.channel.toLowerCase()} response`)} in the period. ${others.map((o) => `${o.channel} ${fmt(o.csat, 'num1')}`).join(', ')}.`,
       action: `Review a sample of low-scoring ${c.channel.toLowerCase()} cases with the team leads and look at moving routine requests to the portal.`,
       tab: 'cases',
+      drill: drillWhen(x.scope, c.resolvedRecords, () =>
+        csatDrill(x.scope, c.resolvedRecords, `Cases rated for satisfaction, ${c.channel}, ${x.scope.per}`),
+      ),
       rank: 7,
     })
   }
@@ -370,6 +410,9 @@ function reopenHotspots(x: FindingInputs): Ranked[] {
       action: `Review ${stepsOf(processId)} with the ${team} team, starting with the reopened cases.`,
       filter: segmentFilter(seg),
       tab: 'cases',
+      drill: drillWhen(x.scope, r.records, () =>
+        reopenDrill(x.scope, r.records, `Reopened cases, ${r.category}, ${x.scope.per}`),
+      ),
       rank: 6,
     })
   }
@@ -398,6 +441,13 @@ function agedBacklog(x: FindingInputs): Ranked[] {
       detail: `By status: ${countWords(list.map((f) => f.status))}${slaText}. ${otherText}`,
       action: `Review each open ${first.processId ? `${first.processId} ` : ''}case with the ${first.team} team and agree a next step and date.`,
       tab: 'cases',
+      // These cases are listed one by one in the aging table, so only the scope gate applies.
+      drill: drillWhen(
+        x.scope,
+        list,
+        () => openDrill(x.scope, list, `Cases open more than 30 days, ${category}`, true),
+        true,
+      ),
       rank: 5,
     })
   }
@@ -407,6 +457,7 @@ function agedBacklog(x: FindingInputs): Ranked[] {
 function retroAdjustments(x: FindingInputs): Ranked[] {
   const r = retroShare(x.tx, x.window)
   if (r.rate == null || r.n < 20 || r.rate < 0.02) return []
+  const changes = retroCandidates(dueIn(x.tx, x.window))
   return [
     {
       id: 'services-retro',
@@ -415,6 +466,9 @@ function retroAdjustments(x: FindingInputs): Ranked[] {
       detail: `${r.retro} of ${r.n} changes due in the period. Each one means a correction on a later payslip.`,
       action: 'Review the DS-01 cut-off calendar with the HRIS and Payroll teams.',
       tab: 'transactions',
+      drill: drillWhen(x.scope, changes, () =>
+        retroDrill(x.scope, changes, `Retro adjustments, ${x.scope.per}`),
+      ),
       rank: 8,
     },
   ]
@@ -443,6 +497,13 @@ function strongest(x: FindingInputs): Ranked[] {
         ? `Share how the ${best.team} team runs the ${p.id} ${p.short} queue with the other teams.`
         : `Share how the ${best.team} team runs this queue with the other teams.`,
       tab: 'cases',
+      drill: drillWhen(x.scope, best.records, () =>
+        resolutionDrill(
+          x.scope,
+          best.records,
+          `Cases judged on resolution SLA, ${best.category}, ${x.scope.per}`,
+        ),
+      ),
       rank: 9,
     },
   ]

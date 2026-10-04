@@ -9,6 +9,7 @@ import { formatDate, formatMonth } from '@/lib/dates'
 import type { Segment } from '@/lib/decompose'
 import { fmt, plural } from '@/lib/format'
 import { listText, segmentFilter, segmentName, type TalentBase, UNKNOWN } from './base'
+import type { TalentDrills } from './drills'
 import type { LearningResult } from './learning'
 import { HIGH_GUIDELINE, type PerformanceResult } from './performance'
 import type { OverdueResult } from './promotion'
@@ -28,6 +29,7 @@ export interface FindingInputs {
   overdue: OverdueResult
   learning: LearningResult
   risk: RiskModel
+  drill: TalentDrills
 }
 
 /** "11.0 pts" for a fraction difference, without a sign. */
@@ -57,7 +59,7 @@ function segmentText(s: Segment): string {
 
 export function buildFindings(x: FindingInputs): Finding[] {
   const out: Finding[] = []
-  const { base, performance: perf, succession: succ, retention: ret, overdue, learning, risk } = x
+  const { base, performance: perf, succession: succ, retention: ret, overdue, learning, risk, drill } = x
 
   // High-potential regretted exits in the last 6 months (needs termination type, regrettable and potential).
   const hipo = ret.hipoExits.people
@@ -80,6 +82,7 @@ export function buildFindings(x: FindingInputs): Finding[] {
           ? { businessUnit: [bu] }
           : undefined,
       tab: 'retention',
+      drill: drill.hipoExits(),
     })
   }
 
@@ -106,6 +109,13 @@ export function buildFindings(x: FindingInputs): Finding[] {
       people: exposed.map((r) => ({ id: r.incumbentId, name: r.incumbent, note: r.roleTitle })),
       filter: dept ? { department: [dept] } : undefined,
       tab: 'succession',
+      drill: drill.roles(
+        exposed,
+        'Roles with an incumbent at high risk of loss and no successor',
+        useModelRisk
+          ? 'High risk of loss from the Census flight-risk model (the plans record none).'
+          : 'High risk of loss as recorded in the succession plan.',
+      ),
     })
   }
 
@@ -123,6 +133,11 @@ export function buildFindings(x: FindingInputs): Finding[] {
       action: 'Agree on development plans that make one successor ready now for each of these roles.',
       people: roles.map((r) => ({ id: r.incumbentId, name: r.incumbent, note: r.roleTitle })),
       tab: 'succession',
+      drill: drill.roles(
+        roles,
+        'Critical roles with no successor ready now',
+        `Rate = ${notReady} not ready ÷ ${succ.critical} critical roles. Successors who have left are not counted.`,
+      ),
     })
   }
 
@@ -140,6 +155,7 @@ export function buildFindings(x: FindingInputs): Finding[] {
       action: `Review the ${f.businessUnit} rating distribution against the guideline in the next calibration session.`,
       filter: { businessUnit: [f.businessUnit] },
       tab: 'performance',
+      drill: drill.unitHigh(f.businessUnit),
     })
   }
 
@@ -153,6 +169,7 @@ export function buildFindings(x: FindingInputs): Finding[] {
       action: `Brief ${c.row.businessUnit} managers on the rating guideline before they propose ratings next cycle.`,
       filter: { businessUnit: [c.row.businessUnit] },
       tab: 'performance',
+      drill: drill.calibration(c.row.businessUnit, 'all'),
     })
   }
 
@@ -172,6 +189,7 @@ export function buildFindings(x: FindingInputs): Finding[] {
       people: people(conc.segmentPeople.map((p) => ({ ...p, note: `${p.department}, ${p.location}` }))),
       filter: segmentFilter(t.dim, t.value),
       tab: 'learning',
+      drill: drill.overdueSegment(),
     })
   }
 
@@ -192,6 +210,7 @@ export function buildFindings(x: FindingInputs): Finding[] {
       people: people(overdue.rows.map((r) => ({ ...r, note: `${r.department}, ${r.level ?? '—'}` }))),
       filter: top ? { department: [top.value] } : undefined,
       tab: 'retention',
+      drill: drill.promotionOverdue(),
     })
   }
 
@@ -232,6 +251,7 @@ export function buildFindings(x: FindingInputs): Finding[] {
       people: people(kt.map((k) => ({ ...k, note: `${k.department} · ${k.reason1}` }))),
       filter: seg && seg.share >= 0.3 ? segmentFilter(seg.dim, seg.value) : undefined,
       tab: 'retention',
+      drill: drill.keyTalent(),
     })
   }
 
@@ -242,7 +262,7 @@ export function buildFindings(x: FindingInputs): Finding[] {
 
 /** One finding about something clearly working, when there is one. */
 function goodFinding(x: FindingInputs): Finding | null {
-  const { performance: perf, succession: succ, learning } = x
+  const { performance: perf, succession: succ, learning, drill } = x
   const cur = learning.current
   if (cur.rate != null && cur.rate >= 0.95 && cur.due >= 20) {
     return {
@@ -252,6 +272,7 @@ function goodFinding(x: FindingInputs): Finding | null {
       detail: `${cur.onTime} of ${cur.due} assignments were done by their due date.`,
       action: 'Keep the current reminder schedule for the next campaign.',
       tab: 'learning',
+      drill: drill.onTime(null, 'onTime'),
     }
   }
   const calibrated = new Set(perf.calibrationFlags.map((c) => c.row.businessUnit))
@@ -275,6 +296,7 @@ function goodFinding(x: FindingInputs): Finding | null {
       action: `Use the ${match.group} calibration approach as the reference in the next cycle.`,
       filter: { businessUnit: [match.group] },
       tab: 'performance',
+      drill: drill.unitHigh(match.group),
     }
   }
   if (succ.coverage != null && succ.coverage >= 0.8 && succ.critical >= 5) {
@@ -285,6 +307,7 @@ function goodFinding(x: FindingInputs): Finding | null {
       detail: `${succ.criticalCovered} of ${succ.critical} critical roles are covered.`,
       action: 'Keep the bench current at the next talent review.',
       tab: 'succession',
+      drill: drill.coverage(),
     }
   }
   return null

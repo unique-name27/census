@@ -8,6 +8,7 @@ import { compRows } from './comp'
 import {
   addContingent,
   addLeavers,
+  addPriorFirstYearLeavers,
   assignHires,
   assignIds,
   assignLeaderHires,
@@ -35,6 +36,7 @@ export function generateSample(): Datasets {
   addLeavers(world, names, rngFor('leavers'))
   assignHires(world, rngFor('hires'))
   addContingent(world, names, rngFor('contingent'))
+  addPriorFirstYearLeavers(world, names, rngFor('first-year-leavers'))
   plantStagnant(world, rngFor('stagnant'))
   rateCycles(world, rngFor('ratings'))
   plantLongTenureL4(world, rngFor('long-l4'), isConsecutiveHigh)
@@ -47,8 +49,8 @@ export function generateSample(): Datasets {
     jobChanges: jobChangeRows(world),
     requisitions,
     candidates,
-    cases: caseRows(world, rngFor('cases')),
-    transactions: transactionRows(world, rngFor('transactions')),
+    cases: caseRows(world, rngFor('cases'), rngFor('cases-late-additions')),
+    transactions: transactionRows(world, rngFor('transactions'), rngFor('transactions-late-additions')),
     reviews: reviewRows(world),
     succession: successionRows(world, rngFor('succession')),
     learning: learningRows(world, rngFor('learning')),

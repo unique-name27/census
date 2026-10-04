@@ -53,6 +53,11 @@ export interface Finding {
   action?: string
   /** People behind the finding (shown as a short list, max ~50). */
   people?: FindingPerson[]
+  /**
+   * How many people the finding covers when `people` is a capped list (e.g. 57 when only the
+   * first 50 are listed). Omit when `people` is the whole list.
+   */
+  peopleTotal?: number
   /** Rescope the whole app to where the problem concentrates. */
   filter?: Partial<Filters>
   /** Open this tab of the current view. */

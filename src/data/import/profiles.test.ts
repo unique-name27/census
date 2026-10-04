@@ -4,6 +4,7 @@ import { autoMap, withChoice } from './automap'
 import {
   applyProfile,
   deleteProfile,
+  forgetAllProfiles,
   forgetLearnedSynonyms,
   headerFingerprint,
   learnSynonym,
@@ -14,6 +15,7 @@ import {
 } from './profiles'
 
 const idb = vi.hoisted(() => new Map<string, unknown>())
+const blocked = vi.hoisted(() => ({ on: false }))
 vi.mock('idb-keyval', () => ({
   get: async (k: string) => idb.get(k),
   set: async (k: string, v: unknown) => {
@@ -21,6 +23,13 @@ vi.mock('idb-keyval', () => ({
   },
   del: async (k: string) => {
     idb.delete(k)
+  },
+  delMany: async (ks: string[]) => {
+    for (const k of ks) idb.delete(k)
+  },
+  keys: async () => {
+    if (blocked.on) throw new Error('Storage is blocked')
+    return [...idb.keys()]
   },
 }))
 
@@ -116,5 +125,45 @@ describe('learned synonyms', () => {
     vi.stubGlobal('localStorage', undefined)
     expect(() => learnSynonym('comp', 'x', 'baseSalary')).not.toThrow()
     expect(loadLearnedSynonyms('comp')).toEqual({})
+  })
+})
+
+describe('forgetAllProfiles', () => {
+  const save = (dataset: 'employees' | 'comp', headers: string[]) =>
+    saveProfile(makeProfile(dataset, headers, autoMap(headers, [], datasetDef(dataset))))
+
+  it('removes every saved layout and learned pick, and nothing else', async () => {
+    await save('employees', ['Worker', 'Joined'])
+    await save('employees', ['Employee ID', 'Hire date', 'Manager'])
+    await save('comp', ['Employee ID', 'Base salary'])
+    idb.set('census:dataset:employees', { rows: [] })
+    learnSynonym('comp', 'Annual Pay', 'baseSalary')
+    learnSynonym('employees', 'Worker', 'employeeId')
+    localStorage.setItem('census:theme', '"dark"')
+
+    expect(await forgetAllProfiles()).toBe(3)
+    expect([...idb.keys()]).toEqual(['census:dataset:employees'])
+    expect(await loadProfile('employees', ['Worker', 'Joined'])).toBe(null)
+    expect(loadLearnedSynonyms('comp')).toEqual({})
+    expect(loadLearnedSynonyms('employees')).toEqual({})
+    expect(localStorage.getItem('census:theme')).toBe('"dark"')
+    expect(await forgetAllProfiles()).toBe(0)
+  })
+
+  it('can keep learned picks', async () => {
+    await save('comp', ['Employee ID', 'Base salary'])
+    learnSynonym('comp', 'Annual Pay', 'baseSalary')
+    expect(await forgetAllProfiles({ synonyms: false })).toBe(1)
+    expect(loadLearnedSynonyms('comp')).toEqual({ 'annual pay': 'baseSalary' })
+  })
+
+  it('works without storage', async () => {
+    vi.stubGlobal('localStorage', undefined)
+    blocked.on = true
+    try {
+      expect(await forgetAllProfiles()).toBe(0)
+    } finally {
+      blocked.on = false
+    }
   })
 })

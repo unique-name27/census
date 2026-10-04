@@ -75,14 +75,55 @@ export function sampleRow<R extends object>(rows: readonly R[], key: string): R 
 
 /** Round away binary noise (0.1 + 0.2) without losing meaningful precision. */
 function clean(v: number, digits: number): string {
+  return String(roundTo(v, digits))
+}
+
+function roundTo(v: number, digits: number): number {
   const r = Number(v.toFixed(digits))
-  return String(Object.is(r, -0) ? 0 : r)
+  return Object.is(r, -0) ? 0 : r
+}
+
+/**
+ * Decimal places an exported number keeps, per format: a little more than the screen shows, never
+ * the engine's full float. Rates and points are fractions, so 4 places is 0.01 of a percent.
+ */
+export const EXPORT_DIGITS: Readonly<Partial<Record<Format, number>>> = {
+  int: 0,
+  compact: 0,
+  num1: 1,
+  years: 1,
+  days: 1,
+  hours: 1,
+  deltaDays: 1,
+  num2: 3,
+  ratio: 3,
+  times: 3,
+  pct: 4,
+  pct0: 4,
+  pct2: 4,
+  pts: 4,
+  pts2: 4,
+  deltaPct: 4,
+  money: 2,
+  moneyFull: 2,
+}
+
+/** Unformatted numbers keep 6 places (enough for any measure, no float noise). */
+const DEFAULT_DIGITS = 6
+
+/**
+ * The number an export writes for a value in `format`: rounded to the format's export precision
+ * (`EXPORT_DIGITS`). CSV, clipboard and Excel all store this value, so a workbook cell never holds
+ * more precision than the analysis supports.
+ */
+export function exportNumber(v: number, format: Format | undefined): number {
+  return roundTo(v, (format && EXPORT_DIGITS[format]) ?? DEFAULT_DIGITS)
 }
 
 /**
  * A value as plain text that Excel and Google Sheets parse back into the right type:
  * percentages as "12.4%", points as "2.1", money as a plain number, dates as ISO.
- * Missing values are empty, never 0.
+ * Numbers are rounded to their format's export precision. Missing values are empty, never 0.
  */
 export function plainText(v: unknown, spec: Format | FormatSpec | undefined, row?: object): string {
   const format = typeof spec === 'function' ? (row ? spec(row) : undefined) : spec
@@ -91,22 +132,18 @@ export function plainText(v: unknown, spec: Format | FormatSpec | undefined, row
   if (v instanceof Date) return Number.isNaN(v.getTime()) ? '' : v.toISOString().slice(0, 10)
   if (typeof v === 'number') {
     if (!Number.isFinite(v)) return ''
+    const n = exportNumber(v, format)
     switch (format) {
       case 'pct':
       case 'pct0':
-        return `${clean(v * 100, 2)}%`
       case 'pct2':
-        return `${clean(v * 100, 4)}%`
+      case 'deltaPct':
+        return `${clean(n * 100, 2)}%`
       case 'pts':
-        return clean(v * 100, 2)
-      case 'int':
-      case 'compact':
-        return clean(v, 0)
-      case 'money':
-      case 'moneyFull':
-        return clean(v, 2)
+      case 'pts2':
+        return clean(n * 100, 2)
       default:
-        return clean(v, 6)
+        return String(n)
     }
   }
   if (typeof v === 'string') return v

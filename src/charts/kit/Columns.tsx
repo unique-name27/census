@@ -2,7 +2,9 @@
  * Vertical bars over categories or months: one series, grouped series, or stacked series.
  * Bars are at most 24px wide with a 4px rounded data end; stacked segments are separated by a
  * 2px gap in the sheet color and only the top segment is rounded. Values sit on the caps when
- * they fit (single series, and stack totals).
+ * they fit (single series, and stack totals), lifted above the reference rule when it would run
+ * through them; a stack whose values are all hidden has no bar and a "—" cap. Clicking a stacked
+ * segment or a grouped bar drills that series (`onSelectSegment`), elsewhere the category.
  */
 import * as Plot from '@observablehq/plot'
 import { formatMonth, formatMonthShort } from '@/lib/dates'
@@ -12,8 +14,19 @@ import type { LegendSpec } from '../core/legend'
 import { hoverBand, labelsMark, refLabelWidth, refRule, roundedBarsY, scalePos } from '../core/marks'
 import { maxTextWidth, textWidth } from '../core/measure'
 import type { TipContent, TipRow } from '../core/tooltip'
-import { axisX, axisY, baseline, gridY, housePlot, type PlotBuildContext, PlotChart } from '../plot'
+import {
+  axisX,
+  axisY,
+  baseline,
+  gridY,
+  housePlot,
+  type PlotBuildContext,
+  PlotChart,
+  type PlotElement,
+  type PlotPointer,
+} from '../plot'
 import { useChartTheme } from '../theme'
+import { clearOfRules, groupIndexAt, groupLayout, segmentAt } from './hit'
 import { type Category, categoryModel, stackSegments } from './prepare'
 import { bandLabelLayout, extent, numericAxis } from './scale'
 import { otherLast, type SeriesColors, type SeriesScheme, seriesPalette } from './series'
@@ -53,6 +66,12 @@ export interface ColumnsProps<T extends object> extends ChartBaseProps<T> {
   labels?: boolean
   yDomain?: [number, number]
   height?: number
+  /**
+   * Click-to-drill on one series: the row behind the stacked segment or grouped bar under the
+   * pointer. Without it, such a click calls `onSelect` with that row (it still names the
+   * category); clicks elsewhere in a column call `onSelect` with the category's first row.
+   */
+  onSelectSegment?: (d: T) => void
 }
 
 export function Columns<T extends object>({
@@ -73,6 +92,7 @@ export function Columns<T extends object>({
   yDomain,
   height = 240,
   onSelect,
+  onSelectSegment,
   ariaLabel,
 }: ColumnsProps<T>) {
   const month = xType === 'month'
@@ -190,9 +210,7 @@ export function Columns<T extends object>({
       )
     } else {
       const n = model.series.length
-      const gap = 2
-      const barW = Math.max(2, Math.min(24, (step * 0.8 - (n - 1) * gap) / n))
-      const left0 = (step - (n * barW + (n - 1) * gap)) / 2
+      const { size: barW, start: left0, gap } = groupLayout(step, n, step * 0.8)
       model.series.forEach((s, i) => {
         const left = left0 + i * (barW + gap)
         const cells = cats.flatMap((c) =>
@@ -225,9 +243,12 @@ export function Columns<T extends object>({
           (scales) =>
             cats.map((c) => {
               const v = stacked ? c.total : (c.cells[0]?.value ?? null)
+              // A cap is ~12px tall around y; lift it above the reference rule when the rule would cross it.
+              const y = scalePos(scales, 'y', Math.max(0, v ?? 0)) - 8
+              const refPx = refLine ? [-scalePos(scales, 'y', refLine.value)] : []
               return {
                 x: scalePos(scales, 'x', c.key),
-                y: scalePos(scales, 'y', Math.max(0, v ?? 0)) - 8,
+                y: -clearOfRules(-(y + 6), 12, refPx, 2) - 6,
                 anchor: 'middle' as const,
                 halo: t.sheet,
                 parts: [
@@ -263,7 +284,24 @@ export function Columns<T extends object>({
     )
   }
 
-  const tip = (c: Category<T>): TipContent => {
+  /** The series (stacked segment or grouped bar) under the pointer, from the plot's scales. */
+  const pick = (c: Category<T>, at: PlotPointer, plot: PlotElement): string | null => {
+    if (stacked) {
+      const v = plot.scale('y')?.invert?.(at.y)
+      return typeof v === 'number' ? (segmentAt(segments, c.key, v)?.series ?? null) : null
+    }
+    const xs = plot.scale('x')
+    const bw = xs?.bandwidth ?? 0
+    const n = model.series.length
+    const i = groupIndexAt(at.x - Number(xs?.apply(c.key)), groupLayout(bw, n, bw * 0.8), n)
+    const s = i == null ? null : model.series[i]
+    return s != null && c.cells.some((cell) => cell.series === s && cell.value != null) ? s : null
+  }
+  /** The row behind the hovered series, when it has a value. */
+  const cellOf = (c: Category<T>, part: string | null) =>
+    part == null ? undefined : c.cells.find((cell) => cell.series === part && cell.value != null)
+
+  const tip = (c: Category<T>, part: string | null): TipContent => {
     if (!multi) {
       const v = c.cells[0]?.value ?? null
       return {
@@ -274,10 +312,16 @@ export function Columns<T extends object>({
     }
     const rows: TipRow[] = model.series.map((s, i) => {
       const cell = c.cells.find((cell) => cell.series === s)
-      return { value: fmt(cell?.value ?? null, format), label: s, color: legendColors[i], shape: 'rect' }
+      return {
+        value: fmt(cell?.value ?? null, format),
+        label: s,
+        color: legendColors[i],
+        shape: 'rect',
+        ...(part === s ? { strong: true } : {}),
+      }
     })
     if (stacked) rows.reverse().push({ value: fmt(c.total, format), label: 'Total' })
-    return { title: catTitle(c.key), rows }
+    return { title: catTitle(c.key), rows, note: stacked && c.total == null ? HIDDEN_NOTE : undefined }
   }
 
   return (
@@ -286,10 +330,16 @@ export function Columns<T extends object>({
       height={height}
       legend={legend}
       tip={tip}
+      pick={multi ? pick : undefined}
+      selectable={(c, part) =>
+        cellOf(c, part) ? !!(onSelectSegment ?? onSelect) : !!onSelect && c.cells.length > 0
+      }
       onSelect={
-        onSelect
-          ? (c) => {
-              if (c.cells[0]) onSelect(c.cells[0].datum)
+        onSelect || onSelectSegment
+          ? (c, part) => {
+              const cell = cellOf(c, part)
+              if (cell) (onSelectSegment ?? onSelect)?.(cell.datum)
+              else if (c.cells[0]) onSelect?.(c.cells[0].datum)
             }
           : undefined
       }

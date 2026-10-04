@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import { AS_OF, person, smallCompany } from './fixtures'
-import { applyScenario, checkAction, describeAction, diffSummary, diffTrees, rippleOf } from './scenario'
+import {
+  applyScenario,
+  checkAction,
+  describeAction,
+  diffSummary,
+  diffTrees,
+  movingIds,
+  rippleOf,
+  rippleTeams,
+} from './scenario'
 import { buildOrgTree, layersBelow } from './tree'
 
 const base = buildOrgTree(smallCompany(), AS_OF)
@@ -31,6 +40,7 @@ describe('scenario moves', () => {
       expect(res.code).toBe('cycle')
       expect(res.reason).toContain('reporting loop')
       expect(res.reason).toContain('Name IC-1 → Name MGR-1 → Name VP-A')
+      expect(res.reason).toMatch(/^Name IC-1 already reports up to Name VP-A /)
     }
     const r = applyScenario(base, [{ kind: 'move', personId: 'VP-B', toManagerId: 'IC-9', mode: 'team' }])
     expect(r.applied).toEqual([])
@@ -97,11 +107,43 @@ describe('ripple preview', () => {
     const team = rippleOf(base, { kind: 'move', personId: 'MGR-1', toManagerId: 'VP-B', mode: 'team' })
     expect(team.oldManager).toEqual({ id: 'VP-A', before: 2, after: 1 })
     expect(team.peopleMoving).toBe(6)
-    expect(team.crossDept).toBe(6)
+    expect(team.movingIds).toHaveLength(6)
+    expect(team.movingIds[0]).toBe('MGR-1')
+    // Only MGR-1's reporting line changes in a team move; their reports keep MGR-1.
+    expect(team.crossDept).toBe(1)
+    expect(team.crossDeptIds).toEqual(['MGR-1'])
     const blocked = rippleOf(base, { kind: 'move', personId: 'VP-A', toManagerId: 'IC-2', mode: 'team' })
     expect(blocked.ok).toBe(false)
     expect(blocked.changes).toEqual([])
     expect(describeAction(base, team.action)).toBe('Move Name MGR-1 and their org to Name VP-B')
+  })
+})
+
+describe('ripple and diff agree', () => {
+  const cases = [
+    { kind: 'move' as const, personId: 'MGR-1', toManagerId: 'VP-B', mode: 'team' as const },
+    { kind: 'move' as const, personId: 'MGR-1', toManagerId: 'VP-B', mode: 'person' as const },
+    { kind: 'move' as const, personId: 'DIR-1', toManagerId: 'VP-A', mode: 'person' as const },
+    { kind: 'exit' as const, personId: 'VP-B' },
+  ]
+  it.each(cases)('cross-department count and people moving match the diff for %o', (action) => {
+    const r = rippleOf(base, action)
+    const after = applyScenario(base, [action]).tree
+    const d = diffTrees(base, after)
+    expect(r.crossDeptIds.sort()).toEqual(d.crossDept.map((c) => c.id).sort())
+    expect(r.crossDept).toBe(d.crossDept.length)
+    expect(r.changes.map((c) => c.id).sort()).toEqual(d.reportingChanges.map((c) => c.id).sort())
+    expect(movingIds(base, action)).toEqual(r.movingIds)
+    // The teams the preview lists are the teams the scenario produces.
+    const teams = rippleTeams(base, r)
+    if (r.oldManager) {
+      expect(teams.oldAfter).toHaveLength(r.oldManager.after)
+      expect(new Set(teams.oldAfter)).toEqual(new Set(after.children.get(r.oldManager.id) ?? []))
+    }
+    if (r.newManager) {
+      expect(teams.newAfter).toHaveLength(r.newManager.after)
+      expect(new Set(teams.newAfter)).toEqual(new Set(after.children.get(r.newManager.id) ?? []))
+    }
   })
 })
 

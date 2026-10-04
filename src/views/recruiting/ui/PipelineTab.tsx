@@ -1,29 +1,24 @@
 /**
  * Pipeline: where applications go (the river), who owns the next step (action queue), how each
- * stage converts and how long candidates wait, and how speed changed month by month.
+ * stage converts and how long candidates wait, and how speed changed month by month. Every number
+ * opens the applications behind it in the drill panel.
  */
 import { useEffect, useRef } from 'react'
-import { DotStrip, Figure, Heatmap } from '@/charts'
-import { Button, Section } from '@/components'
+import { type Column, DotStrip, Figure, Heatmap } from '@/charts'
+import { Section } from '@/components'
 import { STAGES } from '@/data/schema'
+import { Drill, drill } from '@/drill'
 import { formatDate } from '@/lib/dates'
 import { fmt, plural } from '@/lib/format'
-import { flowMembers, TRANSITIONS } from '../engine/flow'
+import { candidateDrill, flowDrill, speedCellDrill, stepChangeDrill, stepDaysDrill } from '../engine/drills'
+import { type FlowKind, type SpeedCell, TRANSITIONS } from '../engine/flow'
+import type { WaitDot } from '../engine/pipeline'
 import { HIRED, LAST_OPEN_STAGE } from '../engine/types'
 import { useRecruitingUi } from '../state'
 import { ActionQueue } from './ActionQueue'
-import { asOfNote, NEED_CANDIDATES, NoRecruitingData, windowText } from './common'
+import { asOfNote, drillIf, NEED_CANDIDATES, NoRecruitingData, windowText } from './common'
 import { useRecruiting } from './hooks'
 import { RiverChart } from './RiverChart'
-
-const OUTCOME_WORD: Record<string, string> = {
-  advanced: 'Advanced',
-  active: 'Still active',
-  rejected: 'Rejected',
-  withdrawn: 'Withdrawn',
-  declined: 'Offer declined',
-  node: 'Reached',
-}
 
 const MEMBER_COLUMNS = [
   { key: 'candidate', label: 'Candidate' },
@@ -41,7 +36,8 @@ const MEMBER_COLUMNS = [
 export function PipelineTab() {
   const m = useRecruiting()
   const b = m.base
-  const { flow: selected, selectFlow, focusQueue, queueFocused } = useRecruitingUi()
+  const focusQueue = useRecruitingUi((s) => s.focusQueue)
+  const queueFocused = useRecruitingUi((s) => s.queueFocused)
   const queueRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -53,16 +49,19 @@ export function PipelineTab() {
   if (!b.apps.length && !b.reqs.length) return <NoRecruitingData />
 
   const flow = b.flow
+  type FlowRow = {
+    stage: string
+    flow: string
+    candidates: number
+    shareOfStage: number | null
+    medianDays: number | null
+    kind: FlowKind
+    stageIndex: number
+  }
   const flowRows = flow.stages.flatMap((s) => {
     const name = STAGES[s.stage]
     const share = (v: number) => (s.entered ? v / s.entered : null)
-    const rows: {
-      stage: string
-      flow: string
-      candidates: number
-      shareOfStage: number | null
-      medianDays: number | null
-    }[] = []
+    const rows: FlowRow[] = []
     if (s.advanced)
       rows.push({
         stage: name,
@@ -70,14 +69,25 @@ export function PipelineTab() {
         candidates: s.advanced,
         shareOfStage: share(s.advanced),
         medianDays: s.medianDays,
+        kind: 'advanced',
+        stageIndex: s.stage,
       })
-    for (const [k, v] of [
-      ['Still active', s.active],
-      ['Rejected', s.rejected],
-      ['Withdrawn', s.withdrawn],
-      ['Offer declined', s.declined],
+    for (const [k, v, kind] of [
+      ['Still active', s.active, 'active'],
+      ['Rejected', s.rejected, 'rejected'],
+      ['Withdrawn', s.withdrawn, 'withdrawn'],
+      ['Offer declined', s.declined, 'declined'],
     ] as const)
-      if (v) rows.push({ stage: name, flow: k, candidates: v, shareOfStage: share(v), medianDays: null })
+      if (v)
+        rows.push({
+          stage: name,
+          flow: k,
+          candidates: v,
+          shareOfStage: share(v),
+          medianDays: null,
+          kind,
+          stageIndex: s.stage,
+        })
     return rows
   })
   flowRows.push({
@@ -86,7 +96,22 @@ export function PipelineTab() {
     candidates: flow.hired,
     shareOfStage: flow.total ? flow.hired / flow.total : null,
     medianDays: null,
+    kind: 'node',
+    stageIndex: HIRED,
   })
+  const flowRowDrill = (r: FlowRow) => drillIf(r.candidates, () => flowDrill(b, r.kind, r.stageIndex))
+  const flowColumns: Column<FlowRow>[] = [
+    { key: 'stage', label: 'Stage' },
+    { key: 'flow', label: 'Flow' },
+    { key: 'candidates', label: 'Candidates', format: 'int', drill: flowRowDrill },
+    { key: 'shareOfStage', label: 'Share of stage', format: 'pct', drill: flowRowDrill },
+    {
+      key: 'medianDays',
+      label: 'Median days to advance',
+      format: 'days',
+      drill: (r) => drillIf(r.medianDays != null, () => stepDaysDrill(b, r.stageIndex)),
+    },
+  ]
 
   const memberRow = (a: (typeof b.cohort)[number]) => ({
     candidate: a.name,
@@ -101,18 +126,11 @@ export function PipelineTab() {
     exitDate: a.exitDate,
     reason: a.reason ?? '',
   })
-  const members = selected ? flowMembers(b.cohort, selected.kind, selected.stage).map(memberRow) : []
-  const selLabel = selected
-    ? selected.kind === 'advanced'
-      ? `${STAGES[selected.stage]} to ${STAGES[selected.stage + 1].toLowerCase()}`
-      : selected.kind === 'node'
-        ? `${selected.stage === HIRED ? 'Hired' : `Reached ${STAGES[selected.stage].toLowerCase()}`}`
-        : `${OUTCOME_WORD[selected.kind]} at ${STAGES[selected.stage].toLowerCase()}`
-    : ''
 
   const conversion = [
     ...flow.stages.map((s) => ({
       stage: STAGES[s.stage],
+      stageIndex: s.stage,
       entered: s.entered,
       advanced: s.advanced,
       pass: s.pass,
@@ -125,6 +143,7 @@ export function PipelineTab() {
     })),
     {
       stage: 'Hired',
+      stageIndex: HIRED,
       entered: flow.hired,
       advanced: null,
       pass: null,
@@ -136,26 +155,68 @@ export function PipelineTab() {
       change: null,
     },
   ]
+  type ConversionRow = (typeof conversion)[number]
+  const part = (kind: FlowKind, n: (r: ConversionRow) => number | boolean | null) => (r: ConversionRow) =>
+    drillIf(n(r), () => flowDrill(b, kind, r.stageIndex))
+  const conversionColumns: Column<ConversionRow>[] = [
+    { key: 'stage', label: 'Stage' },
+    { key: 'entered', label: 'Reached', format: 'int', drill: part('node', (r) => r.entered) },
+    { key: 'advanced', label: 'Advanced', format: 'int', drill: part('advanced', (r) => r.advanced) },
+    {
+      key: 'pass',
+      label: 'Pass rate',
+      format: 'pct',
+      drill: part('advanced', (r) => r.pass != null && r.advanced),
+    },
+    { key: 'rejected', label: 'Rejected', format: 'int', drill: part('rejected', (r) => r.rejected) },
+    { key: 'withdrawn', label: 'Withdrawn', format: 'int', drill: part('withdrawn', (r) => r.withdrawn) },
+    { key: 'declined', label: 'Declined', format: 'int', drill: part('declined', (r) => r.declined) },
+    { key: 'active', label: 'Active', format: 'int', drill: part('active', (r) => r.active) },
+    {
+      key: 'medianDays',
+      label: 'Median days',
+      format: 'days',
+      drill: (r) => drillIf(r.medianDays != null, () => stepDaysDrill(b, r.stageIndex)),
+    },
+    {
+      key: 'change',
+      label: 'Change',
+      format: 'days',
+      drill: (r) => drillIf(r.change != null, () => stepChangeDrill(b, r.stageIndex)),
+    },
+  ]
   const lacking = b.actives.filter((x) => x.tier).length
+  const dotDrill = (d: WaitDot) => () => candidateDrill(b, d.item)
+  const cellDrill = (c: SpeedCell) => drillIf(c.steps.length, () => speedCellDrill(b, c))
 
   return (
     <>
       <Section
         title="Where applications went"
-        dek={`Where the ${fmt(flow.total, 'int')} applications received ${windowText(b.window)} went. Click a ribbon to list those candidates and filter the action queue to that stage.`}
+        dek={
+          <>
+            Where the{' '}
+            {flow.total > 0 ? (
+              <Drill
+                spec={() => flowDrill(b, 'node', 0)}
+                label={`Show the ${plural(flow.total, 'application')}`}
+              >
+                {fmt(flow.total, 'int')}
+              </Drill>
+            ) : (
+              '0'
+            )}{' '}
+            applications received {windowText(b.window)} went. Click a ribbon, a stage or a number to see
+            those candidates.
+          </>
+        }
       >
         <Figure
           id="recruiting-candidate-flow"
           title="Candidate flow"
           subtitle={`Applications received ${windowText(b.window)}, by the furthest stage reached and outcome on ${formatDate(b.asOf)}`}
           data={flowRows}
-          columns={[
-            { key: 'stage', label: 'Stage' },
-            { key: 'flow', label: 'Flow' },
-            { key: 'candidates', label: 'Candidates', format: 'int' },
-            { key: 'shareOfStage', label: 'Share of stage', format: 'pct' },
-            { key: 'medianDays', label: 'Median days to advance', format: 'days' },
-          ]}
+          columns={flowColumns}
           span={12}
           empty={b.apps.length ? (flow.total ? null : 'No applications in this period.') : NEED_CANDIDATES}
           detail={{
@@ -185,27 +246,8 @@ export function PipelineTab() {
           ]}
           note={`${plural(flow.total, 'application')} · ${plural(flow.hired, 'hire')} · the bottom band uses a smaller scale than the river · ${asOfNote(b.asOf)}`}
         >
-          <RiverChart flow={flow} cohort={b.cohort} selected={selected} onSelect={selectFlow} />
+          <RiverChart base={b} />
         </Figure>
-        {selected && (
-          <Figure
-            id="recruiting-selected-flow"
-            title={`Selected: ${selLabel}`}
-            subtitle={`The ${plural(members.length, 'application')} behind the ribbon you clicked`}
-            data={members}
-            columns={MEMBER_COLUMNS}
-            tableOnly
-            span={12}
-            actions={
-              <Button variant="ghost" size="sm" onClick={() => selectFlow(null)}>
-                Clear selection
-              </Button>
-            }
-            table={{ search: 'Search candidates or reqs', maxRows: 10 }}
-            empty={members.length ? null : 'Nobody in this part of the flow.'}
-            note={`${plural(members.length, 'application')} · ${asOfNote(b.asOf)}`}
-          />
-        )}
       </Section>
 
       <div ref={queueRef} className="scroll-mt-4">
@@ -213,7 +255,7 @@ export function PipelineTab() {
           title="Who needs to act"
           dek="Candidates who lack a next step (past the usual time), grouped by who owns it. Interview decisions sit with the hiring manager; copy a note to send each owner their list."
         >
-          <ActionQueue groups={m.queue} asOf={b.asOf} />
+          <ActionQueue base={b} groups={m.queue} />
         </Section>
       </div>
 
@@ -226,18 +268,7 @@ export function PipelineTab() {
           title="Stage conversion"
           subtitle={`Applications received ${windowText(b.window)}, by stage, with the median days to the next stage and the change vs the prior period`}
           data={conversion}
-          columns={[
-            { key: 'stage', label: 'Stage' },
-            { key: 'entered', label: 'Reached', format: 'int' },
-            { key: 'advanced', label: 'Advanced', format: 'int' },
-            { key: 'pass', label: 'Pass rate', format: 'pct' },
-            { key: 'rejected', label: 'Rejected', format: 'int' },
-            { key: 'withdrawn', label: 'Withdrawn', format: 'int' },
-            { key: 'declined', label: 'Declined', format: 'int' },
-            { key: 'active', label: 'Active', format: 'int' },
-            { key: 'medianDays', label: 'Median days', format: 'days' },
-            { key: 'change', label: 'Change', format: 'days' },
-          ]}
+          columns={conversionColumns}
           tableOnly
           span={12}
           table={{ maxRows: 10 }}
@@ -264,14 +295,16 @@ export function PipelineTab() {
           title="Waiting time by stage"
           subtitle={`Days each active candidate has waited, ${formatDate(b.asOf)}`}
           data={m.waiting}
-          columns={[
-            { key: 'candidate', label: 'Candidate' },
-            { key: 'applicationId', label: 'Application' },
-            { key: 'stage', label: 'Stage' },
-            { key: 'state', label: 'State' },
-            { key: 'days', label: 'Days waiting', format: 'int' },
-            { key: 'tier', label: 'Aging' },
-          ]}
+          columns={
+            [
+              { key: 'candidate', label: 'Candidate', drill: dotDrill },
+              { key: 'applicationId', label: 'Application' },
+              { key: 'stage', label: 'Stage' },
+              { key: 'state', label: 'State' },
+              { key: 'days', label: 'Days waiting', format: 'int', drill: dotDrill },
+              { key: 'tier', label: 'Aging' },
+            ] satisfies Column<WaitDot>[]
+          }
           span={12}
           empty={
             b.apps.length
@@ -301,6 +334,7 @@ export function PipelineTab() {
             xFormat="days"
             yOrder={STAGES.slice(0, LAST_OPEN_STAGE + 1)}
             median
+            onSelect={(d) => drill(dotDrill(d))}
             ariaLabel="Waiting time by stage"
           />
         </Figure>
@@ -315,12 +349,14 @@ export function PipelineTab() {
           title="Days per transition by month"
           subtitle={`Median days per step, steps completed in the 12 months to ${formatDate(b.window.end)}`}
           data={m.speed}
-          columns={[
-            { key: 'month', label: 'Completed in' },
-            { key: 'transition', label: 'Step' },
-            { key: 'days', label: 'Median days', format: 'days' },
-            { key: 'n', label: 'Steps completed', format: 'int' },
-          ]}
+          columns={
+            [
+              { key: 'month', label: 'Completed in' },
+              { key: 'transition', label: 'Step' },
+              { key: 'days', label: 'Median days', format: 'days', drill: cellDrill },
+              { key: 'n', label: 'Steps completed', format: 'int', drill: cellDrill },
+            ] satisfies Column<SpeedCell>[]
+          }
           span={12}
           empty={b.apps.length ? null : NEED_CANDIDATES}
           definitions={[
@@ -329,7 +365,7 @@ export function PipelineTab() {
               text: 'Days from one stage date to the next, for steps completed that month (the date of the later stage). Grouping by completion month keeps slow steps in the month they finished, so a recent slowdown shows. Cells with fewer than 5 steps are left blank.',
             },
           ]}
-          note={asOfNote(b.asOf)}
+          note={`Click a cell to see the steps behind it · cells under 5 steps are blank and hidden · ${asOfNote(b.asOf)}`}
         >
           <Heatmap
             data={m.speed}
@@ -341,6 +377,7 @@ export function PipelineTab() {
             scheme="sequential"
             xOrder={[...new Set(m.speed.map((c) => c.monthLabel))]}
             yOrder={TRANSITIONS}
+            onSelect={(c) => drill(cellDrill(c))}
             ariaLabel="Days per transition by month"
           />
         </Figure>

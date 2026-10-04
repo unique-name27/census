@@ -2,7 +2,8 @@
  * Compa-ratio of every person, one row per tenure band, with range position encoded in shape as
  * well as color: in range is a circle, below minimum a square (the serious glyph), above maximum
  * a diamond (the warning glyph). The key is drawn inside the chart so it shows the exact shapes
- * and travels with PNG and SVG exports. An ink tick marks each row's median.
+ * and travels with PNG and SVG exports. An ink tick marks each row's median. A click on a mark
+ * opens that person.
  */
 import * as Plot from '@observablehq/plot'
 import {
@@ -71,10 +72,13 @@ export function PositionStrip({
   data,
   yOrder,
   ariaLabel,
+  onSelect,
 }: {
   data: readonly TenureDot[]
   yOrder: readonly string[]
   ariaLabel?: string
+  /** Click on a person's mark. */
+  onSelect?: (d: TenureDot) => void
 }) {
   const present = new Set(data.map((d) => d.tenureBand))
   const groups = [...yOrder.filter((g) => present.has(g)), ...[...present].filter((g) => !yOrder.includes(g))]
@@ -222,8 +226,17 @@ export function PositionStrip({
         ...(d.datum.position ? [{ value: STATUS_LABEL[d.status], label: 'range position' }] : []),
         ...(m ? [{ value: fmt(m.m, 'ratio'), label: 'tenure band median' }] : []),
       ],
+      note: onSelect ? 'Click to open their card' : undefined,
     }
   }
 
-  return <PlotChart<Dot> build={build} height={height} tip={tip} ariaLabel={ariaLabel} />
+  return (
+    <PlotChart<Dot>
+      build={build}
+      height={height}
+      tip={tip}
+      onSelect={onSelect ? (d) => onSelect(d.datum) : undefined}
+      ariaLabel={ariaLabel}
+    />
+  )
 }

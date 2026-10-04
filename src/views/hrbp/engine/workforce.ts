@@ -1,6 +1,7 @@
 /**
  * Workforce shape at asOf and how headcount moved: breakdowns, tenure, worker mix, growth,
- * the 24-month headcount line, hires and exits by month, and the headcount bridge.
+ * the 24-month headcount line, hires and exits by month, and the headcount bridge. Every bucket
+ * carries the records it counts, so each number can open the people behind it.
  */
 import { EMPLOYMENT_TYPES, type Employee, type ISODate, LEVELS } from '@/data/schema'
 import { addDays, addMonths, formatDate, monthEnd, monthKey, monthsBetween } from '@/lib/dates'
@@ -21,6 +22,8 @@ export interface CountRow {
   label: string
   headcount: number
   share: number
+  /** The employees counted in `headcount`. */
+  records: Employee[]
 }
 
 export interface MixRow {
@@ -30,12 +33,25 @@ export interface MixRow {
   people: number
   /** Share of the group's active workers. */
   share: number
+  /** The workers counted in `people`. */
+  records: Employee[]
 }
 
 /** Active workers of every type by location and by business unit (contractors cluster by site). */
 export interface WorkerMix {
   location: MixRow[]
   businessUnit: MixRow[]
+}
+
+export interface GrowthRecords {
+  /** Employees 12 months ago (`yearAgo`). */
+  before: Employee[]
+  /** Employees today (`now`). */
+  now: Employee[]
+  /** Active today and not 12 months ago; empty when growth is hidden (base under 5). */
+  joined: Employee[]
+  /** Active 12 months ago and not today; empty when growth is hidden. */
+  left: Employee[]
 }
 
 export interface GrowthRow {
@@ -45,6 +61,7 @@ export interface GrowthRow {
   change: number
   /** Fractional change; null when the base is under 5 people. */
   growth: number | null
+  records: GrowthRecords
 }
 
 export interface HeadcountPoint {
@@ -66,18 +83,29 @@ export interface FlowRow {
   month: string
   series: 'Hires' | 'Exits'
   people: number
+  /** The employees hired (or who left) in the month. */
+  records: Employee[]
 }
+
+export type BridgeStep = 'start' | 'hires' | 'exits' | 'other' | 'end'
 
 export interface BridgeRow {
   step: string
   people: number
+  key: BridgeStep
+  /**
+   * The employees behind the step. For "other changes" these are the people on one roster date
+   * and not the other without a hire or exit in between (their count need not equal the net).
+   */
+  records: Employee[]
 }
 
 export interface EngineeringShare {
   share: number | null
   engineering: number
   total: number
-  rows: { group: string; headcount: number; share: number }[]
+  /** Engineering and the other functions; no records when the share is hidden (under 5 people). */
+  rows: { group: string; headcount: number; share: number; records: Employee[] }[]
 }
 
 export interface WorkforceModel {
@@ -118,18 +146,23 @@ const ENGINEERING =
 export const isEngineering = (e: Employee): boolean =>
   ENGINEERING.test(e.department ?? '') || ENGINEERING.test(e.businessUnit ?? '')
 
+function push<K, V>(m: Map<K, V[]>, k: K, v: V): void {
+  const arr = m.get(k)
+  if (arr) arr.push(v)
+  else m.set(k, [v])
+}
+
 /** Worker types per group, all types for every group, groups with the most contractors and interns first. */
 function mixBy(workers: readonly Employee[], key: (e: Employee) => string): MixRow[] {
   const totals = new Map<string, number>()
   const contingent = new Map<string, number>()
-  const cells = new Map<string, number>()
+  const cells = new Map<string, Employee[]>()
   for (const w of workers) {
     const g = key(w) || 'Not recorded'
     const type = w.employmentType ?? 'Not recorded'
     totals.set(g, (totals.get(g) ?? 0) + 1)
     if (type !== 'Employee') contingent.set(g, (contingent.get(g) ?? 0) + 1)
-    const k = `${g}\u0000${type}`
-    cells.set(k, (cells.get(k) ?? 0) + 1)
+    push(cells, `${g}\u0000${type}`, w)
   }
   const groups = [...totals.keys()].sort(
     (a, b) =>
@@ -141,9 +174,16 @@ function mixBy(workers: readonly Employee[], key: (e: Employee) => string): MixR
   const out: MixRow[] = []
   for (const g of groups) {
     for (const t of types) {
-      const n = cells.get(`${g}\u0000${t}`) ?? 0
+      const records = cells.get(`${g}\u0000${t}`) ?? []
+      const n = records.length
       if (!n && t === 'Not recorded') continue
-      out.push({ group: g, workerType: WORKER_LABEL[t] ?? t, people: n, share: n / (totals.get(g) ?? 1) })
+      out.push({
+        group: g,
+        workerType: WORKER_LABEL[t] ?? t,
+        people: n,
+        share: n / (totals.get(g) ?? 1),
+        records,
+      })
     }
   }
   return out
@@ -164,15 +204,43 @@ export function yearOverlay(series: readonly HeadcountPoint[]): OverlayPoint[] {
 }
 
 function counts(list: readonly Employee[], key: (e: Employee) => string): CountRow[] {
-  const m = new Map<string, number>()
-  for (const e of list) {
-    const k = key(e)
-    m.set(k, (m.get(k) ?? 0) + 1)
-  }
+  const m = new Map<string, Employee[]>()
+  for (const e of list) push(m, key(e), e)
   const total = list.length
   return [...m.entries()]
-    .map(([label, headcount]) => ({ label, headcount, share: total ? headcount / total : 0 }))
+    .map(([label, records]) => ({
+      label,
+      headcount: records.length,
+      share: total ? records.length / total : 0,
+      records,
+    }))
     .sort((a, b) => b.headcount - a.headcount || a.label.localeCompare(b.label))
+}
+
+/**
+ * People behind the bridge's "other changes": on today's roster without being there a year ago
+ * or hired since, or there a year ago (or hired since) and gone today without an exit.
+ */
+export function otherChanges(
+  start: readonly Employee[],
+  hired: readonly Employee[],
+  exits: readonly Employee[],
+  end: readonly Employee[],
+): Employee[] {
+  const ids = (list: readonly Employee[]) => new Set(list.map((e) => e.employeeId))
+  const before = ids([...start, ...hired])
+  const after = ids(end)
+  const left = ids(exits)
+  const seen = new Set<string>()
+  const out: Employee[] = []
+  for (const e of [...end, ...start, ...hired]) {
+    if (seen.has(e.employeeId)) continue
+    seen.add(e.employeeId)
+    const movedIn = after.has(e.employeeId) && !before.has(e.employeeId)
+    const movedOut = before.has(e.employeeId) && !after.has(e.employeeId) && !left.has(e.employeeId)
+    if (movedIn || movedOut) out.push(e)
+  }
+  return out
 }
 
 export function computeWorkforce(p: Prep): WorkforceModel {
@@ -187,7 +255,7 @@ export function computeWorkforce(p: Prep): WorkforceModel {
 
   const bands = counts(active, (e) => tenureBand(tenureYears(e, asOf)))
   const tenure = TENURE_BANDS.map(
-    (b) => bands.find((r) => r.label === b) ?? { label: b, headcount: 0, share: 0 },
+    (b) => bands.find((r) => r.label === b) ?? { label: b, headcount: 0, share: 0, records: [] },
   )
 
   // Worker mix: every worker type, active today, by site and by business unit.
@@ -200,38 +268,59 @@ export function computeWorkforce(p: Prep): WorkforceModel {
   // Growth by business unit (or department when the scope sits inside one unit).
   const buCount = new Set(active.map((e) => e.businessUnit)).size
   const growthKey = (e: Employee) => (buCount > 1 ? e.businessUnit : e.department)
-  const nowBy = new Map<string, number>()
-  const thenBy = new Map<string, number>()
+  const growthBy = new Map<string, GrowthRecords>()
   for (const e of emps) {
-    if (isActiveAt(e, asOf)) nowBy.set(growthKey(e), (nowBy.get(growthKey(e)) ?? 0) + 1)
+    const isNow = isActiveAt(e, asOf)
     // Today's org attributes at both dates, like the scope itself and the scorecard's net change.
-    if (isActiveAt(e, yearAgo)) thenBy.set(growthKey(e), (thenBy.get(growthKey(e)) ?? 0) + 1)
+    const wasThen = isActiveAt(e, yearAgo)
+    if (!isNow && !wasThen) continue
+    const k = growthKey(e)
+    let g = growthBy.get(k)
+    if (!g) {
+      g = { before: [], now: [], joined: [], left: [] }
+      growthBy.set(k, g)
+    }
+    if (isNow) g.now.push(e)
+    if (wasThen) g.before.push(e)
+    if (isNow && !wasThen) g.joined.push(e)
+    if (wasThen && !isNow) g.left.push(e)
   }
-  const growth: GrowthRow[] = [...new Set([...nowBy.keys(), ...thenBy.keys()])]
-    .map((group) => {
-      const now = nowBy.get(group) ?? 0
-      const before = thenBy.get(group) ?? 0
+  const growth: GrowthRow[] = [...growthBy.entries()]
+    .map(([group, records]) => {
+      const now = records.now.length
+      const before = records.before.length
+      const shown = before >= 5
       return {
         group,
         yearAgo: before,
         now,
         change: now - before,
-        growth: before >= 5 ? (now - before) / before : null,
+        growth: shown ? (now - before) / before : null,
+        // A hidden growth rate has no records behind it.
+        records: shown ? records : { ...records, joined: [], left: [] },
       }
     })
     .sort((a, b) => (b.growth ?? -9) - (a.growth ?? -9))
 
-  const eng = active.filter(isEngineering).length
+  const engineers = active.filter(isEngineering)
+  const eng = engineers.length
+  const shareShown = active.length >= 5
   const engineering: EngineeringShare = {
-    share: active.length >= 5 ? eng / active.length : null,
+    share: shareShown ? eng / active.length : null,
     engineering: eng,
     total: active.length,
     rows: [
-      { group: 'Engineering', headcount: eng, share: active.length ? eng / active.length : 0 },
+      {
+        group: 'Engineering',
+        headcount: eng,
+        share: active.length ? eng / active.length : 0,
+        records: shareShown ? engineers : [],
+      },
       {
         group: 'Other functions',
         headcount: active.length - eng,
         share: active.length ? (active.length - eng) / active.length : 0,
+        records: shareShown ? active.filter((e) => !isEngineering(e)) : [],
       },
     ],
   }
@@ -245,32 +334,42 @@ export function computeWorkforce(p: Prep): WorkforceModel {
   }))
 
   const months = monthsBetween(t12.start, t12.end)
-  const hires = new Map<string, number>()
-  const exits = new Map<string, number>()
-  for (const e of hiresIn(emps, t12))
-    hires.set(monthKey(e.hireDate), (hires.get(monthKey(e.hireDate)) ?? 0) + 1)
-  for (const e of exitsIn(emps, t12)) {
-    const m = monthKey(e.terminationDate as string)
-    exits.set(m, (exits.get(m) ?? 0) + 1)
-  }
-  const flows: FlowRow[] = months.flatMap((m) => [
-    { month: m, series: 'Hires' as const, people: hires.get(m) ?? 0 },
-    { month: m, series: 'Exits' as const, people: exits.get(m) ?? 0 },
-  ])
+  const hiredList = hiresIn(emps, t12)
+  const exitList = exitsIn(emps, t12)
+  const hires = new Map<string, Employee[]>()
+  const exits = new Map<string, Employee[]>()
+  for (const e of hiredList) push(hires, monthKey(e.hireDate), e)
+  for (const e of exitList) push(exits, monthKey(e.terminationDate as string), e)
+  const flows: FlowRow[] = months.flatMap((m) => {
+    const h = hires.get(m) ?? []
+    const x = exits.get(m) ?? []
+    return [
+      { month: m, series: 'Hires' as const, people: h.length, records: h },
+      { month: m, series: 'Exits' as const, people: x.length, records: x },
+    ]
+  })
 
-  const start = headcountAt(emps, yearAgo)
-  const hired = hiresIn(emps, t12).length
-  const left = exitsIn(emps, t12).length
+  const startList = activeAt(emps, yearAgo)
+  const start = startList.length
+  const hired = hiredList.length
+  const left = exitList.length
   const end = active.length
   const other = end - start - hired + left
   const bridge: BridgeRow[] = [
-    { step: `Headcount on ${formatDate(yearAgo)}`, people: start },
-    { step: 'Hires', people: hired },
-    { step: 'Exits', people: -left },
+    { step: `Headcount on ${formatDate(yearAgo)}`, people: start, key: 'start', records: startList },
+    { step: 'Hires', people: hired, key: 'hires', records: hiredList },
+    { step: 'Exits', people: -left, key: 'exits', records: exitList },
     ...(other !== 0
-      ? [{ step: 'Other changes (conversions, rehires, moves in or out)', people: other }]
+      ? [
+          {
+            step: 'Other changes (conversions, rehires, moves in or out)',
+            people: other,
+            key: 'other' as const,
+            records: otherChanges(startList, hiredList, exitList, active),
+          },
+        ]
       : []),
-    { step: `Headcount on ${formatDate(asOf)}`, people: end },
+    { step: `Headcount on ${formatDate(asOf)}`, people: end, key: 'end', records: active },
   ]
 
   return {

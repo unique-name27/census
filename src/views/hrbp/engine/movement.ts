@@ -28,6 +28,8 @@ export interface PromotionQuarterRow {
   promotions: number
   avgHeadcount: number
   rate: number | null
+  /** The promotion events behind `promotions`; empty when the rate is hidden (average headcount under 5). */
+  records: JobChange[]
 }
 
 export interface LevelRateRow {
@@ -35,18 +37,34 @@ export interface LevelRateRow {
   promotions: number
   avgHeadcount: number
   rate: number | null
+  /** Promotions from this level; empty when the rate is hidden. */
+  records: JobChange[]
 }
 
 export interface DeptMoveRow {
   department: string
   type: 'Transfer' | 'Lateral move'
   moves: number
+  /** The moves behind `moves`. */
+  records: JobChange[]
 }
 
 export interface SincePromotionRow {
   band: string
   people: number
   share: number
+  /** The employees behind `people`. */
+  records: Employee[]
+}
+
+/** The events and people behind the movement tiles. */
+export interface MovementRecords {
+  promotions: JobChange[]
+  transfers: JobChange[]
+  lateral: JobChange[]
+  demotions: JobChange[]
+  /** Employees with at least one promotion, transfer or lateral move in the window (mobility's numerator). */
+  movers: Employee[]
 }
 
 export interface MoveRow {
@@ -83,6 +101,7 @@ export interface MovementModel {
   byDepartment: DeptMoveRow[]
   sincePromotion: SincePromotionRow[]
   moves: MoveRow[]
+  records: MovementRecords
 }
 
 export const SINCE_BANDS = [
@@ -146,15 +165,16 @@ export function computeMovement(p: Prep): MovementModel {
   const promos = inWin.filter((c) => c.changeType === 'Promotion')
 
   const byQuarter: PromotionQuarterRow[] = quarterBlocks(asOf, 8).map((b) => {
-    const n = changes.filter((c) => c.changeType === 'Promotion' && inWindow(c.effectiveDate, b)).length
+    const records = changes.filter((c) => c.changeType === 'Promotion' && inWindow(c.effectiveDate, b))
     const avg = avgHeadcount(emps, b)
     return {
       quarter: b.label,
       start: b.start,
       end: b.end,
-      promotions: n,
+      promotions: records.length,
       avgHeadcount: avg,
-      rate: has ? shareOf(n, avg) : null,
+      rate: has ? shareOf(records.length, avg) : null,
+      records: avg >= MIN_GROUP ? records : [],
     }
   })
 
@@ -165,47 +185,70 @@ export function computeMovement(p: Prep): MovementModel {
     (e) => e.level ?? NO_LEVEL,
     (e, d) => p.history.levelAt(e, d) ?? NO_LEVEL,
   )
-  const promosByLevel = new Map<string, number>()
+  const promosByLevel = new Map<string, JobChange[]>()
   for (const c of promos) {
     const e = byId.get(c.employeeId)
     const from = c.fromLevel ?? (e ? p.history.levelAt(e, c.effectiveDate) : null) ?? NO_LEVEL
-    promosByLevel.set(from, (promosByLevel.get(from) ?? 0) + 1)
+    const arr = promosByLevel.get(from)
+    if (arr) arr.push(c)
+    else promosByLevel.set(from, [c])
   }
   const byLevel: LevelRateRow[] = [...LEVELS, NO_LEVEL]
     .filter((l) => (levelHc.get(l)?.avgHeadcount ?? 0) > 0 || promosByLevel.has(l))
     .map((level) => {
       const avg = levelHc.get(level)?.avgHeadcount ?? 0
-      const n = promosByLevel.get(level) ?? 0
-      return { level, promotions: n, avgHeadcount: avg, rate: has ? shareOf(n, avg) : null }
+      const records = promosByLevel.get(level) ?? []
+      return {
+        level,
+        promotions: records.length,
+        avgHeadcount: avg,
+        rate: has ? shareOf(records.length, avg) : null,
+        records: avg >= MIN_GROUP ? records : [],
+      }
     })
 
-  const deptMoves = new Map<string, { Transfer: number; 'Lateral move': number }>()
+  const deptMoves = new Map<string, { Transfer: JobChange[]; 'Lateral move': JobChange[] }>()
   for (const c of inWin) {
     if (c.changeType !== 'Transfer' && c.changeType !== 'Lateral move') continue
-    const dept = c.toDepartment || byId.get(c.employeeId)?.department || 'Not recorded'
-    const row = deptMoves.get(dept) ?? { Transfer: 0, 'Lateral move': 0 }
-    row[c.changeType]++
+    const dept = moveDepartment(c, byId)
+    const row = deptMoves.get(dept) ?? { Transfer: [], 'Lateral move': [] }
+    row[c.changeType].push(c)
     deptMoves.set(dept, row)
   }
   const byDepartment: DeptMoveRow[] = [...deptMoves.entries()]
-    .sort((a, b) => b[1].Transfer + b[1]['Lateral move'] - (a[1].Transfer + a[1]['Lateral move']))
+    .sort(
+      (a, b) =>
+        b[1].Transfer.length +
+        b[1]['Lateral move'].length -
+        (a[1].Transfer.length + a[1]['Lateral move'].length),
+    )
     .flatMap(([department, r]) => [
-      { department, type: 'Transfer' as const, moves: r.Transfer },
-      { department, type: 'Lateral move' as const, moves: r['Lateral move'] },
+      { department, type: 'Transfer' as const, moves: r.Transfer.length, records: r.Transfer },
+      {
+        department,
+        type: 'Lateral move' as const,
+        moves: r['Lateral move'].length,
+        records: r['Lateral move'],
+      },
     ])
 
   const active = activeAt(emps, asOf)
-  const sinceCounts = new Map<string, number>()
+  const sinceGroups = new Map<string, Employee[]>()
   for (const e of active) {
-    const last = p.history.lastPromotion(e.employeeId, asOf)
-    const band = sinceBand(last ? daysBetween(last, asOf) / 365.25 : null)
-    sinceCounts.set(band, (sinceCounts.get(band) ?? 0) + 1)
+    const band = sinceBand(yearsSincePromotion(p, e))
+    const arr = sinceGroups.get(band)
+    if (arr) arr.push(e)
+    else sinceGroups.set(band, [e])
   }
-  const sincePromotion: SincePromotionRow[] = SINCE_BANDS.map((band) => ({
-    band,
-    people: sinceCounts.get(band) ?? 0,
-    share: active.length ? (sinceCounts.get(band) ?? 0) / active.length : 0,
-  }))
+  const sincePromotion: SincePromotionRow[] = SINCE_BANDS.map((band) => {
+    const records = sinceGroups.get(band) ?? []
+    return {
+      band,
+      people: records.length,
+      share: active.length ? records.length / active.length : 0,
+      records,
+    }
+  })
 
   const moves: MoveRow[] = inWin
     .filter(isMove)
@@ -233,19 +276,42 @@ export function computeMovement(p: Prep): MovementModel {
   const own = promotionRate(emps, changes, window, has)
   const avg = own.avgHeadcount
   const comparison = promotionComparison(p)
+  const ofType = (t: MoveType) => inWin.filter((c) => c.changeType === t)
+  const records: MovementRecords = {
+    promotions: promos,
+    transfers: ofType('Transfer'),
+    lateral: ofType('Lateral move'),
+    demotions: ofType('Demotion'),
+    movers: [...moverIds].flatMap((id) => {
+      const e = byId.get(id)
+      return e ? [e] : []
+    }),
+  }
   return {
     promotions: own,
     companyPromotions: ctx.isCompany ? own : promotionRate(p.companyEmps, p.companyChanges, window, has),
     priorPromotions: promotionRate(emps, changes, comparison.window, has),
     priorLabel: comparison.label,
-    transfers: inWin.filter((c) => c.changeType === 'Transfer').length,
-    lateral: inWin.filter((c) => c.changeType === 'Lateral move').length,
-    demotions: inWin.filter((c) => c.changeType === 'Demotion').length,
+    transfers: records.transfers.length,
+    lateral: records.lateral.length,
+    demotions: records.demotions.length,
     mobility: { rate: has ? shareOf(moverIds.size, avg) : null, movers: moverIds.size },
     byQuarter,
     byLevel,
     byDepartment,
     sincePromotion,
     moves,
+    records,
   }
+}
+
+/** The department a transfer or lateral move counts in: where the person moved to. */
+export function moveDepartment(c: JobChange, byId: ReadonlyMap<string, Employee>): string {
+  return c.toDepartment || byId.get(c.employeeId)?.department || 'Not recorded'
+}
+
+/** Years from the last promotion on record to asOf; null when never promoted. */
+export function yearsSincePromotion(p: Prep, e: Employee): number | null {
+  const last = p.history.lastPromotion(e.employeeId, p.asOf)
+  return last ? daysBetween(last, p.asOf) / 365.25 : null
 }

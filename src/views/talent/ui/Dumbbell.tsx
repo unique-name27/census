@@ -20,6 +20,7 @@ import {
   truncateText,
   useChartTheme,
 } from '@/charts'
+import { type DrillSource, drill } from '@/drill'
 import { DASH, type Format, fmt } from '@/lib/format'
 
 export interface DumbbellRow {
@@ -38,9 +39,12 @@ export function Dumbbell({
   aLabel,
   bLabel,
   format = 'num2',
+  drillFor,
   ariaLabel,
 }: {
   data: readonly DumbbellRow[]
+  /** The records behind a row; clicking it opens them. */
+  drillFor?: (d: DumbbellRow) => DrillSource
   /** Name of the first value (drawn in series 2, the "before"). */
   aLabel: string
   /** Name of the second value (drawn in series 1, the result). */
@@ -131,9 +135,21 @@ export function Dumbbell({
         shape: 'dot',
       },
       { value: r.a == null || r.b == null ? DASH : fmt(r.a - r.b, format), label: 'Difference' },
+      ...(r.a == null ? [] : [{ value: fmt(r.n), label: r.n === 1 ? 'person' : 'people' }]),
     ],
-    note: r.a == null ? 'Hidden to protect anonymity (n < 5)' : `n = ${fmt(r.n)}`,
+    // Without a note the chart says "Click to see the records" on rows that open them.
+    note: r.a == null ? 'Hidden to protect anonymity (n < 5)' : undefined,
   })
 
-  return <PlotChart<Row> build={build} height={height} legend={legend} tip={tip} ariaLabel={ariaLabel} />
+  return (
+    <PlotChart<Row>
+      build={build}
+      height={height}
+      legend={legend}
+      tip={tip}
+      selectable={drillFor ? (r) => drillFor(r) != null : undefined}
+      onSelect={drillFor ? (r) => drill(drillFor(r)) : undefined}
+      ariaLabel={ariaLabel}
+    />
+  )
 }

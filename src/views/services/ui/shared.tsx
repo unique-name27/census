@@ -1,17 +1,24 @@
 /** Shared UI pieces for the Employee services view: wording, definitions, tones, empty states. */
+import { useTools } from '@/app/ToolsMenu'
+import { processLink } from '@/app/tools'
 import type { Definition, Tone } from '@/charts'
 import { Button, EmptyState, goTo, IconDatabase, type Severity, type Span } from '@/components'
-import type { AnalyticsContext } from '@/data/context'
-import { PERIOD_LABELS } from '@/data/scope'
 import { formatDate } from '@/lib/dates'
 import { fmt } from '@/lib/format'
 import { RESOLUTION_SLA_TARGET, TRANSACTION_ON_TIME_TARGET } from '../engine/catalog'
 import type { LevelStatus } from '../engine/levels'
 
 /** "last 12 months", or the exact range for a custom window. */
-export function period(ctx: Pick<AnalyticsContext, 'filters' | 'window'>): string {
-  const p = ctx.filters.period
-  return p === 'custom' ? ctx.window.label : PERIOD_LABELS[p].toLowerCase()
+export { periodWords as period } from '../engine/drills'
+
+/** A drill title in plain words: what, then where and when ("Cases opened, Payroll, last 12 months"). */
+export const titled = (...parts: (string | null | undefined | false)[]): string =>
+  parts.filter(Boolean).join(', ')
+
+/** The Atlas process page for a process ID (Tools menu > HR process catalog), for Column.href. */
+export function useProcessHref(): (id: string | null | undefined) => string | null {
+  const tools = useTools()
+  return (id) => (id ? processLink(tools, id) : null)
 }
 
 /** Footnote: "3,455 cases · as of 30 Sep 2026". */

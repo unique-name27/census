@@ -15,7 +15,48 @@ export interface NumericAxis {
   labelWidth: number
 }
 
-/** A nice domain covering [lo, hi] with about `count` ticks, labeled in `format`. */
+/** Count formats: their axes only tick whole numbers (no "0.5 people"). */
+const isCountFormat = (format: Format) => format === 'int' || format === 'compact'
+
+/** Integers from ceil(a) to floor(b), at most `max` of them (evenly thinned when there are more). */
+function integerTicks(a: number, b: number, max: number): number[] {
+  const lo = Math.ceil(a)
+  const hi = Math.floor(b)
+  if (hi < lo) return []
+  const step = Math.max(1, Math.ceil((hi - lo) / Math.max(1, max - 1)))
+  const out: number[] = []
+  for (let v = lo; v <= hi; v += step) out.push(v)
+  return out
+}
+
+/**
+ * Ticks for a domain whose labels never repeat: when the format rounds neighbors to the same
+ * text ("0%", "0%"), ask for fewer, coarser ticks; as a last resort drop a tick whose label
+ * repeats the one before it.
+ */
+function distinctTicks(
+  domain: [number, number],
+  count: number,
+  f: (v: number) => string,
+  integer: boolean,
+): number[] {
+  const make = (n: number) => {
+    const tv = ticks(domain[0], domain[1], n)
+    return integer ? tv.filter((v) => Number.isInteger(v)) : tv
+  }
+  let tv = make(count)
+  for (let n = count - 1; n >= 2 && new Set(tv.map(f)).size < tv.length; n--) tv = make(n)
+  const out: number[] = []
+  for (const v of tv) if (!out.length || f(out[out.length - 1]) !== f(v)) out.push(v)
+  return out
+}
+
+/**
+ * A nice domain covering [lo, hi] with about `count` ticks, labeled in `format`. Count formats
+ * ('int', 'compact') only get whole-number ticks: a flat series [n, n] is padded to
+ * [max(0, n - 1), n + 1], and a domain too narrow for two whole ticks widens to the integers
+ * around it. No two ticks share a label.
+ */
 export function numericAxis(
   lo: number,
   hi: number,
@@ -23,17 +64,28 @@ export function numericAxis(
   count = 5,
   fixed?: [number, number],
 ): NumericAxis {
+  const integer = isCountFormat(format)
   let a = fixed?.[0] ?? lo
   let b = fixed?.[1] ?? hi
   if (!Number.isFinite(a) || !Number.isFinite(b)) [a, b] = [0, 1]
   if (a === b) {
-    const pad = Math.abs(a) * 0.1 || 1
-    a -= a === 0 ? 0 : pad
-    b += pad
+    if (integer) {
+      a = a >= 0 ? Math.max(0, a - 1) : a - 1
+      b += 1
+    } else {
+      const pad = Math.abs(a) * 0.1 || 1
+      a -= a === 0 ? 0 : pad
+      b += pad
+    }
   }
-  const domain = (fixed ? [a, b] : nice(a, b, count)) as [number, number]
-  const tv = ticks(domain[0], domain[1], count)
+  let domain = (fixed ? [a, b] : nice(a, b, count)) as [number, number]
   const f = tickFormat(format)
+  let tv = distinctTicks(domain, count, f, integer)
+  if (integer && tv.length < 2 && !fixed) {
+    domain = [Math.floor(domain[0]), Math.ceil(domain[1])]
+    if (domain[1] - domain[0] < 1) domain[1] = domain[0] + 1
+    tv = integerTicks(domain[0], domain[1], Math.max(2, count))
+  }
   return { domain, ticks: tv, format: f, labelWidth: maxTextWidth(tv.map(f), 11) }
 }
 

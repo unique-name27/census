@@ -495,12 +495,12 @@ describe('issue summaries', () => {
       '1 hire date value could not be read (for example "soon"); the row was skipped.',
       '1 duplicate row by employee ID; the most recent row was kept.',
       '1 level value is not recognized (for example "Wizard"); left blank.',
-      'No column is mapped to Name, so 3 rows were filled from the employee ID.',
-      'No column is mapped to Job title, so 3 rows were set to Unknown.',
-      'No column is mapped to Business unit, so 3 rows were set to Unknown.',
-      'No column is mapped to Department, so 3 rows were set to Unknown.',
-      'No column is mapped to Location, so 3 rows were set to Unknown.',
-      'No column is mapped to Country, so 3 rows were set to Unknown.',
+      'No column is mapped to Name, so 2 rows were filled from the employee ID.',
+      'No column is mapped to Job title, so 2 rows were set to Unknown.',
+      'No column is mapped to Business unit, so 2 rows were set to Unknown.',
+      'No column is mapped to Department, so 2 rows were set to Unknown.',
+      'No column is mapped to Location, so 2 rows were set to Unknown.',
+      'No column is mapped to Country, so 2 rows were set to Unknown.',
       'Employment type was filled with a default in 1 row.',
     ])
     expect(issueTableRows(r.issues)[0]).toEqual({
@@ -508,8 +508,32 @@ describe('issue summaries', () => {
       id: '',
       field: 'Name',
       value: '',
-      issue: 'No column is mapped to Name, so 3 rows were filled from the employee ID.',
+      issue: 'No column is mapped to Name, so 2 rows were filled from the employee ID.',
       action: 'Default used',
     })
+  })
+
+  it('counts defaults on the imported rows only, after duplicates are dropped', () => {
+    const r = run('employees', [
+      ['Employee ID', 'Hire date', 'Worker type'],
+      ['E1', '2020-01-01', null],
+      ['E2', '2020-01-01', null],
+      ['E2', '2021-01-01', null],
+      ['E2', '2022-01-01', 'FTE'],
+      ['E3', 'never', null],
+    ])
+    expect(r.stats.rowsIn).toBe(5)
+    expect(r.stats.duplicates).toBe(2)
+    expect(r.stats.skippedMissingRequired).toBe(1)
+    expect(r.stats.rowsOut).toBe(2)
+    // Unmapped columns: one default per imported row, never more than rowsOut.
+    expect(r.stats.defaults.name).toBe(2)
+    expect(r.stats.defaults.department).toBe(2)
+    for (const n of Object.values(r.stats.defaults)) expect(n).toBeLessThanOrEqual(r.stats.rowsOut)
+    // A mapped column left blank: only E1 (the kept E2 row has a worker type).
+    expect(r.stats.defaults.employmentType).toBe(1)
+    expect(r.stats.defaulted).toBe(Object.values(r.stats.defaults).reduce((a, b) => a + b, 0))
+    const name = r.issues.find((x) => x.row === 0 && x.field === 'name')
+    expect(name?.issue).toBe('No column is mapped to Name, so 2 rows were filled from the employee ID.')
   })
 })

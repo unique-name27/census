@@ -7,6 +7,7 @@ import { MIN_GROUP } from '@/data/schema'
 import { fmt } from '@/lib/format'
 import { isMaterialChange } from '@/lib/stats'
 import type { TalentBase } from './base'
+import type { TalentDrills } from './drills'
 import type { LearningResult } from './learning'
 import { HIGH_GUIDELINE, type PerformanceResult } from './performance'
 import type { RetentionResult } from './retention'
@@ -31,8 +32,9 @@ export function buildKpis(x: {
   retention: RetentionResult
   learning: LearningResult
   risk: RiskModel
+  drill: TalentDrills
 }): Kpi[] {
-  const { base, performance: perf, succession: succ, retention: ret, learning, risk } = x
+  const { base, performance: perf, succession: succ, retention: ret, learning, risk, drill } = x
   const cycle = perf.cycle?.cycle
   const hasReviews = base.has.reviews
   const small = (n: number) => n > 0 && n < MIN_GROUP
@@ -60,6 +62,7 @@ export function buildKpis(x: {
       tab: 'performance',
       definition:
         'Share of employees active at the as-of date who have a rating in the latest review cycle. People need about 90 days in role to be rated, so recent hires lower this.',
+      drill: drill.ratedActive(),
     },
     {
       id: 'talent-high-performers',
@@ -76,6 +79,7 @@ export function buildKpis(x: {
         : 'Upload Reviews to see this',
       tab: 'performance',
       definition: `Share of people rated in ${cycle ?? 'the latest cycle'} who received a 4 or 5, including people who have left since the cycle closed. The guideline is ${fmt(HIGH_GUIDELINE, 'pct0')} (25% rated 4, 10% rated 5).`,
+      drill: drill.highPerformers(),
     },
     {
       id: 'talent-high-potentials',
@@ -91,6 +95,7 @@ export function buildKpis(x: {
       tab: 'succession',
       definition:
         'Share of active employees assessed for potential in the latest annual cycle who were rated High potential.',
+      drill: drill.hipo(null, null, 'high'),
     },
     {
       id: 'talent-succession-coverage',
@@ -106,6 +111,7 @@ export function buildKpis(x: {
       tab: 'succession',
       definition:
         'Share of roles marked Critical with at least one named successor who is Ready now and still employed.',
+      drill: drill.coverage(),
     },
     {
       id: 'talent-regretted-high',
@@ -128,6 +134,7 @@ export function buildKpis(x: {
       tab: 'retention',
       definition:
         'Voluntary exits in the period marked regrettable whose last rating before leaving was 4 or 5. Needs termination type, the regrettable flag and reviews. The trend shows the last 8 quarters.',
+      drill: drill.regrettedHigh('current'),
     },
     {
       id: 'talent-training-on-time',
@@ -148,6 +155,7 @@ export function buildKpis(x: {
       tab: 'learning',
       definition:
         'Required assignments due in the period that were completed on or before the due date, for employees still employed on the due date (contractors and interns are not counted). When the courses due in the two periods differ a lot, the change is shown in gray.',
+      drill: cur.rate != null ? drill.onTime(null, 'onTime') : null,
     },
     {
       id: 'talent-key-talent-risk',
@@ -162,6 +170,7 @@ export function buildKpis(x: {
             : undefined,
       tab: 'retention',
       definition: `Active employees whose latest rating is 4 or 5 and whose flight-risk score is in the high band: ${highBandText(risk)}. People with the same score share a band, so the band is not exactly 10%.`,
+      drill: drill.keyTalent(),
     },
   ]
 }

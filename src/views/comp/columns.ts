@@ -16,6 +16,7 @@ import type {
   MeritByRatingRow,
   RatingDot,
 } from './engine/performance'
+import type { CompPerson } from './engine/population'
 import type {
   CompaGroupRow,
   CompressionRow,
@@ -26,14 +27,14 @@ import type {
 } from './engine/ranges'
 import type { CycleSettings } from './engine/settings'
 
-export const BIN_COLUMNS: Column<Bin>[] = [
+export const BIN_COLUMNS: Column<Bin<CompPerson>>[] = [
   { key: 'from', label: 'From', format: 'ratio' },
   { key: 'to', label: 'To', format: 'ratio' },
   { key: 'n', label: 'People', format: 'int' },
   { key: 'share', label: 'Share', format: 'pct' },
 ]
 
-export const MERIT_BIN_COLUMNS: Column<Bin>[] = [
+export const MERIT_BIN_COLUMNS: Column<Bin<CompPerson>>[] = [
   { key: 'from', label: 'Merit from', format: 'pct2' },
   { key: 'to', label: 'Merit to', format: 'pct2' },
   { key: 'n', label: 'People', format: 'int' },

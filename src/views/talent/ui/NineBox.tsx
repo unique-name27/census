@@ -1,8 +1,9 @@
 /**
  * The 9-box: a 3 × 3 grid of performance (x) against potential (y). Each box shows its count and
  * share and is shaded on the sequential ramp by count, so the eye goes to where people are, not to
- * a traffic-light judgment. Clicking a box (or Enter / Space on it) lists its people underneath;
- * it opens with no box selected so the grid, not a long list, leads the page.
+ * a traffic-light judgment. Clicking a box (or Enter / Space on it) opens its people in the drill
+ * panel, like every other number, and lists them underneath once the panel closes; it opens with
+ * no box selected so the grid, not a long list, leads the page. A row of the list opens the person.
  */
 import { type KeyboardEvent, type PointerEvent, useLayoutEffect, useRef, useState } from 'react'
 import {
@@ -17,6 +18,7 @@ import {
 } from '@/charts'
 import { cx, IconClose } from '@/components'
 import { POTENTIALS } from '@/data/schema'
+import { Drill, type DrillSource, drill, openPerson } from '@/drill'
 import { fmt, plural } from '@/lib/format'
 import { PERF_BAND_LABEL, PERF_BANDS } from '../engine/base'
 import { cellKey, type NineBoxCell } from '../engine/ninebox'
@@ -43,7 +45,16 @@ function useWidth() {
   return { ref, width }
 }
 
-export function NineBox({ cells, cycle }: { cells: readonly NineBoxCell[]; cycle?: string | null }) {
+export function NineBox({
+  cells,
+  cycle,
+  drillFor,
+}: {
+  cells: readonly NineBoxCell[]
+  cycle?: string | null
+  /** The people behind a box, or its high flight-risk people. */
+  drillFor?: (cell: NineBoxCell, part: 'all' | 'highRisk') => DrillSource
+}) {
   const t = useChartTheme()
   const { ref, width } = useWidth()
   const tipRef = useRef<HTMLDivElement>(null)
@@ -74,7 +85,7 @@ export function NineBox({ cells, cycle }: { cells: readonly NineBoxCell[]; cycle
         { value: fmt(c.share, 'pct'), label: 'of everyone placed' },
         { value: fmt(c.highRisk), label: 'in the high flight-risk band' },
       ],
-      note: 'Click to list the people',
+      note: c.count ? 'Click to see the records' : 'Nobody is in this box',
     })
     tip.hidden = false
     const r = box.getBoundingClientRect()
@@ -83,11 +94,16 @@ export function NineBox({ cells, cycle }: { cells: readonly NineBoxCell[]; cycle
   const hideTip = () => {
     if (tipRef.current) tipRef.current.hidden = true
   }
-  const toggle = (key: string) => setSelected((cur) => (cur === key ? null : key))
-  const onKey = (key: string) => (e: KeyboardEvent<SVGGElement>) => {
+  /** Select the box (its people list underneath) and open its records. */
+  const open = (c: NineBoxCell) => {
+    setSelected(cellKey(c.performance, c.potential))
+    hideTip()
+    if (c.count && drillFor) drill(drillFor(c, 'all'))
+  }
+  const onKey = (c: NineBoxCell) => (e: KeyboardEvent<SVGGElement>) => {
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault()
-      toggle(key)
+      open(c)
     }
   }
   const font = { fontFamily: t.font }
@@ -103,7 +119,7 @@ export function NineBox({ cells, cycle }: { cells: readonly NineBoxCell[]; cycle
             height={height}
             viewBox={`0 0 ${width} ${height}`}
             role="group"
-            aria-label="9-box grid of performance and potential. Select a box to list its people."
+            aria-label="9-box grid of performance and potential. Select a box to see its people."
             style={{ ...font, overflow: 'visible' }}
           >
             {/* Potential axis */}
@@ -177,8 +193,8 @@ export function NineBox({ cells, cycle }: { cells: readonly NineBoxCell[]; cycle
                     tabIndex={0}
                     aria-pressed={isSel}
                     aria-label={`${label}: ${plural(c.count, 'person', 'people')}, ${shareText}`}
-                    onClick={() => toggle(key)}
-                    onKeyDown={onKey(key)}
+                    onClick={() => open(c)}
+                    onKeyDown={onKey(c)}
                     onPointerEnter={(e) => {
                       setHover(key)
                       showTip(c, e)
@@ -250,7 +266,23 @@ export function NineBox({ cells, cycle }: { cells: readonly NineBoxCell[]; cycle
             <h4 className="text-[13px] font-semibold [font-stretch:100%]">
               {active.label.replace(/^./, (m) => m.toUpperCase())}
               <span className="ml-1.5 font-normal text-muted">
-                {plural(active.count, 'person', 'people')}
+                <Drill
+                  spec={active.count && drillFor ? drillFor(active, 'all') : null}
+                  label={`Show the ${plural(active.count, 'person', 'people')} in this box`}
+                >
+                  {plural(active.count, 'person', 'people')}
+                </Drill>
+                {active.highRisk > 0 && (
+                  <>
+                    {' · '}
+                    <Drill
+                      spec={drillFor ? drillFor(active, 'highRisk') : null}
+                      label={`Show the ${fmt(active.highRisk)} in the high flight-risk band`}
+                    >
+                      {fmt(active.highRisk)} in the high flight-risk band
+                    </Drill>
+                  </>
+                )}
               </span>
             </h4>
             <button
@@ -269,11 +301,12 @@ export function NineBox({ cells, cycle }: { cells: readonly NineBoxCell[]; cycle
             search={active.people.length > 10 ? 'Search people' : undefined}
             caption={`People in the box ${active.label}`}
             rowKey={(r) => r.employeeId}
+            onRowClick={(r) => openPerson(r.employeeId)}
             emptyText="Nobody is in this box."
           />
         </div>
       ) : (
-        <p className={cx('mt-2 text-[12px] text-muted')}>Select a box to list the people in it.</p>
+        <p className={cx('mt-2 text-[12px] text-muted')}>Select a box to see the people in it.</p>
       )}
     </div>
   )

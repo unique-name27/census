@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { BarList, Columns, Figure, useChartTheme } from '@/charts'
 import { Section, Segmented } from '@/components'
 import { useAnalytics } from '@/data/context'
+import { drill, openPerson } from '@/drill'
 import { formatDate } from '@/lib/dates'
 import { fmt, plural } from '@/lib/format'
 import type { TalentModel } from '../engine'
@@ -9,9 +10,9 @@ import { listText } from '../engine/base'
 import { backTestSummary, factorDef, RISK_BANDS } from '../engine/risk'
 import { scopeColors } from './colors'
 import {
-  BACKTEST_COLUMNS,
-  BAND_COLUMNS,
-  DRIVER_COLUMNS,
+  backTestColumns,
+  bandColumns,
+  driverColumns,
   EVIDENCE_COLUMNS,
   EXIT_PERSON_COLUMNS,
   PROMOTION_OVERDUE_COLUMNS,
@@ -77,6 +78,7 @@ export function RetentionTab({ m }: { m: TalentModel }) {
     { band: b.band, series: 'This scope', share: b.share },
     { band: b.band, series: 'Company', share: b.companyShare },
   ])
+  const byPerson = { onRowClick: (r: { employeeId: string }) => openPerson(r.employeeId) }
 
   // One people table, three views.
   const peopleRows =
@@ -110,7 +112,7 @@ export function RetentionTab({ m }: { m: TalentModel }) {
               : `Share of active employees in each band, ${ctx.scopeLabel} against the company, as of ${asOf}`
           }
           data={ret.bands}
-          columns={BAND_COLUMNS}
+          columns={bandColumns(m.drill)}
           definitions={[DEF.flightRisk, DEF.bands]}
           note={`${plural(ret.scored, 'person', 'people')} scored · company-wide the high band is the top ${highShare} (score ${fmt(risk.cutHigh)} and up) and the medium band the next ${mediumShare}`}
           span={4}
@@ -125,6 +127,7 @@ export function RetentionTab({ m }: { m: TalentModel }) {
               tone={(d) => (d.band === 'High' ? 'default' : 'deemph')}
               labels
               height={220}
+              onSelect={(d) => drill(m.drill.band(d.band, 'scope'))}
               ariaLabel="People by flight-risk band"
             />
           ) : (
@@ -138,6 +141,10 @@ export function RetentionTab({ m }: { m: TalentModel }) {
               xOrder={RISK_BANDS}
               format="pct0"
               height={220}
+              onSelect={(d) => drill(m.drill.band(d.band, 'scope'))}
+              onSelectSegment={(d) =>
+                drill(m.drill.band(d.band, d.series === 'Company' ? 'company' : 'scope'))
+              }
               ariaLabel="Share of people in each flight-risk band, this scope against the company"
             />
           )}
@@ -147,7 +154,7 @@ export function RetentionTab({ m }: { m: TalentModel }) {
           title="Exit rate by risk band, back-tested"
           subtitle={`Scored as of ${formatDate(bt.scoredOn)} with points learned only from exits known by then; ${who} ${bt.outcome.label}, whole company`}
           data={bt.bands}
-          columns={BACKTEST_COLUMNS}
+          columns={backTestColumns(m.drill)}
           definitions={[DEF.backTest, DEF.bands]}
           note={`${backTestSummary(bt)} ${plural(bt.population, 'person', 'people')} scored, ${fmt(bt.leavers)} left.${
             bt.learned
@@ -175,6 +182,7 @@ export function RetentionTab({ m }: { m: TalentModel }) {
             }
             labels
             height={220}
+            onSelect={(d) => drill(m.drill.backTest(d.band, 'left'))}
             ariaLabel="Exit rate within 12 months by flight-risk band a year earlier"
           />
         </Figure>
@@ -183,7 +191,7 @@ export function RetentionTab({ m }: { m: TalentModel }) {
           title="What drives risk"
           subtitle="Share of people in the high band with each factor"
           data={drivers}
-          columns={DRIVER_COLUMNS}
+          columns={driverColumns(m.drill)}
           definitions={[DEF.flightRisk, DEF.mainReason]}
           note={`${plural(highCount, 'person', 'people')} in the high band · the number after each bar counts people for whom it is the main reason`}
           span={4}
@@ -196,6 +204,7 @@ export function RetentionTab({ m }: { m: TalentModel }) {
             format="pct0"
             domain={[0, 1]}
             secondary={(d) => (d.topReason ? `main for ${fmt(d.topReason)}` : null)}
+            onSelect={(d) => drill(m.drill.driver(d.key, 'any'))}
             ariaLabel="Share of high-band people with each factor"
           />
         </Figure>
@@ -254,7 +263,7 @@ export function RetentionTab({ m }: { m: TalentModel }) {
               ]}
             />
           }
-          table={{ maxRows: 12, search: peopleRows.length > 12 ? 'Search people' : undefined }}
+          table={{ maxRows: 12, search: peopleRows.length > 12 ? 'Search people' : undefined, ...byPerson }}
           empty={
             noPeople ??
             (view === 'key' && !m.has.reviews
@@ -283,7 +292,11 @@ export function RetentionTab({ m }: { m: TalentModel }) {
               : ''
           }`}
           tableOnly
-          table={{ maxRows: 10, search: m.overdue.rows.length > 10 ? 'Search people' : undefined }}
+          table={{
+            maxRows: 10,
+            search: m.overdue.rows.length > 10 ? 'Search people' : undefined,
+            ...byPerson,
+          }}
           empty={
             !m.overdue.available
               ? (m.overdue.reason ?? 'Not enough history to apply this rule.')
@@ -305,7 +318,7 @@ export function RetentionTab({ m }: { m: TalentModel }) {
               : undefined
           }
           tableOnly
-          table={{ maxRows: 10 }}
+          table={{ maxRows: 10, ...byPerson }}
           empty={
             !regret.available
               ? `${regret.missing ?? 'A column is missing'}, so regretted exits of high performers can't be counted. Upload Employees with a termination type and a regrettable flag on leavers, and Reviews.`

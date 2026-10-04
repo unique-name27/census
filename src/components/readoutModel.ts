@@ -2,6 +2,7 @@
  * Ordering and export rows for a view's readout. Pure.
  */
 import type { Column } from '@/charts/types'
+import { isNum, plural } from '@/lib/format'
 import type { Finding, FindingPerson, Severity } from './types'
 
 export const SEVERITY_RANK: Record<Severity, number> = { critical: 0, warning: 1, info: 2, good: 3 }
@@ -36,6 +37,19 @@ export function peoplePreview(
   return { shown: people.slice(0, limit), more: Math.max(0, people.length - limit) }
 }
 
+/** How many people a finding covers: its `peopleTotal` when the list is capped, else the list length. */
+export function peopleCount(f: Pick<Finding, 'people' | 'peopleTotal'>): number | null {
+  const listed = f.people?.length
+  if (isNum(f.peopleTotal)) return Math.max(f.peopleTotal, listed ?? 0)
+  return listed ?? null
+}
+
+/** The people toggle: "12 people", or "57 people (first 50 listed)" when the list is capped. */
+export function peopleChipLabel(listed: number, total?: number): string {
+  if (isNum(total) && total > listed) return `${plural(total, 'person', 'people')} (first ${listed} listed)`
+  return plural(listed, 'person', 'people')
+}
+
 export const READOUT_COLUMNS: Column[] = [
   { key: 'severity', label: 'Severity', format: 'text' },
   { key: 'finding', label: 'Finding', format: 'text' },
@@ -51,7 +65,7 @@ export function readoutRows(findings: readonly Finding[]): Record<string, unknow
     finding: f.title,
     detail: f.detail ?? '',
     nextStep: f.action ?? '',
-    people: f.people?.length ?? null,
+    people: peopleCount(f),
   }))
 }
 

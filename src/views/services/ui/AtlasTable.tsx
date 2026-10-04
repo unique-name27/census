@@ -1,8 +1,10 @@
 /**
- * The Atlas tables on the Service levels tab (scorecard, processes) as plain HTML, so each process
- * ID can link to its page in the Hire-to-Retire Atlas (Tools menu > HR process catalog) in a new
- * tab. The shared DataTable has no link cells yet; the Figure around these tables still gives the
- * sortable table view and every export from the same rows.
+ * The service level scorecard's on-screen table as plain HTML: two-line cells (process ID over
+ * its name, measure over its team) and status pills, which the shared DataTable doesn't draw.
+ * Each process ID links to its page in the Hire-to-Retire Atlas (Tools menu > HR process catalog)
+ * in a new tab, and cells can wrap their numbers in a drill. The Figure around it still gives the
+ * sortable table view (with `Column.href` links and drills) and every export from the same rows.
+ * Plain tables (the processes list) use the Figure's own table.
  */
 import type { ReactNode } from 'react'
 import { useTools } from '@/app/ToolsMenu'

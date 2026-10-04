@@ -15,6 +15,8 @@ export interface GroupExits {
   voluntary: number
   involuntary: number
   regretted: number
+  /** The employees behind `exits`, in roster order (voluntary and regretted are subsets). */
+  leavers: Employee[]
 }
 
 /** Annualized rate, or null below the anonymity floor or with no headcount. */
@@ -38,7 +40,7 @@ export function exitsByGroup(
   const get = (k: string) => {
     let g = out.get(k)
     if (!g) {
-      g = { key: k, avgHeadcount: 0, exits: 0, voluntary: 0, involuntary: 0, regretted: 0 }
+      g = { key: k, avgHeadcount: 0, exits: 0, voluntary: 0, involuntary: 0, regretted: 0, leavers: [] }
       out.set(k, g)
     }
     return g
@@ -54,6 +56,7 @@ export function exitsByGroup(
     if (k != null && inWindow(e.terminationDate, w)) {
       const g = get(k)
       g.exits++
+      g.leavers.push(e)
       if (e.terminationType === 'Voluntary') {
         g.voluntary++
         if (e.regrettable === true) g.regretted++

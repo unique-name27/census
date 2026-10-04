@@ -32,6 +32,11 @@ export interface FieldCoverage {
   expected: number
   /** Rows among `expected` that hold a value from the data (not from an importer default). */
   filled: number
+  /**
+   * Rows among `expected` that hold no value at all (blank, NaN or Unknown): the rows a drill
+   * lists. `expected − filled − defaulted`, since defaulted rows can't be told apart from the file's.
+   */
+  blank: number
   /** filled ÷ expected; null when no row applies. */
   share: number | null
   /** Which rows count, when not all of them. */
@@ -231,6 +236,32 @@ export const CONDITIONAL_FIELDS: Partial<Record<DatasetKey, Record<string, Appli
   },
 }
 
+/** Which rows a field applies to, decided once per dataset; null when it applies to every row. */
+const appliesTo = (def: Pick<DatasetDef, 'key'>, fieldKey: string, rows: readonly Row[]) =>
+  CONDITIONAL_FIELDS[def.key]?.[fieldKey]?.applies(rows) ?? null
+
+/**
+ * The rows behind a field's coverage, among those it applies to: the ones holding a value and the
+ * ones without (blank, NaN or Unknown). `blank.length` is the field's `blank`; `filled.length` is
+ * its `filled + defaulted`. Called when someone opens the rows, not on every render.
+ */
+export function fieldRecords<R extends object>(
+  def: Pick<DatasetDef, 'key'>,
+  rows: readonly R[],
+  fieldKey: string,
+): { filled: R[]; blank: R[] } {
+  const applies = appliesTo(def, fieldKey, rows as readonly Row[])
+  const filled: R[] = []
+  const blank: R[] = []
+  for (const r of rows) {
+    const row = r as Row
+    if (applies && !applies(row)) continue
+    if (isFilled(row[fieldKey])) filled.push(r)
+    else blank.push(r)
+  }
+  return { filled, blank }
+}
+
 export function fieldCoverage(
   def: DatasetDef,
   rows: readonly object[],
@@ -241,7 +272,7 @@ export function fieldCoverage(
   const notInFile = fills ? new Set(fills.notInFile) : null
   const fields: FieldCoverage[] = def.fields.map((f) => {
     const rule = rules[f.key]
-    const applies = rule?.applies(all)
+    const applies = appliesTo(def, f.key, all)
     let expected = 0
     let present = 0
     for (const r of all) {
@@ -258,6 +289,7 @@ export function fieldCoverage(
       pay: !!f.pay,
       expected,
       filled,
+      blank: expected - present,
       share: expected ? filled / expected : null,
       scope: rule?.scope ?? null,
       rowsNoun: rule ? (rule.noun ?? rule.scope.charAt(0).toLowerCase() + rule.scope.slice(1)) : 'rows',

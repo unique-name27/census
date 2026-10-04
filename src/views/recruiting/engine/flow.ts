@@ -51,12 +51,18 @@ export function cohort(apps: readonly App[], w: Pick<Window, 'start' | 'end'>): 
   return apps.filter((a) => inWin(a.appliedDate, w))
 }
 
-function medianTransition(apps: readonly App[], i: number): { median: number | null; n: number } {
-  const xs: number[] = []
+/** Applications with both dates for transition i (stage i to i + 1), with the days it took. */
+export function measuredTransitions(apps: readonly App[], i: number): { app: App; days: number }[] {
+  const out: { app: App; days: number }[] = []
   for (const a of apps) {
     const d = transitionDays(a, i)
-    if (d != null) xs.push(d)
+    if (d != null) out.push({ app: a, days: d })
   }
+  return out
+}
+
+function medianTransition(apps: readonly App[], i: number): { median: number | null; n: number } {
+  const xs = measuredTransitions(apps, i).map((m) => m.days)
   return { median: median(xs), n: xs.length }
 }
 
@@ -140,6 +146,8 @@ export interface SpeedCell {
   transition: string
   days: number | null
   n: number
+  /** The steps measured; empty when the median is hidden (fewer than 5), so it never drills. */
+  steps: TransitionEvent[]
 }
 
 /**
@@ -149,35 +157,42 @@ export interface SpeedCell {
  */
 export function speedByMonth(apps: readonly App[], end: string): SpeedCell[] {
   const months = monthsBetween(addMonths(monthStart(end), -11), end)
-  const cells = new Map<string, number[]>()
+  const cells = new Map<string, TransitionEvent[]>()
   for (const m of months) for (let i = 0; i <= LAST_OPEN_STAGE; i++) cells.set(`${m}|${i}`, [])
   for (const a of apps) {
     for (let i = 0; i <= LAST_OPEN_STAGE; i++) {
       const done = a.dates[i + 1]
       if (!done || done > end) continue
       const d = transitionDays(a, i)
-      if (d != null) cells.get(`${monthKey(done)}|${i}`)?.push(d)
+      if (d != null) cells.get(`${monthKey(done)}|${i}`)?.push({ app: a, i, days: d, end: done })
     }
   }
   const out: SpeedCell[] = []
   for (const m of months) {
     for (let i = 0; i <= LAST_OPEN_STAGE; i++) {
-      const xs = cells.get(`${m}|${i}`) ?? []
+      const steps = cells.get(`${m}|${i}`) ?? []
+      const shown = steps.length >= 5
       out.push({
         month: m,
         monthLabel: formatMonthShort(`${m}-01`, true),
         transition: TRANSITIONS[i],
-        days: xs.length >= 5 ? median(xs) : null,
-        n: xs.length,
+        days: shown ? median(steps.map((e) => e.days)) : null,
+        n: steps.length,
+        steps: shown ? steps : [],
       })
     }
   }
   return out
 }
 
-export type FlowKind = 'advanced' | 'active' | 'rejected' | 'withdrawn' | 'declined' | 'node'
+export type FlowKind = 'advanced' | 'active' | 'rejected' | 'withdrawn' | 'declined' | 'left' | 'node'
 
-/** The applications behind one part of the river. */
+const LEFT = new Set<string>(['Rejected', 'Withdrawn', 'Declined'])
+
+/** Everyone in `apps` who left the process (rejected, withdrew or declined an offer). */
+export const leftProcess = (apps: readonly App[]): App[] => apps.filter((a) => LEFT.has(a.outcome))
+
+/** The applications behind one part of the river ('left': every exit at that stage). */
 export function flowMembers(apps: readonly App[], kind: FlowKind, stage: number): App[] {
   switch (kind) {
     case 'node':
@@ -192,6 +207,8 @@ export function flowMembers(apps: readonly App[], kind: FlowKind, stage: number)
       return apps.filter((a) => a.furthest === stage && a.outcome === 'Withdrawn')
     case 'declined':
       return apps.filter((a) => a.furthest === stage && a.outcome === 'Declined')
+    case 'left':
+      return apps.filter((a) => a.furthest === stage && LEFT.has(a.outcome))
   }
 }
 

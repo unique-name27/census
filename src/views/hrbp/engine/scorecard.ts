@@ -8,12 +8,13 @@
 import type { Employee, JobChange } from '@/data/schema'
 import { type Filters, subtreeIds } from '@/data/scope'
 import { addDays } from '@/lib/dates'
-import { attrition, headcountAt, isActiveAt } from '@/lib/people'
+import { activeAt, attrition, exitsIn, inWindow, isActiveAt } from '@/lib/people'
 import { mean } from '@/lib/stats'
-import { cohortSummary } from './attrition'
+import { cohortSummary, firstYearCohort } from './attrition'
 import type { Prep } from './base'
 import { promotionRate } from './movement'
-import { activeChildren } from './org'
+import { activeChildren, subtreeSizer } from './org'
+import { leftInFirstYear } from './rates'
 
 export const SCORE_METRICS = ['voluntary', 'regretted', 'firstYear', 'promotionRate', 'avgSpan'] as const
 export type ScoreMetric = (typeof SCORE_METRICS)[number]
@@ -46,6 +47,29 @@ export interface ScoreRow {
   promotionRate: number | null
   avgSpan: number | null
   shade: Partial<Record<ScoreMetric, Shade>>
+  /** The records behind each cell; a hidden (null) value has none. */
+  records: ScoreRecords
+}
+
+/** The records behind a scorecard row's cells. */
+export interface ScoreRecords {
+  /** Employees today (`headcount`). */
+  active: Employee[]
+  /** Employees today who were not 12 months ago, and the reverse (`netChange` = joined − left). */
+  joined: Employee[]
+  left: Employee[]
+  /** Voluntary and regretted leavers in the window (numerators of the two rates). */
+  voluntary: Employee[]
+  regretted: Employee[]
+  /** First-year leavers and the size of their hire cohort. */
+  firstYear: Employee[]
+  cohort: number
+  /** Promotion events in the window. */
+  promotions: JobChange[]
+  /** Average headcount over the window (the denominator of every rate in the row). */
+  avgHeadcount: number
+  /** Managers in the org with their span (`avgSpan` is the mean of `directs`). */
+  managers: { employee: Employee; directs: number; totalOrg: number }[]
 }
 
 export interface Scorecard {
@@ -85,18 +109,62 @@ function metrics(
   const changes: JobChange[] = []
   for (const e of emps) for (const c of changesById.get(e.employeeId) ?? []) changes.push(c)
   const active = people.filter((e) => isActiveAt(e, p.asOf))
-  const spans = [...activeChildren(active, p.asOf).values()].map((k) => k.length)
+  const children = activeChildren(active, p.asOf)
+  const below = subtreeSizer(children)
+  const byId = new Map(active.map((e) => [e.employeeId, e]))
+  const managers = [...children.entries()].flatMap(([id, kids]) => {
+    const employee = byId.get(id)
+    return employee ? [{ employee, directs: kids.length, totalOrg: below(id) }] : []
+  })
+  const spans = [...children.values()].map((k) => k.length)
   const vol = attrition(emps, p.window, 'voluntary')
   const reg = attrition(emps, p.window, 'regretted')
-  const hc = headcountAt(emps, p.asOf)
+  const yearAgo = addDays(p.t12.start, -1)
+  const now = activeAt(emps, p.asOf)
+  const hc = now.length
+  const joined: Employee[] = []
+  const gone: Employee[] = []
+  let then = 0
+  for (const e of emps) {
+    const was = isActiveAt(e, yearAgo)
+    const is = isActiveAt(e, p.asOf)
+    if (was) then++
+    if (is && !was) joined.push(e)
+    if (was && !is) gone.push(e)
+  }
+  const exits = exitsIn(emps, p.window)
+  const cohort = cohortSummary(emps, p.asOf)
+  const promo = promotionRate(emps, changes, p.window, p.has.jobChanges)
+  const voluntary = typed && vol.avgHeadcount >= 5 ? vol.rate : null
+  const regretted = typed && p.has.regrettable && reg.avgHeadcount >= 5 ? reg.rate : null
+  const firstYear = left ? cohort.rate : null
+  const avgSpan = spans.length ? mean(spans) : null
   return {
     headcount: hc,
-    netChange: left ? hc - headcountAt(emps, addDays(p.t12.start, -1)) : null,
-    voluntary: typed && vol.avgHeadcount >= 5 ? vol.rate : null,
-    regretted: typed && p.has.regrettable && reg.avgHeadcount >= 5 ? reg.rate : null,
-    firstYear: left ? cohortSummary(emps, p.asOf).rate : null,
-    promotionRate: promotionRate(emps, changes, p.window, p.has.jobChanges).rate,
-    avgSpan: spans.length ? mean(spans) : null,
+    netChange: left ? hc - then : null,
+    voluntary,
+    regretted,
+    firstYear,
+    promotionRate: promo.rate,
+    avgSpan,
+    records: {
+      active: now,
+      joined: left ? joined : [],
+      left: left ? gone : [],
+      voluntary: voluntary == null ? [] : exits.filter((e) => e.terminationType === 'Voluntary'),
+      regretted:
+        regretted == null
+          ? []
+          : exits.filter((e) => e.terminationType === 'Voluntary' && e.regrettable === true),
+      firstYear: firstYear == null ? [] : firstYearCohort(emps, p.asOf).filter(leftInFirstYear),
+      cohort: cohort.cohort,
+      promotions:
+        promo.rate == null
+          ? []
+          : changes.filter((c) => c.changeType === 'Promotion' && inWindow(c.effectiveDate, p.window)),
+      avgHeadcount: vol.avgHeadcount,
+      managers: avgSpan == null ? [] : managers,
+    },
   }
 }
 

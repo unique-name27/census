@@ -8,9 +8,11 @@ import {
   buildReviewIndex,
   directReports,
   firstYearAttrition,
+  hasExitData,
   headcountAt,
   latestCycle,
   monthPoints,
+  NO_EXIT_DATA,
   quarterPoints,
   retention12,
   reviewAt,
@@ -121,6 +123,27 @@ describe('attrition', () => {
 
   it('returns null with no headcount', () => {
     expect(attrition([], W).rate).toBeNull()
+  })
+
+  it('returns null, not zero, when the Employees data has no termination dates', () => {
+    expect(hasExitData(rows)).toBe(true)
+    expect(hasExitData(stayers)).toBe(false)
+    for (const kind of ['all', 'voluntary', 'involuntary', 'regretted'] as const) {
+      const r = attrition(stayers, W, kind, { exitDataPresent: hasExitData(stayers) })
+      expect(r.rate, kind).toBeNull()
+      expect(r.events, kind).toBe(0)
+      expect(r.reason, kind).toBe('No termination dates in the Employees data')
+      expect(r.avgHeadcount, kind).toBe(18)
+    }
+    expect(NO_EXIT_DATA).toBe('No termination dates in the Employees data')
+    // Without the flag a roster of stayers reads as 0%: the caller has to say exits are missing.
+    expect(attrition(stayers, W).rate).toBe(0)
+  })
+
+  it('ignores the option when exit data is present or not stated', () => {
+    const plain = attrition(rows, W, 'voluntary')
+    expect(attrition(rows, W, 'voluntary', { exitDataPresent: true })).toEqual(plain)
+    expect(attrition(rows, W, 'voluntary', {})).toEqual(plain)
   })
 })
 

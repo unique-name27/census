@@ -1,6 +1,14 @@
 /** Export library: `import { downloadCsv, downloadXlsx, copyTable, downloadPng, … } from '@/lib/export'`. */
 export { copyTable, toTsv, writeClipboard } from './clipboard'
-export { columnAlign, columnFormat, isNumericFormat, plainText, visibleColumns } from './columns'
+export {
+  columnAlign,
+  columnFormat,
+  EXPORT_DIGITS,
+  exportNumber,
+  isNumericFormat,
+  plainText,
+  visibleColumns,
+} from './columns'
 export { csvField, downloadCsv, guardFormula, toCsv } from './csv'
 export { downloadBlob, MIME } from './download'
 export {
@@ -17,7 +25,19 @@ export {
 } from './image'
 export { asOfIso, asOfLabel, fileStem, imageFooter, metaLine, slug, stampLine, viewLine } from './names'
 export type { ExportOptions, ExportTable } from './types'
-export { exportViewDeck, exportViewWorkbook, type ViewExportOptions } from './view'
+export {
+  buildViewWorkbook,
+  captureFigureImages,
+  entrySheetName,
+  exportViewDeck,
+  exportViewWorkbook,
+  type FigureGroup,
+  isFigureGroups,
+  type ViewEntry,
+  type ViewExportOptions,
+  type ViewFigures,
+  viewEntries,
+} from './view'
 export {
   addTableSheet,
   buildWorkbook,

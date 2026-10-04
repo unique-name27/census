@@ -9,7 +9,7 @@ import type { ExportMeta } from '@/charts/types'
 import { downloadBlob, MIME } from '@/lib/export/download'
 import { withLightTheme } from '@/lib/export/image'
 import { asOfLabel, stampLine } from '@/lib/export/names'
-import { SLIDE, type SlidePlan, type Swatch } from '../engine'
+import { NAME_PX, SLIDE, type SlidePlan, SMALL_PX, type Swatch } from '../engine'
 
 const FONT = 'Archivo'
 const hex = (c: string) => {
@@ -136,8 +136,8 @@ export function buildOrgDeck(
     }
 
     const k = plan.ptPerPx
-    const namePt = clampPt(14 * k, 6, 16)
-    const smallPt = clampPt(11.5 * k, 5, 12)
+    const namePt = clampPt(NAME_PX * k, 6, 16)
+    const smallPt = clampPt(SMALL_PX * k, 5, 12)
     for (const c of plan.cards) {
       const runs =
         c.kind === 'req'

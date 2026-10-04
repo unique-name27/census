@@ -69,6 +69,7 @@ export function prepareApp(c: Candidate, req: Requisition | null, asOf: ISODate)
   }
   const enteredDate = stageEntered ?? latest
   return {
+    raw: c,
     id: c.applicationId,
     name: c.candidateName || c.candidateId || c.applicationId,
     reqId: c.reqId,

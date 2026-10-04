@@ -1,19 +1,27 @@
 /**
  * Ripple preview of a proposed move or exit (the old tool's ReorgRipplePreview): who gains and loses
- * reports, how many people move, and any warnings; a blocked move says why.
+ * reports, who moves (up to 12 names), who would report across departments, and any warnings; a
+ * blocked move says why. With a `scope`, every count opens the people behind it (the move dialog);
+ * while dragging the same numbers are plain text.
  */
 import { SeverityIcon, StatusPill } from '@/components'
 import { cx } from '@/components/ui'
+import { Drill } from '@/drill'
 import { plural } from '@/lib/format'
-import type { OrgTree, Ripple } from '../engine'
+import { type DrillScope, type OrgTree, peopleDrill, type Ripple, rippleTeams, scopeLine } from '../engine'
+
+const NAMES_SHOWN = 12
 
 export function RipplePreview({
   tree,
   ripple,
+  scope,
   compact,
 }: {
   tree: OrgTree
   ripple: Ripple
+  /** Makes the counts open their people. */
+  scope?: DrillScope
   compact?: boolean
 }) {
   const name = (id: string | null | undefined) => (id ? (tree.people.get(id)?.name ?? id) : '')
@@ -29,19 +37,36 @@ export function RipplePreview({
       </div>
     )
   }
-  const rows: { label: string; before: number; after: number }[] = []
+  const list = (ids: readonly string[], title: string, note?: string) =>
+    scope
+      ? () =>
+          peopleDrill(tree, ids, {
+            title,
+            subtitle: scopeLine(scope),
+            note,
+            columns: ['directs', 'totalOrg'],
+          })
+      : null
+  const teams = rippleTeams(tree, ripple)
+  const rows: { id: string; label: string; before: number; after: number; afterIds: string[] }[] = []
   if (ripple.oldManager)
     rows.push({
+      id: ripple.oldManager.id,
       label: name(ripple.oldManager.id),
       before: ripple.oldManager.before,
       after: ripple.oldManager.after,
+      afterIds: teams.oldAfter,
     })
   if (ripple.newManager)
     rows.push({
+      id: ripple.newManager.id,
       label: name(ripple.newManager.id),
       before: ripple.newManager.before,
       after: ripple.newManager.after,
+      afterIds: teams.newAfter,
     })
+  const others = ripple.movingIds.filter((id) => id !== a.personId)
+  const what = a.kind === 'exit' ? `if ${name(a.personId)} left` : 'after the move'
 
   return (
     <div className="space-y-3 text-[13px]">
@@ -53,9 +78,15 @@ export function RipplePreview({
         ) : (
           <>
             <strong className="font-semibold">{name(a.personId)}</strong>
-            {a.mode === 'team'
-              ? ` and ${plural(ripple.peopleMoving - 1, 'person', 'people')} in their org`
-              : ''}{' '}
+            {a.mode === 'team' && others.length > 0 && (
+              <>
+                {' and '}
+                <Drill spec={list(others, `People moving with ${name(a.personId)}`)}>
+                  {plural(others.length, 'person', 'people')}
+                </Drill>
+                {' in their org'}
+              </>
+            )}{' '}
             move to <strong className="font-semibold">{name(a.toManagerId)}</strong>.
           </>
         )}
@@ -67,12 +98,18 @@ export function RipplePreview({
             {rows.map((r) => {
               const d = r.after - r.before
               return (
-                <tr key={r.label} className="border-t border-rule first:border-t-0">
+                <tr key={r.id} className="border-t border-rule first:border-t-0">
                   <th scope="row" className="truncate py-1 pr-2 text-left font-normal text-ink-2">
                     {r.label}
                   </th>
                   <td className="tnum py-1 text-right whitespace-nowrap text-ink">
-                    {r.before} → <strong className="font-semibold">{r.after}</strong>
+                    <Drill spec={list(tree.children.get(r.id) ?? [], `${r.label}'s direct reports today`)}>
+                      {r.before}
+                    </Drill>{' '}
+                    →{' '}
+                    <strong className="font-semibold">
+                      <Drill spec={list(r.afterIds, `${r.label}'s direct reports ${what}`)}>{r.after}</Drill>
+                    </strong>
                   </td>
                   <td
                     className={cx(
@@ -90,15 +127,54 @@ export function RipplePreview({
       )}
       {ripple.rolledUp.length > 0 && (
         <p className="text-[12px] text-ink-2">
-          {plural(ripple.rolledUp.length, 'direct report rolls', 'direct reports roll')} up to{' '}
+          <Drill spec={list(ripple.rolledUp, `Direct reports of ${name(a.personId)} who roll up`)}>
+            {plural(ripple.rolledUp.length, 'direct report')}
+          </Drill>{' '}
+          {ripple.rolledUp.length === 1 ? 'rolls' : 'roll'} up to{' '}
           {name(ripple.oldManager?.id) || 'the top level'}.
         </p>
       )}
-      {!compact && ripple.crossDept > 0 && a.kind === 'move' && (
+      {!compact && a.kind === 'move' && a.mode === 'team' && others.length > 0 && (
+        <div className="text-[12px] text-ink-2">
+          <div className="eyebrow mb-0.5">Moving with them</div>
+          <p>
+            {others
+              .slice(0, NAMES_SHOWN)
+              .map((id) => name(id))
+              .join(', ')}
+            {others.length > NAMES_SHOWN && (
+              <>
+                {', and '}
+                <Drill spec={list(others.slice(NAMES_SHOWN), `More people moving with ${name(a.personId)}`)}>
+                  {plural(others.length - NAMES_SHOWN, 'more', 'more')}
+                </Drill>
+              </>
+            )}
+            .
+          </p>
+        </div>
+      )}
+      {!compact && ripple.crossDept > 0 && (
         <p className="text-[12px] text-ink-2">
-          {plural(ripple.crossDept, 'person', 'people')} would report into{' '}
-          {tree.people.get(a.toManagerId)?.department} from another department. Department, title and cost
-          center stay as they are in the data.
+          <Drill
+            spec={list(
+              ripple.crossDeptIds,
+              'People who would report to a manager in another department',
+              'Department, title and cost center stay as they are in the data.',
+            )}
+          >
+            {plural(ripple.crossDept, 'person', 'people')}
+          </Drill>{' '}
+          would report to a manager in another department (
+          {ripple.crossDeptIds
+            .slice(0, 3)
+            .map((id) => {
+              const to = ripple.changes.find((c) => c.id === id)?.to
+              return `${name(id)}, ${tree.people.get(id)?.department ?? ''} → ${to ? (tree.people.get(to)?.department ?? '') : ''}`
+            })
+            .join('; ')}
+          {ripple.crossDept > 3 ? '; …' : ''}). Department, title and cost center stay as they are in the
+          data.
         </p>
       )}
       {ripple.warnings.length > 0 && (

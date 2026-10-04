@@ -1,9 +1,17 @@
 /**
  * Column definitions for every Talent figure and table: they drive the table views and every
- * export, so labels carry units and formats match the numbers.
+ * export, so labels carry units and formats match the numbers. Count and rate cells open the
+ * records behind them (`drill`); tables of people open the person from the row instead.
  */
 import type { Column } from '@/charts'
-import type { CourseRow, HoursRow, OverdueCell, OverdueRow as TrainingOverdueRow } from '../engine/learning'
+import type { HighShareDim, TalentDrill, TalentDrills } from '../engine/drills'
+import type {
+  CompletionRow,
+  CourseRow,
+  HoursRow,
+  OverdueCell,
+  OverdueRow as TrainingOverdueRow,
+} from '../engine/learning'
 import type { NineBoxCell, NineBoxPerson } from '../engine/ninebox'
 import type {
   CalibrationRow,
@@ -13,21 +21,30 @@ import type {
   HighShareRow,
   MixRow,
 } from '../engine/performance'
+import { RATING_ORDER } from '../engine/performance'
 import type { OverdueRow } from '../engine/promotion'
 import type { DriverRow, ExitPerson, RiskPersonRow } from '../engine/retention'
-import type { BackTestBand, FactorEvidence } from '../engine/risk'
-import type { BenchTableRow, CoverageRow, HipoGroupRow, RoleRow } from '../engine/succession'
+import type { BackTestBand, FactorEvidence, RiskBand } from '../engine/risk'
+import type { BenchScope, BenchTableRow, CoverageRow, HipoGroupRow, RoleRow } from '../engine/succession'
 
 export type NineBoxRow = Omit<NineBoxCell, 'people'>
 
-export const NINE_BOX_COLUMNS: Column<NineBoxRow>[] = [
-  { key: 'performance', label: 'Performance' },
-  { key: 'potential', label: 'Potential' },
-  { key: 'label', label: 'Box' },
-  { key: 'count', label: 'People', format: 'int' },
-  { key: 'share', label: 'Share of placed', format: 'pct' },
-  { key: 'highRisk', label: 'High flight risk', format: 'int' },
-]
+export const nineBoxColumns = (d: TalentDrills): Column<NineBoxRow>[] => {
+  const all = (r: NineBoxRow) => d.nineBox(r.performance, r.potential, 'all')
+  return [
+    { key: 'performance', label: 'Performance' },
+    { key: 'potential', label: 'Potential' },
+    { key: 'label', label: 'Box' },
+    { key: 'count', label: 'People', format: 'int', drill: all },
+    { key: 'share', label: 'Share of placed', format: 'pct', drill: all },
+    {
+      key: 'highRisk',
+      label: 'High flight risk',
+      format: 'int',
+      drill: (r) => d.nineBox(r.performance, r.potential, 'highRisk'),
+    },
+  ]
+}
 
 /** "Rating (2025 Annual)": the 9-box reads the annual cycle, which can differ from the latest one. */
 const cycleLabel = (label: string, cycle: string | null | undefined) =>
@@ -52,63 +69,94 @@ export const nineBoxDetailColumns = (cycle?: string | null): Column[] => [
   { key: 'riskScore', label: 'Flight-risk score', format: 'int' },
 ]
 
-export const DISTRIBUTION_COLUMNS: Column<DistributionRow>[] = [
+export const distributionColumns = (d: TalentDrills): Column<DistributionRow>[] => [
   { key: 'label', label: 'Rating' },
-  { key: 'people', label: 'People', format: 'int' },
-  { key: 'share', label: 'Actual share', format: 'pct' },
+  { key: 'people', label: 'People', format: 'int', drill: (r) => d.rating(r.rating) },
+  { key: 'share', label: 'Actual share', format: 'pct', drill: (r) => d.rating(r.rating) },
   { key: 'guideline', label: 'Guideline', format: 'pct0' },
   { key: 'gap', label: 'Gap to guideline', format: 'pts' },
 ]
 
-export const highShareColumns = (groupLabel: string): Column<HighShareRow>[] => [
-  { key: 'group', label: groupLabel },
-  { key: 'rated', label: 'People rated', format: 'int' },
-  { key: 'high', label: 'Rated 4-5', format: 'int' },
-  { key: 'share', label: 'Share rated 4-5', format: 'pct' },
-]
+export const highShareColumns = (
+  groupLabel: string,
+  d?: TalentDrills,
+  dim?: HighShareDim,
+): Column<HighShareRow>[] => {
+  const open = (part: 'rated' | 'high') =>
+    d && dim ? { drill: (r: HighShareRow) => d.highShare(dim, r, part) } : {}
+  return [
+    { key: 'group', label: groupLabel },
+    { key: 'rated', label: 'People rated', format: 'int', ...open('rated') },
+    { key: 'high', label: 'Rated 4-5', format: 'int', ...open('high') },
+    { key: 'share', label: 'Share rated 4-5', format: 'pct', ...open('high') },
+  ]
+}
 
-export const MIX_COLUMNS: Column<MixRow>[] = [
+export const mixColumns = (d: TalentDrills): Column<MixRow>[] => [
   { key: 'businessUnit', label: 'Business unit' },
-  { key: 'rated', label: 'People rated', format: 'int' },
-  { key: 'r1', label: '1 Does not meet', format: 'pct' },
-  { key: 'r2', label: '2 Partially meets', format: 'pct' },
-  { key: 'r3', label: '3 Meets', format: 'pct' },
-  { key: 'r4', label: '4 Exceeds', format: 'pct' },
-  { key: 'r5', label: '5 Far exceeds', format: 'pct' },
+  { key: 'rated', label: 'People rated', format: 'int', drill: (r) => d.mix(r.businessUnit, null) },
+  ...([1, 2, 3, 4, 5] as const).map(
+    (k): Column<MixRow> => ({
+      key: `r${k}`,
+      label: RATING_ORDER[k - 1],
+      format: 'pct',
+      drill: (r) => d.mix(r.businessUnit, k),
+    }),
+  ),
 ]
 
-export const CALIBRATION_COLUMNS: Column<CalibrationRow>[] = [
-  { key: 'businessUnit', label: 'Business unit' },
-  { key: 'n', label: 'People', format: 'int' },
-  { key: 'proposed', label: 'Average proposed', format: 'num2' },
-  { key: 'final', label: 'Average final', format: 'num2' },
-  { key: 'shift', label: 'Calibration shift', format: 'num2' },
-  { key: 'movedDown', label: 'Moved down', format: 'pct' },
-  { key: 'movedUp', label: 'Moved up', format: 'pct' },
-]
+export const calibrationColumns = (d: TalentDrills): Column<CalibrationRow>[] => {
+  const all = (r: CalibrationRow) => d.calibration(r.businessUnit, 'all')
+  return [
+    { key: 'businessUnit', label: 'Business unit' },
+    { key: 'n', label: 'People', format: 'int', drill: all },
+    { key: 'proposed', label: 'Average proposed', format: 'num2', drill: all },
+    { key: 'final', label: 'Average final', format: 'num2', drill: all },
+    { key: 'shift', label: 'Calibration shift', format: 'num2', drill: all },
+    {
+      key: 'movedDown',
+      label: 'Moved down',
+      format: 'pct',
+      drill: (r) => d.calibration(r.businessUnit, 'down'),
+    },
+    { key: 'movedUp', label: 'Moved up', format: 'pct', drill: (r) => d.calibration(r.businessUnit, 'up') },
+  ]
+}
 
-export const CYCLE_COLUMNS: Column<CycleRow>[] = [
-  { key: 'cycle', label: 'Cycle' },
-  { key: 'cycleDate', label: 'Cycle date', format: 'date' },
-  { key: 'businessUnit', label: 'Business unit' },
-  { key: 'rated', label: 'People rated', format: 'int' },
-  { key: 'mean', label: 'Average rating', format: 'num2' },
-]
+export const cycleColumns = (d: TalentDrills): Column<CycleRow>[] => {
+  const open = (r: CycleRow) => d.cycleUnit(r.cycle, r.businessUnit)
+  return [
+    { key: 'cycle', label: 'Cycle' },
+    { key: 'cycleDate', label: 'Cycle date', format: 'date' },
+    { key: 'businessUnit', label: 'Business unit' },
+    { key: 'rated', label: 'People rated', format: 'int', drill: open },
+    { key: 'mean', label: 'Average rating', format: 'num2', drill: open },
+  ]
+}
 
-export const EXIT_BY_RATING_COLUMNS: Column<ExitByRatingRow>[] = [
-  { key: 'rating', label: 'Rating' },
-  { key: 'rated', label: 'People rated', format: 'int' },
-  { key: 'voluntary', label: 'Left voluntarily', format: 'int' },
-  { key: 'involuntary', label: 'Left involuntarily', format: 'int' },
-  { key: 'voluntaryRate', label: 'Voluntary exit rate', format: 'pct' },
-  { key: 'involuntaryRate', label: 'Involuntary exit rate', format: 'pct' },
-  { key: 'rate', label: 'Exit rate', format: 'pct' },
-]
+/** 4 for "4 Exceeds". */
+export const ratingOf = (label: string): number => RATING_ORDER.indexOf(label) + 1
 
-export const COVERAGE_COLUMNS: Column<CoverageRow>[] = [
+export const exitByRatingColumns = (d: TalentDrills): Column<ExitByRatingRow>[] => {
+  const open =
+    (part: 'rated' | 'Voluntary' | 'Involuntary' | 'left') =>
+    (r: ExitByRatingRow): TalentDrill =>
+      d.exitCohort(ratingOf(r.rating), part)
+  return [
+    { key: 'rating', label: 'Rating' },
+    { key: 'rated', label: 'People rated', format: 'int', drill: open('rated') },
+    { key: 'voluntary', label: 'Left voluntarily', format: 'int', drill: open('Voluntary') },
+    { key: 'involuntary', label: 'Left involuntarily', format: 'int', drill: open('Involuntary') },
+    { key: 'voluntaryRate', label: 'Voluntary exit rate', format: 'pct', drill: open('Voluntary') },
+    { key: 'involuntaryRate', label: 'Involuntary exit rate', format: 'pct', drill: open('Involuntary') },
+    { key: 'rate', label: 'Exit rate', format: 'pct', drill: open('left') },
+  ]
+}
+
+export const coverageColumns = (d: TalentDrills): Column<CoverageRow>[] => [
   { key: 'businessUnit', label: 'Business unit' },
   { key: 'coverage', label: 'Best successor readiness' },
-  { key: 'roles', label: 'Roles', format: 'int' },
+  { key: 'roles', label: 'Roles', format: 'int', drill: (r) => d.coverageCell(r.businessUnit, r.coverage) },
 ]
 
 export const ROLE_COLUMNS: Column<RoleRow>[] = [
@@ -125,6 +173,16 @@ export const ROLE_COLUMNS: Column<RoleRow>[] = [
   { key: 'status', label: 'Bench' },
 ]
 
+/** The roles table: successor counts open the bench behind them. */
+export const roleColumns = (d: TalentDrills): Column<RoleRow>[] =>
+  ROLE_COLUMNS.map((c) =>
+    c.key === 'successors'
+      ? { ...c, drill: (r: RoleRow) => d.roleBench(r.roleId, null) }
+      : c.key === 'readyNow'
+        ? { ...c, drill: (r: RoleRow) => d.roleBench(r.roleId, 'Ready now') }
+        : c,
+  )
+
 export const ROLE_DETAIL_COLUMNS: Column[] = [
   ...(ROLE_COLUMNS as Column[]),
   { key: 'incumbentId', label: 'Incumbent ID' },
@@ -133,50 +191,105 @@ export const ROLE_DETAIL_COLUMNS: Column[] = [
   { key: 'updatedDate', label: 'Plan updated', format: 'date' },
 ]
 
-export const BENCH_COLUMNS: Column<BenchTableRow>[] = [
+export const benchColumns = (d: TalentDrills, scope: BenchScope): Column<BenchTableRow>[] => [
   { key: 'businessUnit', label: 'Business unit' },
-  { key: 'roles', label: 'Roles', format: 'int' },
-  { key: 'successors', label: 'Successors named', format: 'int' },
-  { key: 'perRole', label: 'Successors per role', format: 'num1' },
-  { key: 'readyNow', label: 'Ready now', format: 'int' },
-  { key: 'ready1to2', label: 'Ready in 1-2 years', format: 'int' },
-  { key: 'ready3plus', label: 'Ready in 3+ years', format: 'int' },
-  { key: 'noSuccessor', label: 'Roles with no successor', format: 'int' },
+  { key: 'roles', label: 'Roles', format: 'int', drill: (r) => d.benchRoles(scope, r.businessUnit, 'all') },
+  {
+    key: 'successors',
+    label: 'Successors named',
+    format: 'int',
+    drill: (r) => d.bench(scope, r.businessUnit, null),
+  },
+  {
+    key: 'perRole',
+    label: 'Successors per role',
+    format: 'num1',
+    drill: (r) => d.bench(scope, r.businessUnit, null, true),
+  },
+  {
+    key: 'readyNow',
+    label: 'Ready now',
+    format: 'int',
+    drill: (r) => d.bench(scope, r.businessUnit, 'Ready now'),
+  },
+  {
+    key: 'ready1to2',
+    label: 'Ready in 1-2 years',
+    format: 'int',
+    drill: (r) => d.bench(scope, r.businessUnit, 'Ready in 1-2 years'),
+  },
+  {
+    key: 'ready3plus',
+    label: 'Ready in 3+ years',
+    format: 'int',
+    drill: (r) => d.bench(scope, r.businessUnit, 'Ready in 3+ years'),
+  },
+  {
+    key: 'noSuccessor',
+    label: 'Roles with no successor',
+    format: 'int',
+    drill: (r) => d.benchRoles(scope, r.businessUnit, 'none'),
+  },
 ]
 
-export const hipoColumns = (groupLabel: string): Column<HipoGroupRow>[] => [
-  { key: 'group', label: groupLabel },
-  { key: 'assessed', label: 'People assessed', format: 'int' },
-  { key: 'high', label: 'High potential', format: 'int' },
-  { key: 'share', label: 'Share high potential', format: 'pct' },
-]
+export const hipoColumns = (
+  groupLabel: string,
+  d?: TalentDrills,
+  dim?: 'level' | 'businessUnit',
+): Column<HipoGroupRow>[] => {
+  const open = (part: 'assessed' | 'high') =>
+    d && dim ? { drill: (r: HipoGroupRow) => d.hipo(dim, r, part) } : {}
+  return [
+    { key: 'group', label: groupLabel },
+    { key: 'assessed', label: 'People assessed', format: 'int', ...open('assessed') },
+    { key: 'high', label: 'High potential', format: 'int', ...open('high') },
+    { key: 'share', label: 'Share high potential', format: 'pct', ...open('high') },
+  ]
+}
 
-export const BAND_COLUMNS: Column<{
-  band: string
-  people: number
-  share: number | null
-  companyShare: number | null
-}>[] = [
+type BandTableRow = { band: RiskBand; people: number; share: number | null; companyShare: number | null }
+
+export const bandColumns = (d: TalentDrills): Column<BandTableRow>[] => [
   { key: 'band', label: 'Flight-risk band' },
-  { key: 'people', label: 'People', format: 'int' },
-  { key: 'share', label: 'Share of people scored', format: 'pct' },
-  { key: 'companyShare', label: 'Share company-wide', format: 'pct' },
+  { key: 'people', label: 'People', format: 'int', drill: (r) => d.band(r.band, 'scope') },
+  { key: 'share', label: 'Share of people scored', format: 'pct', drill: (r) => d.band(r.band, 'scope') },
+  {
+    key: 'companyShare',
+    label: 'Share company-wide',
+    format: 'pct',
+    drill: (r) => d.band(r.band, 'company'),
+  },
 ]
 
-export const BACKTEST_COLUMNS: Column<BackTestBand>[] = [
-  { key: 'band', label: 'Band a year ago' },
-  { key: 'people', label: 'People scored', format: 'int' },
-  { key: 'leavers', label: 'Left within 12 months', format: 'int' },
-  { key: 'rate', label: 'Exit rate', format: 'pct' },
-  { key: 'shareOfLeavers', label: 'Share of all leavers', format: 'pct' },
-]
+export const backTestColumns = (d: TalentDrills): Column<BackTestBand>[] => {
+  const left = (r: BackTestBand) => d.backTest(r.band, 'left')
+  return [
+    { key: 'band', label: 'Band a year ago' },
+    { key: 'people', label: 'People scored', format: 'int', drill: (r) => d.backTest(r.band, 'scored') },
+    { key: 'leavers', label: 'Left within 12 months', format: 'int', drill: left },
+    { key: 'rate', label: 'Exit rate', format: 'pct', drill: left },
+    {
+      key: 'shareOfLeavers',
+      label: 'Share of all leavers',
+      format: 'pct',
+      drill: (r) => d.backTest(r.band, 'shareOfLeavers'),
+    },
+  ]
+}
 
-export const DRIVER_COLUMNS: Column<DriverRow & { share: number | null }>[] = [
+type DriverTableRow = DriverRow & { share: number | null }
+
+export const driverColumns = (d: TalentDrills): Column<DriverTableRow>[] => [
   { key: 'factor', label: 'Factor' },
   { key: 'points', label: 'Points', format: 'int' },
-  { key: 'anyReason', label: 'People in high band with it', format: 'int' },
-  { key: 'share', label: 'Share of high band', format: 'pct' },
-  { key: 'topReason', label: 'Main reason for', format: 'int' },
+  {
+    key: 'anyReason',
+    label: 'People in high band with it',
+    format: 'int',
+    drill: (r) => d.driver(r.key, 'any'),
+  },
+  { key: 'share', label: 'Share of high band', format: 'pct', drill: (r) => d.driver(r.key, 'any') },
+  { key: 'topReason', label: 'Main reason for', format: 'int', drill: (r) => d.driver(r.key, 'main') },
 ]
 
 export const EVIDENCE_COLUMNS: Column<FactorEvidence & { definition: string; how: string }>[] = [
@@ -246,35 +359,48 @@ export const EXIT_PERSON_COLUMNS: Column<ExitPerson>[] = [
   { key: 'rating', label: 'Last rating', format: 'int' },
 ]
 
-export const COURSE_COLUMNS: Column<CourseRow>[] = [
+export const courseColumns = (d: TalentDrills): Column<CourseRow>[] => [
   { key: 'course', label: 'Course' },
   { key: 'category', label: 'Category' },
-  { key: 'due', label: 'Assignments due', format: 'int' },
-  { key: 'onTime', label: 'On time', format: 'int' },
-  { key: 'late', label: 'Completed late', format: 'int' },
-  { key: 'open', label: 'Not completed', format: 'int' },
-  { key: 'onTimeRate', label: 'On time', format: 'pct' },
+  { key: 'due', label: 'Assignments due', format: 'int', drill: (r) => d.onTime(r.course, 'due') },
+  { key: 'onTime', label: 'On time', format: 'int', drill: (r) => d.onTime(r.course, 'onTime') },
+  { key: 'late', label: 'Completed late', format: 'int', drill: (r) => d.onTime(r.course, 'late') },
+  { key: 'open', label: 'Not completed', format: 'int', drill: (r) => d.onTime(r.course, 'open') },
+  { key: 'onTimeRate', label: 'On time', format: 'pct', drill: (r) => d.onTime(r.course, 'onTime') },
 ]
 
-export const overdueCellColumns = (groupLabel: string): Column<OverdueCell>[] => [
-  { key: 'course', label: 'Course' },
-  { key: 'group', label: groupLabel },
-  { key: 'pastDue', label: 'Assignments past due', format: 'int' },
-  { key: 'overdue', label: 'Overdue', format: 'int' },
-  { key: 'share', label: 'Share overdue', format: 'pct' },
-]
+export const overdueCellColumns = (
+  groupLabel: string,
+  d?: TalentDrills,
+  dim?: 'department' | 'location',
+): Column<OverdueCell>[] => {
+  const open = (part: 'pastDue' | 'overdue') =>
+    d && dim ? { drill: (r: OverdueCell) => d.overdueCell(dim, r, part) } : {}
+  return [
+    { key: 'course', label: 'Course' },
+    { key: 'group', label: groupLabel },
+    { key: 'pastDue', label: 'Assignments past due', format: 'int', ...open('pastDue') },
+    { key: 'overdue', label: 'Overdue', format: 'int', ...open('overdue') },
+    { key: 'share', label: 'Share overdue', format: 'pct', ...open('overdue') },
+  ]
+}
 
-export const COMPLETION_COLUMNS: Column<{ month: string; kind: string; completions: number }>[] = [
+export const completionColumns = (d: TalentDrills): Column<CompletionRow>[] => [
   { key: 'month', label: 'Month' },
   { key: 'kind', label: 'Assignment' },
-  { key: 'completions', label: 'Completions', format: 'int' },
+  {
+    key: 'completions',
+    label: 'Completions',
+    format: 'int',
+    drill: (r) => d.completions(r.month, r.kind),
+  },
 ]
 
-export const HOURS_COLUMNS: Column<HoursRow>[] = [
+export const hoursColumns = (d: TalentDrills): Column<HoursRow>[] => [
   { key: 'businessUnit', label: 'Business unit' },
-  { key: 'hours', label: 'Hours completed', format: 'hours' },
+  { key: 'hours', label: 'Hours completed', format: 'hours', drill: (r) => d.hours(r.businessUnit) },
   { key: 'avgHeadcount', label: 'Average headcount', format: 'num1' },
-  { key: 'perEmployee', label: 'Hours per employee', format: 'hours' },
+  { key: 'perEmployee', label: 'Hours per employee', format: 'hours', drill: (r) => d.hours(r.businessUnit) },
 ]
 
 export const TRAINING_OVERDUE_COLUMNS: Column<TrainingOverdueRow>[] = [

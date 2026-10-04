@@ -3,7 +3,7 @@ import { useAnalytics } from '@/data/context'
 import { formatDate } from '@/lib/dates'
 import { plural } from '@/lib/format'
 import type { TalentModel } from '../engine'
-import { NINE_BOX_COLUMNS, type NineBoxRow, nineBoxDetailColumns } from './columns'
+import { type NineBoxRow, nineBoxColumns, nineBoxDetailColumns } from './columns'
 import { DEF } from './defs'
 import { NineBox } from './NineBox'
 
@@ -25,7 +25,7 @@ export function NineBoxFigure({ m, span }: { m: TalentModel; span: FigureSpan })
       title="Performance and potential"
       subtitle={`Active employees by rating and potential${cycle ? ` in ${cycle}` : ''}, as of ${formatDate(ctx.asOf)}`}
       data={rows}
-      columns={NINE_BOX_COLUMNS}
+      columns={nineBoxColumns(m.drill)}
       definitions={[DEF.nineBox, DEF.highPerformer, DEF.flightRisk]}
       note={`${plural(nb.placed, 'person', 'people')} placed · ${plural(nb.notPlaced, 'person', 'people')} without a rating and potential in that cycle`}
       span={span}
@@ -37,7 +37,11 @@ export function NineBoxFigure({ m, span }: { m: TalentModel; span: FigureSpan })
         rows: () => nb.cells.flatMap((c) => c.people.map((p) => ({ box: c.label, ...p }))),
       }}
     >
-      <NineBox cells={nb.cells} cycle={cycle} />
+      <NineBox
+        cells={nb.cells}
+        cycle={cycle}
+        drillFor={(c, part) => m.drill.nineBox(c.performance, c.potential, part)}
+      />
     </Figure>
   )
 }

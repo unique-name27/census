@@ -139,7 +139,7 @@ export function SlidesDialog({
         <Switch
           checked={useColor}
           onChange={setUseColor}
-          label={scheme.by === 'none' ? 'Color key (off on the chart)' : 'Use the chart’s color key'}
+          label={scheme.by === 'none' ? 'Color key (off on the chart)' : "Use the chart's color key"}
         />
       </div>
     </Dialog>

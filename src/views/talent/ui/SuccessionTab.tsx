@@ -3,12 +3,13 @@ import { BarList, Columns, Figure, HBars, useChartTheme } from '@/charts'
 import { Section, Segmented, type Severity } from '@/components'
 import { useAnalytics } from '@/data/context'
 import { READINESS } from '@/data/schema'
+import { drill, openPerson } from '@/drill'
 import { formatDate } from '@/lib/dates'
 import { fmt, plural } from '@/lib/format'
 import type { TalentModel } from '../engine'
 import type { BenchScope, HipoGroupRow, RoleRow } from '../engine/succession'
 import { readinessColors } from './colors'
-import { BENCH_COLUMNS, hipoColumns, ROLE_COLUMNS, ROLE_DETAIL_COLUMNS } from './columns'
+import { benchColumns, hipoColumns, ROLE_DETAIL_COLUMNS, roleColumns } from './columns'
 import { DEF } from './defs'
 
 function roleTone(r: RoleRow): Severity | null {
@@ -65,11 +66,17 @@ export function SuccessionTab({ m }: { m: TalentModel }) {
           title="Critical and key roles"
           subtitle={`Roles in the succession plan with successors still employed, as of ${asOf}`}
           data={succ.roles}
-          columns={ROLE_COLUMNS}
+          columns={roleColumns(m.drill)}
           definitions={[DEF.coverage, DEF.roleStatus, DEF.riskOfLoss]}
           note={`${plural(succ.roles.length, 'role')} · ${succ.criticalCovered} of ${succ.critical} critical roles covered${departed}`}
           tableOnly
-          table={{ maxRows: 15, rowTone: roleTone, search: 'Search roles or people' }}
+          table={{
+            maxRows: 15,
+            rowTone: roleTone,
+            search: 'Search roles or people',
+            // A role opens its incumbent; the successor counts open the bench.
+            onRowClick: (r) => ctx.org.byId.has(r.incumbentId) && openPerson(r.incumbentId),
+          }}
           detail={{ label: 'Roles and successors', columns: ROLE_DETAIL_COLUMNS, rows: () => succ.roles }}
           empty={noPlans}
         />
@@ -84,7 +91,7 @@ export function SuccessionTab({ m }: { m: TalentModel }) {
           title="Bench strength by business unit"
           subtitle={`Named successors by readiness, ${BENCH_LABEL[scope]}`}
           data={benchTable}
-          columns={BENCH_COLUMNS}
+          columns={benchColumns(m.drill, scope)}
           definitions={[DEF.bench, DEF.roleStatus]}
           note={`${plural(named, 'successor')} named for ${plural(roles, 'role')}, ${fmt(readyNow)} ready now · ${plural(noSuccessor, 'role has', 'roles have')} nobody named · as of ${asOf}`}
           span={12}
@@ -112,6 +119,8 @@ export function SuccessionTab({ m }: { m: TalentModel }) {
             stack
             seriesOrder={READINESS}
             colors={readinessColors(t)}
+            onSelect={(d) => drill(m.drill.bench(scope, d.businessUnit, null))}
+            onSelectSegment={(d) => drill(m.drill.bench(scope, d.businessUnit, d.readiness))}
             ariaLabel="Named successors by readiness and business unit"
           />
         </Figure>
@@ -126,7 +135,7 @@ export function SuccessionTab({ m }: { m: TalentModel }) {
           title="High potentials by level"
           subtitle={`Share of people assessed who were rated High potential${potCycle ? `, ${potCycle}` : ''}`}
           data={succ.hipoByLevel}
-          columns={hipoColumns('Level')}
+          columns={hipoColumns('Level', m.drill, 'level')}
           definitions={[DEF.highPotential]}
           note={`${fmt(succ.hipoHigh)} of ${plural(succ.hipoAssessed, 'person', 'people')} assessed · levels under 5 people are folded into Other`}
           span={6}
@@ -139,6 +148,7 @@ export function SuccessionTab({ m }: { m: TalentModel }) {
             format="pct0"
             tone={otherTone}
             height={240}
+            onSelect={(d) => drill(m.drill.hipo('level', d, 'high'))}
             ariaLabel="Share rated high potential by level"
           />
         </Figure>
@@ -147,7 +157,7 @@ export function SuccessionTab({ m }: { m: TalentModel }) {
           title="High potentials by business unit"
           subtitle={`Share of people assessed who were rated High potential${potCycle ? `, ${potCycle}` : ''}`}
           data={succ.hipoByUnit}
-          columns={hipoColumns('Business unit')}
+          columns={hipoColumns('Business unit', m.drill, 'businessUnit')}
           definitions={[DEF.highPotential]}
           note={`Overall share ${fmt(succ.hipoShare, 'pct')} · units under 5 people are folded into Other`}
           span={6}
@@ -166,6 +176,7 @@ export function SuccessionTab({ m }: { m: TalentModel }) {
                 : undefined
             }
             secondary={(d) => `n = ${fmt(d.assessed)}`}
+            onSelect={(d) => drill(m.drill.hipo('businessUnit', d, 'high'))}
             ariaLabel="Share rated high potential by business unit"
           />
         </Figure>

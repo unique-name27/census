@@ -2,6 +2,7 @@
  * The datasheet table used for every figure's table view and for table-only figures: sortable
  * columns (aria-sort), right-aligned tabular numbers, a sticky header, hairline rows, optional
  * search, "Show all N rows", clickable rows and a status cell (icon + hidden word) per row.
+ * Cells open the records behind them (`Column.drill`) or a link in a new tab (`Column.href`).
  * Pay-amount columns are dropped unless pay amounts are switched on.
  */
 import { type KeyboardEvent, useState } from 'react'
@@ -20,6 +21,7 @@ import {
   visibleColumns,
 } from '@/lib/export/columns'
 import { fmt } from '@/lib/format'
+import { cellAction } from './cells'
 import type { Column } from './types'
 
 export interface SortState {
@@ -126,6 +128,8 @@ export function DataTable<T extends object>({
   }
 
   const onRowKey = (e: KeyboardEvent<HTMLTableRowElement>, row: T) => {
+    // Keys on a link or drill button inside the row belong to that control.
+    if (e.target !== e.currentTarget) return
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault()
       onRowClick?.(row)
@@ -254,10 +258,10 @@ export function DataTable<T extends object>({
                           : 'text-ink',
                       )}
                     >
-                      {c.drill ? (
-                        <DrillCell source={c.drill(row)} label={c.label}>
+                      {c.drill || c.href ? (
+                        <ActionCell column={c} row={row}>
                           {text(row, i)}
-                        </DrillCell>
+                        </ActionCell>
                       ) : (
                         text(row, i)
                       )}
@@ -289,20 +293,39 @@ export function DataTable<T extends object>({
   )
 }
 
-/** A cell whose value opens the records behind it; plain text when there is nothing to show. */
-function DrillCell({
-  source,
-  label,
+/**
+ * A cell whose value opens a link in a new tab (`href`, which wins) or the records behind it
+ * (`drill`); plain text when it has neither for this row.
+ */
+function ActionCell<T extends object>({
+  column,
+  row,
   children,
 }: {
-  source: ReturnType<NonNullable<Column['drill']>>
-  label: string
+  column: Column<T>
+  row: T
   children: string
 }) {
-  if (!source || children === '—') return <>{children}</>
-  return (
-    <Drill spec={source} label={`${label}: ${children}. Show the records`}>
-      {children}
-    </Drill>
-  )
+  const action = cellAction(column, row, children)
+  if (action?.kind === 'link') {
+    return (
+      <a
+        href={action.href}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-link hover:underline"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {children}
+      </a>
+    )
+  }
+  if (action?.kind === 'drill') {
+    return (
+      <Drill spec={action.source} label={`${column.label}: ${children}. Show the records`}>
+        {children}
+      </Drill>
+    )
+  }
+  return <>{children}</>
 }

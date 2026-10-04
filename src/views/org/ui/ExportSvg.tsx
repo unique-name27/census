@@ -2,16 +2,17 @@
  * An SVG mirror of the cards currently shown, used only by the figure's PNG/SVG export and the
  * view workbook and deck (marked `data-chart`). Colors are CSS variables in style attributes, so
  * the exporter's computed-style inlining resolves them in whichever theme is active at capture.
- * Very large charts keep their full geometry in the viewBox and are scaled down to a size a
- * browser can rasterize.
+ * The caller caps it at a readable number of cards (`exportDepth`): a bigger chart exports its top
+ * levels with a caption that says so, so the mirror stays small and the image stays legible.
  */
 import { truncateText, useChartTheme } from '@/charts'
 import type { ChartTheme } from '@/charts/theme'
 import type { ColorScheme, Flag, Layout, OrgTree, ReqStub, Swatch } from '../engine'
-import { STRUCTURAL, segmentsPath } from '../engine'
+import { countsText, STRUCTURAL, segmentsPath } from '../engine'
 
 const PAD = 16
 const MAX_SIDE = 6000
+const CAPTION_H = 28
 
 function resolved(t: ChartTheme, s: Swatch): string {
   if (s.kind === 'series') return t.series[s.index] ?? t.deemph
@@ -28,6 +29,7 @@ export function ExportSvg({
   showFlags,
   reqByCardId,
   title,
+  caption,
 }: {
   tree: OrgTree
   layout: Layout
@@ -37,10 +39,12 @@ export function ExportSvg({
   showFlags: boolean
   reqByCardId: ReadonlyMap<string, ReqStub>
   title: string
+  /** A line under the chart, e.g. when only the top levels are in the image. */
+  caption?: string | null
 }) {
   const theme = useChartTheme()
   const W = layout.width + 2 * PAD
-  const H = layout.height + 2 * PAD
+  const H = layout.height + 2 * PAD + (caption ? CAPTION_H : 0)
   const s = Math.min(1, MAX_SIDE / Math.max(W, H))
   const legend = scheme.legend.length
     ? JSON.stringify({
@@ -113,9 +117,7 @@ export function ExportSvg({
           const dim = !!e && !matches(c.id)
           const directs = tree.directs.get(c.id) ?? 0
           const counts = e
-            ? directs
-              ? `${directs} direct · ${tree.total.get(c.id) ?? 0} org`
-              : ''
+            ? countsText(directs, tree.total.get(c.id) ?? 0)
             : `${tree.people.size.toLocaleString('en-US')} people`
           const marks = showFlags ? (flags.get(c.id) ?? []).filter((f) => STRUCTURAL.has(f.kind)) : []
           return (
@@ -139,9 +141,9 @@ export function ExportSvg({
               <text
                 x={x + 12}
                 y={y + 24}
-                style={{ fill: 'var(--ink)', fontSize: 13.5, fontWeight: 600, fontStretch: '84%' }}
+                style={{ fill: 'var(--ink)', fontSize: 14, fontWeight: 600, fontStretch: '84%' }}
               >
-                {truncateText(e?.name ?? 'Whole company', inner(c.w) - 24, 13.5, 600)}
+                {truncateText(e?.name ?? 'Whole company', inner(c.w) - 24, 14, 600)}
               </text>
               {e?.level && (
                 <text
@@ -188,6 +190,11 @@ export function ExportSvg({
             </g>
           )
         })}
+        {caption && (
+          <text x={PAD} y={H - PAD} style={{ fill: 'var(--muted)', fontSize: 12 }}>
+            {caption}
+          </text>
+        )}
       </svg>
     </div>
   )

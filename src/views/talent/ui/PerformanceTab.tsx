@@ -1,6 +1,7 @@
 import { BarList, Columns, Figure } from '@/charts'
 import { Section } from '@/components'
 import { useAnalytics } from '@/data/context'
+import { drill } from '@/drill'
 import { addMonths, formatDate } from '@/lib/dates'
 import { fmt, plural } from '@/lib/format'
 import type { TalentModel } from '../engine'
@@ -8,11 +9,12 @@ import { otherLabel } from '../engine/base'
 import { HIGH_GUIDELINE, type HighShareRow, INFLATION_PTS, RATING_ORDER } from '../engine/performance'
 import { CycleLines } from './CycleLines'
 import {
-  CALIBRATION_COLUMNS,
-  CYCLE_COLUMNS,
-  EXIT_BY_RATING_COLUMNS,
+  calibrationColumns,
+  cycleColumns,
+  exitByRatingColumns,
   highShareColumns,
-  MIX_COLUMNS,
+  mixColumns,
+  ratingOf,
 } from './columns'
 import { Dumbbell } from './Dumbbell'
 import { DEF } from './defs'
@@ -23,25 +25,26 @@ const GUIDE_REF = { value: HIGH_GUIDELINE, label: `Guideline ${fmt(HIGH_GUIDELIN
 /**
  * The chart keeps the first `top` groups and folds the rest (with any small groups the engine
  * already folded) into one "Other (k)" row: the combined share rated 4-5, not an average of shares.
- * The table and exports keep every group.
+ * The table and exports keep every group. `rest` is what the chart's own "Other" row combines.
  */
-function topWithOther(rows: readonly HighShareRow[], top: number): HighShareRow[] {
-  if (rows.length <= top + 1) return [...rows]
+function topWithOther(
+  rows: readonly HighShareRow[],
+  top: number,
+): { rows: HighShareRow[]; other: HighShareRow | null; rest: HighShareRow[] } {
+  if (rows.length <= top + 1) return { rows: [...rows], other: null, rest: [] }
   const rest = rows.slice(top)
   const rated = rest.reduce((s, r) => s + r.rated, 0)
   const high = rest.reduce((s, r) => s + (r.high ?? 0), 0)
   const groups = rest.reduce((s, r) => s + (r.groups ?? 1), 0)
-  return [
-    ...rows.slice(0, top),
-    {
-      group: otherLabel(groups),
-      rated,
-      high: rated >= 5 ? high : null,
-      share: rated >= 5 ? high / rated : null,
-      other: true,
-      groups,
-    },
-  ]
+  const other: HighShareRow = {
+    group: otherLabel(groups),
+    rated,
+    high: rated >= 5 ? high : null,
+    share: rated >= 5 ? high / rated : null,
+    other: true,
+    groups,
+  }
+  return { rows: [...rows.slice(0, top), other], other, rest }
 }
 
 export function PerformanceTab({ m }: { m: TalentModel }) {
@@ -58,6 +61,12 @@ export function PerformanceTab({ m }: { m: TalentModel }) {
         ? ('warning' as const)
         : ('default' as const)
   const calRows = perf.calibration.map((c) => ({ label: c.businessUnit, a: c.proposed, b: c.final, n: c.n }))
+  const departments = topWithOther(perf.byDepartment, 14)
+  // The share rated 4-5 opens the people rated 4 or 5 behind it.
+  const highOf = (dim: 'department' | 'level', d: HighShareRow) =>
+    dim === 'department' && d.other && d.group === departments.other?.group
+      ? m.drill.highShare(dim, d, 'high', departments.rest)
+      : m.drill.highShare(dim, d, 'high')
   const exitCycle = perf.exitCycle
   // A steady 2.5-4 scale (widened when needed) so small moves in an average don't look dramatic.
   const means = perf.cycles.map((c) => c.mean).filter((v): v is number => v != null)
@@ -77,7 +86,7 @@ export function PerformanceTab({ m }: { m: TalentModel }) {
           title="Share rated 4-5 by department"
           subtitle={`People rated 4 or 5 as a share of people rated, ${cycle}`}
           data={perf.byDepartment}
-          columns={highShareColumns('Department')}
+          columns={highShareColumns('Department', m.drill, 'department')}
           definitions={[DEF.highPerformer, DEF.guideline]}
           note={`${ratedNote} · departments under 5 rated are folded into Other`}
           span={6}
@@ -87,7 +96,7 @@ export function PerformanceTab({ m }: { m: TalentModel }) {
           }
         >
           <BarList
-            data={topWithOther(perf.byDepartment, 14)}
+            data={departments.rows}
             label="group"
             value="share"
             format="pct"
@@ -95,6 +104,7 @@ export function PerformanceTab({ m }: { m: TalentModel }) {
             ref={GUIDE_REF}
             tone={tone}
             secondary={(d) => `n = ${fmt(d.rated)}`}
+            onSelect={(d) => drill(highOf('department', d))}
             ariaLabel="Share rated 4 or 5 by department"
           />
         </Figure>
@@ -103,7 +113,7 @@ export function PerformanceTab({ m }: { m: TalentModel }) {
           title="Rating mix by business unit"
           subtitle={`Share of people at each rating, ${cycle}, with the guideline on top`}
           data={perf.mix}
-          columns={MIX_COLUMNS}
+          columns={mixColumns(m.drill)}
           definitions={[DEF.guideline]}
           note={ratedNote}
           span={6}
@@ -115,6 +125,7 @@ export function PerformanceTab({ m }: { m: TalentModel }) {
               rated: r.rated,
               shares: [r.r1, r.r2, r.r3, r.r4, r.r5],
             }))}
+            drillFor={(group, rating) => m.drill.mix(group, rating)}
             ariaLabel="Rating mix by business unit compared with the guideline"
           />
         </Figure>
@@ -129,7 +140,7 @@ export function PerformanceTab({ m }: { m: TalentModel }) {
           title="Calibration shift by business unit"
           subtitle={`Average manager-proposed rating and average final rating, ${cycle}`}
           data={perf.calibration}
-          columns={CALIBRATION_COLUMNS}
+          columns={calibrationColumns(m.drill)}
           definitions={[DEF.calibration]}
           note={
             perf.calibrationCompany
@@ -150,6 +161,7 @@ export function PerformanceTab({ m }: { m: TalentModel }) {
             data={calRows}
             aLabel="Manager proposed"
             bLabel="Final"
+            drillFor={(r) => m.drill.calibration(r.label, 'all')}
             ariaLabel="Average proposed and final rating by business unit"
           />
         </Figure>
@@ -158,7 +170,7 @@ export function PerformanceTab({ m }: { m: TalentModel }) {
           title="Average rating by cycle"
           subtitle="Mean final rating per business unit in each review cycle"
           data={perf.cycles}
-          columns={CYCLE_COLUMNS}
+          columns={cycleColumns(m.drill)}
           definitions={[DEF.latestCycle]}
           note={`${
             perf.outlierUnit
@@ -174,6 +186,7 @@ export function PerformanceTab({ m }: { m: TalentModel }) {
             data={perf.cycles}
             emphasize={perf.outlierUnit}
             yDomain={meanDomain}
+            drillFor={(c, bu) => m.drill.cycleUnit(c, bu)}
             height={260}
             ariaLabel="Average rating by cycle and business unit"
           />
@@ -189,7 +202,7 @@ export function PerformanceTab({ m }: { m: TalentModel }) {
           title="Share rated 4-5 by level"
           subtitle={`People rated 4 or 5 as a share of people rated, ${cycle}`}
           data={perf.byLevel}
-          columns={highShareColumns('Level')}
+          columns={highShareColumns('Level', m.drill, 'level')}
           definitions={[DEF.highPerformer]}
           note={`${ratedNote} · levels under 5 rated are folded into Other`}
           span={6}
@@ -206,6 +219,7 @@ export function PerformanceTab({ m }: { m: TalentModel }) {
             ref={GUIDE_REF}
             tone={tone}
             secondary={(d) => `n = ${fmt(d.rated)}`}
+            onSelect={(d) => drill(highOf('level', d))}
             ariaLabel="Share rated 4 or 5 by level"
           />
         </Figure>
@@ -218,7 +232,7 @@ export function PerformanceTab({ m }: { m: TalentModel }) {
               : 'People who left within 12 months of being rated'
           }
           data={perf.exitByRating}
-          columns={EXIT_BY_RATING_COLUMNS}
+          columns={exitByRatingColumns(m.drill)}
           definitions={[DEF.exitWithin12]}
           note={
             exitCycle
@@ -247,6 +261,8 @@ export function PerformanceTab({ m }: { m: TalentModel }) {
             xOrder={RATING_ORDER}
             format="pct"
             height={260}
+            onSelect={(d) => drill(m.drill.exitCohort(ratingOf(d.rating), 'left'))}
+            onSelectSegment={(d) => drill(m.drill.exitCohort(ratingOf(d.rating), d.type))}
             ariaLabel="Exit rate within 12 months by rating"
           />
         </Figure>

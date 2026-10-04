@@ -8,7 +8,15 @@
 import type { CellValue, Workbook, Worksheet } from 'exceljs'
 import type { Column, ExportMeta } from '@/charts/types'
 import { excelNumFmt, type Format, fmt } from '@/lib/format'
-import { cellFormat, columnFormat, isNumericFormat, sampleRow, sampleValue, visibleColumns } from './columns'
+import {
+  cellFormat,
+  columnFormat,
+  exportNumber,
+  isNumericFormat,
+  sampleRow,
+  sampleValue,
+  visibleColumns,
+} from './columns'
 import { downloadBlob, MIME } from './download'
 import { fileStem, metaLine, stampLine, viewLine } from './names'
 import type { ExportOptions, ExportTable } from './types'
@@ -64,10 +72,14 @@ export function uniqueSheetNames(names: readonly string[]): string[] {
 
 const ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2}))?/
 
-/** A JS value as an Excel cell value: real dates for date columns, empty for missing, never NaN. */
+/**
+ * A JS value as an Excel cell value: real dates for date columns, empty for missing, never NaN.
+ * Numbers are stored rounded to their format's export precision (`exportNumber`), not just
+ * displayed rounded.
+ */
 export function excelValue(v: unknown, format: Format | undefined): CellValue {
   if (v == null) return null
-  if (typeof v === 'number') return Number.isFinite(v) ? v : null
+  if (typeof v === 'number') return Number.isFinite(v) ? exportNumber(v, format) : null
   if (typeof v === 'boolean') return v ? 'Yes' : 'No'
   if (v instanceof Date) return Number.isNaN(v.getTime()) ? null : v
   if (typeof v === 'string') {

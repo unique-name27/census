@@ -5,15 +5,23 @@ import type { Kpi } from '@/components/types'
 import type { AnalyticsContext } from '@/data/context'
 import type { Requisition } from '@/data/schema'
 import { MIN_GROUP } from '@/data/schema'
-import { daysBetween, formatDate, monthKey } from '@/lib/dates'
+import { formatDate, monthKey } from '@/lib/dates'
 import { fmt, plural } from '@/lib/format'
 import { monthPoints } from '@/lib/people'
 import { isMaterialChange, median, suppress } from '@/lib/stats'
 import type { Headline } from '../../types'
 import type { RecruitingBase } from './base'
+import {
+  filledReqsDrill,
+  hiresKpiDrill,
+  lackingKpiDrill,
+  offerAcceptanceKpiDrill,
+  openReqsKpiDrill,
+  timeToHireKpiDrill,
+} from './drills'
 import { inWin, isOpenAt } from './prepare'
 import { medianTtf } from './reqs'
-import { acceptance, acceptanceByQuarter, quarterWindows } from './sources'
+import { acceptance, acceptanceByQuarter, daysToHire, quarterWindows } from './sources'
 import type { App } from './types'
 
 /** Offer acceptance moves of 5 pts or more (with ≥ 10 offers each side) are worth color. */
@@ -32,8 +40,6 @@ export function headline(ctx: AnalyticsContext): Headline {
 
 /** A measure over 1 to 4 people is hidden (none at all just reads "—"). */
 const small = (n: number): boolean => n > 0 && n < MIN_GROUP
-
-const timeToHire = (a: App): number => Math.max(0, daysBetween(a.appliedDate, a.exitDate ?? a.appliedDate))
 
 function hiresByMonth(hires: readonly App[], end: string): number[] {
   const pts = monthPoints(end, 12).map((d) => monthKey(d))
@@ -67,6 +73,7 @@ export function recruitingKpis(b: RecruitingBase): Kpi[] {
       : (b.joinNote ?? `${fmt(b.req.onHold.length, 'int')} on hold, not counted`),
     tab: 'requisitions',
     definition: `Requisitions open on ${formatDate(b.asOf)}: opened by then and not yet filled, closed or cancelled. Reqs on hold are counted separately.`,
+    drill: noReqs ? undefined : () => openReqsKpiDrill(b),
   })
 
   // Hires (window).
@@ -82,6 +89,7 @@ export function recruitingKpis(b: RecruitingBase): Kpi[] {
     note: noCands ? 'Upload Candidates to see this' : 'Offers accepted in the period',
     tab: 'sources',
     definition: 'Candidates with status Hired whose offer was accepted (hired date) in the period.',
+    drill: noCands ? undefined : () => hiresKpiDrill(b),
   })
 
   // Median time to fill.
@@ -114,11 +122,12 @@ export function recruitingKpis(b: RecruitingBase): Kpi[] {
     tab: 'requisitions',
     definition:
       'Median days from the date a req opened to the date its offer was accepted, for reqs filled in the period.',
+    drill: ttf == null ? undefined : () => filledReqsDrill(b, b.filled, `Reqs filled, ${b.windowWords}`),
   })
 
   // Median time to hire.
-  const tth = suppress(median(b.hires.map(timeToHire)), b.hires.length)
-  const tthPrior = suppress(median(b.hiresPrior.map(timeToHire)), b.hiresPrior.length)
+  const tth = suppress(median(b.hires.map(daysToHire)), b.hires.length)
+  const tthPrior = suppress(median(b.hiresPrior.map(daysToHire)), b.hiresPrior.length)
   out.push({
     id: 'time-to-hire',
     label: 'Median time to hire',
@@ -133,6 +142,7 @@ export function recruitingKpis(b: RecruitingBase): Kpi[] {
     note: noCands ? 'Upload Candidates to see this' : `${fmt(b.hires.length, 'int')} hires`,
     tab: 'sources',
     definition: 'Median days from application to offer accepted, for hires in the period.',
+    drill: tth == null ? undefined : () => timeToHireKpiDrill(b),
   })
 
   // Offer acceptance.
@@ -163,6 +173,7 @@ export function recruitingKpis(b: RecruitingBase): Kpi[] {
     tab: 'sources',
     definition:
       'Offers accepted ÷ offers accepted or declined, for offers resolved in the period (hired date or decline date).',
+    drill: accValue == null ? undefined : () => offerAcceptanceKpiDrill(b),
   })
 
   // Candidates lacking a next step (snapshot).
@@ -181,6 +192,7 @@ export function recruitingKpis(b: RecruitingBase): Kpi[] {
     tab: 'pipeline',
     definition:
       'Active candidates who lack a next step on the as-of date: no step booked for more than 1.5× the usual days for the stage, interview feedback pending more than 2 days, or an offer out more than 5 days. "No step booked" on its own is a state, not this alarm.',
+    drill: noCands ? undefined : () => lackingKpiDrill(b),
   })
   return out
 }

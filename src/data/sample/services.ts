@@ -22,7 +22,6 @@ import {
   isWeekend,
   monthEnd,
   monthStart,
-  nextFriday,
   onOrAfterWeekday,
   onOrBeforeWeekday,
   T24_START,
@@ -233,8 +232,24 @@ function openingMinute(rng: Rng): number {
   return hour * 60 + rng.int(0, 59)
 }
 
-export function caseRows(w: World, rng: Rng): HrCase[] {
-  const employees = w.people.filter((p) => p.type === 'Employee' && p.hire >= 0)
+/**
+ * People added to the company after the services stories were calibrated (the earlier first-year
+ * cohorts) get their cases and transactions from a separate random stream, so adding them never
+ * reshuffles the calibrated rows.
+ */
+const isLateAddition = (p: Person): boolean => p.tags.has('prior-first-year-leaver')
+
+/** A day in [from, to] inside month m; most weekend days move to the nearest weekday inside the month. */
+function caseDay(rng: Rng, m: Day, from: Day, to: Day): Day {
+  const d = rng.int(from, to)
+  if (!isWeekend(d) || !rng.chance(0.9)) return d
+  const friday = onOrBeforeWeekday(d)
+  return friday >= m ? friday : onOrAfterWeekday(d)
+}
+
+export function caseRows(w: World, rng: Rng, lateRng: Rng): HrCase[] {
+  const everyone = w.people.filter((p) => p.type === 'Employee' && p.hire >= 0)
+  const employees = everyone.filter((p) => !isLateAddition(p))
   const leavers = employees.filter((p) => p.term != null)
   const agentsByTeam = new Map<string, { idx: number; apac: boolean }[]>()
   for (const a of w.agents) agentsByTeam.set(a.team, [...(agentsByTeam.get(a.team) ?? []), a])
@@ -246,35 +261,33 @@ export function caseRows(w: World, rng: Rng): HrCase[] {
     requester: Person
     /** Planted open cases: stuck immigration matters and leave cases waiting on third parties. */
     stuck: 'immigration' | 'leave' | null
+    /** Raised by a late addition: the row draws from `lateRng`. */
+    late: boolean
   }
   const drafts: Draft[] = []
   const months: Day[] = []
   for (let d = T24_START; d <= AS_OF; d = monthEnd(d) + 1) months.push(d)
   const avgActive = employees.filter((p) => activeOn(p, day('2025-09-30'))).length
-  for (const m of months) {
-    const mid = m + 14
-    const activeNow = employees.filter((p) => activeOn(p, mid))
-    const month = new Date(m * 86_400_000).getUTCMonth() + 1
-    const seasonal = month === 1 ? 1.15 : month === 12 ? 0.85 : 1
-    const volume = Math.round(268 * (activeNow.length / avgActive) * seasonal)
-    const weights = categories.map((c) => {
+  const monthOf = (m: Day): number => new Date(m * 86_400_000).getUTCMonth() + 1
+  const weightsFor = (m: Day): number[] =>
+    categories.map((c) => {
       let wt = CATEGORY_WEIGHT[c]
-      if (c === 'Benefits' && month === 11) wt *= 2.2 // open enrollment
+      if (c === 'Benefits' && monthOf(m) === 11) wt *= 2.2 // open enrollment
       if (c === 'Payroll' && m === day('2026-07-01')) wt *= 2.2 // payroll system change
-      if (c === 'Compensation & equity' && (month === 11 || month === 3)) wt *= 1.8
+      if (c === 'Compensation & equity' && (monthOf(m) === 11 || monthOf(m) === 3)) wt *= 1.8
       return wt
     })
-    // Spike categories add volume rather than displacing others.
-    const extra = weights.reduce((a, b) => a + b, 0) / categories.reduce((a, c) => a + CATEGORY_WEIGHT[c], 0)
-    const n = Math.round(volume * extra)
-    const last = monthEnd(m)
+  /** Spike categories add volume rather than displacing others. */
+  const spike = (weights: number[]): number =>
+    weights.reduce((a, b) => a + b, 0) / categories.reduce((a, c) => a + CATEGORY_WEIGHT[c], 0)
+  const seasonal = (m: Day): number => (monthOf(m) === 1 ? 1.15 : monthOf(m) === 12 ? 0.85 : 1)
+  for (const m of months) {
+    const activeNow = employees.filter((p) => activeOn(p, m + 14))
+    const weights = weightsFor(m)
+    const volume = Math.round(268 * (activeNow.length / avgActive) * seasonal(m))
+    const n = Math.round(volume * spike(weights))
     for (let i = 0; i < n; i++) {
-      let d = rng.int(m, last)
-      // Most weekend cases move to the nearest weekday inside the month.
-      if (isWeekend(d) && rng.chance(0.9)) {
-        const friday = onOrBeforeWeekday(d)
-        d = friday >= m ? friday : onOrAfterWeekday(d)
-      }
+      const d = caseDay(rng, m, m, monthEnd(m))
       const category = rng.weighted(categories, weights)
       let requester: Person | undefined
       if (category === 'Offboarding' && rng.chance(0.6)) {
@@ -285,8 +298,31 @@ export function caseRows(w: World, rng: Rng): HrCase[] {
         if (former.length) requester = rng.pick(former)
       }
       requester ??= rng.pick(activeNow)
-      drafts.push({ opened: d * MINUTES_PER_DAY + openingMinute(rng), category, requester, stuck: null })
+      const opened = d * MINUTES_PER_DAY + openingMinute(rng)
+      drafts.push({ opened, category, requester, stuck: null, late: false })
     }
+  }
+  // Late additions raise cases at the same rate per person while employed, and about half of them
+  // an offboarding case around their last day.
+  const offboarding = categories.indexOf('Offboarding')
+  for (const p of everyone.filter(isLateAddition)) {
+    for (const m of months) {
+      if (!activeOn(p, m + 14)) continue
+      const weights = weightsFor(m)
+      if (!lateRng.chance((268 / avgActive) * seasonal(m) * spike(weights))) continue
+      const d = caseDay(lateRng, m, Math.max(m, p.hire), Math.min(monthEnd(m), p.term ?? AS_OF))
+      const category = lateRng.weighted(
+        categories.filter((_, k) => k !== offboarding),
+        weights.filter((_, k) => k !== offboarding),
+      )
+      const opened = d * MINUTES_PER_DAY + openingMinute(lateRng)
+      drafts.push({ opened, category, requester: p, stuck: null, late: true })
+    }
+    if (p.term == null || !lateRng.chance(0.5)) continue
+    const d = onOrBeforeWeekday(p.term + lateRng.int(-20, 5))
+    if (d < T24_START || d > AS_OF) continue
+    const opened = d * MINUTES_PER_DAY + openingMinute(lateRng)
+    drafts.push({ opened, category: 'Offboarding', requester: p, stuck: null, late: true })
   }
   // Employee services story 6: immigration cases stuck for more than 30 days.
   const backlogPeople = employees.filter((p) => p.term == null && p.hire < AS_OF - 400)
@@ -297,6 +333,7 @@ export function caseRows(w: World, rng: Rng): HrCase[] {
       category: 'Immigration & mobility',
       requester: rng.pick(backlogPeople),
       stuck: 'immigration',
+      late: false,
     })
   }
   // Employee services story 2: leave cases past their target, waiting on doctors, insurers or leave administrators.
@@ -307,6 +344,7 @@ export function caseRows(w: World, rng: Rng): HrCase[] {
       category: 'Leave & accommodation',
       requester: rng.pick(backlogPeople),
       stuck: 'leave',
+      late: false,
     })
   }
   drafts.sort((a, b) => a.opened - b.opened)
@@ -322,26 +360,27 @@ export function caseRows(w: World, rng: Rng): HrCase[] {
     [(dr) => dr.category === 'Leave & accommodation' && dr.stuck == null, PLANTED_ON_TIME.leave],
   ]
   for (const [inGroup, share] of groups) {
-    const members = rng.shuffle(drafts.filter(inGroup))
+    const members = rng.shuffle(drafts.filter((dr) => !dr.late && inGroup(dr)))
     const met = Math.round(members.length * share)
     for (const [k, dr] of members.entries()) onTime.set(dr, k < met)
   }
 
   return drafts.map((dr, i) => {
+    const r = dr.late ? lateRng : rng
     const cat = CASE_CATEGORIES.find((c) => c.category === dr.category)!
     const p = dr.requester
-    let channel = rng.pickPair(CHANNELS)
+    let channel = r.pickPair(CHANNELS)
     if (channel === 'Walk-in' && !HR_DESK_SITES.has(p.site)) channel = 'Portal'
-    const tier = tierFor(dr.category, rng)
+    const tier = tierFor(dr.category, r)
     const team = cat.team
     const pool = agentsByTeam.get(team) ?? []
     const local = pool.filter((a) => a.apac === APAC.has(p.site))
-    const assignee = tier === 'Tier 0' || !pool.length ? null : rng.pick(local.length ? local : pool).idx
+    const assignee = tier === 'Tier 0' || !pool.length ? null : r.pick(local.length ? local : pool).idx
     const responseMinutes = Math.round(
-      cat.responseHours * 60 * rng.lognormal(tier === 'Tier 0' ? 0.05 : 0.25, 0.7),
+      cat.responseHours * 60 * r.lognormal(tier === 'Tier 0' ? 0.05 : 0.25, 0.7),
     )
     const firstResponse = dr.opened + Math.max(5, responseMinutes)
-    const ratio = resolutionRatio(onTime.get(dr) ?? null, rng)
+    const ratio = resolutionRatio(onTime.get(dr) ?? null, r)
     // Outside employee relations, nothing but the planted backlog stays open past 25 days.
     const cap = dr.category === 'Employee relations' ? 75 * 24 : 25 * 24
     const resolveMinutes = Math.max(
@@ -358,19 +397,19 @@ export function caseRows(w: World, rng: Rng): HrCase[] {
       : dr.stuck === 'leave'
         ? 'Waiting on third party'
         : responded
-          ? openStatus(dr.category, rng)
+          ? openStatus(dr.category, r)
           : 'New'
     const slaMet = resolveMinutes <= cat.resolutionHours * 60
     let csat: number | null = null
-    if (!isOpen && rng.chance(0.35)) {
+    if (!isOpen && r.chance(0.35)) {
       const mean = CSAT_MEAN[channel] - (slaMet ? 0 : 0.6)
-      csat = Math.min(5, Math.max(1, Math.round(rng.normal(mean, 0.8))))
+      csat = Math.min(5, Math.max(1, Math.round(r.normal(mean, 0.8))))
     }
-    const reopened = !isOpen && rng.chance(dr.category === 'HR data & records' ? 0.13 : 0.03)
+    const reopened = !isOpen && r.chance(dr.category === 'HR data & records' ? 0.13 : 0.03)
     const escalated =
       dr.category === 'Employee relations'
-        ? rng.chance(0.25)
-        : rng.chance(tier === 'Tier 2' || tier === 'Tier 3' ? 0.09 : 0.035)
+        ? r.chance(0.25)
+        : r.chance(tier === 'Tier 2' || tier === 'Tier 3' ? 0.09 : 0.035)
     const subs = SUBCATEGORIES[dr.category]
     return {
       caseId: `HR-${String(100001 + i)}`,
@@ -380,10 +419,10 @@ export function caseRows(w: World, rng: Rng): HrCase[] {
       status,
       category: dr.category,
       // Employee relations subcategories are never recorded in the sample (privacy posture).
-      subcategory: subs ? rng.pick(subs) : null,
+      subcategory: subs ? r.pick(subs) : null,
       processId: cat.processId,
       channel,
-      priority: priorityFor(dr.category, rng),
+      priority: priorityFor(dr.category, r),
       tier,
       team,
       assignee: assignee == null ? null : w.people[assignee].name,
@@ -406,24 +445,62 @@ function payrollCutoff(d: Day): Day {
   return d <= cut ? cut : addBusinessDays(monthEnd(monthEnd(d) + 1), -5)
 }
 
-/** Final pay deadline from the jurisdiction's rule and the exit type. */
-function finalPayDue(p: Person): Day {
+/*
+ * Pay calendars behind the final pay deadlines. US and Canadian payroll runs semi-monthly with
+ * paydays on the 15th and the last day of the month (the Atlas pay-frequency policy and its North
+ * Carolina wage insert), moved to the preceding business day when that date falls on a weekend.
+ * Germany pays monthly at month end.
+ */
+
+/** The last day of the semi-monthly pay period that contains d: the 15th or the month end. */
+const payPeriodEnd = (d: Day): Day => (d - monthStart(d) < 15 ? monthStart(d) + 14 : monthEnd(d))
+
+/** The first semi-monthly payday after d. */
+function nextRegularPayday(d: Day): Day {
+  for (let m = monthStart(d); ; m = monthEnd(m) + 1) {
+    for (const end of [m + 14, monthEnd(m)]) {
+      const payday = onOrBeforeWeekday(end)
+      if (payday > d) return payday
+    }
+  }
+}
+
+/** Canadian sites under British Columbia's rules; the other Canadian sites follow Ontario. */
+const BRITISH_COLUMBIA = new Set(['Vancouver'])
+
+/**
+ * Final pay deadline from the jurisdiction's rule and the exit type, as the Atlas
+ * terminationDeepDive.finalPayTiming states it (summarized in the services catalog's FINAL_PAY_RULES).
+ */
+function finalPayDue(p: Pick<Person, 'site' | 'term' | 'termType'>): Day {
   const term = p.term!
   const involuntary = p.termType === 'Involuntary'
-  const nextPayday = nextFriday(term + 7)
   switch (siteByLocation.get(p.site)!.jurisdiction) {
-    case 'us-ca':
+    case 'us-ca': // same day for a discharge, the last day for a resignation with notice
+    case 'tw': // immediately on termination
+    case 'cn': // in full on termination
       return term
     case 'us-tx':
-      return involuntary ? term + 6 : nextPayday
+      return involuntary ? term + 6 : nextRegularPayday(term)
     case 'us-co':
-      return involuntary ? term : nextPayday
+      return involuntary ? term : nextRegularPayday(term)
+    case 'us-nc':
+      return nextRegularPayday(term)
+    case 'us-wa':
+      return payPeriodEnd(term)
+    case 'ca':
+      if (BRITISH_COLUMBIA.has(p.site)) return term + (involuntary ? 2 : 6)
+      return Math.max(term + 7, nextRegularPayday(term))
+    case 'de': // the normal monthly pay date: the last business day of the month
+      return onOrBeforeWeekday(monthEnd(term))
+    case 'il': // the regular payday for the last month, by the 9th of the following month
+      return monthEnd(term) + 9
     case 'in':
       return addBusinessDays(term, 2)
     case 'vn':
       return addBusinessDays(term, 14)
     default:
-      return nextPayday
+      return nextRegularPayday(term)
   }
 }
 
@@ -443,9 +520,10 @@ function completion(rng: Rng, submitted: Day, due: Day, late: boolean, maxLate =
   return Math.min(due, submitted + rng.int(1, Math.min(5, due - submitted)))
 }
 
-export function transactionRows(w: World, rng: Rng): HrTransaction[] {
+export function transactionRows(w: World, rng: Rng, lateRng: Rng): HrTransaction[] {
   const drafts: TxDraft[] = []
-  const people = w.people.filter((p) => p.type !== 'Contractor' && p.hire >= 0)
+  const everyone = w.people.filter((p) => p.type !== 'Contractor' && p.hire >= 0)
+  const people = everyone.filter((p) => !isLateAddition(p))
   const employees = people.filter((p) => p.type === 'Employee')
   const push = (
     type: TransactionType,
@@ -471,60 +549,65 @@ export function transactionRows(w: World, rng: Rng): HrTransaction[] {
   const riskyExit = (p: Person) =>
     jurisdiction(p) === 'in' || (jurisdiction(p) === 'us-ca' && p.termType === 'Involuntary')
   const lateExits = new Set<Person>()
-  for (const inGroup of [
-    (p: Person) => jurisdiction(p) === 'in',
-    (p: Person) => riskyExit(p) && jurisdiction(p) === 'us-ca',
-  ]) {
-    const exits = rng.shuffle(people.filter((p) => p.term != null && p.term >= T24_START && inGroup(p)))
-    for (const p of exits.slice(0, Math.round(exits.length * 0.26))) lateExits.add(p)
+  const planLateFinalPay = (pool: Person[], r: Rng) => {
+    for (const inGroup of [
+      (p: Person) => jurisdiction(p) === 'in',
+      (p: Person) => riskyExit(p) && jurisdiction(p) === 'us-ca',
+    ]) {
+      const exits = r.shuffle(pool.filter((p) => p.term != null && p.term >= T24_START && inGroup(p)))
+      for (const p of exits.slice(0, Math.round(exits.length * 0.26))) lateExits.add(p)
+    }
   }
 
-  for (const p of people) {
-    // New hires: everything must be ready three business days before the start date.
+  /** New hire (ready by Day -3) and termination (final pay by the jurisdiction's deadline). */
+  const lifecycle = (p: Person, r: Rng) => {
     if (p.hire >= T24_START) {
       const due = addBusinessDays(p.hire, -3)
       const lead =
         p.type === 'Intern'
-          ? rng.int(30, 60)
+          ? r.int(30, 60)
           : APAC.has(p.site) || p.site === 'Munich'
-            ? rng.int(25, 60)
-            : rng.int(10, 24)
+            ? r.int(25, 60)
+            : r.int(10, 24)
       const submitted = Math.min(due - 1, onOrAfterWeekday(p.hire - lead))
-      const late = rng.chance(APAC.has(p.site) ? 0.15 : 0.02)
-      push('New hire', p, submitted, p.hire, due, completion(rng, submitted, due, late))
+      const late = r.chance(APAC.has(p.site) ? 0.15 : 0.02)
+      push('New hire', p, submitted, p.hire, due, completion(r, submitted, due, late))
     }
-    // Terminations: final pay by the jurisdiction's deadline.
     if (p.term != null && p.term >= T24_START) {
       const due = finalPayDue(p)
       const voluntary = p.termType === 'Voluntary'
       const notice = voluntary
         ? p.site === 'Bengaluru'
-          ? rng.int(60, 90)
+          ? r.int(60, 90)
           : p.site === 'Munich'
-            ? rng.int(30, 90)
-            : rng.int(14, 28)
+            ? r.int(30, 90)
+            : r.int(14, 28)
         : p.termReason === 'End of contract'
-          ? rng.int(20, 45)
-          : rng.int(0, 3)
+          ? r.int(20, 45)
+          : r.int(0, 3)
       const submitted = Math.min(due, onOrBeforeWeekday(p.term - notice))
       const jur = jurisdiction(p)
-      const late = riskyExit(p) ? lateExits.has(p) : rng.chance(0.03)
+      const late = riskyExit(p) ? lateExits.has(p) : r.chance(0.03)
       const completed = late
-        ? due + rng.int(1, jur === 'us-ca' ? 4 : 6)
-        : Math.max(submitted, due - rng.int(0, Math.min(3, due - submitted)))
+        ? due + r.int(1, jur === 'us-ca' ? 4 : 6)
+        : Math.max(submitted, due - r.int(0, Math.min(3, due - submitted)))
       push('Termination', p, submitted, p.term, due, completed)
     }
   }
 
-  // Job changes from the history (manager-only changes are org updates, not HR transactions).
-  for (const p of employees) {
+  /** Job changes from the history (manager-only changes are org updates, not HR transactions). */
+  const jobChanges = (p: Person, r: Rng) => {
     for (const e of p.events) {
       if (e.day < T24_START || e.type === 'Manager change') continue
       const due = payrollCutoff(e.day)
-      const submitted = Math.min(AS_OF, onOrAfterWeekday(e.day - rng.int(-5, 20)))
-      push('Job change', p, submitted, e.day, due, completion(rng, submitted, due, rng.chance(0.08), 12))
+      const submitted = Math.min(AS_OF, onOrAfterWeekday(e.day - r.int(-5, 20)))
+      push('Job change', p, submitted, e.day, due, completion(r, submitted, due, r.chance(0.08), 12))
     }
   }
+
+  planLateFinalPay(people, rng)
+  for (const p of people) lifecycle(p, rng)
+  for (const p of employees) jobChanges(p, rng)
 
   const activeOnDay = (d: Day) => employees.filter((p) => activeOn(p, d) && p.hire < d - 30)
   const monthly = (count: number, fn: (d: Day) => void) => {
@@ -571,6 +654,14 @@ export function transactionRows(w: World, rng: Rng): HrTransaction[] {
     const due = addBusinessDays(d, 2)
     push('Personal data change', p, d, d, due, completion(rng, d, due, rng.chance(0.04), 4))
   })
+
+  // Late additions: their own hires, exits and job changes, with the same rules and late shares.
+  const added = everyone.filter(isLateAddition)
+  planLateFinalPay(added, lateRng)
+  for (const p of added) {
+    lifecycle(p, lateRng)
+    jobChanges(p, lateRng)
+  }
 
   drafts.sort(
     (a, b) => a.submitted - b.submitted || a.effective - b.effective || (a.person.id < b.person.id ? -1 : 1),

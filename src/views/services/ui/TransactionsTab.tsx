@@ -1,15 +1,28 @@
-import { BarList, Columns, Figure, type Tone } from '@/charts'
+import { BarList, type Column, Columns, Figure, type Tone } from '@/charts'
 import { Section, type Span } from '@/components'
 import type { AnalyticsContext } from '@/data/context'
+import { drill } from '@/drill'
 import { fmt } from '@/lib/format'
 import type { ServicesModel } from '../engine'
 import { FINAL_PAY_RULES, TRANSACTION_ON_TIME_TARGET } from '../engine/catalog'
+import {
+  changesDrill,
+  type DrillScope,
+  drillWhen,
+  isLateTx,
+  monthName,
+  monthSub,
+  onTimeDrill,
+  retroDrill,
+  txDrill,
+  txOutcomeDrill,
+} from '../engine/drills'
 import type { TxFact } from '../engine/facts'
 import { onTimeRate } from '../engine/facts'
-import type { FinalPayRow } from '../engine/transactions'
+import type { FinalPayRow, RetroMonthRow, SiteRow, TimingRow, TypeRow } from '../engine/transactions'
 import { TIMING_BINS } from '../engine/transactions'
 import { isOther } from '../engine/util'
-import { asOfNote, count, DEF, NeedData, NO_TX, period, rateTone } from './shared'
+import { asOfNote, count, DEF, NeedData, NO_TX, period, rateTone, titled, useProcessHref } from './shared'
 
 const TX_DETAIL_COLUMNS = [
   { key: 'transactionId', label: 'Transaction ID' },
@@ -44,6 +57,39 @@ const inWindow = (m: ServicesModel) =>
 const finalPayTone = (rate: number | null): Tone =>
   rate == null ? 'deemph' : rate < 0.95 ? 'critical' : rate < 1 ? 'warning' : 'default'
 
+const isOnTime = (f: TxFact) => f.outcome === 'on-time'
+const isCompletedLate = (f: TxFact) => f.outcome === 'late'
+const isOverdue = (f: TxFact) => f.outcome === 'overdue'
+
+/** "Completed 3-5 d late": the bin label read inside a sentence. */
+const lowerFirst = (t: string) => t.charAt(0).toLowerCase() + t.slice(1)
+
+/**
+ * Drills for a breakdown of judged transactions (by type, site, jurisdiction): every judged row
+ * for the count and the rate, and the on-time, late and open-past-due ones for their counts.
+ * A hidden rate hides its counts and their records with it.
+ */
+function onTimeCells<T extends { rate: number | null; records: TxFact[] }>(
+  s: DrillScope,
+  noun: string,
+  group: (r: T) => string,
+  o: { exitType?: boolean } = {},
+) {
+  const all = (r: T) =>
+    r.rate == null ? null : () => onTimeDrill(s, r.records, titled(`${noun} due`, group(r), s.per), o)
+  const some = (pick: (f: TxFact) => boolean, words: string) => (r: T) =>
+    r.rate == null || !r.records.some(pick)
+      ? null
+      : () => txOutcomeDrill(s, r.records, pick, titled(`${noun} ${words}`, group(r), s.per), o)
+  return {
+    all,
+    onTime: some(isOnTime, 'on time'),
+    late: some(isLateTx, 'late or open past due'),
+    completedLate: some(isCompletedLate, 'completed late'),
+    overdue: some(isOverdue, 'open past due'),
+  }
+}
+
 function TypeOnTimeFigure({
   id,
   m,
@@ -55,25 +101,33 @@ function TypeOnTimeFigure({
   ctx: AnalyticsContext
   span: Span
 }) {
+  const processHref = useProcessHref()
   const due = inWindow(m)
   const all = onTimeRate(due)
+  const per = period(ctx)
+  const cell = onTimeCells<TypeRow>(m.scope, 'Transactions', (r) => r.type)
+  const columns: Column<TypeRow>[] = [
+    { key: 'type', label: 'Transaction type' },
+    {
+      key: 'processId',
+      label: 'Atlas process',
+      href: (r) => (r.processId ? processHref(r.processId) : null),
+    },
+    { key: 'deadline', label: 'Deadline' },
+    { key: 'due', label: 'Due in period', format: 'int', drill: cell.all },
+    { key: 'onTime', label: 'On time', format: 'int', drill: cell.onTime },
+    { key: 'late', label: 'Completed late', format: 'int', drill: cell.completedLate },
+    { key: 'open', label: 'Open past due', format: 'int', drill: cell.overdue },
+    { key: 'rate', label: 'On time %', format: 'pct', drill: cell.all },
+  ]
   return (
     <Figure
       id={id}
       span={span}
       title="On time by transaction type"
-      subtitle={`Transactions due in the ${period(ctx)} completed by their due date, against the ${fmt(TRANSACTION_ON_TIME_TARGET, 'pct0')} target`}
+      subtitle={`Transactions due in the ${per} completed by their due date, against the ${fmt(TRANSACTION_ON_TIME_TARGET, 'pct0')} target`}
       data={m.types}
-      columns={[
-        { key: 'type', label: 'Transaction type' },
-        { key: 'processId', label: 'Atlas process' },
-        { key: 'deadline', label: 'Deadline' },
-        { key: 'due', label: 'Due in period', format: 'int' },
-        { key: 'onTime', label: 'On time', format: 'int' },
-        { key: 'late', label: 'Completed late', format: 'int' },
-        { key: 'open', label: 'Open past due', format: 'int' },
-        { key: 'rate', label: 'On time %', format: 'pct' },
-      ]}
+      columns={columns}
       definitions={[DEF.onTime, DEF.anonymity]}
       note={asOfNote(
         m.asOf,
@@ -98,6 +152,7 @@ function TypeOnTimeFigure({
         }}
         secondary={(d) => `${fmt(d.due, 'int')} due`}
         tone={(d) => rateTone(d.rate, TRANSACTION_ON_TIME_TARGET)}
+        onSelect={(d) => drill(cell.all(d))}
       />
     </Figure>
   )
@@ -143,6 +198,91 @@ export function TransactionsTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsCo
   const { retro: retroTotal, n: retroChanges, rate: retroRate } = m.retroSummary
   const retroRows = m.retro.filter((r) => r.changes > 0)
   const retroShown = retroRows.some((r) => r.share != null)
+  const s = m.scope
+
+  /* Drill sources, shared by the charts and their table views. */
+  const timingBin = (d: TimingRow) =>
+    d.share == null
+      ? null
+      : drillWhen(s, d.records, () =>
+          txDrill(s, d.records, {
+            title: titled(`Transactions completed ${lowerFirst(d.timing)}`, per),
+            order: (a, b) => (b.daysVsDue ?? 0) - (a.daysVsDue ?? 0),
+          }),
+        )
+  const finalPay = onTimeCells<FinalPayRow>(s, 'Final pay', (r) => r.name, { exitType: true })
+  const byExitType = (type: 'Involuntary' | 'Voluntary') => (r: FinalPayRow) => {
+    const rate = type === 'Involuntary' ? r.involuntaryRate : r.voluntaryRate
+    return rate == null
+      ? null
+      : () =>
+          onTimeDrill(
+            s,
+            r.records.filter((f) => f.exitType === type),
+            titled(`Final pay due, ${type.toLowerCase()} exits`, r.name, per),
+            { exitType: true },
+          )
+  }
+  const hire = onTimeCells<SiteRow>(s, 'New hires', (r) => r.location)
+  const retroMonth = (d: RetroMonthRow) =>
+    d.share == null
+      ? null
+      : () =>
+          retroDrill(
+            s,
+            d.records,
+            titled('Retro adjustments', `${monthName(d.month)} cut-off`),
+            monthSub(s, d.month),
+          )
+  const finalPayColumns: Column<FinalPayRow>[] = [
+    { key: 'name', label: 'Jurisdiction' },
+    { key: 'sites', label: 'Sites' },
+    { key: 'exits', label: 'Exits', format: 'int', drill: finalPay.all },
+    { key: 'late', label: 'Late', format: 'int', drill: finalPay.late },
+    { key: 'rate', label: 'On time', format: 'pct', drill: finalPay.all },
+    { key: 'involuntaryRate', label: 'Involuntary on time', format: 'pct', drill: byExitType('Involuntary') },
+    { key: 'voluntaryRate', label: 'Voluntary on time', format: 'pct', drill: byExitType('Voluntary') },
+    {
+      key: 'medianDaysLate',
+      label: 'Median days late',
+      format: 'days',
+      drill: (r) => (r.medianDaysLate == null ? null : finalPay.completedLate(r)),
+    },
+    { key: 'rule', label: 'Deadline rule' },
+  ]
+  const hireColumns: Column<SiteRow>[] = [
+    { key: 'location', label: 'Site' },
+    { key: 'region', label: 'Region' },
+    { key: 'starts', label: 'New hires', format: 'int', drill: hire.all },
+    { key: 'ready', label: 'Ready by Day −3', format: 'int', drill: hire.onTime },
+    { key: 'late', label: 'Late', format: 'int', drill: hire.late },
+    { key: 'rate', label: 'Ready %', format: 'pct', drill: hire.all },
+  ]
+  const retroColumns: Column<RetroMonthRow>[] = [
+    { key: 'month', label: 'Cut-off month' },
+    {
+      key: 'changes',
+      label: 'Job and pay changes',
+      format: 'int',
+      drill: (r) =>
+        r.share == null
+          ? null
+          : () =>
+              changesDrill(
+                s,
+                r.records,
+                titled('Job and pay changes', `${monthName(r.month)} cut-off`),
+                monthSub(s, r.month),
+              ),
+    },
+    {
+      key: 'retro',
+      label: 'Retro adjustments',
+      format: 'int',
+      drill: (r) => (r.retro ? retroMonth(r) : null),
+    },
+    { key: 'share', label: 'Retro share', format: 'pct', drill: (r) => (r.retro ? retroMonth(r) : null) },
+  ]
 
   return (
     <>
@@ -159,8 +299,8 @@ export function TransactionsTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsCo
           data={m.timing}
           columns={[
             { key: 'timing', label: 'Completed' },
-            { key: 'transactions', label: 'Transactions', format: 'int' },
-            { key: 'share', label: 'Share', format: 'pct' },
+            { key: 'transactions', label: 'Transactions', format: 'int', drill: timingBin },
+            { key: 'share', label: 'Share', format: 'pct', drill: timingBin },
           ]}
           definitions={[
             DEF.onTime,
@@ -185,6 +325,7 @@ export function TransactionsTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsCo
             y="transactions"
             xOrder={TIMING_BINS.map((b) => b.label)}
             tone={(d) => (d.late ? 'critical' : 'default')}
+            onSelect={(d) => drill(timingBin(d))}
           />
         </Figure>
       </Section>
@@ -199,17 +340,7 @@ export function TransactionsTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsCo
           title="Final pay on time by jurisdiction"
           subtitle={`Termination transactions due in the ${per}, paid by the local final pay deadline, lowest first`}
           data={m.finalPay}
-          columns={[
-            { key: 'name', label: 'Jurisdiction' },
-            { key: 'sites', label: 'Sites' },
-            { key: 'exits', label: 'Exits', format: 'int' },
-            { key: 'late', label: 'Late', format: 'int' },
-            { key: 'rate', label: 'On time', format: 'pct' },
-            { key: 'involuntaryRate', label: 'Involuntary on time', format: 'pct' },
-            { key: 'voluntaryRate', label: 'Voluntary on time', format: 'pct' },
-            { key: 'medianDaysLate', label: 'Median days late', format: 'days' },
-            { key: 'rule', label: 'Deadline rule' },
-          ]}
+          columns={finalPayColumns}
           definitions={[
             {
               term: 'Final pay on time',
@@ -247,6 +378,7 @@ export function TransactionsTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsCo
                 }
                 tone={(d) => (d.rate == null ? 'deemph' : 'default')}
                 glyphTone={(d) => finalPayTone(d.rate)}
+                onSelect={(d) => drill(finalPay.all(d))}
               />
             </div>
             <div className="min-w-0 lg:col-span-5">
@@ -266,14 +398,7 @@ export function TransactionsTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsCo
           title="New hire readiness by site"
           subtitle={`New hire transactions due in the ${per} that were completed by Day −3`}
           data={m.newHireSites}
-          columns={[
-            { key: 'location', label: 'Site' },
-            { key: 'region', label: 'Region' },
-            { key: 'starts', label: 'New hires', format: 'int' },
-            { key: 'ready', label: 'Ready by Day −3', format: 'int' },
-            { key: 'late', label: 'Late', format: 'int' },
-            { key: 'rate', label: 'Ready %', format: 'pct' },
-          ]}
+          columns={hireColumns}
           definitions={[
             {
               term: 'Ready by Day −3',
@@ -302,6 +427,7 @@ export function TransactionsTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsCo
             tone={(d) =>
               d.rate == null ? 'deemph' : d.rate < 0.85 ? 'critical' : d.rate < 0.95 ? 'warning' : 'default'
             }
+            onSelect={(d) => drill(hire.all(d))}
           />
         </Figure>
         <Figure
@@ -310,12 +436,7 @@ export function TransactionsTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsCo
           title="Retro adjustments by month"
           subtitle={`Share of job and pay changes completed after their payroll cut-off, by cut-off month, ${per}`}
           data={m.retro}
-          columns={[
-            { key: 'month', label: 'Cut-off month' },
-            { key: 'changes', label: 'Job and pay changes', format: 'int' },
-            { key: 'retro', label: 'Retro adjustments', format: 'int' },
-            { key: 'share', label: 'Retro share', format: 'pct' },
-          ]}
+          columns={retroColumns}
           definitions={[
             {
               term: 'Retro adjustment',
@@ -349,6 +470,7 @@ export function TransactionsTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsCo
             xType="month"
             format="pct"
             ref={{ value: 0.02, label: 'DS-01 target 2%' }}
+            onSelect={(d) => drill(retroMonth(d))}
           />
         </Figure>
       </Section>

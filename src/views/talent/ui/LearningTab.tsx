@@ -2,14 +2,15 @@ import { useState } from 'react'
 import { BarList, Columns, Figure, Heatmap } from '@/charts'
 import { Button, EmptyState, goTo, Section, Segmented } from '@/components'
 import { useAnalytics } from '@/data/context'
+import { drill, openPerson } from '@/drill'
 import { formatDate } from '@/lib/dates'
 import { fmt, plural } from '@/lib/format'
 import type { TalentModel } from '../engine'
 import { type CourseRow, ON_TIME_TARGET, type OverdueCell } from '../engine/learning'
 import {
-  COMPLETION_COLUMNS,
-  COURSE_COLUMNS,
-  HOURS_COLUMNS,
+  completionColumns,
+  courseColumns,
+  hoursColumns,
   overdueCellColumns,
   TRAINING_OVERDUE_COLUMNS,
 } from './columns'
@@ -63,7 +64,7 @@ export function LearningTab({ m }: { m: TalentModel }) {
           title="Required training on time by course"
           subtitle={`Share of assignments due ${period} completed by the due date`}
           data={l.byCourse}
-          columns={COURSE_COLUMNS}
+          columns={courseColumns(m.drill)}
           definitions={[DEF.required, DEF.onTime]}
           note={`${plural(l.current.due, 'assignment')} due · ${fmt(l.current.rate, 'pct')} on time overall · target 95%`}
           span={6}
@@ -78,6 +79,7 @@ export function LearningTab({ m }: { m: TalentModel }) {
             ref={{ value: ON_TIME_TARGET, label: 'Target 95%' }}
             tone={tone}
             secondary={(d) => `n = ${fmt(d.due)}`}
+            onSelect={(d) => drill(d.onTimeRate != null ? m.drill.onTime(d.course, 'onTime') : null)}
             ariaLabel="Required training on time by course"
           />
         </Figure>
@@ -86,7 +88,7 @@ export function LearningTab({ m }: { m: TalentModel }) {
           title="Completions by month"
           subtitle={`Courses completed each month, required and optional, ${period}`}
           data={l.completions}
-          columns={COMPLETION_COLUMNS}
+          columns={completionColumns(m.drill)}
           definitions={[DEF.required]}
           note={`${plural(
             l.completions.reduce((s, r) => s + r.completions, 0),
@@ -106,6 +108,8 @@ export function LearningTab({ m }: { m: TalentModel }) {
             seriesOrder={['Required', 'Optional']}
             xType="month"
             height={260}
+            onSelect={(d) => drill(m.drill.completions(d.month, null))}
+            onSelectSegment={(d) => drill(m.drill.completions(d.month, d.kind))}
             ariaLabel="Course completions by month"
           />
         </Figure>
@@ -120,7 +124,7 @@ export function LearningTab({ m }: { m: TalentModel }) {
           title={`Overdue by course and ${dim}`}
           subtitle={`Share of past-due assignments not completed, as of ${asOf}`}
           data={cells}
-          columns={overdueCellColumns(dim === 'department' ? 'Department' : 'Location')}
+          columns={overdueCellColumns(dim === 'department' ? 'Department' : 'Location', m.drill, dim)}
           definitions={[DEF.overdue]}
           note={`${plural(totalOverdue, 'assignment')} overdue · cells under 5 assignments are hidden, counts included`}
           span={12}
@@ -149,6 +153,7 @@ export function LearningTab({ m }: { m: TalentModel }) {
               xOrder={l.overdueCourses}
               yOrder={groupOrder(cells)}
               rowHeight={26}
+              onSelect={(d) => drill(m.drill.overdueCell(dim, d, 'overdue'))}
               ariaLabel={`Share overdue by course and ${dim}`}
             />
           </div>
@@ -171,6 +176,7 @@ export function LearningTab({ m }: { m: TalentModel }) {
             maxRows: 12,
             search: 'Search people or courses',
             rowTone: (r) => (r.daysOverdue > 90 ? 'critical' : r.daysOverdue > 30 ? 'warning' : null),
+            onRowClick: (r) => openPerson(r.employeeId),
           }}
           empty={noDue ?? (totalOverdue ? null : 'Nothing is overdue in this scope.')}
         />
@@ -179,7 +185,7 @@ export function LearningTab({ m }: { m: TalentModel }) {
           title="Learning hours per employee"
           subtitle={`Hours from courses completed ${period}, by business unit`}
           data={l.hours}
-          columns={HOURS_COLUMNS}
+          columns={hoursColumns(m.drill)}
           definitions={[DEF.hours]}
           note="Employees only · units under 5 people are hidden"
           span={4}
@@ -197,6 +203,7 @@ export function LearningTab({ m }: { m: TalentModel }) {
             label="businessUnit"
             value="perEmployee"
             format="hours"
+            onSelect={(d) => drill(m.drill.hours(d.businessUnit))}
             ariaLabel="Learning hours per employee by business unit"
           />
         </Figure>

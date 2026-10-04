@@ -7,6 +7,20 @@ import { MIN_GROUP } from '@/data/schema'
 import { formatDate } from '@/lib/dates'
 import { fmt } from '@/lib/format'
 import type { ExceptionRow, PromotionRow, SpendSummary } from './cycle'
+import {
+  atPosition,
+  compaGroupDrill,
+  type DrillScope,
+  differentiationDrill,
+  exceptionsDrill,
+  guidelineSpendDrill,
+  lazyDrill,
+  marketDrill,
+  outsideDrill,
+  promotionsDrill,
+  ruleExceptions,
+  spendDrill,
+} from './drill'
 import { marketTotal } from './market'
 import type { CompModel } from './model'
 import { coverageParts } from './notes'
@@ -17,7 +31,16 @@ import { pts2 } from './text'
 
 type Core = Pick<
   CompModel,
-  'asOf' | 'payAsOf' | 'payStale' | 'pop' | 'company' | 'isCompany' | 'settings' | 'performance' | 'market'
+  | 'asOf'
+  | 'payAsOf'
+  | 'payStale'
+  | 'scopeLabel'
+  | 'pop'
+  | 'company'
+  | 'isCompany'
+  | 'settings'
+  | 'performance'
+  | 'market'
 >
 
 /** A "vs company" delta, material when it clears a domain threshold. */
@@ -61,6 +84,10 @@ export function buildKpis(m: Core, spend: SpendSummary): Kpi[] {
   const hideSpend = smallSpend(spend)
   // A delta that rounds to "+0.0 pts" says nothing; the value carries the exact figure instead.
   const spendDelta = !hideSpend && spend.delta != null && Math.abs(spend.delta) >= 0.0005 ? spend.delta : null
+  const below = atPosition(m.pop.people, 'Below minimum')
+  const above = atPosition(m.pop.people, 'Above maximum')
+  const rate = (k: number, what: string) =>
+    `Rate = ${fmt(k, 'int')} ${what} ÷ ${fmt(placed, 'int')} people with a salary range.`
 
   return [
     {
@@ -73,6 +100,7 @@ export function buildKpis(m: Core, spend: SpendSummary): Kpi[] {
       tab: 'ranges',
       definition:
         'Base salary divided by the salary range midpoint, median across active employees with a comp record.',
+      drill: lazyDrill(scope.n, () => compaGroupDrill(m, scope, 'measured', true)),
       ...vsCompany(m.isCompany, scope.median, all.median, 0.03),
     },
     {
@@ -85,6 +113,7 @@ export function buildKpis(m: Core, spend: SpendSummary): Kpi[] {
       note: `Compa-ratio ${band}`,
       tab: 'ranges',
       definition: `Share of people with a compa-ratio from ${band}, inclusive. Change the band in Cycle settings.`,
+      drill: lazyDrill(scope.inBand, () => compaGroupDrill(m, scope, 'inBand', true)),
       ...vsCompany(m.isCompany, scope.inBand, all.inBand, 0.05),
     },
     {
@@ -97,6 +126,9 @@ export function buildKpis(m: Core, spend: SpendSummary): Kpi[] {
       note: count(scope.belowMin),
       tab: 'ranges',
       definition: 'Share of people whose base salary is below the minimum of their salary range.',
+      drill: lazyDrill(below.length, () =>
+        outsideDrill(m, 'below', below, 'Below range minimum', rate(below.length, 'below minimum')),
+      ),
       ...vsCompany(m.isCompany, belowShare, share(all.belowMin, placedAll), 0.02),
     },
     {
@@ -109,6 +141,9 @@ export function buildKpis(m: Core, spend: SpendSummary): Kpi[] {
       note: count(scope.aboveMax),
       tab: 'ranges',
       definition: 'Share of people whose base salary is above the maximum of their salary range.',
+      drill: lazyDrill(above.length, () =>
+        outsideDrill(m, 'above', above, 'Above range maximum', rate(above.length, 'above maximum')),
+      ),
       ...vsCompany(m.isCompany, aboveShare, share(all.aboveMax, placedAll), 0.02),
     },
     {
@@ -128,6 +163,7 @@ export function buildKpis(m: Core, spend: SpendSummary): Kpi[] {
       tab: 'cycle',
       definition:
         'Proposed merit as a share of eligible base salary, both in USD. Eligible means the person has a merit proposal. Promotion increases are not included.',
+      drill: lazyDrill(spend.priced, () => spendDrill(m, { ...spend, group: null }, 'priced')),
     },
     {
       id: 'p4p',
@@ -142,6 +178,7 @@ export function buildKpis(m: Core, spend: SpendSummary): Kpi[] {
       tab: 'performance',
       definition:
         'Mean merit % for people rated 4-5 divided by mean merit % for people rated 3, using each person’s latest rating, the one merit proposals are drafted against. 1.15 or more shows real differentiation.',
+      drill: lazyDrill(diff.ratio, () => differentiationDrill(m, diff, null, null)),
       ...vsCompany(m.isCompany, diff.ratio, diffAll.ratio, 0.15),
     },
     {
@@ -154,6 +191,7 @@ export function buildKpis(m: Core, spend: SpendSummary): Kpi[] {
       tab: 'market',
       definition:
         'Base salary divided by the market median for the job, median across people with a market median.',
+      drill: lazyDrill(mkt.median, () => marketDrill(m, mkt, true)),
       ...vsCompany(m.isCompany, mkt.median, mktAll.median, 0.03),
     },
   ]
@@ -175,9 +213,12 @@ export function buildCycleKpis(
     promotions: { rows: PromotionRow[]; share: number | null; median: number | null }
     exceptions: ExceptionRow[]
   },
+  scope: DrillScope,
 ): Kpi[] {
-  const rules = c.exceptions.filter((e) => e.kind !== 'outlier').length
+  const ruleRows = ruleExceptions(c.exceptions)
+  const rules = ruleRows.length
   const outliers = c.exceptions.length - rules
+  const spendRow = { ...c.spend, group: null }
   const hideSpend = smallSpend(c.spend)
   const hideGuide = c.spend.rated > 0 && c.spend.rated < MIN_GROUP
   const spendPct = hideSpend ? null : c.spend.spendPct
@@ -196,6 +237,7 @@ export function buildCycleKpis(
       note: `of ${count(pop.people.length)}`,
       definition:
         'People with a merit proposal in the comp data. People without one are treated as not eligible this cycle.',
+      drill: lazyDrill(c.spend.eligible, () => spendDrill(scope, spendRow, 'eligible')),
     },
     {
       id: 'spend',
@@ -208,6 +250,7 @@ export function buildCycleKpis(
           ? `Budget ${pct2(c.spend.budgetPct)}`
           : `${pts2(c.spend.delta)} vs the ${pct2(c.spend.budgetPct)} budget`,
       definition: 'Σ(base × merit %) ÷ Σ base over eligible people, both in USD.',
+      drill: lazyDrill(spendPct, () => spendDrill(scope, spendRow, 'priced')),
     },
     {
       id: 'guideline-spend',
@@ -218,6 +261,7 @@ export function buildCycleKpis(
       note: againstGuideline(spendPct, guidePct),
       definition:
         'What the merit guideline would cost: each rated proposal at the guideline for its rating, weighted by base salary in USD like the actual spend. Not prorated, so it compares like with like with the proposals and the budget.',
+      drill: lazyDrill(guidePct, () => guidelineSpendDrill(scope, c.spend.members, guidePct)),
     },
     {
       id: 'promotions',
@@ -227,6 +271,7 @@ export function buildCycleKpis(
       note: promoNote.length ? promoNote.join(' · ') : 'Kept apart from merit',
       definition:
         'People with a promotion increase in this cycle. Promotion % is reported on its own and never counted as merit.',
+      drill: lazyDrill(promo.rows.length, () => promotionsDrill(scope, promo.rows)),
     },
     {
       id: 'exceptions',
@@ -237,6 +282,14 @@ export function buildCycleKpis(
       note: `${fmt(outliers, 'int')} more unusual for their rating`,
       definition:
         'Proposals that break the guideline rules: rating 5 with merit under 2%, or rating 1-2 with merit over 3%. Unusual proposals sit more than 3.5 robust deviations from the median merit for their rating.',
+      drill: lazyDrill(rules, () =>
+        exceptionsDrill(
+          scope,
+          ruleRows,
+          'Proposals that break the guideline rules',
+          'Rating 5 with merit under 2%, or rating 1-2 with merit over 3%. Proposals that are only unusual for their rating are listed in the exceptions table.',
+        ),
+      ),
     },
   ]
 }

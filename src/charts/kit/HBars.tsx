@@ -1,7 +1,8 @@
 /**
  * Horizontal bars per category: one series, grouped series, stacked series, or 100% stacked
  * (`stack: 'normalize'`) for part-to-whole with long category names. Segment labels go inside
- * a segment only when they fit; the legend and tooltip carry the rest.
+ * a segment only when they fit; the legend and tooltip carry the rest. Clicking a stacked
+ * segment or a grouped bar drills that series (`onSelectSegment`), elsewhere the category.
  */
 import * as Plot from '@observablehq/plot'
 import { DASH, type Format, fmt } from '@/lib/format'
@@ -10,8 +11,18 @@ import type { LegendSpec } from '../core/legend'
 import { hoverBand, labelsMark, refRule, roundedBarsX, scalePos } from '../core/marks'
 import { maxTextWidth, textWidth, truncateText } from '../core/measure'
 import type { TipContent, TipRow } from '../core/tooltip'
-import { axisX, baseline, gridX, housePlot, type PlotBuildContext, PlotChart } from '../plot'
+import {
+  axisX,
+  baseline,
+  gridX,
+  housePlot,
+  type PlotBuildContext,
+  PlotChart,
+  type PlotElement,
+  type PlotPointer,
+} from '../plot'
 import { useChartTheme } from '../theme'
+import { groupIndexAt, groupLayout, segmentAt } from './hit'
 import { type Category, categoryModel, type StackSegment, stackSegments } from './prepare'
 import { extent, numericAxis } from './scale'
 import { otherLast, type SeriesColors, type SeriesScheme, seriesPalette } from './series'
@@ -47,6 +58,12 @@ export interface HBarsProps<T extends object> extends ChartBaseProps<T> {
   labels?: boolean
   rowHeight?: number
   xDomain?: [number, number]
+  /**
+   * Click-to-drill on one series: the row behind the stacked segment or grouped bar under the
+   * pointer. Without it, such a click calls `onSelect` with that row (it still names the
+   * category); clicks elsewhere in a row call `onSelect` with the category's first row.
+   */
+  onSelectSegment?: (d: T) => void
 }
 
 export function HBars<T extends object>({
@@ -65,6 +82,7 @@ export function HBars<T extends object>({
   rowHeight,
   xDomain,
   onSelect,
+  onSelectSegment,
   ariaLabel,
 }: HBarsProps<T>) {
   const order = series
@@ -159,9 +177,7 @@ export function HBars<T extends object>({
         ),
       )
     } else {
-      const gap = 2
-      const barH = Math.max(2, Math.min(24, (pitch - 12 - (n - 1) * gap) / n))
-      const top0 = (pitch - (n * barH + (n - 1) * gap)) / 2
+      const { size: barH, start: top0, gap } = groupLayout(pitch, n, pitch - 12)
       model.series.forEach((s, i) => {
         const top = top0 + i * (barH + gap)
         const cells = cats.flatMap((c) =>
@@ -239,24 +255,42 @@ export function HBars<T extends object>({
     )
   }
 
-  const tip = (c: Category<T>): TipContent => {
+  /** The series (stacked segment or grouped bar) under the pointer, from the plot's scales. */
+  const pick = (c: Category<T>, at: PlotPointer, plot: PlotElement): string | null => {
+    if (stacked) {
+      const v = plot.scale('x')?.invert?.(at.x)
+      return typeof v === 'number' ? (segmentAt(segments, c.key, v)?.series ?? null) : null
+    }
+    const ys = plot.scale('y')
+    const bw = ys?.bandwidth ?? 0
+    const i = groupIndexAt(at.y - Number(ys?.apply(c.key)), groupLayout(bw, n, bw - 12), n)
+    const s = i == null ? null : model.series[i]
+    return s != null && c.cells.some((cell) => cell.series === s && cell.value != null) ? s : null
+  }
+  /** The row behind the hovered series, when it has a value. */
+  const cellOf = (c: Category<T>, part: string | null) =>
+    part == null ? undefined : c.cells.find((cell) => cell.series === part && cell.value != null)
+
+  const tip = (c: Category<T>, part: string | null): TipContent => {
     if (!multi) {
       const v = c.cells[0]?.value ?? null
       return { title: c.label, rows: [{ value: fmt(v, format) }], note: v == null ? HIDDEN_NOTE : undefined }
     }
+    const total = c.total ?? 0
     const rows: TipRow[] = model.series.map((s, i) => {
       const cell = c.cells.find((cell) => cell.series === s)
       const v = cell?.value ?? null
-      const share = normalize && v != null && c.total > 0 ? ` (${fmt(v / c.total, 'pct')})` : ''
+      const share = normalize && v != null && total > 0 ? ` (${fmt(v / total, 'pct')})` : ''
       return {
         value: v == null ? DASH : `${fmt(v, format)}${share}`,
         label: s,
         color: colors[i],
         shape: 'rect',
+        ...(part === s ? { strong: true } : {}),
       }
     })
     if (stacked) rows.push({ value: fmt(c.total, format), label: 'Total' })
-    return { title: c.label, rows }
+    return { title: c.label, rows, note: stacked && c.total == null ? HIDDEN_NOTE : undefined }
   }
 
   return (
@@ -265,10 +299,16 @@ export function HBars<T extends object>({
       height={height}
       legend={legend}
       tip={tip}
+      pick={multi ? pick : undefined}
+      selectable={(c, part) =>
+        cellOf(c, part) ? !!(onSelectSegment ?? onSelect) : !!onSelect && c.cells.length > 0
+      }
       onSelect={
-        onSelect
-          ? (c) => {
-              if (c.cells[0]) onSelect(c.cells[0].datum)
+        onSelect || onSelectSegment
+          ? (c, part) => {
+              const cell = cellOf(c, part)
+              if (cell) (onSelectSegment ?? onSelect)?.(cell.datum)
+              else if (c.cells[0]) onSelect?.(c.cells[0].datum)
             }
           : undefined
       }

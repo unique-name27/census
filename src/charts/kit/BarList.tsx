@@ -1,7 +1,8 @@
 /**
  * Ranked horizontal bars for one series: category labels on the left, the value at each bar's
  * tip (with an optional muted secondary text), the tail folded into "Other (k)", an optional
- * reference rule, and status tones that add a glyph beside the value.
+ * reference rule, and status tones that add a glyph beside the value. A value label never sits
+ * on the reference rule: it starts past the rule when the rule would run through it.
  */
 import { DASH, type Format, fmt, isNum } from '@/lib/format'
 import { isStatusTone, toneColor } from '../core/color'
@@ -9,6 +10,7 @@ import { glyphForTone, hoverBand, labelsMark, refRule, roundedBarsX, scalePos } 
 import { maxTextWidth, textWidth, truncateText } from '../core/measure'
 import type { TipContent } from '../core/tooltip'
 import { baseline, housePlot, type PlotBuildContext, PlotChart } from '../plot'
+import { clearOfRules } from './hit'
 import { type BarRow, barListRows, type FoldRule } from './prepare'
 import { barInset, type ChartBaseProps, HIDDEN_NOTE, type Key, type RefLine, type Tone } from './shared'
 
@@ -25,6 +27,11 @@ export interface BarListProps<T extends object> extends ChartBaseProps<T> {
   sort?: 'desc' | 'asc' | 'none'
   /** Muted text after the value, e.g. "n = 42". */
   secondary?: Key<T> | ((d: T) => string | null | undefined)
+  /**
+   * The printed value (bar label and tooltip) instead of `format`, e.g. a signed "+0.8%". Used
+   * for rows with a value; missing values still print "—" and "Other" uses `format`.
+   */
+  valueText?: (d: T) => string
   /** Reference rule, e.g. the company rate. */
   ref?: RefLine
   /** Per-row tone; status tones also add a glyph beside the value. */
@@ -40,6 +47,8 @@ export interface BarListProps<T extends object> extends ChartBaseProps<T> {
   rowHeight?: number
   /** Tooltip note for rows without a value (default: hidden for anonymity). */
   nullNote?: string
+  /** Click-to-drill on the folded "Other (k)" row, with the rows folded into it. */
+  onSelectOther?: (rows: readonly T[]) => void
 }
 
 export function BarList<T extends object>({
@@ -51,6 +60,7 @@ export function BarList<T extends object>({
   other,
   sort,
   secondary,
+  valueText: printed,
   ref: refLine,
   tone,
   glyphTone,
@@ -58,12 +68,23 @@ export function BarList<T extends object>({
   rowHeight = 28,
   nullNote = HIDDEN_NOTE,
   onSelect,
+  onSelectOther,
   ariaLabel,
 }: BarListProps<T>) {
-  const rows = barListRows(data, { label, value, top, other, sort, secondary, tone, glyphTone })
+  const rows = barListRows(data, {
+    label,
+    value,
+    top,
+    other,
+    sort,
+    secondary,
+    tone,
+    glyphTone,
+    valueText: printed,
+  })
   const marginTop = refLine ? 22 : 2
   const height = marginTop + rows.length * rowHeight + 4
-  const valueText = (r: BarRow<T>) => (r.value == null ? DASH : fmt(r.value, format))
+  const valueText = (r: BarRow<T>) => (r.value == null ? DASH : (r.text ?? fmt(r.value, format)))
   /** The status glyph beside the value: from `glyphTone` when given, else from a status `tone`. */
   const glyphOf = (r: BarRow<T>) => {
     const g = r.glyph !== undefined && r.glyph !== 'default' ? r.glyph : r.tone
@@ -129,8 +150,10 @@ export function BarList<T extends object>({
               rows.map((r) => {
                 const end = r.value != null && r.value > origin ? r.value : origin
                 const g = glyphOf(r)
+                // Start past the reference rule when it would run through the label.
+                const refPx = refLine ? [scalePos(scales, 'x', refLine.value)] : []
                 return {
-                  x: scalePos(scales, 'x', end) + 6,
+                  x: clearOfRules(scalePos(scales, 'x', end) + 6, tailWidth(r), refPx, 3),
                   y: scalePos(scales, 'y', r.key),
                   halo: t.sheet,
                   glyph: g ? { shape: glyphForTone(g), color: toneColor(t, g) } : undefined,
@@ -147,10 +170,17 @@ export function BarList<T extends object>({
     )
   }
 
+  const canDrill = (r: BarRow<T>) =>
+    r.datum ? !!onSelect : !!(onSelectOther && r.foldedRows && r.foldedRows.length > 0)
   const tip = (r: BarRow<T>): TipContent => ({
     title: r.label,
     rows: [{ value: valueText(r), label: r.secondary || undefined }],
-    note: r.value == null ? nullNote : r.folded ? `Combines ${r.folded} smaller groups` : undefined,
+    note:
+      r.value == null
+        ? nullNote
+        : r.folded
+          ? `Combines ${r.folded} smaller groups${canDrill(r) ? '. Click to see the records' : ''}`
+          : undefined,
   })
 
   return (
@@ -158,10 +188,12 @@ export function BarList<T extends object>({
       build={build}
       height={height}
       tip={tip}
+      selectable={canDrill}
       onSelect={
-        onSelect
+        onSelect || onSelectOther
           ? (r) => {
-              if (r.datum) onSelect(r.datum)
+              if (r.datum) onSelect?.(r.datum)
+              else if (r.foldedRows) onSelectOther?.(r.foldedRows)
             }
           : undefined
       }

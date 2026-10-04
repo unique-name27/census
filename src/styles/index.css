@@ -117,28 +117,58 @@
   }
 }
 
-/* The masthead band re-points the ink tokens so every control inside it reads light-on-graphite;
-   the open folder tab (.on-desk) points them back to the page values. */
+/* The masthead band is graphite in both themes. It re-points the ink, rule and surface tokens so
+   every control inside it (ghost, secondary and primary buttons, tags, focus rings) reads
+   light-on-graphite; the open folder tab (.on-desk) points them all back to the page values. */
 :root {
   --desk-ink: var(--ink);
   --desk-ink-2: var(--ink-2);
   --desk-muted: var(--muted);
+  --desk-on-ink: var(--on-ink);
+  --desk-sheet: var(--sheet);
+  --desk-sheet-2: var(--sheet-2);
+  --desk-sheet-3: var(--sheet-3);
+  --desk-rule: var(--rule);
+  --desk-rule-strong: var(--rule-strong);
+  --desk-hover-wash: var(--hover-wash);
+  --desk-press-wash: var(--press-wash);
+  --desk-focus: var(--focus);
+  --desk-link: var(--link);
 }
 .band {
   background: var(--band);
   --ink: var(--band-ink);
   --ink-2: var(--band-ink-2);
   --muted: var(--band-muted);
-  --rule-strong: var(--band-rule);
+  /* Primary buttons (ink fill) take the band color as their text. */
+  --on-ink: var(--band);
+  /* Surfaces: a secondary button or a tag is the raised graphite chip; hover lifts it a step. */
+  --sheet: var(--band-chip);
+  --sheet-2: color-mix(in srgb, var(--band-chip), #ffffff 7%);
   --sheet-3: var(--band-chip);
+  --rule: var(--band-rule);
+  --rule-strong: color-mix(in srgb, var(--band-rule), #ffffff 8%);
   --hover-wash: rgba(255, 255, 255, 0.07);
   --press-wash: rgba(255, 255, 255, 0.11);
+  /* The light-theme focus blue disappears on graphite; use the dark-theme one in both. */
+  --focus: #6da7ec;
+  --link: #86b6ef;
   color: var(--ink);
 }
 .band .on-desk {
   --ink: var(--desk-ink);
   --ink-2: var(--desk-ink-2);
   --muted: var(--desk-muted);
+  --on-ink: var(--desk-on-ink);
+  --sheet: var(--desk-sheet);
+  --sheet-2: var(--desk-sheet-2);
+  --sheet-3: var(--desk-sheet-3);
+  --rule: var(--desk-rule);
+  --rule-strong: var(--desk-rule-strong);
+  --hover-wash: var(--desk-hover-wash);
+  --press-wash: var(--desk-press-wash);
+  --focus: var(--desk-focus);
+  --link: var(--desk-link);
 }
 
 @layer utilities {

@@ -1,14 +1,37 @@
 /**
  * Overview: the headline numbers, the readout, the live pipeline, hiring volume and offer
- * acceptance, and where requisitions sit.
+ * acceptance, and where requisitions sit. Every number opens the records behind it.
  */
-import { BarList, Columns, Figure, Lines } from '@/charts'
-import { cx, Grid, goTo, KpiStrip, Readout, Section, spanClass } from '@/components'
+import { BarList, type Column, Columns, Figure, Lines } from '@/charts'
+import { Button, cx, Grid, goTo, KpiStrip, Readout, Section, spanClass } from '@/components'
+import { drill } from '@/drill'
 import { formatDate } from '@/lib/dates'
 import { fmt, plural } from '@/lib/format'
+import {
+  hiresMonthDrill,
+  lackingKpiDrill,
+  nextStateDrill,
+  openReqsDrill,
+  pipelineCellDrill,
+  pipelineStageDrill,
+  quarterOffersDrill,
+  ttfGroupDrill,
+} from '../engine/drills'
+import { STATE_NAME } from '../engine/nextStep'
+import type { PipelineCell } from '../engine/pipeline'
+import type { OpenByDeptRow, TtfRow } from '../engine/reqs'
+import type { QuarterAcceptance } from '../engine/sources'
 import { NEXT_STATES } from '../engine/types'
 import { useRecruitingUi } from '../state'
-import { asOfNote, NEED_CANDIDATES, NEED_REQS, NoRecruitingData, TABLET_FULL, windowText } from './common'
+import {
+  asOfNote,
+  drillIf,
+  NEED_CANDIDATES,
+  NEED_REQS,
+  NoRecruitingData,
+  TABLET_FULL,
+  windowText,
+} from './common'
 import { useRecruiting } from './hooks'
 import { PipelineBars } from './PipelineBars'
 
@@ -32,18 +55,54 @@ export function OverviewTab() {
               candidates: c.candidates,
               lacking: c.lacking,
               medianDaysWaiting: c.medianDaysWaiting,
+              cell: c,
             },
           ]
         : []
     }),
   )
+  type PipelineRow = (typeof pipelineRows)[number]
+  const cellDrill = (c: PipelineCell) => () => pipelineCellDrill(b, c)
+  const pipelineColumns: Column<PipelineRow>[] = [
+    { key: 'stage', label: 'Stage' },
+    { key: 'state', label: 'Next step state' },
+    { key: 'candidates', label: 'Candidates', format: 'int', drill: (r) => cellDrill(r.cell) },
+    {
+      key: 'lacking',
+      label: 'Lacking a next step',
+      format: 'int',
+      drill: (r) =>
+        drillIf(r.lacking, () =>
+          pipelineCellDrill(b, {
+            ...r.cell,
+            label: `${r.cell.label}, lacking a next step`,
+            items: r.cell.items.filter((x) => x.tier),
+          }),
+        ),
+    },
+    {
+      key: 'medianDaysWaiting',
+      label: 'Median days waiting',
+      format: 'days',
+      drill: (r) => cellDrill(r.cell),
+    },
+  ]
   const accRows = m.acceptanceByQuarter.map((q) => ({
     quarterEnd: q.end,
     quarter: q.label,
     rate: q.rate,
     hired: q.hired,
     declined: q.declined,
+    q,
   }))
+  type AccRow = (typeof accRows)[number]
+  // Hidden quarters and levels (fewer than 5) carry no records, so they never drill.
+  const quarterDrill = (q: QuarterAcceptance, only?: 'Hired' | 'Declined') =>
+    drillIf(only ? q.apps.some((a) => a.outcome === only) : q.apps.length, () =>
+      quarterOffersDrill(b, q, only),
+    )
+  const deptDrill = (d: OpenByDeptRow) => () => openReqsDrill(b, d.reqs, `Open reqs, ${d.department}`)
+  const levelDrill = (d: TtfRow) => drillIf(d.filled.length, () => ttfGroupDrill(b, d))
   const ageTone = (d: { oldest: number }) => (d.oldest > OLD_REQ_DAYS ? 'warning' : 'default')
   const hiresTotal = m.hiresByMonth.reduce((s, r) => s + r.hires, 0)
 
@@ -61,14 +120,20 @@ export function OverviewTab() {
             title="Pipeline today"
             subtitle={`Active candidates by stage and next step on ${formatDate(b.asOf)}`}
             data={pipelineRows}
-            columns={[
-              { key: 'stage', label: 'Stage' },
-              { key: 'state', label: 'Next step state' },
-              { key: 'candidates', label: 'Candidates', format: 'int' },
-              { key: 'lacking', label: 'Lacking a next step', format: 'int' },
-              { key: 'medianDaysWaiting', label: 'Median days waiting', format: 'days' },
-            ]}
+            columns={pipelineColumns}
             span={12}
+            actions={
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  openQueue()
+                  goTo('recruiting', 'pipeline')
+                }}
+              >
+                Action queue
+              </Button>
+            }
             empty={
               b.apps.length
                 ? b.actives.length
@@ -92,14 +157,14 @@ export function OverviewTab() {
                 text: 'The alarm (the diamond): no step booked for more than 1.5× the usual days for the stage, a decision pending more than 2 days after the interview, or an offer out more than 5 days. These candidates make up the action queue.',
               },
             ]}
-            note={`${plural(b.actives.length, 'active candidate')} · click a segment to open the ones that lack a next step in the action queue · ${asOfNote(b.asOf)}`}
+            note={`${plural(b.actives.length, 'active candidate')} · click a segment or a count to see the candidates · ${asOfNote(b.asOf)}`}
           >
             <PipelineBars
               stages={m.pipeline}
-              onOpen={(stage, state) => {
-                openQueue(stage, state)
-                goTo('recruiting', 'pipeline')
-              }}
+              cellDrill={cellDrill}
+              stageDrill={(s, lackingOnly) => () => pipelineStageDrill(b, s, lackingOnly)}
+              stateDrill={(state) => () => nextStateDrill(b, state, STATE_NAME[state])}
+              lackingDrill={() => lackingKpiDrill(b)}
             />
           </Figure>
         </Grid>
@@ -115,7 +180,12 @@ export function OverviewTab() {
             data={m.hiresByMonth}
             columns={[
               { key: 'month', label: 'Month' },
-              { key: 'hires', label: 'Hires', format: 'int' },
+              {
+                key: 'hires',
+                label: 'Hires',
+                format: 'int',
+                drill: (r) => drillIf(r.hires, () => hiresMonthDrill(b, r)),
+              },
             ]}
             span={7}
             empty={b.apps.length ? null : NEED_CANDIDATES}
@@ -134,6 +204,7 @@ export function OverviewTab() {
               xType="month"
               format="int"
               labels={false}
+              onSelect={(d) => drill(() => hiresMonthDrill(b, d))}
               ariaLabel="Hires by month"
             />
           </Figure>
@@ -142,12 +213,19 @@ export function OverviewTab() {
             title="Offer acceptance by quarter"
             subtitle="Offers accepted ÷ offers resolved, last 8 quarters"
             data={accRows}
-            columns={[
-              { key: 'quarter', label: 'Quarter' },
-              { key: 'rate', label: 'Offer acceptance', format: 'pct' },
-              { key: 'hired', label: 'Accepted', format: 'int' },
-              { key: 'declined', label: 'Declined', format: 'int' },
-            ]}
+            columns={
+              [
+                { key: 'quarter', label: 'Quarter' },
+                { key: 'rate', label: 'Offer acceptance', format: 'pct', drill: (r) => quarterDrill(r.q) },
+                { key: 'hired', label: 'Accepted', format: 'int', drill: (r) => quarterDrill(r.q, 'Hired') },
+                {
+                  key: 'declined',
+                  label: 'Declined',
+                  format: 'int',
+                  drill: (r) => quarterDrill(r.q, 'Declined'),
+                },
+              ] satisfies Column<AccRow>[]
+            }
             span={5}
             className={TABLET_FULL}
             empty={
@@ -172,6 +250,7 @@ export function OverviewTab() {
               y="rate"
               format="pct0"
               xTicks="quarter"
+              onSelect={(d) => drill(quarterDrill(d.q))}
               ariaLabel="Offer acceptance by quarter"
             />
           </Figure>
@@ -186,12 +265,14 @@ export function OverviewTab() {
             title="Open reqs by department"
             subtitle={`Open requisitions on ${formatDate(b.asOf)}, marked by the age of the oldest`}
             data={m.openByDepartment}
-            columns={[
-              { key: 'department', label: 'Department' },
-              { key: 'open', label: 'Open reqs', format: 'int' },
-              { key: 'oldest', label: 'Oldest (days open)', format: 'days' },
-              { key: 'medianAge', label: 'Median days open', format: 'days' },
-            ]}
+            columns={
+              [
+                { key: 'department', label: 'Department' },
+                { key: 'open', label: 'Open reqs', format: 'int', drill: deptDrill },
+                { key: 'oldest', label: 'Oldest (days open)', format: 'days', drill: deptDrill },
+                { key: 'medianAge', label: 'Median days open', format: 'days', drill: deptDrill },
+              ] satisfies Column<OpenByDeptRow>[]
+            }
             span={6}
             empty={
               b.reqs.length
@@ -220,6 +301,16 @@ export function OverviewTab() {
               top={12}
               tone={ageTone}
               secondary={(d) => `oldest ${fmt(d.oldest, 'days')}`}
+              onSelect={(d) => drill(deptDrill(d))}
+              onSelectOther={(rows) =>
+                drill(() =>
+                  openReqsDrill(
+                    b,
+                    rows.flatMap((r) => r.reqs),
+                    `Open reqs, ${plural(rows.length, 'other department')}`,
+                  ),
+                )
+              }
               ariaLabel="Open reqs by department"
             />
           </Figure>
@@ -228,11 +319,13 @@ export function OverviewTab() {
             title="Time to fill by level"
             subtitle={`Median days from opened to offer accepted, reqs filled ${windowText(b.window)}`}
             data={m.ttfByLevel}
-            columns={[
-              { key: 'group', label: 'Level' },
-              { key: 'days', label: 'Median days to fill', format: 'days' },
-              { key: 'reqs', label: 'Reqs filled', format: 'int' },
-            ]}
+            columns={
+              [
+                { key: 'group', label: 'Level' },
+                { key: 'days', label: 'Median days to fill', format: 'days', drill: levelDrill },
+                { key: 'reqs', label: 'Reqs filled', format: 'int', drill: levelDrill },
+              ] satisfies Column<TtfRow>[]
+            }
             span={6}
             empty={
               !b.reqs.length
@@ -265,6 +358,7 @@ export function OverviewTab() {
                   : undefined
               }
               nullNote="Fewer than 5 reqs filled"
+              onSelect={(d) => drill(levelDrill(d))}
               ariaLabel="Time to fill by level"
             />
           </Figure>

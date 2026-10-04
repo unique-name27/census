@@ -26,6 +26,12 @@ export interface ManagerRow {
   newManager: boolean
   regretted12: number
   flag: ManagerFlag
+  /** The manager's own record. */
+  employee: Employee
+  /** Active direct reports of every worker type (`directs`). */
+  reports: Employee[]
+  /** Regretted voluntary leavers who reported to them, last 12 months (`regretted12`). */
+  regrettedLeavers: Employee[]
 }
 
 export interface ChainRow {
@@ -42,12 +48,16 @@ export interface SpanBucketRow {
   bucket: string
   managers: number
   share: number
+  /** The managers behind `managers`. */
+  records: ManagerRow[]
 }
 
 export interface LayerRow {
   businessUnit: string
   layers: number
   people: number
+  /** The active workers behind `people` (their layer inside the unit is in `OrgModel.buLayerOf`). */
+  records: Employee[]
 }
 
 export interface OrgModel {
@@ -63,6 +73,14 @@ export interface OrgModel {
   /** People more than 7 levels below the top of the scope. */
   deep: { people: Employee[]; maxDepth: number }
   activeWorkers: number
+  /** Active workers who manage nobody: the numerator of the manager ratio. */
+  individuals: Employee[]
+  /** Reporting layer of every active worker, counted from the top of the scope (1 = top). */
+  layerOf: Map<string, number>
+  /** Reporting layer of every active worker inside their business unit (1 = the unit's top). */
+  buLayerOf: Map<string, number>
+  /** Everyone below a person (every level, active today, in scope): the people behind `totalOrg` and `below`. */
+  peopleBelow: (id: string) => Employee[]
 }
 
 export const SPAN_BUCKETS = ['1', '2', '3-5', '6-8', '9-11', '12+'] as const
@@ -115,6 +133,24 @@ export function subtreeSizer(children: Map<string, Employee[]>): (id: string) =>
   return (id) => size(id, new Set())
 }
 
+/** Everyone below each person, in the same walk as `subtreeSizer` (so the counts agree). */
+export function subtreeCollector(children: Map<string, Employee[]>): (id: string) => Employee[] {
+  return (id) => {
+    const out: Employee[] = []
+    const guard = new Set<string>([id])
+    const walk = (at: string) => {
+      for (const c of children.get(at) ?? []) {
+        out.push(c)
+        if (guard.has(c.employeeId)) continue
+        guard.add(c.employeeId)
+        walk(c.employeeId)
+      }
+    }
+    walk(id)
+    return out
+  }
+}
+
 /** Depth below the top of the population (0 = no in-scope manager above), cycle-safe. */
 export function depthOf(active: readonly Employee[], sameGroup?: (a: Employee, b: Employee) => boolean) {
   const byId = new Map(active.map((e) => [e.employeeId, e]))
@@ -144,10 +180,12 @@ export function computeOrg(p: Prep): OrgModel {
   const below = subtreeSizer(children)
   const yearAgo = addMonths(asOf, -12)
 
-  const regretted = new Map<string, number>()
+  const regretted = new Map<string, Employee[]>()
   for (const e of exitsIn(p.emps, t12)) {
     if (e.terminationType !== 'Voluntary' || e.regrettable !== true || !e.managerId) continue
-    regretted.set(e.managerId, (regretted.get(e.managerId) ?? 0) + 1)
+    const arr = regretted.get(e.managerId)
+    if (arr) arr.push(e)
+    else regretted.set(e.managerId, [e])
   }
 
   const byId = new Map(active.map((e) => [e.employeeId, e]))
@@ -168,36 +206,54 @@ export function computeOrg(p: Prep): OrgModel {
       tenureMonths: Math.max(0, Math.floor(daysBetween(m.hireDate, asOf) / 30.436875)),
       managerSince: since,
       newManager: isNew,
-      regretted12: regretted.get(id) ?? 0,
+      regretted12: regretted.get(id)?.length ?? 0,
       flag: managerFlag(kids.length, isNew, m.level),
+      employee: m,
+      reports: kids,
+      regrettedLeavers: regretted.get(id) ?? [],
     })
   }
   managers.sort((a, b) => b.directs - a.directs || b.totalOrg - a.totalOrg || a.name.localeCompare(b.name))
 
   const spans = managers.map((m) => m.directs)
-  const bucketCounts = new Map<string, number>()
-  for (const s of spans) bucketCounts.set(spanBucket(s), (bucketCounts.get(spanBucket(s)) ?? 0) + 1)
-  const spanBuckets = SPAN_BUCKETS.map((bucket) => ({
-    bucket,
-    managers: bucketCounts.get(bucket) ?? 0,
-    share: spans.length ? (bucketCounts.get(bucket) ?? 0) / spans.length : 0,
-  }))
+  const byBucket = new Map<string, ManagerRow[]>()
+  for (const m of managers) {
+    const k = spanBucket(m.directs)
+    const arr = byBucket.get(k)
+    if (arr) arr.push(m)
+    else byBucket.set(k, [m])
+  }
+  const spanBuckets: SpanBucketRow[] = SPAN_BUCKETS.map((bucket) => {
+    const records = byBucket.get(bucket) ?? []
+    return {
+      bucket,
+      managers: records.length,
+      share: spans.length ? records.length / spans.length : 0,
+      records,
+    }
+  })
 
   const depth = depthOf(active)
   let maxDepth = -1
   const deepPeople: Employee[] = []
+  const layerOf = new Map<string, number>()
   for (const e of active) {
     const d = depth(e)
+    layerOf.set(e.employeeId, d + 1)
     if (d > maxDepth) maxDepth = d
     if (d > 7) deepPeople.push(e)
   }
 
   const buDepth = depthOf(active, (a, b) => a.businessUnit === b.businessUnit)
-  const buLayers = new Map<string, { layers: number; people: number }>()
+  const buLayerOf = new Map<string, number>()
+  const buLayers = new Map<string, { layers: number; people: number; records: Employee[] }>()
   for (const e of active) {
-    const row = buLayers.get(e.businessUnit) ?? { layers: 0, people: 0 }
-    row.layers = Math.max(row.layers, buDepth(e) + 1)
+    const layer = buDepth(e) + 1
+    buLayerOf.set(e.employeeId, layer)
+    const row = buLayers.get(e.businessUnit) ?? { layers: 0, people: 0, records: [] }
+    row.layers = Math.max(row.layers, layer)
     row.people++
+    row.records.push(e)
     buLayers.set(e.businessUnit, row)
   }
 
@@ -229,10 +285,14 @@ export function computeOrg(p: Prep): OrgModel {
     managerRatio: enough ? (active.length - spans.length) / spans.length : null,
     layers: active.length ? maxDepth + 1 : null,
     layersByBu: [...buLayers.entries()]
-      .map(([businessUnit, r]) => ({ businessUnit, layers: r.layers, people: r.people }))
+      .map(([businessUnit, r]) => ({ businessUnit, layers: r.layers, people: r.people, records: r.records }))
       .sort((a, b) => b.layers - a.layers || b.people - a.people),
     chains,
     deep: { people: deepPeople, maxDepth: Math.max(0, maxDepth) },
     activeWorkers: active.length,
+    individuals: active.filter((e) => !children.has(e.employeeId)),
+    layerOf,
+    buLayerOf,
+    peopleBelow: subtreeCollector(children),
   }
 }
