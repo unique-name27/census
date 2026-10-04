@@ -5,6 +5,8 @@ stay on your machine.
 
 ## Open it
 
+- **Online:** https://unique-name27.github.io/census/ (sample data; anything you upload stays in your browser).
+
 - **Double-click `census.html`** (or `Launch Census.bat` on Windows for an app-style window). No
   install, server or internet needed. Build it with `npm run build:single`.
 - For development: `npm install`, then `npm run dev` and open http://localhost:8820.
