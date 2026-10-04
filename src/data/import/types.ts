@@ -5,6 +5,7 @@
  * changes a choice (a different sheet, a remapped column, a corrected date order).
  */
 import type { DatasetKey, Datasets } from '../schema'
+import type { DroppedColumn } from './protected'
 
 /* ───────────── parsed files ───────────── */
 
@@ -20,6 +21,11 @@ export interface ParsedSheet {
   rows: Record<string, unknown>[]
   /** Excel row number (1-based, as Excel shows it) of each entry in `rows`. */
   rowNumbers: number[]
+  /**
+   * Columns left out when the sheet was read: protected characteristics and free-text comments
+   * (`droppedText(dropped)` says so in one sentence). Absent when nothing was left out.
+   */
+  dropped?: DroppedColumn[]
 }
 
 export interface ParsedWorkbook {

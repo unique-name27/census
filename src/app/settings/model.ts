@@ -52,6 +52,7 @@ const SETTING_NAME: Record<keyof Settings, string> = {
   asOfOverride: 'reporting date',
   compCycle: 'compensation cycle',
   tools: 'tool links',
+  engagementSurveys: 'engagement surveys switch',
 }
 
 /** "Applied the theme, text size and data standard from the file." */

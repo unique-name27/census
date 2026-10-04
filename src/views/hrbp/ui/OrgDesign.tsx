@@ -5,6 +5,7 @@ import type { Severity } from '@/components/types'
 import { useAnalytics } from '@/data/context'
 import { drill } from '@/drill/Drill'
 import { formatDate } from '@/lib/dates'
+import { LinkedSurvey } from '@/views/listening/LinkedSurvey'
 import type { HrbpModel } from '../engine'
 import {
   chainBelowSpec,
@@ -217,6 +218,13 @@ export function OrgDesign({ m }: { m: HrbpModel }) {
           empty={org.chains.length ? null : 'No single-report chains in this scope.'}
         />
       </Section>
+
+      <LinkedSurvey
+        survey="Manager feedback"
+        id="hrbp-manager-feedback"
+        title="What teams say about their managers"
+        dek="One number from upward manager feedback, across every manager in scope. Results for one manager show in Listening only with 10 or more respondents over four quarters."
+      />
     </>
   )
 }

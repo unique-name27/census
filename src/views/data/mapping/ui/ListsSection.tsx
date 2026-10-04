@@ -54,7 +54,7 @@ export function ListsSection({ model }: { model: MappingModel }) {
       title="Category lists"
       dek={
         <>
-          The values of every categorical field across the ten datasets, how often each is used, and the
+          The values of every categorical field across every dataset, how often each is used, and the
           spellings that were read as each one. Values outside a known list count against the field’s tier.
           {model.raw.loading
             ? ' Reading the stored files for their spellings.'

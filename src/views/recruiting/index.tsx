@@ -3,6 +3,7 @@
  * For TA leads preparing a weekly review with hiring leaders.
  */
 import type { ViewDef } from '../types'
+import { recruitingActions, recruitingSummary } from './engine/actions'
 import { headline } from './engine/kpis'
 import { OverviewTab } from './ui/OverviewTab'
 import { PipelineTab } from './ui/PipelineTab'
@@ -33,5 +34,7 @@ export const view: ViewDef = {
   ],
   View,
   headline,
-  datasets: ['requisitions', 'candidates'],
+  datasets: ['requisitions', 'candidates', 'hiringPlan'],
+  summary: recruitingSummary,
+  actions: recruitingActions,
 }

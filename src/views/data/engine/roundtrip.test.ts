@@ -21,7 +21,7 @@ import { buildManifest } from './manifest'
 import { planSheets } from './plan'
 
 describe('sample workbook round trip', () => {
-  it('imports all ten sheets exactly, Employees first', async () => {
+  it('imports every sheet exactly, Employees first', async () => {
     const sample = generateSample()
     const blob = await buildTemplateWorkbook({
       sample,
@@ -30,7 +30,7 @@ describe('sample workbook round trip', () => {
     })
     const book = readWorkbook(new Uint8Array(await blob.arrayBuffer()), 'census-sample.xlsx')
     const sheets = book.sheets.filter((s) => !isTemplateHelpSheet(s.name))
-    expect(sheets).toHaveLength(10)
+    expect(sheets).toHaveLength(DATASET_KEYS.length)
 
     // The template lists Employees first; reverse it so the plan has to reorder.
     const reversed = [...sheets].reverse()
@@ -42,7 +42,7 @@ describe('sample workbook round trip', () => {
     ])
     expect(plan[0].dataset).toBe('employees')
     expect(plan.every((p) => p.reason === 'detected')).toBe(true)
-    expect(new Set(plan.map((p) => p.dataset)).size).toBe(10)
+    expect(new Set(plan.map((p) => p.dataset)).size).toBe(DATASET_KEYS.length)
 
     const loaded: Datasets = { ...sample }
     const sources = {} as Record<DatasetKey, SourceMeta>
@@ -85,7 +85,15 @@ describe('sample workbook round trip', () => {
     for (const k of DATASET_KEYS) expect(strip(loaded[k]), k).toEqual(strip(sample[k]))
 
     const manifest = buildManifest({ data: loaded, sources, asOf: SAMPLE_AS_OF })
-    expect(manifest.every((r) => r.source.kind === 'upload' && r.checks.length === 0)).toBe(true)
+    expect(manifest.every((r) => r.source.kind === 'upload')).toBe(true)
+    // Every dataset with rows passes every check; the sample's empty optional sheets only say so.
+    for (const r of manifest)
+      if (r.rows) expect(r.checks, r.key).toEqual([])
+      else
+        expect(
+          r.checks.map((c) => c.severity),
+          r.key,
+        ).toEqual(['info'])
   }, 60_000)
 
   it('with pay amounts off, leaves Compensation out and every other sheet still imports cleanly', async () => {
@@ -98,7 +106,7 @@ describe('sample workbook round trip', () => {
     })
     const book = readWorkbook(new Uint8Array(await blob.arrayBuffer()), 'census-sample.xlsx')
     const sheets = book.sheets.filter((s) => !isTemplateHelpSheet(s.name))
-    expect(sheets).toHaveLength(9)
+    expect(sheets).toHaveLength(DATASET_KEYS.length - 1)
     const plan = planSheets([
       {
         fileName: book.fileName,

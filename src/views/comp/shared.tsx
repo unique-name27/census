@@ -8,7 +8,7 @@ import { useAnalytics } from '@/data/context'
 import { Drill, drill } from '@/drill'
 import { fmt } from '@/lib/format'
 import { missingDrill } from './engine/drill'
-import { type CompModel, computeComp } from './engine/model'
+import { type CompModel, compModel } from './engine/model'
 import { emptyScope, missingText, payNotice } from './engine/notes'
 
 export { asOfNote, note } from './engine/notes'
@@ -19,7 +19,7 @@ export { asOfNote, note } from './engine/notes'
  */
 export function useCompModel(): CompModel {
   const ctx = useAnalytics()
-  return useMemo(() => computeComp(ctx), [ctx])
+  return useMemo(() => compModel(ctx), [ctx])
 }
 
 /** Empty-state text for a figure whose input is missing: names the dataset or column. */

@@ -5,6 +5,7 @@ import { useAnalytics } from '@/data/context'
 import { drill, openPerson } from '@/drill'
 import { formatDate } from '@/lib/dates'
 import { fmt, plural } from '@/lib/format'
+import { LinkedSurvey } from '@/views/listening/LinkedSurvey'
 import type { TalentModel } from '../engine'
 import { listText } from '../engine/base'
 import { drillsWithUses } from '../engine/drillUses'
@@ -237,6 +238,13 @@ export function RetentionTab({ m }: { m: TalentModel }) {
           />
         </Figure>
       </Section>
+
+      <LinkedSurvey
+        survey="Stay interview"
+        id="talent-stay-interviews"
+        title="What key talent say"
+        dek="One number from stay interviews, held twice a year with key talent. What keeps people, and the top stay risk by department and career band, are in Listening."
+      />
 
       <Section
         title="How the score works"

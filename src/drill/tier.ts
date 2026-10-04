@@ -5,7 +5,7 @@
 import type { Tier } from '@/data/quality/tier'
 import type { QualityIndex } from '@/data/quality/types'
 import type { DatasetKey } from '@/data/schema'
-import type { DrillSpec } from './types'
+import { type DrillSpec, drillDataset } from './types'
 
 export interface DrillTier {
   tier: Tier
@@ -20,19 +20,20 @@ export function drillTier(
   quality: Pick<QualityIndex, 'datasetTier' | 'explain' | 'limitingOf' | 'explainOf'>,
   spec: Pick<DrillSpec, 'kind' | 'uses'>,
 ): DrillTier {
+  const dataset = drillDataset(spec.kind)
   if (spec.uses?.length) {
-    const l = quality.limitingOf(spec.uses, [spec.kind])
+    const l = quality.limitingOf(spec.uses, [dataset])
     return {
       tier: l.tier,
-      explain: quality.explainOf(spec.uses, [spec.kind]),
-      dataset: l.dataset ?? spec.kind,
+      explain: quality.explainOf(spec.uses, [dataset]),
+      dataset: l.dataset ?? dataset,
       ofDataset: false,
     }
   }
   return {
-    tier: quality.datasetTier(spec.kind),
-    explain: quality.explain(spec.kind),
-    dataset: spec.kind,
+    tier: quality.datasetTier(dataset),
+    explain: quality.explain(dataset),
+    dataset,
     ofDataset: true,
   }
 }

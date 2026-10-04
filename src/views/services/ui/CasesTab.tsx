@@ -4,6 +4,7 @@ import type { AnalyticsContext } from '@/data/context'
 import { drill } from '@/drill'
 import { formatDate } from '@/lib/dates'
 import { fmt } from '@/lib/format'
+import { LinkedSurvey } from '@/views/listening/LinkedSurvey'
 import type { ServicesModel } from '../engine'
 import {
   type AgedCaseRow,
@@ -486,6 +487,13 @@ export function CasesTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext }
           />
         </Figure>
       </Section>
+
+      <LinkedSurvey
+        survey="HR service survey"
+        id="services-hr-service-survey"
+        title="What employees say about HR service"
+        dek="One number from the HR service survey, sent when a case is resolved. It adds effort and the drivers behind satisfaction; scores by case category and channel are in Listening."
+      />
 
       <Section
         title="Quality and workload"

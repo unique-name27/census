@@ -7,7 +7,7 @@ import type { Severity } from '@/components/types'
 import { fieldShortfall } from '@/data/quality/compute'
 import { FRESHNESS, type Link, LINKS as QUALITY_LINKS } from '@/data/quality/rules'
 import type { QualityIndex } from '@/data/quality/types'
-import { type DatasetKey, type Datasets, datasetDef, type ISODate } from '@/data/schema'
+import { type DatasetKey, type Datasets, datasetDef, type ISODate, OPTIONAL_DATASETS } from '@/data/schema'
 import type { SourceMeta } from '@/data/store'
 import { daysBetween, formatDate } from '@/lib/dates'
 import { fmt } from '@/lib/format'
@@ -305,12 +305,19 @@ export function datasetChecks(args: {
   const rows = data[key] as readonly object[]
   if (!rows.length)
     return [
-      {
-        kind: 'empty',
-        severity: 'warning',
-        text: 'No rows are loaded, so the views that read it show empty states.',
-        count: 0,
-      },
+      OPTIONAL_DATASETS.includes(key)
+        ? {
+            kind: 'empty',
+            severity: 'info',
+            text: 'Not loaded yet. It is optional: the views that read it show what they can without it.',
+            count: 0,
+          }
+        : {
+            kind: 'empty',
+            severity: 'warning',
+            text: 'No rows are loaded, so the views that read it show empty states.',
+            count: 0,
+          },
     ]
   const out: DatasetCheck[] = [...fieldChecks(coverage)]
   if (key === 'employees') out.push(...rosterChecks(rows as readonly Row[], coverage, args.fills))

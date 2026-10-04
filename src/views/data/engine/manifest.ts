@@ -7,7 +7,15 @@ import type { Column } from '@/charts'
 import type { Severity } from '@/components/types'
 import { TIER_LABEL, TIERS, type Tier } from '@/data/quality/tier'
 import type { QualityIndex } from '@/data/quality/types'
-import { DATASETS, type DatasetKey, type Datasets, type ISODate, type ViewKey } from '@/data/schema'
+import {
+  DATASETS,
+  type DatasetKey,
+  type Datasets,
+  type ISODate,
+  VIEW_KEYS,
+  VIEW_LABEL,
+  type ViewKey,
+} from '@/data/schema'
 import type { SourceMeta } from '@/data/store'
 import { formatDate } from '@/lib/dates'
 import type { Format } from '@/lib/format'
@@ -15,17 +23,12 @@ import { fmt } from '@/lib/format'
 import { type DatasetCheck, datasetChecks, worstSeverity } from './checks'
 import { type DatasetCoverage, type FieldFills, fieldCoverage, REQUIREMENT_LABEL } from './coverage'
 
-/** Folder-tab order and labels of the six views. */
-export const VIEW_ORDER: ViewKey[] = ['recruiting', 'hrbp', 'org', 'services', 'talent', 'comp']
-export const VIEW_LABELS: Record<ViewKey, string> = {
-  recruiting: 'Recruiting',
-  hrbp: 'People stats',
-  org: 'Org chart',
-  services: 'HR ops',
-  talent: 'Talent',
-  comp: 'Compensation',
-  ai: 'AI in HR',
-}
+/**
+ * Folder-tab order and labels of the views that read datasets directly. The scorecard reads every
+ * view's summary rather than a dataset, and AI in HR reads none, so neither is listed as fed.
+ */
+export const VIEW_ORDER: ViewKey[] = VIEW_KEYS.filter((k) => k !== 'ai' && k !== 'scorecard')
+export const VIEW_LABELS: Record<ViewKey, string> = VIEW_LABEL
 
 export interface SourceInfo {
   kind: 'sample' | 'upload'
@@ -42,7 +45,7 @@ export interface ManifestRow {
   /** Sheet name in templates. */
   sheet: string
   feeds: ViewKey[]
-  /** "All six views" or the view names. */
+  /** "All nine views" or the view names. */
   feedsText: string
   source: SourceInfo
   rows: number
@@ -55,9 +58,23 @@ export interface ManifestRow {
   profileFingerprint: string | null
 }
 
-const NUMBER_WORDS = ['no', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten']
+const NUMBER_WORDS = [
+  'no',
+  'one',
+  'two',
+  'three',
+  'four',
+  'five',
+  'six',
+  'seven',
+  'eight',
+  'nine',
+  'ten',
+  'eleven',
+  'twelve',
+]
 
-/** "six views": how many views Census has, in words. */
+/** "nine views": how many views read datasets, in words. */
 export const VIEW_COUNT_TEXT = `${NUMBER_WORDS[VIEW_ORDER.length] ?? VIEW_ORDER.length} views`
 
 const feedsAll = (views: readonly ViewKey[]) => VIEW_ORDER.every((v) => views.includes(v))
@@ -69,7 +86,7 @@ export function feedsText(views: readonly ViewKey[]): string {
     .join(', ')
 }
 
-/** "Feeds all six views", "Feeds Recruiting". */
+/** "Feeds all nine views", "Feeds Recruiting". */
 export function feedsLine(views: readonly ViewKey[]): string {
   return feedsAll(views) ? `Feeds all ${VIEW_COUNT_TEXT}` : `Feeds ${feedsText(views)}`
 }

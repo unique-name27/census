@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { bestCostMs } from '@/lib/testBudget'
 import {
+  AUTHORIZATION_TYPES,
   CANDIDATE_STATUSES,
   CASE_CATEGORIES,
   CASE_CHANNELS,
@@ -13,7 +14,10 @@ import {
   type Employee,
   INVOLUNTARY_REASONS,
   LEARNING_CATEGORIES,
+  LEAVE_REASONS,
   LEVELS,
+  ONBOARDING_STATUSES,
+  ONBOARDING_TASKS,
   POTENTIALS,
   READINESS,
   REQ_PRIORITIES,
@@ -22,6 +26,8 @@ import {
   SITES,
   SOURCES,
   STAGES,
+  SURVEY_SCALES,
+  SURVEY_TYPES,
   siteByLocation,
   TERMINATION_TYPES,
   TRANSACTION_PROCESS,
@@ -114,7 +120,8 @@ const data: Datasets = generateSample()
 const byId = new Map(data.employees.map((e) => [e.employeeId, e]))
 const emp = (id: string) => byId.get(id)!
 const employees = data.employees.filter((e) => e.employmentType === 'Employee')
-const activeEmployees = employees.filter((e) => !e.terminationDate)
+/** Employees on the payroll today (pre-hires, with a future hire date, are not). */
+const activeEmployees = employees.filter((e) => activeOn(e, AS_OF))
 const ratingOf = new Map(data.reviews.map((r) => [`${r.employeeId}|${r.cycle}`, r.rating]))
 const reqById = new Map(data.requisitions.map((r) => [r.reqId, r]))
 
@@ -154,7 +161,7 @@ describe('sizes', () => {
     between(data.employees.length, 1900, 2100)
   })
   it('has the planned volumes in every dataset', () => {
-    between(data.requisitions.length, 480, 580)
+    between(data.requisitions.length, 480, 620)
     between(data.requisitions.filter((r) => r.status === 'Open').length, 100, 120)
     between(data.requisitions.filter((r) => r.status === 'On hold').length, 12, 18)
     between(data.candidates.length, 8000, 10000)
@@ -268,8 +275,25 @@ describe('referential integrity', () => {
 })
 
 describe('dates', () => {
-  /** Fields that may legitimately be in the future: scheduled events, target starts and deadlines. */
-  const FUTURE_OK = new Set(['nextEventDate', 'targetStartDate', 'dueDate'])
+  /**
+   * Fields that may legitimately be in the future: scheduled events, target starts, deadlines,
+   * start dates of accepted offers, planned returns, plan months and expiries.
+   */
+  const FUTURE_OK = new Set([
+    'nextEventDate',
+    'targetStartDate',
+    'dueDate',
+    'startDate',
+    'expectedReturnDate',
+    'period',
+    'expiryDate',
+    'exportLicenseExpiry',
+  ])
+  /** Pre-hires start after the as-of date; some returns from leave are entered ahead. */
+  const futureOk = (name: string, k: string, row: Record<string, unknown>) =>
+    FUTURE_OK.has(k) ||
+    (name === 'employees' && k === 'hireDate' && !row.terminationDate) ||
+    (name === 'transactions' && k === 'effectiveDate' && row.type === 'Return from leave')
   it('has nothing after the as-of date except scheduled events, target starts and deadlines', () => {
     const late: string[] = []
     for (const [name, rows] of Object.entries(data) as [string, Record<string, unknown>[]][]) {
@@ -279,7 +303,7 @@ describe('dates', () => {
             typeof v === 'string' &&
             /^\d{4}-\d{2}-\d{2}/.test(v) &&
             v.slice(0, 10) > AS_OF &&
-            !FUTURE_OK.has(k)
+            !futureOk(name, k, row)
           )
             late.push(`${name}.${k}=${v}`)
         }
@@ -993,5 +1017,507 @@ describe('story: compensation', () => {
     expect(Math.max(...fw) - Math.min(...fw)).toBeLessThan(0.004)
     const dd = byRating('Digital Design')
     expect(dd[3] - dd[0]).toBeGreaterThan(0.03)
+  })
+})
+
+/* ───────────── onboarding and the hiring plan ───────────── */
+
+describe('story: Onboarding', () => {
+  const cands = data.candidates
+  const accepted = cands.filter((c) => c.status === 'Hired')
+  const loc = (c: Datasets['candidates'][0]) => reqById.get(c.reqId)!.location
+  const upcoming = accepted.filter((c) => c.startDate! > AS_OF)
+  const preHires = data.employees.filter((e) => e.hireDate > AS_OF)
+  const tasks = data.onboardingTasks
+  const candById = new Map(cands.map((c) => [c.applicationId, c]))
+  const startOf = (t: Datasets['onboardingTasks'][0]) =>
+    t.employeeId ? emp(t.employeeId).hireDate : candById.get(t.applicationId!)!.startDate!
+  const siteOf = (t: Datasets['onboardingTasks'][0]) =>
+    t.employeeId ? emp(t.employeeId).location : loc(candById.get(t.applicationId!)!)
+  const APAC = new Set(['Bengaluru', 'Hsinchu', 'Shanghai', 'Ho Chi Minh City'])
+
+  it('every accepted offer has a start date; Bengaluru waits 60-92 days, the US two to five weeks', () => {
+    expect(accepted.every((c) => c.startDate && c.startDate > c.hiredDate!)).toBe(true)
+    const wait = (pred: (c: (typeof accepted)[0]) => boolean) =>
+      median(
+        accepted
+          .filter((c) => c.hiredDate! >= T12_START && c.source !== 'Internal' && pred(c))
+          .map((c) => days(c.hiredDate!, c.startDate!)),
+      )
+    expect(wait((c) => loc(c) === 'Bengaluru')).toBeGreaterThanOrEqual(60)
+    expect(wait((c) => siteByLocation.get(loc(c))!.country === 'United States')).toBeLessThan(40)
+  })
+
+  it('59 accepted offers start in Q4 2026, 44 of them in October and 12 in Bengaluru', () => {
+    expect(upcoming).toHaveLength(59)
+    expect(upcoming.every((c) => c.startDate! <= '2026-12-31')).toBe(true)
+    expect(upcoming.filter((c) => c.startDate! < '2026-11-01')).toHaveLength(44)
+    expect(upcoming.filter((c) => loc(c) === 'Bengaluru')).toHaveLength(12)
+  })
+
+  it('25 of them are pre-hires in the roster; two moved their first day a week later in the HRIS', () => {
+    expect(preHires).toHaveLength(25)
+    const gaps = preHires.map((e) => {
+      const c = upcoming.find((x) => x.candidateName === e.name)!
+      expect(reqById.get(c.reqId)!.department).toBe(e.department)
+      expect(e.managerId).toBe(reqById.get(c.reqId)!.hiringManagerId)
+      return days(c.startDate!, e.hireDate)
+    })
+    expect(gaps.filter((g) => g === 0)).toHaveLength(23)
+    expect(gaps.filter((g) => g === 7)).toHaveLength(2)
+    // Pre-hires have no pay, reviews, learning or transactions yet.
+    const ids = new Set(preHires.map((e) => e.employeeId))
+    expect(data.comp.some((c) => ids.has(c.employeeId))).toBe(false)
+    expect(data.transactions.some((x) => ids.has(x.employeeId))).toBe(false)
+  })
+
+  it('two Bengaluru offers were accepted and then withdrawn (reneges): 2.3% in India, none elsewhere', () => {
+    const reneges = cands.filter((c) => c.status === 'Withdrawn' && c.hiredDate)
+    expect(reneges).toHaveLength(2)
+    expect(reneges.every((c) => loc(c) === 'Bengaluru' && c.rejectionReason!.startsWith('Reneged'))).toBe(
+      true,
+    )
+    const acceptedT12 = (pred: (c: (typeof cands)[0]) => boolean) =>
+      cands.filter((c) => c.hiredDate && c.hiredDate >= T12_START && pred(c)).length
+    expect(2 / acceptedT12((c) => loc(c) === 'Bengaluru')).toBeCloseTo(0.023, 3)
+    expect(2 / acceptedT12(() => true)).toBeLessThan(0.01)
+  })
+
+  it('laptops shipped late for 41% of Asia Pacific starts in the last 12 months, 6% elsewhere', () => {
+    const laptops = tasks.filter(
+      (t) => t.task === 'Laptop shipped' && t.employeeId && startOf(t) >= T12_START && startOf(t) <= AS_OF,
+    )
+    const late = (t: (typeof tasks)[0]) =>
+      t.completedDate ? t.completedDate > t.dueDate! : t.dueDate! < AS_OF
+    expect(
+      share(
+        laptops.filter((t) => APAC.has(siteOf(t))),
+        late,
+      ),
+    ).toBeCloseTo(0.41, 2)
+    expect(
+      share(
+        laptops.filter((t) => !APAC.has(siteOf(t))),
+        late,
+      ),
+    ).toBeLessThan(0.08)
+  })
+
+  it('day-one readiness is about 83% against a 95% target, Asia Pacific about 72%', () => {
+    const people = new Map<string, (typeof tasks)[0][]>()
+    for (const t of tasks) {
+      if (!t.employeeId || startOf(t) < T12_START || startOf(t) > AS_OF) continue
+      people.set(t.employeeId, [...(people.get(t.employeeId) ?? []), t])
+    }
+    const readiness = new Set(ONBOARDING_TASKS.filter((d) => d.readiness).map((d) => d.task))
+    const ready = (id: string) =>
+      people
+        .get(id)!
+        .filter((t) => readiness.has(t.task))
+        .every((t) => t.status === 'Not needed' || (!!t.completedDate && t.completedDate <= emp(id).hireDate))
+    const ids = [...people.keys()]
+    expect(share(ids, ready)).toBeGreaterThan(0.8)
+    expect(share(ids, ready)).toBeLessThan(0.86)
+    const apac = ids.filter((id) => APAC.has(emp(id).location))
+    expect(share(apac, ready)).toBeGreaterThan(0.68)
+    expect(share(apac, ready)).toBeLessThan(0.76)
+  })
+
+  it('three people start next week (5 Oct) without a cleared background check', () => {
+    const open = tasks.filter(
+      (t) =>
+        t.task === 'Background check cleared' &&
+        t.status !== 'Done' &&
+        startOf(t) <= workingDaysAfter(AS_OF, 10),
+    )
+    expect(open).toHaveLength(3)
+    expect(open.every((t) => startOf(t) === '2026-10-05')).toBe(true)
+    // Two more October starts wait for an export license (their screening is blocked).
+    const blocked = tasks.filter((t) => t.task === 'Export-control screening' && t.status === 'Blocked')
+    expect(blocked.map(startOf)).toEqual(['2026-10-12', '2026-10-12'])
+  })
+
+  it('probation decisions are overdue for four Sales starts, and nowhere else', () => {
+    const overdue = tasks.filter(
+      (t) =>
+        t.task === 'Probation decision' &&
+        t.dueDate &&
+        t.dueDate < AS_OF &&
+        !t.completedDate &&
+        t.status !== 'Not needed',
+    )
+    expect(overdue).toHaveLength(4)
+    expect(overdue.every((t) => emp(t.employeeId!).department === 'Sales')).toBe(true)
+  })
+
+  it('30/60/90-day check-ins happen on time for about 46% of Software starts against 88% elsewhere', () => {
+    const due = tasks.filter(
+      (t) => /check-in$/.test(t.task) && t.employeeId && t.dueDate! <= AS_OF && t.status !== 'Not needed',
+    )
+    const onTime = (t: (typeof due)[0]) => !!t.completedDate && t.completedDate <= t.dueDate!
+    const sw = due.filter((t) => emp(t.employeeId!).department === 'Software')
+    expect(share(sw, onTime)).toBeGreaterThan(0.4)
+    expect(share(sw, onTime)).toBeLessThan(0.52)
+    expect(
+      share(
+        due.filter((t) => !sw.includes(t)),
+        onTime,
+      ),
+    ).toBeGreaterThan(0.85)
+  })
+
+  it('follows the checklist: due dates from the start, I-9 in the US, probation outside it', () => {
+    const names = new Set(ONBOARDING_TASKS.map((d) => d.task))
+    for (const t of tasks) {
+      expect(names.has(t.task)).toBe(true)
+      expect(ONBOARDING_STATUSES).toContain(t.status)
+      expect(!!t.employeeId !== !!t.applicationId).toBe(true)
+      if (t.status === 'Done') expect(t.completedDate).toBeTruthy()
+      else expect(t.completedDate ?? null).toBeNull()
+      const us = siteByLocation.get(siteOf(t))!.country === 'United States'
+      if (t.task.startsWith('I-9')) expect(us).toBe(true)
+      if (t.task === 'Probation decision') expect(us).toBe(false)
+      if (t.task === 'Laptop shipped') expect(t.dueDate).toBe(plusDays(startOf(t), -3))
+      if (t.task === 'I-9 Section 2') expect(t.dueDate).toBe(workingDaysAfter(startOf(t), 3))
+    }
+    // Pre-hires by employee ID, accepted candidates by application ID: 59 people about to start.
+    const next = new Set(tasks.filter((t) => startOf(t) > AS_OF).map((t) => t.employeeId ?? t.applicationId))
+    expect(next.size).toBe(59)
+  })
+})
+
+describe('story: hiring plan', () => {
+  const plan = data.hiringPlan
+  const q4 = plan.filter((l) => l.period >= '2026-10-01' && l.period <= '2026-12-01')
+  const covered = (l: (typeof plan)[0]) => {
+    const r = l.reqId ? reqById.get(l.reqId) : undefined
+    return r?.status === 'Open' || r?.status === 'Filled'
+  }
+  const sum = (ls: typeof plan) => ls.reduce((a, l) => a + l.plannedHires, 0)
+
+  it('is one FY27 v2 plan from April 2026 to March 2027, counts and planned roles in one sheet', () => {
+    expect(new Set(plan.map((l) => l.planVersion))).toEqual(new Set(['FY27 v2']))
+    expect(
+      plan.every((l) => l.period >= '2026-04-01' && l.period <= '2027-03-01' && l.period.endsWith('-01')),
+    ).toBe(true)
+    expect(plan.every((l) => !l.reqId || reqById.has(l.reqId))).toBe(true)
+    expect(plan.some((l) => l.plannedHires > 1)).toBe(true)
+    expect(plan.filter((l) => l.positionId).every((l) => l.plannedHires === 1)).toBe(true)
+    const keys = plan.map((l) => [l.period, l.businessUnit, l.department, l.location, l.positionId].join('|'))
+    expect(new Set(keys).size).toBe(plan.length)
+  })
+
+  it('ramps in Q4 2026, which is why open reqs surged in Q3', () => {
+    expect(sum(q4)).toBeGreaterThan(sum(plan.filter((l) => l.period <= '2026-09-01')))
+    const openedQ3 = data.requisitions.filter((r) => r.status === 'Open' && r.openedDate >= '2026-07-01')
+    const onQ4 = new Set(q4.map((l) => l.reqId))
+    // About four in five of the reqs opened in Q3 and still open target a Q4 start.
+    expect(share(openedQ3, (r) => onQ4.has(r.reqId))).toBeGreaterThan(0.78)
+  })
+
+  it('Silicon Engineering is 14 starts behind its Q4 plan: 9 planned roles have no req, 5 are on hold', () => {
+    const uncovered = q4.filter((l) => l.businessUnit === 'Silicon Engineering' && !covered(l))
+    expect(sum(uncovered)).toBe(14)
+    expect(uncovered.filter((l) => !l.reqId)).toHaveLength(9)
+    expect(uncovered.filter((l) => reqById.get(l.reqId ?? '')?.status === 'On hold')).toHaveLength(5)
+    // Every other business unit has an accepted offer or an open req behind each Q4 role.
+    expect(q4.filter((l) => l.businessUnit !== 'Silicon Engineering').every(covered)).toBe(true)
+  })
+
+  it('year to date: Silicon Engineering behind (86%), Go-to-Market ahead (120%), the rest within 10%', () => {
+    const ratio = (bu: string) => {
+      const planned = sum(plan.filter((l) => l.businessUnit === bu && l.period <= '2026-09-01'))
+      const actual = employees.filter(
+        (e) => e.businessUnit === bu && e.hireDate >= '2026-04-01' && e.hireDate <= AS_OF,
+      ).length
+      return actual / planned
+    }
+    expect(ratio('Silicon Engineering')).toBeCloseTo(0.86, 2)
+    expect(ratio('Go-to-Market')).toBeCloseTo(1.2, 2)
+    for (const bu of ['Systems & Software', 'Operations', 'Corporate']) {
+      expect(ratio(bu)).toBeGreaterThan(0.9)
+      expect(ratio(bu)).toBeLessThan(1.1)
+    }
+  })
+
+  it('12 open reqs are not in the plan: 9 backfills and 3 new reqs', () => {
+    const planned = new Set(plan.map((l) => l.reqId))
+    const off = data.requisitions.filter((r) => r.status === 'Open' && !planned.has(r.reqId))
+    expect(off).toHaveLength(12)
+    expect(off.filter((r) => r.reqType === 'Backfill')).toHaveLength(9)
+    expect(off.every((r) => r.businessUnit !== 'Silicon Engineering')).toBe(true)
+  })
+})
+
+/* ───────────── compliance and right to work ───────────── */
+
+describe('story: Compliance', () => {
+  const rtw = data.rightToWork
+  const within = (n: number) =>
+    rtw.filter((r) => r.expiryDate && r.expiryDate > AS_OF && r.expiryDate <= plusDays(AS_OF, n))
+
+  it('holds broad authorization categories only: no nationality or citizenship anywhere', () => {
+    for (const r of rtw) {
+      expect(AUTHORIZATION_TYPES).toContain(r.authorizationType)
+      expect(Object.keys(r).some((k) => /nation|citizen/i.test(k))).toBe(false)
+      if (r.authorizationType === 'Permanent (no expiry)') expect(r.expiryDate ?? null).toBeNull()
+      else expect(r.expiryDate).toBeTruthy()
+      if (r.i9Section1Date || r.i9Section2Date) expect(emp(r.employeeId).country).toBe('United States')
+    }
+    const limited = share(rtw, (r) => r.authorizationType !== 'Permanent (no expiry)')
+    expect(limited).toBeGreaterThan(0.06)
+    expect(limited).toBeLessThan(0.12)
+  })
+
+  it('12 authorizations expire in the next 90 days: reverification not started for 3, late for 2', () => {
+    const in90 = within(90)
+    expect(in90).toHaveLength(12)
+    expect(in90.filter((r) => !r.reverificationStartedDate)).toHaveLength(3)
+    expect(
+      in90.filter(
+        (r) => r.reverificationStartedDate && days(r.reverificationStartedDate, r.expiryDate!) < 90,
+      ),
+    ).toHaveLength(2)
+    expect(within(180)).toHaveLength(26)
+    expect(in90.every((r) => activeOn(emp(r.employeeId), AS_OF))).toBe(true)
+  })
+
+  it('one engineer is working without an export license in force; two pre-hires wait for theirs', () => {
+    const notInForce = rtw.filter(
+      (r) =>
+        r.exportLicenseRequired &&
+        activeOn(emp(r.employeeId), AS_OF) &&
+        (r.exportLicenseStatus !== 'Approved' || (r.exportLicenseExpiry ?? '9999') < AS_OF),
+    )
+    expect(notInForce).toHaveLength(1)
+    expect(emp(notInForce[0].employeeId).hireDate.slice(0, 7)).toBe('2026-08')
+    const pending = rtw.filter(
+      (r) => r.exportLicenseStatus === 'Pending' && emp(r.employeeId).hireDate > AS_OF,
+    )
+    expect(pending).toHaveLength(2)
+  })
+
+  it('I-9 Section 2 was done within three business days for 96% of US starts in the last 12 months', () => {
+    const us = rtw.filter((r) => {
+      const e = emp(r.employeeId)
+      return (
+        e.country === 'United States' &&
+        e.employmentType === 'Employee' &&
+        e.hireDate >= T12_START &&
+        e.hireDate <= AS_OF
+      )
+    })
+    const onTime = (r: (typeof us)[0]) =>
+      !!r.i9Section2Date && r.i9Section2Date <= workingDaysAfter(emp(r.employeeId).hireDate, 3)
+    expect(us.length).toBeGreaterThan(100)
+    expect(us.filter((r) => !onTime(r))).toHaveLength(5)
+    // The same dates as the onboarding checklist's I-9 tasks.
+    const s2 = new Map(
+      data.onboardingTasks
+        .filter((t) => t.task === 'I-9 Section 2' && t.employeeId)
+        .map((t) => [t.employeeId!, t.completedDate ?? null]),
+    )
+    for (const r of us) expect(r.i9Section2Date ?? null).toBe(s2.get(r.employeeId) ?? null)
+  })
+})
+
+/* ───────────── leave and return to work ───────────── */
+
+describe('story: Leave & return', () => {
+  const tx = data.transactions
+  const starts = tx
+    .filter((x) => x.type === 'Leave start')
+    .sort((a, b) => a.effectiveDate.localeCompare(b.effectiveDate))
+  const returns = tx.filter((x) => x.type === 'Return from leave')
+  /** Each leave start with the next return of the same person on or after it. */
+  const pairs = (() => {
+    const used = new Set<string>()
+    return starts.map((s) => {
+      const r = returns
+        .filter(
+          (x) =>
+            x.employeeId === s.employeeId && x.effectiveDate >= s.effectiveDate && !used.has(x.transactionId),
+        )
+        .sort((a, b) => a.effectiveDate.localeCompare(b.effectiveDate))[0]
+      if (r) used.add(r.transactionId)
+      return {
+        start: s,
+        ret: r && r.effectiveDate <= AS_OF ? r : null,
+        ahead: r && r.effectiveDate > AS_OF ? r : null,
+      }
+    })
+  })()
+  const employed = (id: string) => !emp(id).terminationDate || emp(id).terminationDate! > AS_OF
+
+  it('every leave start has its Atlas category and a planned return; no other transaction has them', () => {
+    for (const x of tx) {
+      if (x.type === 'Leave start') {
+        expect(LEAVE_REASONS).toContain(x.leaveReason)
+        expect(x.expectedReturnDate! > x.effectiveDate).toBe(true)
+      } else expect(x.leaveReason ?? x.expectedReturnDate ?? null).toBeNull()
+    }
+    const parental = share(starts, (s) => s.leaveReason === 'Parental')
+    expect(parental).toBeGreaterThan(0.25)
+    expect(parental).toBeLessThan(0.4)
+  })
+
+  it('20 people are on leave now, and nobody started a leave after leaving', () => {
+    expect(pairs.filter((p) => !p.ret && employed(p.start.employeeId))).toHaveLength(20)
+    for (const s of starts) {
+      const e = emp(s.employeeId)
+      expect(!e.terminationDate || e.terminationDate >= s.effectiveDate).toBe(true)
+    }
+    // Six people resigned during a leave; nobody was dismissed during one.
+    const during = pairs.filter((p) => !p.ret && !employed(p.start.employeeId))
+    expect(during).toHaveLength(6)
+    expect(during.every((p) => emp(p.start.employeeId).terminationType === 'Voluntary')).toBe(true)
+  })
+
+  it('85% of parental leavers were still here 12 months after returning (target 90%), 95% for other leaves', () => {
+    const cohort = pairs.filter(
+      (p) => p.ret && p.ret.effectiveDate >= '2024-10-01' && p.ret.effectiveDate <= PRIOR_END,
+    )
+    const stayed = (p: (typeof cohort)[0]) => {
+      const e = emp(p.start.employeeId)
+      return !e.terminationDate || days(p.ret!.effectiveDate, e.terminationDate) > 365
+    }
+    const parental = cohort.filter((p) => p.start.leaveReason === 'Parental')
+    expect(parental).toHaveLength(20)
+    expect(parental.filter(stayed)).toHaveLength(17)
+    expect(
+      share(
+        cohort.filter((p) => p.start.leaveReason !== 'Parental'),
+        stayed,
+      ),
+    ).toBeGreaterThan(0.93)
+  })
+
+  it('two people resigned within six months of coming back from parental leave, both in the last 12 months', () => {
+    const soon = pairs.filter((p) => {
+      const exit = p.ret ? emp(p.start.employeeId).terminationDate : null
+      return !!exit && exit >= p.ret!.effectiveDate && days(p.ret!.effectiveDate, exit) <= 183
+    })
+    expect(soon).toHaveLength(2)
+    for (const p of soon) {
+      expect(p.start.leaveReason).toBe('Parental')
+      expect(emp(p.start.employeeId).terminationType).toBe('Voluntary')
+      expect(emp(p.start.employeeId).terminationDate! >= T12_START).toBe(true)
+    }
+  })
+
+  it('9 people are due back in the next 30 days: 6 returns processed ahead, 1 entered, 2 not entered', () => {
+    const due = pairs.filter(
+      (p) => !p.ret && employed(p.start.employeeId) && p.start.expectedReturnDate! <= plusDays(AS_OF, 30),
+    )
+    expect(due).toHaveLength(9)
+    expect(due.filter((p) => p.ahead?.completedDate)).toHaveLength(6)
+    expect(due.filter((p) => p.ahead && !p.ahead.completedDate)).toHaveLength(1)
+    expect(due.filter((p) => !p.ahead)).toHaveLength(2)
+  })
+})
+
+/* ───────────── listening ───────────── */
+
+describe('story: Listening', () => {
+  const sr = data.surveyResponses
+  const cand = new Map(data.candidates.map((c) => [c.applicationId, c]))
+  const nps = (scores: number[]) =>
+    ((scores.filter((x) => x >= 9).length - scores.filter((x) => x <= 6).length) / scores.length) * 100
+  const of = (survey: string, item?: string) =>
+    sr.filter((r) => r.survey === survey && (!item || r.item === item))
+
+  it('covers every program in long format, one answer per respondent, item and wave', () => {
+    expect(new Set(sr.map((r) => r.survey))).toEqual(new Set(SURVEY_TYPES))
+    const items = new Map(data.surveyItems.map((i) => [`${i.survey}|${i.item}`, i]))
+    for (const r of sr) {
+      expect(SURVEY_SCALES).toContain(r.scale)
+      const [lo, hi] = r.scale === '0-10' ? [0, 10] : [1, 5]
+      expect(Number.isInteger(r.score) && r.score >= lo && r.score <= hi).toBe(true)
+      expect(items.get(`${r.survey}|${r.item}`)?.driver).toBe(r.driver)
+      expect(r.responseDate <= AS_OF).toBe(true)
+      // Respondent keys are employee IDs, or application IDs for candidates.
+      expect(
+        r.survey === 'Candidate experience' ? cand.has(r.respondentKey) : byId.has(r.respondentKey),
+      ).toBe(true)
+    }
+    const keys = sr.map((r) => [r.survey, r.wave, r.respondentKey, r.item, r.subjectKey ?? ''].join('|'))
+    expect(new Set(keys).size).toBe(sr.length)
+    // Modest, so the app still loads quickly.
+    expect(sr.length).toBeLessThan(22_000)
+  })
+
+  it('candidates who reached the Design Verification onsite this quarter score the process far lower', () => {
+    const cx = of('Candidate experience', 'CX_NPS').filter(
+      (r) => r.touchpoint === 'Onsite' && r.wave === '2026 Q3',
+    )
+    const dv = cx.filter(
+      (r) => reqById.get(cand.get(r.respondentKey)!.reqId)!.department === 'Design Verification',
+    )
+    expect(dv.length).toBeGreaterThanOrEqual(10)
+    expect(nps(dv.map((r) => r.score))).toBeLessThan(-20)
+    expect(nps(cx.filter((r) => !dv.includes(r)).map((r) => r.score))).toBeGreaterThan(0)
+  })
+
+  it('hiring managers rate the recruiter with the heaviest load lowest', () => {
+    const byRecruiter = new Map<string, number[]>()
+    for (const r of of('Hiring manager satisfaction', 'HM_OVERALL')) {
+      const rec = reqById.get(r.subjectKey!)!.recruiter!
+      byRecruiter.set(rec, [...(byRecruiter.get(rec) ?? []), r.score])
+    }
+    const ranked = [...byRecruiter]
+      .map(([k, v]) => [k, mean(v), v.length] as const)
+      .sort((a, b) => a[1] - b[1])
+    expect(ranked[0][0]).toBe('Agnieszka Nielsen')
+    expect(ranked[0][1]).toBeLessThan(3.1)
+    expect(ranked[0][2]).toBeGreaterThanOrEqual(10)
+    expect(ranked[1][1]).toBeGreaterThan(3.5)
+  })
+
+  it('day-30 "I had what I needed" is about 3.4 in Asia Pacific against 4.3 elsewhere', () => {
+    const ready = of('Onboarding pulse day 30', 'ON30_READY')
+    const apac = (r: (typeof ready)[0]) =>
+      siteByLocation.get(emp(r.respondentKey).location)!.region === 'APAC'
+    expect(mean(ready.filter(apac).map((r) => r.score))).toBeCloseTo(3.4, 1)
+    expect(mean(ready.filter((r) => !apac(r)).map((r) => r.score))).toBeGreaterThan(4.2)
+  })
+
+  it('career growth is the top stay risk for Design Verification L4-L5 key talent', () => {
+    const rows = of('Stay interview', 'STAY_GROWTH')
+    const dv = rows.filter((r) => {
+      const e = emp(r.respondentKey)
+      return e.department === 'Design Verification' && (e.level === 'L4' || e.level === 'L5')
+    })
+    expect(dv.length).toBeGreaterThanOrEqual(10)
+    expect(share(dv, (r) => r.reason === 'Career growth')).toBeGreaterThan(0.6)
+    const others = mean(rows.filter((r) => !dv.includes(r)).map((r) => r.score))
+    expect(mean(dv.map((r) => r.score))).toBeLessThan(others - 0.8)
+  })
+
+  it('base salary is the top exit-survey reason in Bengaluru (the HRIS records career growth there most)', () => {
+    const counts = new Map<string, number>()
+    for (const r of of('Exit survey', 'EXIT_RETURN'))
+      if (emp(r.respondentKey).location === 'Bengaluru')
+        counts.set(r.reason!, (counts.get(r.reason!) ?? 0) + 1)
+    const ranked = [...counts].sort((a, b) => b[1] - a[1])
+    expect(ranked[0][0]).toBe('Base salary')
+    expect(ranked[0][1]).toBeGreaterThan(2 * ranked[1][1])
+  })
+
+  it('upward feedback is lowest for the Austin Physical Design manager, with 10+ respondents in four quarters', () => {
+    const fb = of('Manager feedback').filter((r) => r.responseDate >= T12_START)
+    const by = new Map<string, { who: Set<string>; scores: number[] }>()
+    for (const r of fb) {
+      const g = by.get(r.subjectKey!) ?? { who: new Set(), scores: [] }
+      g.who.add(r.respondentKey)
+      g.scores.push(r.score)
+      by.set(r.subjectKey!, g)
+    }
+    const shown = [...by]
+      .filter(([, g]) => g.who.size >= 10)
+      .sort((a, b) => mean(a[1].scores) - mean(b[1].scores))
+    const m = emp(shown[0][0])
+    expect([m.department, m.location, m.level]).toEqual(['Physical Design', 'Austin', 'M1'])
+    expect(mean(shown[0][1].scores)).toBeLessThan(2.5)
+    expect(shown.length).toBeGreaterThan(3)
   })
 })

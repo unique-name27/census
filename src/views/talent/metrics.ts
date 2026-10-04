@@ -136,6 +136,8 @@ export const metrics: MetricDef[] = defineMetrics('talent', [
     window: AS_OF,
     unit: 'pct',
     goodDirection: 'up',
+    // A common benchmark: four in five Critical roles with a successor ready now.
+    target: { value: 0.8, comparator: '>=' },
     uses: L.kpi['talent-succession-coverage'],
     owner: OWNER,
   },

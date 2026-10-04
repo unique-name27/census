@@ -18,7 +18,7 @@ import { targetText } from '@/metrics/overrides'
 import type { MetricTarget } from '@/metrics/types'
 import { DefinitionChangedMark, EditDefinitionLink } from '@/views/data/metrics/ui/EditDefinition'
 import { QualityLensLine } from '@/views/data/quality-overview/LensLine'
-import { tabLabel, useCurrentView } from './currentView'
+import { useCurrentView } from './currentView'
 import { IconArrowDown, IconArrowUp, IconChevronRight, IconInfo, IconLock } from './icons'
 import {
   type DeltaTone,
@@ -29,6 +29,7 @@ import {
   kpiRows,
   kpiValueText,
   SUPPRESSED_NOTE,
+  tileTarget,
 } from './kpiModel'
 import { goTo } from './navigation'
 import { TierBadge } from './tier/TierBadge'
@@ -127,7 +128,8 @@ function GateNote({ gate }: { gate: TierGate }) {
 function Tile({ kpi, gate }: { kpi: Kpi; gate: TierGate | null }) {
   const view = useCurrentView()
   const { metrics } = useAnalytics()
-  const target = kpi.tab && view ? kpi.tab : null
+  // A tab of this view, or with `link` a tab of another view (Hires vs plan opens Onboarding).
+  const target = tileTarget(kpi, view)
   const hidden = !!gate && !gate.shown
   // The dictionary entry behind the tile: its wording fills a missing definition, and the
   // popover links to it ("Edit definition").
@@ -148,11 +150,11 @@ function Tile({ kpi, gate }: { kpi: Kpi; gate: TierGate | null }) {
       )}
     >
       <div className="flex min-h-5 items-start gap-1">
-        {target && view ? (
+        {target ? (
           <button
             type="button"
-            onClick={() => goTo(view.key, target)}
-            aria-label={`${kpi.label}. Open ${tabLabel(view, target)}`}
+            onClick={() => goTo(target.view, target.tab)}
+            aria-label={`${kpi.label}. Open ${target.label}`}
             className="min-w-0 text-left text-[12px] leading-snug break-words text-ink-2 after:absolute after:inset-0 after:content-[''] focus-visible:outline-none focus-visible:after:outline-2 focus-visible:after:-outline-offset-2 focus-visible:after:outline-focus"
           >
             {kpi.label}

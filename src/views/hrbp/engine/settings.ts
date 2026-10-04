@@ -43,7 +43,12 @@ export interface HrbpSettings {
   }
   /** The floor a tile's change must clear to be colored: relative × |reference| + absolute. */
   readonly material: { readonly relative: number; readonly absolute: number }
-  readonly regrettedCluster: { readonly minExits: number; readonly criticalExits: number }
+  readonly regrettedCluster: {
+    readonly minExits: number
+    readonly criticalExits: number
+    /** Stay conversations with the rest of the team are due this many days after the latest exit. */
+    readonly stayWithinDays: number
+  }
   readonly voluntaryAbove: {
     readonly gap: number
     readonly minAvgHeadcount: number
@@ -112,7 +117,11 @@ export function settingsOf(m: MetricsApi): HrbpSettings {
       }),
     material: () => lazy({ relative: num(SET.materialRelative), absolute: num(SET.materialAbsolute) }),
     regrettedCluster: () =>
-      lazy({ minExits: num(SET.clusterMinExits), criticalExits: num(SET.clusterCriticalExits) }),
+      lazy({
+        minExits: num(SET.clusterMinExits),
+        criticalExits: num(SET.clusterCriticalExits),
+        stayWithinDays: num(SET.clusterStayDays),
+      }),
     voluntaryAbove: () =>
       lazy({
         gap: num(SET.aboveGap),

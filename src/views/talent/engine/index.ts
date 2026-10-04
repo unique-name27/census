@@ -151,6 +151,18 @@ export function computeTalent(ctx: AnalyticsContext): TalentModel {
   }
 }
 
+const modelCache = new WeakMap<AnalyticsContext, TalentModel>()
+
+/** The model for an analytics context, built once per context (the view, the Scorecard and the Action center share it). */
+export function talentModel(ctx: AnalyticsContext): TalentModel {
+  let m = modelCache.get(ctx)
+  if (!m) {
+    m = computeTalent(ctx)
+    modelCache.set(ctx, m)
+  }
+  return m
+}
+
 /** Folder-tab headline: share of Critical roles with a Ready-now successor. */
 export function talentHeadline(ctx: AnalyticsContext): Headline {
   const { covered, critical } = criticalCoverage({ ctx, byId: ctx.org.byId, asOf: ctx.asOf })

@@ -81,3 +81,22 @@ describe('analytics context', () => {
     )
   })
 })
+
+describe('session switches and features', () => {
+  it('start off: no immigration details, no engagement surveys', () => {
+    const ctx = buildContext(base)
+    expect(ctx.showImmigration).toBe(false)
+    expect(ctx.features).toEqual({ engagementSurveys: false })
+    const on = buildContext({ ...base, showImmigration: true, features: { engagementSurveys: true } })
+    expect(on.showImmigration).toBe(true)
+    expect(on.features.engagementSurveys).toBe(true)
+  })
+
+  it('gives every dataset key a list, even when the rows were saved before it existed', () => {
+    const { surveyItems: _a, hiringPlan: _b, ...older } = data
+    const ctx = buildContext({ ...base, data: older as typeof data })
+    expect(ctx.all.surveyItems).toEqual([])
+    expect(ctx.data.hiringPlan).toEqual([])
+    expect(ctx.all.employees).toBe(data.employees)
+  })
+})

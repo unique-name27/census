@@ -35,6 +35,46 @@ const SHEET_ALIASES: Record<DatasetKey, string[]> = {
   succession: ['successors', 'bench', 'succession planning', 'critical roles'],
   learning: ['training', 'lms', 'courses', 'learning records', 'completions'],
   comp: ['compensation', 'pay', 'salary', 'salaries', 'merit', 'comp data', 'total rewards'],
+  hiringPlan: [
+    'hiring plan',
+    'headcount plan',
+    'hc plan',
+    'workforce plan',
+    'recruiting plan',
+    'plan',
+    'approved headcount',
+    'position plan',
+    'aop',
+  ],
+  onboardingTasks: [
+    'onboarding',
+    'onboarding checklist',
+    'new hire tasks',
+    'preboarding',
+    'pre boarding',
+    'onboarding tracker',
+    'checklist',
+  ],
+  rightToWork: [
+    'work authorization',
+    'immigration',
+    'i9',
+    'i 9',
+    'visa tracker',
+    'export control',
+    'work permits',
+    'deemed exports',
+  ],
+  surveyResponses: [
+    'survey',
+    'survey results',
+    'responses',
+    'survey data',
+    'pulse',
+    'exit survey',
+    'survey export',
+  ],
+  surveyItems: ['questions', 'question bank', 'survey questions', 'items', 'item map'],
 }
 
 function nameAffinity(sheetName: string, def: DatasetDef): number {
@@ -82,7 +122,7 @@ function fitScore(
 }
 
 /**
- * Rank the ten datasets for a sheet, best first. `confidence` is 0-1; above about 0.6 the sheet
+ * Rank the datasets for a sheet, best first. `confidence` is 0-1; above about 0.6 the sheet
  * can be imported without asking, below about 0.35 it probably isn't Census data at all.
  */
 export function guessDataset(

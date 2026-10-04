@@ -20,12 +20,24 @@ export function LeaderPicker({
   value,
   onChange,
   currentName,
+  label = 'Leader',
+  emptyText = 'No people managers with 3 or more people in this data.',
+  clearLabel = 'Whole company',
+  noun = 'leader',
 }: {
   options: LeaderOption[]
   value: string | null
   onChange: (leaderId: string | null) => void
   /** Name of the selected leader, also when they fall outside the option list. */
   currentName?: string
+  /** Trigger and list name (the Action center's "My team" picker reuses the filter's leader list). */
+  label?: string
+  /** Shown when there are no options. */
+  emptyText?: string
+  /** The button that clears the choice. */
+  clearLabel?: string
+  /** What the options are, for the count under the list: "12 leaders". */
+  noun?: string
 }) {
   const items = useMemo(
     () => Combobox.createItems(options, { getValue: (o) => o.id, getLabel: (o) => o.name }),
@@ -35,14 +47,14 @@ export function LeaderPicker({
     <Combobox.Root items={items} value={value} onValueChange={(v) => onChange(v ?? null)} filter={matches}>
       <Combobox.Trigger
         render={
-          <Button caret aria-label={value ? `Leader: ${currentName ?? value}` : 'Leader'}>
+          <Button caret aria-label={value ? `${label}: ${currentName ?? value}` : label}>
             {value ? (
               <span className="flex max-w-[200px] min-w-0 items-baseline gap-1">
-                <span className="font-normal text-muted">Leader</span>
+                <span className="font-normal text-muted">{label}</span>
                 <span className="truncate text-ink">{currentName ?? value}</span>
               </span>
             ) : (
-              'Leader'
+              label
             )}
           </Button>
         }
@@ -50,7 +62,7 @@ export function LeaderPicker({
       <Combobox.Portal>
         <Combobox.Positioner align="start" sideOffset={6} className="z-50 outline-none">
           <Combobox.Popup
-            aria-label="Leader"
+            aria-label={label}
             className={cx(POPUP_SURFACE, 'w-[360px] max-w-[calc(100vw-32px)]')}
           >
             <div className="relative">
@@ -58,9 +70,7 @@ export function LeaderPicker({
               <Combobox.Input placeholder="Search by name or title" className={SEARCH_INPUT} />
             </div>
             <Combobox.Empty className="text-[13px] text-muted empty:hidden">
-              <div className="px-3 py-3">
-                {options.length ? 'No matches.' : 'No people managers with 3 or more people in this data.'}
-              </div>
+              <div className="px-3 py-3">{options.length ? 'No matches.' : emptyText}</div>
             </Combobox.Empty>
             <Combobox.List className="max-h-[min(360px,calc(var(--available-height)-90px))] overflow-y-auto overscroll-contain py-1 empty:p-0">
               {(o: LeaderOption) => (
@@ -82,9 +92,9 @@ export function LeaderPicker({
               )}
             </Combobox.List>
             <div className="flex items-center justify-between border-t border-rule py-1.5 pr-1.5 pl-3">
-              <span className="text-[12px] text-muted">{plural(options.length, 'leader')}</span>
+              <span className="text-[12px] text-muted">{plural(options.length, noun)}</span>
               <Button size="sm" variant="ghost" disabled={!value} onClick={() => onChange(null)}>
-                Whole company
+                {clearLabel}
               </Button>
             </div>
           </Combobox.Popup>

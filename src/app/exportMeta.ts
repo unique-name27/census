@@ -14,7 +14,7 @@ export function companyLine(isSample: boolean, sampleCompany: string): string {
   return isSample ? sampleCompany : 'Your data'
 }
 
-/** How many of the ten datasets were uploaded rather than sample. */
+/** How many datasets were uploaded rather than sample, out of all of them. */
 export function uploadedCount(sources: Record<DatasetKey, SourceMeta>): { uploaded: number; total: number } {
   return {
     uploaded: DATASET_KEYS.filter((k) => sources[k]?.kind === 'upload').length,

@@ -29,6 +29,10 @@ export const LINKS: Partial<Record<DatasetKey, Link>> = {
   requisitions: { fields: ['hiringManagerId'], target: 'employees', targetKey: 'employeeId' },
   cases: { fields: ['requesterId'], target: 'employees', targetKey: 'employeeId' },
   employees: { fields: ['managerId'], target: 'employees', targetKey: 'employeeId' },
+  rightToWork: { fields: ['employeeId'], target: 'employees', targetKey: 'employeeId' },
+  // Accepted candidates not yet in the roster are keyed by application ID instead (left blank here).
+  onboardingTasks: { fields: ['employeeId'], target: 'employees', targetKey: 'employeeId' },
+  hiringPlan: { fields: ['reqId'], target: 'requisitions', targetKey: 'reqId' },
 }
 
 /** Most rows may hold an unresolved reference before the check fails (2%). */
@@ -93,6 +97,7 @@ export const DATE_SEQUENCES: Partial<Record<DatasetKey, string[][]>> = {
   ],
   transactions: [['submittedDate', 'completedDate']],
   learning: [['assignedDate', 'completedDate']],
+  rightToWork: [['i9Section1Date', 'i9Section2Date']],
 }
 
 /** Indexes of rows where a later step is dated before an earlier one. */
@@ -145,6 +150,8 @@ export const FRESHNESS: Partial<Record<DatasetKey, { fields: string[]; what: str
   reviews: { fields: ['cycleDate'], what: 'review cycle', maxDays: 400 },
   succession: { fields: ['updatedDate'], what: 'succession update', maxDays: 400 },
   learning: { fields: ['assignedDate'], what: 'assignment', maxDays: 180 },
+  onboardingTasks: { fields: ['dueDate', 'completedDate'], what: 'onboarding task', maxDays: 45 },
+  surveyResponses: { fields: ['responseDate'], what: 'survey answer', maxDays: 120 },
 }
 
 /**
@@ -153,6 +160,7 @@ export const FRESHNESS: Partial<Record<DatasetKey, { fields: string[]; what: str
  */
 export const SNAPSHOT_FRESHNESS: Partial<Record<DatasetKey, { what: string; maxDays: number }>> = {
   comp: { what: 'pay extract', maxDays: 45 },
+  rightToWork: { what: 'right to work extract', maxDays: 90 },
 }
 
 export interface Freshness {

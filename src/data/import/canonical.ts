@@ -1,13 +1,15 @@
 /**
  * Canonical spellings for free-text fields that have a known vocabulary: case categories and
- * channels, candidate sources, learning categories, work sites and currencies. Unlike enum
- * fields, an unknown value here is kept as written.
+ * channels, candidate sources, learning categories, work sites, currencies, onboarding tasks and
+ * their owners. Unlike enum fields, an unknown value here is kept as written.
  */
 import {
   CASE_CATEGORIES,
   CASE_CHANNELS,
   type DatasetKey,
   LEARNING_CATEGORIES,
+  ONBOARDING_OWNERS,
+  ONBOARDING_TASKS,
   SITES,
   SOURCES,
 } from '../schema'
@@ -106,6 +108,46 @@ const LOCATION_ALIASES: Record<string, string> = {
 
 const SITE_NAMES = SITES.map((s) => s.location)
 
+const TASK_NAMES = ONBOARDING_TASKS.map((t) => t.task)
+const TASK_ALIASES: Record<string, string> = Object.fromEntries(
+  ONBOARDING_TASKS.flatMap((t) => t.aliases.map((a) => [a, t.task])),
+)
+
+const OWNER_ALIASES: Record<string, string> = {
+  hr: 'People ops',
+  'hr ops': 'People ops',
+  'hr operations': 'People ops',
+  'people operations': 'People ops',
+  'people ops team': 'People ops',
+  'hr shared services': 'People ops',
+  onboarding: 'People ops',
+  'onboarding team': 'People ops',
+  'it team': 'IT',
+  'it service desk': 'IT',
+  'service desk': 'IT',
+  helpdesk: 'IT',
+  'help desk': 'IT',
+  workplace: 'Facilities',
+  'workplace services': 'Facilities',
+  security: 'Facilities',
+  'physical security': 'Facilities',
+  'real estate': 'Facilities',
+  'export compliance': 'Trade compliance',
+  'export control': 'Trade compliance',
+  'global trade': 'Trade compliance',
+  'hiring manager': 'Manager',
+  'line manager': 'Manager',
+  'people manager': 'Manager',
+  ta: 'Recruiter',
+  'talent acquisition': 'Recruiter',
+  recruiting: 'Recruiter',
+  employee: 'New hire',
+  'new joiner': 'New hire',
+  candidate: 'New hire',
+  self: 'New hire',
+  starter: 'New hire',
+}
+
 /** Words too common in category names to identify one ("Employee benefits" is about benefits). */
 const GENERIC_WORDS = new Set([
   'employee',
@@ -175,6 +217,12 @@ export function canonicalText(dataset: DatasetKey, field: string, raw: unknown):
       return vocabMatch(SITE_NAMES, LOCATION_ALIASES, raw)
     case 'comp.currency':
       return normalizeCurrency(raw)
+    case 'hiringPlan.location':
+      return vocabMatch(SITE_NAMES, LOCATION_ALIASES, raw)
+    case 'onboardingTasks.task':
+      return vocabMatch(TASK_NAMES, TASK_ALIASES, raw)
+    case 'onboardingTasks.owner':
+      return vocabMatch(ONBOARDING_OWNERS, OWNER_ALIASES, raw)
     default:
       return null
   }

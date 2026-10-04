@@ -7,6 +7,7 @@ import type { DatasetKey, FieldDef, Level } from '../schema'
 import { canonicalText } from './canonical'
 import { detectDateOrder, partsToDate, partsToDateTime, readDate } from './dates'
 import { readNumber } from './numbers'
+import { type PendingRelative, readMonth, readRelativeDay } from './relative'
 import { displayValue, isBlank, normText } from './text'
 import type { DateOrder, IssueCode } from './types'
 import { normalizeEnumValue, normalizeLevel } from './vocab'
@@ -43,6 +44,21 @@ export function coerceDateTime(v: unknown, order: DateOrder = 'MDY'): Coerced<st
 }
 
 export { detectDateOrder }
+
+/** A month (hiring plan periods): a full date or a month such as "Nov 2026", as its first day. */
+export function coerceMonth(v: unknown, order: DateOrder = 'MDY'): Coerced<string> {
+  if (isBlank(v)) return NONE
+  const m = readMonth(v, order)
+  return m ? ok(m) : fail(`${quote(v)} is not a month or a date.`)
+}
+
+/** Fields that hold a month: the value is stored as the month's first day. */
+const MONTH_FIELDS = new Set(['hiringPlan.period'])
+/**
+ * Date fields that also accept a day relative to the start ("Day -3"). The importer converts it
+ * once it knows the person's start date (defaults.ts), so it never reaches a stored row.
+ */
+const RELATIVE_FIELDS = new Set(['onboardingTasks.dueDate'])
 
 /* ───────────── numbers ───────────── */
 
@@ -167,6 +183,30 @@ export interface ColumnSettings {
 /** Fields stored as numbers that also accept rating labels. */
 const RATING_FIELDS = new Set(['reviews.rating', 'reviews.preCalibrationRating'])
 
+/** Agreement words on a five-point scale; "strongly" variants first. */
+const LIKERT: [RegExp, number][] = [
+  [/\bstrongly disagree\b/, 1],
+  [/\bstrongly agree\b/, 5],
+  [/\b(?:somewhat |slightly )?disagree\b/, 2],
+  [/\b(?:neither agree nor disagree|neutral|undecided|neither)\b/, 3],
+  [/\b(?:somewhat |slightly )?agree\b/, 4],
+]
+
+/**
+ * A survey score: a number, a leading number ("4 - Agree"), or agreement words read on the 1-5
+ * scale (Strongly disagree 1 to Strongly agree 5).
+ */
+export function coerceSurveyScore(v: unknown): Coerced<number> {
+  if (isBlank(v)) return NONE
+  if (typeof v === 'number') return Number.isFinite(v) ? ok(v) : fail(`${quote(v)} is not a score.`)
+  const s = String(v).trim()
+  const lead = /^([-+]?\d+(?:[.,]\d+)?)(?![\d.,])/.exec(s)
+  if (lead) return ok(Number(lead[1].replace(',', '.')))
+  const t = normText(s)
+  for (const [re, score] of LIKERT) if (re.test(t)) return ok(score)
+  return fail(`${quote(v)} is not a score.`, 'unknown-value')
+}
+
 /** Coerce one cell for a field. */
 export function coerceValue(
   dataset: DatasetKey,
@@ -188,13 +228,20 @@ export function coerceValue(
         : c
     }
   }
+  const ref = `${dataset}.${field.key}`
+  if (MONTH_FIELDS.has(ref)) return coerceMonth(v, col.dateOrder)
+  if (RELATIVE_FIELDS.has(ref)) {
+    const r = readRelativeDay(v)
+    if (r) return ok<PendingRelative>({ __relative: r })
+  }
   switch (field.type) {
     case 'date':
       return coerceDate(v, col.dateOrder)
     case 'datetime':
       return coerceDateTime(v, col.dateOrder)
     case 'number':
-      return RATING_FIELDS.has(`${dataset}.${field.key}`) ? coerceRating(v) : coerceNumber(v)
+      if (ref === 'surveyResponses.score') return coerceSurveyScore(v)
+      return RATING_FIELDS.has(ref) ? coerceRating(v) : coerceNumber(v)
     case 'money':
       return coerceMoney(v)
     case 'percent':

@@ -5,6 +5,7 @@
  * which apply before every number in Census.
  */
 import { StatusPill } from '@/components/ui'
+import { DATASETS } from '@/data/schema'
 import { formatDate } from '@/lib/dates'
 import { unlistedValues } from './engine/lists'
 import { EditSection } from './ui/EditSection'
@@ -58,7 +59,7 @@ function stops(m: MappingModel, changes: number): Stop[] {
     {
       id: 'data-map-lists',
       label: 'Category lists',
-      detail: `${plural(fields, 'field')} across 10 datasets`,
+      detail: `${plural(fields, 'field')} across ${DATASETS.length} datasets`,
       review: unrecognized,
     },
     {

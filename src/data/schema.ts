@@ -1,7 +1,7 @@
 /**
  * Census data model.
  *
- * Ten datasets, each one Excel sheet. Employee-keyed datasets join to the roster by `employeeId`
+ * Fifteen datasets, each one Excel sheet. Employee-keyed datasets join to the roster by `employeeId`
  * and inherit its org dimensions (business unit, department, location, level, manager chain) for
  * filtering. Dates are ISO strings: `YYYY-MM-DD` for dates and `YYYY-MM-DDTHH:mm` for case
  * timestamps. Enumerated values are stored in the canonical spellings defined below; importers
@@ -280,6 +280,410 @@ export const TRANSACTION_PROCESS: Record<TransactionType, string> = {
   'Personal data change': 'DS-01',
 }
 
+/**
+ * Leave reasons: the Hire-to-Retire Atlas's nine leave categories, at category level only. No
+ * medical or other detail below the category is ever stored or imported.
+ */
+export const LEAVE_REASONS = [
+  'Parental',
+  'Medical',
+  'Family care',
+  'Military',
+  'Bereavement',
+  'Civic duty',
+  "Workers' compensation",
+  'Sabbatical',
+  'Personal',
+] as const
+export type LeaveReason = (typeof LEAVE_REASONS)[number]
+
+/* onboarding */
+
+/** Who does an onboarding task. */
+export const ONBOARDING_OWNERS = [
+  'People ops',
+  'IT',
+  'Facilities',
+  'Trade compliance',
+  'Manager',
+  'Recruiter',
+  'Payroll',
+  'New hire',
+] as const
+export type OnboardingOwner = (typeof ONBOARDING_OWNERS)[number]
+
+export const ONBOARDING_STATUSES = ['Not started', 'In progress', 'Blocked', 'Done', 'Not needed'] as const
+export type OnboardingStatus = (typeof ONBOARDING_STATUSES)[number]
+
+export type OnboardingPhase = 'Before day 1' | 'First 90 days'
+
+/**
+ * One task of the default onboarding checklist (Atlas ON-01 to ON-04). `dueDay` counts from the
+ * start date (day 0): -3 is three days before the start. `businessDays` counts working days
+ * (Mon-Fri) instead of calendar days. A null `dueDay` has no fixed offset (the probation decision
+ * is due 10 business days before the probation period ends, which differs by country).
+ */
+export interface OnboardingTaskDef {
+  task: string
+  processId: string
+  owner: OnboardingOwner
+  phase: OnboardingPhase
+  dueDay: number | null
+  businessDays?: boolean
+  /** Only for starts at a US site (Form I-9). */
+  usOnly?: boolean
+  /** Counts toward day-one readiness (every pre-start task done by day 0, Atlas ON-01). */
+  readiness?: boolean
+  /** Other spellings the importer recognizes (normalized: lowercase, punctuation to spaces). */
+  aliases: string[]
+}
+
+export const ONBOARDING_TASKS: OnboardingTaskDef[] = [
+  {
+    task: 'Background check cleared',
+    processId: 'ON-01',
+    owner: 'People ops',
+    phase: 'Before day 1',
+    dueDay: -3,
+    readiness: true,
+    aliases: [
+      'background check',
+      'bgc',
+      'background verification',
+      'bgv',
+      'contingencies cleared',
+      'contingency',
+    ],
+  },
+  {
+    task: 'Export-control screening',
+    processId: 'ON-01',
+    owner: 'Trade compliance',
+    phase: 'Before day 1',
+    dueDay: -3,
+    readiness: true,
+    aliases: [
+      'export control',
+      'export control screening',
+      'export screening',
+      'trade compliance screening',
+      'deemed export',
+    ],
+  },
+  {
+    task: 'Laptop shipped',
+    processId: 'ON-01',
+    owner: 'IT',
+    phase: 'Before day 1',
+    dueDay: -3,
+    readiness: true,
+    aliases: ['laptop', 'hardware', 'equipment', 'it equipment', 'computer', 'laptop delivered'],
+  },
+  {
+    task: 'Accounts created',
+    processId: 'ON-01',
+    owner: 'IT',
+    phase: 'Before day 1',
+    dueDay: -3,
+    readiness: true,
+    aliases: [
+      'accounts',
+      'it accounts',
+      'system access',
+      'email account',
+      'access provisioned',
+      'provisioning',
+    ],
+  },
+  {
+    task: 'Badge ready',
+    processId: 'ON-01',
+    owner: 'Facilities',
+    phase: 'Before day 1',
+    dueDay: -2,
+    readiness: true,
+    aliases: ['badge', 'access badge', 'security badge', 'building access', 'id card'],
+  },
+  {
+    task: 'Benefits packet sent',
+    processId: 'ON-01',
+    owner: 'People ops',
+    phase: 'Before day 1',
+    dueDay: -3,
+    readiness: true,
+    aliases: ['benefits', 'benefits packet', 'benefits enrollment packet', 'welcome packet'],
+  },
+  {
+    task: 'Orientation booked',
+    processId: 'ON-01',
+    owner: 'People ops',
+    phase: 'Before day 1',
+    dueDay: -3,
+    readiness: true,
+    aliases: ['orientation', 'new hire orientation', 'nho', 'induction', 'orientation scheduled'],
+  },
+  {
+    task: 'Manager welcome',
+    processId: 'ON-01',
+    owner: 'Manager',
+    phase: 'Before day 1',
+    dueDay: -1,
+    readiness: true,
+    aliases: ['welcome', 'manager welcome email', 'welcome call', 'buddy assigned', 'first week plan'],
+  },
+  {
+    task: 'Day -1 readiness check',
+    processId: 'ON-01',
+    owner: 'People ops',
+    phase: 'Before day 1',
+    dueDay: -1,
+    readiness: true,
+    aliases: ['readiness check', 'day 1 readiness', 'pre start check', 'day minus 1 check'],
+  },
+  {
+    task: 'I-9 Section 1',
+    processId: 'ON-02',
+    owner: 'New hire',
+    phase: 'Before day 1',
+    dueDay: 0,
+    usOnly: true,
+    readiness: true,
+    aliases: ['i9 section 1', 'i 9 section 1', 'form i9 section 1', 'i9 s1'],
+  },
+  {
+    task: 'I-9 Section 2',
+    processId: 'ON-02',
+    owner: 'People ops',
+    phase: 'First 90 days',
+    dueDay: 3,
+    businessDays: true,
+    usOnly: true,
+    aliases: ['i9 section 2', 'i 9 section 2', 'form i9 section 2', 'i9 s2', 'i9 verification'],
+  },
+  {
+    task: 'Policy acknowledgments',
+    processId: 'ON-04',
+    owner: 'New hire',
+    phase: 'First 90 days',
+    dueDay: 5,
+    businessDays: true,
+    aliases: [
+      'policy acknowledgment',
+      'policy acknowledgement',
+      'policy acknowledgements',
+      'code of conduct',
+      'policies signed',
+    ],
+  },
+  {
+    task: '30-day check-in',
+    processId: 'ON-04',
+    owner: 'Manager',
+    phase: 'First 90 days',
+    dueDay: 30,
+    aliases: ['30 day check in', '30 day checkin', '30 day review', 'day 30 check in'],
+  },
+  {
+    task: '60-day check-in',
+    processId: 'ON-04',
+    owner: 'Manager',
+    phase: 'First 90 days',
+    dueDay: 60,
+    aliases: ['60 day check in', '60 day checkin', '60 day review', 'day 60 check in'],
+  },
+  {
+    task: '90-day check-in',
+    processId: 'ON-04',
+    owner: 'Manager',
+    phase: 'First 90 days',
+    dueDay: 90,
+    aliases: ['90 day check in', '90 day checkin', '90 day review', 'day 90 check in'],
+  },
+  {
+    task: 'Probation decision',
+    processId: 'ON-04',
+    owner: 'Manager',
+    phase: 'First 90 days',
+    dueDay: null,
+    aliases: ['probation', 'probation review', 'probation confirmation', 'confirmation of employment'],
+  },
+]
+export const onboardingTaskByName = new Map(ONBOARDING_TASKS.map((t) => [t.task, t]))
+
+/* compliance and right to work */
+
+/**
+ * Work authorization as broad categories that never reveal nationality or citizenship: citizens
+ * and permanent residents alike are "Permanent (no expiry)". Shown only in aggregate unless
+ * "Show immigration details" is on for the session.
+ */
+export const AUTHORIZATION_TYPES = [
+  'Permanent (no expiry)',
+  'Employer-sponsored visa',
+  'Intra-company transfer',
+  'Employment authorization document',
+  'Student work authorization',
+  'Dependent work authorization',
+  'Work permit',
+  'Other time-limited',
+] as const
+export type AuthorizationType = (typeof AUTHORIZATION_TYPES)[number]
+
+export const EXPORT_LICENSE_STATUSES = ['Pending', 'Approved', 'Denied', 'Expired', 'Not needed'] as const
+export type ExportLicenseStatus = (typeof EXPORT_LICENSE_STATUSES)[number]
+
+/* listening */
+
+/** Every survey program Census reads (docs/ROADMAP.md, Listening). */
+export const SURVEY_TYPES = [
+  'Candidate experience',
+  'Hiring manager satisfaction',
+  'Onboarding pulse day 30',
+  'Onboarding pulse day 90',
+  'Stay interview',
+  'Exit survey',
+  'Manager feedback',
+  'HR service survey',
+  'Return to work',
+  'Training evaluation',
+  'Engagement',
+] as const
+export type SurveyType = (typeof SURVEY_TYPES)[number]
+
+export const SURVEY_SCALES = ['1-5', '0-10'] as const
+export type SurveyScale = (typeof SURVEY_SCALES)[number]
+
+/** Who answers: employees (respondent key = employee ID) or candidates (= application ID). */
+export type SurveyRespondent = 'employee' | 'candidate'
+
+/** The Listening sub-tab a survey lives on. */
+export type SurveyArea = 'candidates' | 'onboarding' | 'stay-exit' | 'managers' | 'services'
+
+export interface SurveyProgram {
+  survey: SurveyType
+  respondent: SurveyRespondent
+  area: SurveyArea
+  /** When it is sent, in plain words. */
+  when: string
+  /** What it tells you. */
+  purpose: string
+  /** The scale most of its items use. */
+  scale: SurveyScale
+  /** Where its headline result also shows, as one number that links to Listening. */
+  alsoIn: { view: ViewKey; tab: string } | null
+  /** Cuts by manager need the larger survey minimum (10 respondents over four quarters). */
+  managerCuts?: boolean
+  /** Off unless the engagement surveys switch is on (Settings > Privacy). */
+  offByDefault?: boolean
+}
+
+export const SURVEY_PROGRAMS: SurveyProgram[] = [
+  {
+    survey: 'Candidate experience',
+    respondent: 'candidate',
+    area: 'candidates',
+    when: 'After each interview stage and after a decline',
+    purpose: 'Candidate NPS by stage, source and recruiter, and why candidates declined.',
+    scale: '0-10',
+    alsoIn: { view: 'recruiting', tab: 'sources' },
+  },
+  {
+    survey: 'Hiring manager satisfaction',
+    respondent: 'employee',
+    area: 'candidates',
+    when: 'When a req is filled',
+    purpose: 'Satisfaction with speed, slate quality and communication, by recruiter.',
+    scale: '1-5',
+    alsoIn: { view: 'recruiting', tab: 'requisitions' },
+  },
+  {
+    survey: 'Onboarding pulse day 30',
+    respondent: 'employee',
+    area: 'onboarding',
+    when: '30 days after the start',
+    purpose: 'Week-1 readiness ("I had what I needed"), role clarity and manager support.',
+    scale: '1-5',
+    alsoIn: { view: 'onboarding', tab: 'first90' },
+  },
+  {
+    survey: 'Onboarding pulse day 90',
+    respondent: 'employee',
+    area: 'onboarding',
+    when: '90 days after the start',
+    purpose: 'Role clarity, manager support and whether the job matches what was offered.',
+    scale: '1-5',
+    alsoIn: { view: 'onboarding', tab: 'first90' },
+  },
+  {
+    survey: 'Stay interview',
+    respondent: 'employee',
+    area: 'stay-exit',
+    when: 'Twice a year for key talent',
+    purpose: 'What keeps people and what would make them leave.',
+    scale: '1-5',
+    alsoIn: { view: 'talent', tab: 'retention' },
+  },
+  {
+    survey: 'Exit survey',
+    respondent: 'employee',
+    area: 'stay-exit',
+    when: 'At notice of resignation',
+    purpose:
+      'Primary reason for leaving, driver gaps between regretted and other leavers, and whether they would return.',
+    scale: '1-5',
+    alsoIn: { view: 'hrbp', tab: 'attrition' },
+  },
+  {
+    survey: 'Manager feedback',
+    respondent: 'employee',
+    area: 'managers',
+    when: 'Twice a year',
+    purpose: 'Manager effectiveness themes from the people who report to them.',
+    scale: '1-5',
+    alsoIn: { view: 'hrbp', tab: 'org' },
+    managerCuts: true,
+  },
+  {
+    survey: 'HR service survey',
+    respondent: 'employee',
+    area: 'services',
+    when: 'When a case is resolved',
+    purpose: 'Satisfaction and effort by case category and channel.',
+    scale: '1-5',
+    alsoIn: { view: 'services', tab: 'cases' },
+  },
+  {
+    survey: 'Return to work',
+    respondent: 'employee',
+    area: 'services',
+    when: '30 days after returning from leave',
+    purpose: 'Whether the return was smooth: systems ready and a manager check-in.',
+    scale: '1-5',
+    alsoIn: { view: 'services', tab: 'leave' },
+  },
+  {
+    survey: 'Training evaluation',
+    respondent: 'employee',
+    area: 'services',
+    when: 'After a course',
+    purpose: 'Course usefulness and relevance, by course.',
+    scale: '1-5',
+    alsoIn: { view: 'talent', tab: 'learning' },
+  },
+  {
+    survey: 'Engagement',
+    respondent: 'employee',
+    area: 'managers',
+    when: 'Quarterly pulse',
+    purpose: 'Engagement and eNPS by org.',
+    scale: '1-5',
+    alsoIn: null,
+    managerCuts: true,
+    offByDefault: true,
+  },
+]
+export const surveyProgramOf = new Map(SURVEY_PROGRAMS.map((p) => [p.survey, p]))
+
 /* talent */
 export const RATING_LABELS: Record<number, string> = {
   1: 'Does not meet',
@@ -388,6 +792,12 @@ export interface Candidate {
   /** Next scheduled interview or event. Past date + no stage change = awaiting feedback. */
   nextEventDate?: ISODate | null
   lastActivityDate?: ISODate | null
+  /**
+   * Expected first day for an accepted offer ("Start Date" in Greenhouse). `hiredDate` is the
+   * offer-accepted date, so without this the start is unknown. A renege is an accepted offer
+   * (`hiredDate` set) later marked Withdrawn.
+   */
+  startDate?: ISODate | null
 }
 
 export interface HrCase {
@@ -426,6 +836,10 @@ export interface HrTransaction {
   processId?: string | null
   /** Processed after the payroll cut-off for the effective period, so it needed a retro adjustment. */
   retro?: boolean | null
+  /** Leave start only: the Atlas leave category (category level only, never medical detail). */
+  leaveReason?: LeaveReason | null
+  /** Leave start only: the planned return date. */
+  expectedReturnDate?: ISODate | null
 }
 
 export interface Review {
@@ -483,6 +897,100 @@ export interface CompRecord {
   promotionPct?: number | null
 }
 
+/**
+ * One line of the hiring plan: one planned role, or a count for a month and org. Both shapes work
+ * in the same sheet; identical lines are added together on import.
+ */
+export interface HiringPlanLine {
+  /** First day of the month the hires are planned to start (YYYY-MM-01). */
+  period: ISODate
+  businessUnit: string
+  department: string
+  /** Planned starts on this line (1 for a line per role). */
+  plannedHires: number
+  location?: string | null
+  level?: Level | null
+  jobTitle?: string | null
+  reqType?: (typeof REQ_TYPES)[number] | null
+  /** Links the plan line to a requisition. */
+  reqId?: string | null
+  /** Position or plan line identifier from the planning tool. */
+  positionId?: string | null
+  /** e.g. "FY27 v2"; the views read the latest version when several are loaded. */
+  planVersion?: string | null
+}
+
+/**
+ * One onboarding task for one person: a pre-hire or new employee (`employeeId`) or an accepted
+ * candidate who is not in the roster yet (`applicationId`). At least one of the two is set.
+ */
+export interface OnboardingTask {
+  employeeId?: string | null
+  applicationId?: string | null
+  /** Canonical task name from ONBOARDING_TASKS when recognized; other tasks are kept as written. */
+  task: string
+  owner?: string | null
+  dueDate?: ISODate | null
+  completedDate?: ISODate | null
+  status?: OnboardingStatus | null
+  processId?: string | null
+}
+
+/**
+ * Right to work and export control, one row per employee. Never holds nationality or
+ * citizenship (protected characteristics).
+ */
+export interface RightToWork {
+  employeeId: string
+  authorizationType?: AuthorizationType | null
+  /** Blank for authorization with no expiry. */
+  expiryDate?: ISODate | null
+  /** When reverification of an expiring authorization started (target: 90 days or more ahead). */
+  reverificationStartedDate?: ISODate | null
+  /** US starts: Form I-9 Section 1 (by day 1) and Section 2 (within 3 business days). */
+  i9Section1Date?: ISODate | null
+  i9Section2Date?: ISODate | null
+  exportLicenseRequired?: boolean | null
+  exportLicenseStatus?: ExportLicenseStatus | null
+  exportLicenseExpiry?: ISODate | null
+}
+
+/**
+ * One answer to one survey item (long format: a row per answer). `respondentKey` is an employee
+ * ID, or an application ID for candidate surveys. It is used only to join org, stage or req
+ * attributes for grouped results and is never displayed; no view shows one person's answers.
+ */
+export interface SurveyResponse {
+  survey: SurveyType
+  /** The wave or cycle, e.g. "2026 Q3" or "2026-09". */
+  wave: string
+  responseDate: ISODate
+  respondentKey: string
+  /** Question code or short text. */
+  item: string
+  driver?: string | null
+  score: number
+  scale: SurveyScale
+  /** A chosen reason (exit reason, decline reason), category level. Free-text comments are never imported. */
+  reason?: string | null
+  /** What the answer is about: the req, case or course (joins category, recruiter or course). */
+  subjectKey?: string | null
+  /** The touchpoint for candidate surveys, e.g. the interview stage. */
+  touchpoint?: string | null
+}
+
+/** Optional reference sheet: what each survey item measures and its target. */
+export interface SurveyItem {
+  item: string
+  driver: string
+  survey?: SurveyType | null
+  /** The question as asked. */
+  text?: string | null
+  scale?: SurveyScale | null
+  /** Target mean on the item's scale (e.g. 4.0 on 1-5). */
+  target?: number | null
+}
+
 export interface Datasets {
   employees: Employee[]
   jobChanges: JobChange[]
@@ -494,6 +1002,11 @@ export interface Datasets {
   succession: SuccessionPlan[]
   learning: LearningRecord[]
   comp: CompRecord[]
+  hiringPlan: HiringPlanLine[]
+  onboardingTasks: OnboardingTask[]
+  rightToWork: RightToWork[]
+  surveyResponses: SurveyResponse[]
+  surveyItems: SurveyItem[]
 }
 export type DatasetKey = keyof Datasets
 export const DATASET_KEYS: DatasetKey[] = [
@@ -507,7 +1020,37 @@ export const DATASET_KEYS: DatasetKey[] = [
   'succession',
   'learning',
   'comp',
+  'hiringPlan',
+  'onboardingTasks',
+  'rightToWork',
+  'surveyResponses',
+  'surveyItems',
 ]
+
+/** Datasets added for Onboarding, Compliance and Listening. The sample may leave them empty. */
+export const OPTIONAL_DATASETS: readonly DatasetKey[] = [
+  'hiringPlan',
+  'onboardingTasks',
+  'rightToWork',
+  'surveyResponses',
+  'surveyItems',
+]
+
+/** Every dataset with no rows. */
+export function emptyDatasets(): Datasets {
+  return Object.fromEntries(DATASET_KEYS.map((k) => [k, []])) as unknown as Datasets
+}
+
+/**
+ * The datasets with every key present: rows loaded before a dataset existed (or a partial test
+ * fixture) get an empty list for it, so engines never meet `undefined`.
+ */
+export function withAllDatasets(data: Partial<Datasets>): Datasets {
+  if (DATASET_KEYS.every((k) => Array.isArray(data[k]))) return data as Datasets
+  const out = { ...data } as Record<DatasetKey, unknown[]>
+  for (const k of DATASET_KEYS) if (!Array.isArray(out[k])) out[k] = []
+  return out as unknown as Datasets
+}
 
 /* ───────────────────────── field definitions (import, templates, exports) ───────────────────────── */
 
@@ -537,6 +1080,8 @@ export interface FieldDef {
   description: string
   /** Hidden from exports unless pay amounts are switched on. */
   pay?: boolean
+  /** Immigration detail: shown per person only while "Show immigration details" is on. */
+  immigration?: boolean
 }
 
 export interface DatasetDef {
@@ -549,10 +1094,44 @@ export interface DatasetDef {
   usedBy: ViewKey[]
   /** Fields that identify a row, for de-duplication. */
   rowKey: string[]
+  /**
+   * Rows with the same row key are one line whose `sum` field adds up (a hiring plan lists the
+   * same role twice for two hires), instead of duplicates where one row is kept.
+   */
+  mergeDuplicates?: { sum: string }
+  /** At least one of these fields must be filled for a row to import (e.g. employee or application ID). */
+  requireOneOf?: string[]
   fields: FieldDef[]
 }
 
-export type ViewKey = 'recruiting' | 'hrbp' | 'org' | 'services' | 'talent' | 'comp' | 'ai'
+export type ViewKey =
+  | 'scorecard'
+  | 'recruiting'
+  | 'onboarding'
+  | 'hrbp'
+  | 'org'
+  | 'services'
+  | 'talent'
+  | 'comp'
+  | 'compliance'
+  | 'listening'
+  | 'ai'
+
+/** Folder-tab labels, in folder-tab order. */
+export const VIEW_LABEL: Record<ViewKey, string> = {
+  scorecard: 'Scorecard',
+  recruiting: 'Recruiting',
+  onboarding: 'Onboarding',
+  hrbp: 'People stats',
+  org: 'Org chart',
+  services: 'HR ops',
+  talent: 'Talent',
+  comp: 'Compensation',
+  compliance: 'Compliance',
+  listening: 'Listening',
+  ai: 'AI in HR',
+}
+export const VIEW_KEYS = Object.keys(VIEW_LABEL) as ViewKey[]
 
 const f = (
   key: string,
@@ -570,7 +1149,17 @@ export const DATASETS: DatasetDef[] = [
     sheet: 'Employees',
     description:
       'Roster of current and former workers. One row per person; leavers keep their termination fields.',
-    usedBy: ['hrbp', 'org', 'services', 'talent', 'comp'],
+    usedBy: [
+      'scorecard',
+      'onboarding',
+      'hrbp',
+      'org',
+      'services',
+      'talent',
+      'comp',
+      'compliance',
+      'listening',
+    ],
     rowKey: ['employeeId'],
     fields: [
       f(
@@ -711,7 +1300,7 @@ export const DATASETS: DatasetDef[] = [
     label: 'Job changes',
     sheet: 'Job changes',
     description: 'Job history events: promotions, transfers, lateral moves, demotions and manager changes.',
-    usedBy: ['hrbp', 'org', 'talent', 'comp'],
+    usedBy: ['scorecard', 'onboarding', 'hrbp', 'org', 'talent', 'comp'],
     rowKey: ['employeeId', 'effectiveDate', 'changeType'],
     fields: [
       f(
@@ -781,7 +1370,7 @@ export const DATASETS: DatasetDef[] = [
     label: 'Requisitions',
     sheet: 'Requisitions',
     description: 'Job requisitions from the ATS. Time to fill runs from opened date to filled date.',
-    usedBy: ['recruiting', 'org'],
+    usedBy: ['scorecard', 'recruiting', 'onboarding', 'org', 'listening'],
     rowKey: ['reqId'],
     fields: [
       f(
@@ -900,7 +1489,7 @@ export const DATASETS: DatasetDef[] = [
     label: 'Candidates',
     sheet: 'Candidates',
     description: 'One row per application, with the date each stage was reached.',
-    usedBy: ['recruiting'],
+    usedBy: ['scorecard', 'recruiting', 'onboarding', 'listening'],
     rowKey: ['applicationId'],
     fields: [
       f(
@@ -1051,6 +1640,13 @@ export const DATASETS: DatasetDef[] = [
         ['last activity date', 'last activity', 'updated at', 'last updated'],
         'Most recent activity on the application.',
       ),
+      f(
+        'startDate',
+        'Start date',
+        'date',
+        ['start date', 'expected start date', 'anticipated start date', 'planned start date', 'first day'],
+        'Expected first day for an accepted offer.',
+      ),
     ],
   },
   {
@@ -1058,7 +1654,7 @@ export const DATASETS: DatasetDef[] = [
     label: 'HR cases',
     sheet: 'HR cases',
     description: 'Employee service cases from the HR help desk.',
-    usedBy: ['services'],
+    usedBy: ['scorecard', 'services', 'listening'],
     rowKey: ['caseId'],
     fields: [
       f(
@@ -1209,7 +1805,7 @@ export const DATASETS: DatasetDef[] = [
     label: 'HR transactions',
     sheet: 'HR transactions',
     description: 'HR system transactions with the deadline the governing process sets.',
-    usedBy: ['services'],
+    usedBy: ['scorecard', 'onboarding', 'services', 'listening'],
     rowKey: ['transactionId'],
     fields: [
       f(
@@ -1281,6 +1877,27 @@ export const DATASETS: DatasetDef[] = [
         ['retro', 'retro adjustment', 'retroactive', 'late entry'],
         'Processed after payroll cut-off and corrected retroactively.',
       ),
+      f(
+        'leaveReason',
+        'Leave reason',
+        'enum',
+        ['leave reason', 'leave type', 'absence type', 'leave category', 'loa type', 'absence reason'],
+        'Leave start only: the leave category (Parental, Medical, Family care, …). Category level only.',
+        { values: LEAVE_REASONS },
+      ),
+      f(
+        'expectedReturnDate',
+        'Expected return date',
+        'date',
+        [
+          'expected return date',
+          'expected return',
+          'planned return date',
+          'estimated return date',
+          'estimated return',
+        ],
+        'Leave start only: the planned return date.',
+      ),
     ],
   },
   {
@@ -1288,7 +1905,7 @@ export const DATASETS: DatasetDef[] = [
     label: 'Performance reviews',
     sheet: 'Reviews',
     description: 'Calibrated performance ratings and potential, one row per person per cycle.',
-    usedBy: ['hrbp', 'org', 'talent', 'comp'],
+    usedBy: ['scorecard', 'hrbp', 'org', 'talent', 'comp'],
     rowKey: ['employeeId', 'cycle'],
     fields: [
       f('employeeId', 'Employee ID', 'id', ['employee id', 'emp id', 'worker id', 'id'], 'Reviewed worker.', {
@@ -1347,7 +1964,7 @@ export const DATASETS: DatasetDef[] = [
     label: 'Succession plans',
     sheet: 'Succession',
     description: 'Critical and key roles with named successors, one row per successor.',
-    usedBy: ['talent'],
+    usedBy: ['scorecard', 'talent'],
     rowKey: ['roleId', 'successorId'],
     fields: [
       f(
@@ -1418,7 +2035,7 @@ export const DATASETS: DatasetDef[] = [
     label: 'Learning',
     sheet: 'Learning',
     description: 'Training assignments and completions.',
-    usedBy: ['talent'],
+    usedBy: ['scorecard', 'onboarding', 'talent', 'compliance'],
     rowKey: ['employeeId', 'course', 'assignedDate'],
     fields: [
       f(
@@ -1481,7 +2098,7 @@ export const DATASETS: DatasetDef[] = [
     label: 'Compensation',
     sheet: 'Compensation',
     description: 'Current pay, salary range and cycle proposals for active employees.',
-    usedBy: ['talent', 'comp'],
+    usedBy: ['scorecard', 'talent', 'comp'],
     rowKey: ['employeeId'],
     fields: [
       f('employeeId', 'Employee ID', 'id', ['employee id', 'emp id', 'worker id', 'id'], 'Paid worker.', {
@@ -1590,6 +2207,447 @@ export const DATASETS: DatasetDef[] = [
         'percent',
         ['promotion pct', 'promotion increase', 'promo increase', 'promo pct'],
         'Proposed promotion increase this cycle.',
+      ),
+    ],
+  },
+  {
+    key: 'hiringPlan',
+    label: 'Hiring plan',
+    sheet: 'Hiring plan',
+    description:
+      'Planned starts by month and org: one row per planned role, or one row per month and department with a count.',
+    usedBy: ['scorecard', 'recruiting', 'onboarding'],
+    rowKey: [
+      'planVersion',
+      'period',
+      'businessUnit',
+      'department',
+      'location',
+      'level',
+      'jobTitle',
+      'reqType',
+      'reqId',
+      'positionId',
+    ],
+    mergeDuplicates: { sum: 'plannedHires' },
+    fields: [
+      f(
+        'period',
+        'Period',
+        'date',
+        [
+          'period',
+          'month',
+          'plan month',
+          'target start',
+          'target start date',
+          'target start month',
+          'planned start',
+          'planned start month',
+          'start month',
+          'hire month',
+        ],
+        'Month the hires are planned to start. A full date or a month such as "Nov 2026" or "2026-11".',
+        { required: true },
+      ),
+      f(
+        'businessUnit',
+        'Business unit',
+        'string',
+        ['business unit', 'bu', 'business group', 'division', 'organization'],
+        'Organization the hires join.',
+        { required: true },
+      ),
+      f(
+        'department',
+        'Department',
+        'string',
+        ['department', 'dept', 'team', 'cost center name', 'org unit'],
+        'Department the hires join.',
+        { required: true },
+      ),
+      f(
+        'plannedHires',
+        'Planned hires',
+        'number',
+        [
+          'planned hires',
+          'plan hc',
+          'plan headcount',
+          'approved headcount',
+          'approved hc',
+          'hires',
+          'headcount',
+          'count',
+          'planned starts',
+        ],
+        'Planned starts on this line. Blank means 1 (one row per role).',
+        { required: true },
+      ),
+      f(
+        'location',
+        'Location',
+        'string',
+        ['location', 'site', 'office', 'work location'],
+        'Planned work site.',
+      ),
+      f('level', 'Level', 'level', ['level', 'job level', 'grade', 'band'], 'Planned career level.'),
+      f(
+        'jobTitle',
+        'Job title',
+        'string',
+        ['job title', 'title', 'role', 'position title', 'job'],
+        'Planned role.',
+      ),
+      f(
+        'reqType',
+        'Req type',
+        'enum',
+        ['req type', 'type', 'new or backfill', 'hire type', 'reason for hire'],
+        'New or Backfill.',
+        { values: REQ_TYPES },
+      ),
+      f(
+        'reqId',
+        'Req ID',
+        'id',
+        ['req id', 'req', 'requisition id', 'requisition', 'job req id'],
+        'Requisition opened for this plan line, when there is one.',
+      ),
+      f(
+        'positionId',
+        'Position ID',
+        'id',
+        ['position id', 'position', 'position number', 'plan line id', 'line id'],
+        'Position or plan line identifier from the planning tool.',
+      ),
+      f(
+        'planVersion',
+        'Plan version',
+        'string',
+        ['plan version', 'version', 'scenario', 'plan name', 'plan'],
+        'Name of the plan, e.g. FY27 v2.',
+      ),
+    ],
+  },
+  {
+    key: 'onboardingTasks',
+    label: 'Onboarding tasks',
+    sheet: 'Onboarding tasks',
+    description:
+      'One row per person per onboarding task (Atlas ON-01 to ON-04), for pre-hires, accepted candidates and new starters.',
+    usedBy: ['scorecard', 'onboarding', 'compliance', 'listening'],
+    rowKey: ['employeeId', 'applicationId', 'task'],
+    requireOneOf: ['employeeId', 'applicationId'],
+    fields: [
+      f(
+        'employeeId',
+        'Employee ID',
+        'id',
+        ['employee id', 'emp id', 'worker id', 'new hire id', 'pre hire id', 'person id'],
+        'The new starter, when they are in the roster (pre-hire or employee).',
+      ),
+      f(
+        'applicationId',
+        'Application ID',
+        'id',
+        ['application id', 'app id', 'candidate application id', 'application'],
+        'The accepted candidate, when they are not in the roster yet.',
+      ),
+      f(
+        'task',
+        'Task',
+        'string',
+        ['task', 'task name', 'activity', 'checklist item', 'step', 'item'],
+        'Task name, e.g. Laptop shipped or I-9 Section 2.',
+        { required: true },
+      ),
+      f(
+        'owner',
+        'Owner',
+        'string',
+        ['owner', 'task owner', 'assigned to', 'responsible', 'owner team', 'assignee'],
+        'Who does it: People ops, IT, Facilities, Trade compliance, Manager, Recruiter, Payroll or New hire.',
+      ),
+      f(
+        'dueDate',
+        'Due date',
+        'date',
+        ['due date', 'due', 'deadline', 'target date', 'due day'],
+        'When it is due. "Day -3" (3 days before the start) is converted using the start date.',
+      ),
+      f(
+        'completedDate',
+        'Completed date',
+        'date',
+        ['completed date', 'completed', 'completion date', 'done date', 'date completed'],
+        'When it was done.',
+      ),
+      f(
+        'status',
+        'Status',
+        'enum',
+        ['status', 'task status', 'state'],
+        'Not started, In progress, Blocked, Done or Not needed.',
+        { values: ONBOARDING_STATUSES },
+      ),
+      f(
+        'processId',
+        'Process ID',
+        'id',
+        ['process id', 'process', 'atlas id'],
+        'Hire-to-Retire Atlas process (ON-01 to ON-04).',
+      ),
+    ],
+  },
+  {
+    key: 'rightToWork',
+    label: 'Right to work',
+    sheet: 'Right to work',
+    description:
+      'Work authorization expiry, Form I-9 dates and export-control license status, one row per employee. Never nationality or citizenship.',
+    usedBy: ['scorecard', 'compliance'],
+    rowKey: ['employeeId'],
+    fields: [
+      f('employeeId', 'Employee ID', 'id', ['employee id', 'emp id', 'worker id', 'id'], 'The employee.', {
+        required: true,
+      }),
+      f(
+        'authorizationType',
+        'Authorization type',
+        'enum',
+        [
+          'authorization type',
+          'work authorization',
+          'work authorization type',
+          'visa type',
+          'permit type',
+          'immigration status',
+          'work permit type',
+        ],
+        'Broad category such as Permanent (no expiry) or Employer-sponsored visa. Shown per person only when immigration details are on.',
+        { values: AUTHORIZATION_TYPES, immigration: true },
+      ),
+      f(
+        'expiryDate',
+        'Authorization expiry',
+        'date',
+        [
+          'expiry date',
+          'authorization expiry',
+          'work authorization expiry',
+          'visa expiry',
+          'permit expiry',
+          'expiration date',
+          'ead expiry',
+        ],
+        'When the work authorization ends; blank when it has no expiry.',
+      ),
+      f(
+        'reverificationStartedDate',
+        'Reverification started',
+        'date',
+        [
+          'reverification started',
+          'reverification start date',
+          'renewal started',
+          'extension filed',
+          'renewal filed',
+        ],
+        'When renewal or reverification began.',
+      ),
+      f(
+        'i9Section1Date',
+        'I-9 Section 1 date',
+        'date',
+        ['i9 section 1', 'i 9 section 1', 'i9 section 1 date', 'section 1 date', 'i9 s1 date'],
+        'US starts: date Form I-9 Section 1 was completed.',
+      ),
+      f(
+        'i9Section2Date',
+        'I-9 Section 2 date',
+        'date',
+        [
+          'i9 section 2',
+          'i 9 section 2',
+          'i9 section 2 date',
+          'section 2 date',
+          'i9 s2 date',
+          'i9 verified date',
+        ],
+        'US starts: date Form I-9 Section 2 was completed (due within 3 business days of the start).',
+      ),
+      f(
+        'exportLicenseRequired',
+        'Export license required',
+        'boolean',
+        [
+          'export license required',
+          'license required',
+          'deemed export license required',
+          'export control flag',
+        ],
+        'Yes when the role needs an export-control license before the person can access controlled technology.',
+      ),
+      f(
+        'exportLicenseStatus',
+        'Export license status',
+        'enum',
+        ['export license status', 'license status', 'deemed export status', 'export control status'],
+        'Pending, Approved, Denied, Expired or Not needed.',
+        { values: EXPORT_LICENSE_STATUSES },
+      ),
+      f(
+        'exportLicenseExpiry',
+        'Export license expiry',
+        'date',
+        ['export license expiry', 'license expiry', 'license expiration', 'export license expiration'],
+        'When the export-control license ends.',
+      ),
+    ],
+  },
+  {
+    key: 'surveyResponses',
+    label: 'Survey responses',
+    sheet: 'Survey responses',
+    description:
+      'One row per answer from any survey tool (long format). Respondent keys only join org, stage or req attributes; no one’s answers are ever shown.',
+    usedBy: ['scorecard', 'onboarding', 'listening'],
+    rowKey: ['survey', 'wave', 'respondentKey', 'item', 'subjectKey'],
+    fields: [
+      f(
+        'survey',
+        'Survey',
+        'enum',
+        ['survey', 'survey name', 'program', 'survey program', 'survey type', 'questionnaire'],
+        'Which survey: Candidate experience, Exit survey, Onboarding pulse day 30 and so on.',
+        { required: true, values: SURVEY_TYPES },
+      ),
+      f(
+        'wave',
+        'Wave',
+        'string',
+        ['wave', 'cycle', 'survey wave', 'period', 'round', 'pulse'],
+        'Wave or cycle, e.g. 2026 Q3. Blank: the response month.',
+        { required: true },
+      ),
+      f(
+        'responseDate',
+        'Response date',
+        'date',
+        ['response date', 'submitted', 'submitted at', 'completed at', 'date', 'response time'],
+        'When the answer was given.',
+        { required: true },
+      ),
+      f(
+        'respondentKey',
+        'Respondent key',
+        'id',
+        ['respondent key', 'respondent id', 'employee id', 'application id', 'participant id', 'external id'],
+        'Employee ID, or application ID for candidates. Used only to group answers; never shown.',
+        { required: true },
+      ),
+      f(
+        'item',
+        'Item',
+        'string',
+        ['item', 'question', 'question id', 'question code', 'item code', 'item id'],
+        'Question code or short text.',
+        { required: true },
+      ),
+      f(
+        'driver',
+        'Driver',
+        'string',
+        ['driver', 'factor', 'theme', 'dimension', 'category'],
+        'What the item measures, e.g. Manager support. Blank: taken from the Survey items sheet.',
+        { recommended: true },
+      ),
+      f(
+        'score',
+        'Score',
+        'number',
+        ['score', 'answer', 'response', 'rating', 'value', 'response value'],
+        'The answer on its scale.',
+        { required: true },
+      ),
+      f(
+        'scale',
+        'Scale',
+        'enum',
+        ['scale', 'response scale', 'answer scale', 'scale type'],
+        '1-5 or 0-10. Blank: 0-10 for likelihood-to-recommend items, else 1-5.',
+        { required: true, values: SURVEY_SCALES },
+      ),
+      f(
+        'reason',
+        'Reason',
+        'string',
+        ['reason', 'primary reason', 'reason code', 'decline reason', 'exit reason'],
+        'A chosen reason, category level. Free-text comments are never imported.',
+      ),
+      f(
+        'subjectKey',
+        'Subject',
+        'id',
+        ['subject', 'subject id', 'req id', 'case id', 'course', 'course id', 'ticket id'],
+        'What the answer is about: the req, case or course.',
+      ),
+      f(
+        'touchpoint',
+        'Touchpoint',
+        'string',
+        ['touchpoint', 'stage', 'interview stage', 'trigger', 'moment'],
+        'For candidate surveys, the stage after which it was sent.',
+      ),
+    ],
+  },
+  {
+    key: 'surveyItems',
+    label: 'Survey items',
+    sheet: 'Survey items',
+    description: 'Optional reference: the driver each survey item measures and its target.',
+    usedBy: ['scorecard', 'onboarding', 'listening'],
+    rowKey: ['survey', 'item'],
+    fields: [
+      f(
+        'item',
+        'Item',
+        'string',
+        ['item', 'question id', 'question code', 'item code', 'item id', 'question'],
+        'Question code, as in the responses.',
+        { required: true },
+      ),
+      f(
+        'driver',
+        'Driver',
+        'string',
+        ['driver', 'factor', 'theme', 'dimension', 'category'],
+        'What the item measures.',
+        { required: true },
+      ),
+      f(
+        'survey',
+        'Survey',
+        'enum',
+        ['survey', 'survey name', 'program', 'survey type'],
+        'The survey the item belongs to; blank for items shared by every survey.',
+        { values: SURVEY_TYPES },
+      ),
+      f(
+        'text',
+        'Question text',
+        'string',
+        ['question text', 'text', 'wording', 'item text', 'statement'],
+        'The question as asked.',
+      ),
+      f('scale', 'Scale', 'enum', ['scale', 'response scale'], '1-5 or 0-10.', { values: SURVEY_SCALES }),
+      f(
+        'target',
+        'Target',
+        'number',
+        ['target', 'goal', 'benchmark', 'target score'],
+        'Target mean on the item’s scale, e.g. 4.0 on 1-5.',
       ),
     ],
   },

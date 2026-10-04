@@ -10,6 +10,7 @@ import { STAGES } from '@/data/schema'
 import { drill } from '@/drill'
 import { formatDate } from '@/lib/dates'
 import { fmt, plural } from '@/lib/format'
+import { LinkedSurvey } from '@/views/listening/LinkedSurvey'
 import {
   declineReasonDrill,
   exitReasonDrill,
@@ -402,6 +403,13 @@ export function SourcesTab() {
           />
         </Figure>
       </Section>
+
+      <LinkedSurvey
+        survey="Candidate experience"
+        id="recruiting-candidate-survey"
+        title="What candidates say"
+        dek="One number from the candidate experience survey. Candidate NPS by stage, source and recruiter, and why candidates declined, are in Listening."
+      />
     </>
   )
 }

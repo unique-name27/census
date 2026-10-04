@@ -8,7 +8,7 @@ import {
   summarizeValues,
   withChoice,
 } from '@/data/import'
-import { datasetDef, LEVELS } from '@/data/schema'
+import { DATASET_KEYS, datasetDef, LEVELS } from '@/data/schema'
 import {
   actionSeverity,
   blockingFields,
@@ -253,9 +253,9 @@ describe('validation summary helpers', () => {
   })
 
   it('leaves Compensation out of the sample workbook while pay amounts are off', () => {
-    expect(sampleWorkbookDatasets(true)).toHaveLength(10)
+    expect(sampleWorkbookDatasets(true)).toHaveLength(DATASET_KEYS.length)
     expect(sampleWorkbookDatasets(false)).not.toContain('comp')
-    expect(sampleWorkbookDatasets(false)).toHaveLength(9)
+    expect(sampleWorkbookDatasets(false)).toHaveLength(DATASET_KEYS.length - 1)
   })
 })
 

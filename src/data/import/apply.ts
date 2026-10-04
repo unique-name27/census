@@ -6,7 +6,7 @@
  * dataset's row key (the row with the most recent date wins) and, for the roster itself, link
  * managers. Every change is written to the exceptions log; nothing is guessed silently.
  */
-import type { DatasetDef, DatasetKey, Datasets, Employee, FieldDef } from '../schema'
+import type { Candidate, DatasetDef, DatasetKey, Datasets, Employee, FieldDef } from '../schema'
 import { DEFAULT_HOURS_PER_YEAR, type FillMode, fillDefaults, type SheetContext } from './defaults'
 import { buildPersonIndex, type LinkRow, linkManagers, matchPerson, type PersonIndex } from './managers'
 import { type ColumnSettings, coerceValue, detectDateOrder, detectPercentWhole } from './normalize'
@@ -32,6 +32,11 @@ export interface ApplyArgs {
   mapping: Mapping
   /** The current roster, for linking people in other datasets and site-based defaults. */
   roster?: readonly Employee[]
+  /**
+   * The loaded candidates, for onboarding tasks keyed by application ID: their start dates turn
+   * due dates such as "Day -3" into calendar dates.
+   */
+  candidates?: readonly Candidate[]
   options?: ApplyOptions
 }
 
@@ -96,6 +101,9 @@ const PERSON_FIELDS: Partial<Record<DatasetKey, string[]>> = {
   learning: ['employeeId'],
   comp: ['employeeId'],
   succession: ['incumbentId', 'successorId'],
+  rightToWork: ['employeeId'],
+  // Pre-hires are in the roster; accepted candidates who are not yet are keyed by application ID.
+  onboardingTasks: ['employeeId'],
 }
 
 /** Fields that may name a person instead of giving an ID; resolved by name when unambiguous. */
@@ -164,6 +172,8 @@ const DERIVABLE_REQUIRED: Partial<Record<DatasetKey, string[]>> = {
   candidates: ['applicationId', 'currentStage', 'status'],
   jobChanges: ['changeType'],
   reviews: ['cycleDate'],
+  hiringPlan: ['plannedHires'],
+  surveyResponses: ['wave', 'scale'],
 }
 
 /**
@@ -211,6 +221,22 @@ export function applyMapping<K extends DatasetKey = DatasetKey>(args: ApplyArgs)
 
   const derivable = new Set(DERIVABLE_REQUIRED[def.key] ?? [])
   const blockers = def.fields.filter((f) => f.required && !mappedKeys.has(f.key) && !derivable.has(f.key))
+  const oneOf = def.requireOneOf ?? []
+  const oneOfLabels = oneOf.map((k) => def.fields.find((f) => f.key === k)?.label ?? k).join(' or ')
+  if (oneOf.length && !oneOf.some((k) => mappedKeys.has(k))) {
+    issues.push({
+      row: 0,
+      id: null,
+      field: oneOf[0],
+      label: oneOfLabels,
+      value: '',
+      code: 'column-missing',
+      issue: `${oneOfLabels} is required, but no column is mapped to either. Map a column to import this sheet.`,
+      action: 'row-skipped',
+    })
+    stats.skippedMissingRequired = sheet.rows.length
+    return result([])
+  }
   if (blockers.length) {
     for (const f of blockers)
       issues.push({
@@ -233,7 +259,14 @@ export function applyMapping<K extends DatasetKey = DatasetKey>(args: ApplyArgs)
     nameParts: findNameParts(sheet, mapping, def),
     roster: roster ? new Map(roster.map((e) => [e.employeeId, e])) : null,
     hourly,
+    starts: args.candidates?.length
+      ? new Map(
+          args.candidates.flatMap((c) => (c.startDate ? [[c.applicationId, c.startDate] as const] : [])),
+        )
+      : null,
   }
+  /** Conversions reported once for the sheet: field → what was converted and on how many rows. */
+  const tallies = new Map<string, { key: string; what: string; count: number }>()
   const fieldByKey = new Map(def.fields.map((f) => [f.key, f]))
 
   const built: Built[] = []
@@ -305,9 +338,28 @@ export function applyMapping<K extends DatasetKey = DatasetKey>(args: ApplyArgs)
     }
     const note = (key: string, issue: string, code: IssueCode, action: IssueAction) =>
       add(fieldByKey.get(key), key, rec[key], code, issue, action)
-    fillDefaults(def.key, { rec, raw, fill, note }, ctx)
+    const tally = (key: string, what: string) => {
+      const t = tallies.get(`${key}|${what}`) ?? { key, what, count: 0 }
+      t.count++
+      tallies.set(`${key}|${what}`, t)
+    }
+    fillDefaults(def.key, { rec, raw, fill, note, tally }, ctx)
 
     const id = rowId(def, rec)
+    if (oneOf.length && oneOf.every((k) => rec[k] == null || rec[k] === '')) {
+      stats.skippedMissingRequired++
+      issues.push({
+        row,
+        id,
+        field: oneOf[0],
+        label: oneOfLabels,
+        value: '',
+        code: 'missing-required',
+        issue: `${oneOfLabels} is blank, and one of them is required.`,
+        action: 'row-skipped',
+      })
+      return
+    }
     const missing = def.fields.filter((f) => f.required && rec[f.key] == null)
     if (missing.length) {
       stats.skippedMissingRequired++
@@ -361,6 +413,20 @@ export function applyMapping<K extends DatasetKey = DatasetKey>(args: ApplyArgs)
       code: 'defaulted',
       issue: `No column is mapped to ${label}, so ${u.count.toLocaleString('en-US')} ${u.count === 1 ? 'row was' : 'rows were'} ${u.what}.`,
       action: 'defaulted',
+    })
+  }
+
+  for (const t of tallies.values()) {
+    const label = fieldByKey.get(t.key)?.label ?? t.key
+    issues.push({
+      row: 0,
+      id: null,
+      field: t.key,
+      label,
+      value: '',
+      code: 'converted',
+      issue: `${cap(t.what)} on ${t.count.toLocaleString('en-US')} ${t.count === 1 ? 'row' : 'rows'}.`,
+      action: 'converted',
     })
   }
 
@@ -435,6 +501,25 @@ function dedupe(def: DatasetDef, built: Built[], issues: ImportIssue[], stats: I
       continue
     }
     const prev = out[i]
+    const sum = def.mergeDuplicates?.sum
+    if (sum) {
+      // The same line twice is two of the same thing: add them up instead of dropping one.
+      const a = prev.rec[sum]
+      const c = b.rec[sum]
+      prev.rec[sum] = (typeof a === 'number' ? a : 0) + (typeof c === 'number' ? c : 0)
+      const what = def.fields.find((f) => f.key === sum)?.label.toLowerCase() ?? sum
+      issues.push({
+        row: b.row,
+        id: rowId(def, b.rec),
+        field: sum,
+        label,
+        value: def.rowKey.map((k) => String(b.rec[k] ?? '')).join(' · '),
+        code: 'converted',
+        issue: `Same line as row ${prev.row}; its ${what} were added to that row.`,
+        action: 'converted',
+      })
+      continue
+    }
     const rb = recency(b.rec)
     const rp = recency(prev.rec)
     const [keep, drop] = rb >= rp ? [b, prev] : [prev, b]

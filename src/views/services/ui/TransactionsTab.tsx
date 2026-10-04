@@ -1,5 +1,5 @@
 import { BarList, type Column, Columns, Figure, type Tone } from '@/charts'
-import { Section, type Span } from '@/components'
+import { Button, goTo, IconChevronRight, Section, type Span } from '@/components'
 import type { AnalyticsContext } from '@/data/context'
 import { drill } from '@/drill'
 import { fmt } from '@/lib/format'
@@ -22,7 +22,7 @@ import type { TxFact } from '../engine/facts'
 import { onTimeRate } from '../engine/facts'
 import type { ServicesFigureId } from '../engine/lineage'
 import { pctWords } from '../engine/settings'
-import type { FinalPayRow, RetroMonthRow, SiteRow, TimingRow, TypeRow } from '../engine/transactions'
+import type { FinalPayRow, RetroMonthRow, TimingRow, TypeRow } from '../engine/transactions'
 import { TIMING_BINS } from '../engine/transactions'
 import { isOther } from '../engine/util'
 import { FIGURE_METRIC } from '../metrics'
@@ -195,14 +195,9 @@ export function TransactionsTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsCo
   const k = cfg.minGroup
   const D = servicesDefinitions(ctx.metrics, cfg)
   const of05 = cfg.levelTargets['of05-final-pay']
-  const on03 = cfg.levelTargets['on03-hire-day-minus-3']
   const ds01 = cfg.levelTargets['ds01-retro-share']
-  const hireFloor = cfg.newHire.regionFloor
   const due = inWindow(m)
   const exits = due.filter((f) => f.type === 'Termination')
-  const hires = due.filter((f) => f.type === 'New hire')
-  const hireRate = onTimeRate(hires, k).rate
-  const hireN = onTimeRate(hires, k).n
   const finalPayN = m.finalPay.reduce((a, r) => a + r.exits, 0)
   const completed = m.timing.reduce((a, r) => a + r.transactions, 0)
   const timingHidden = m.timing.length > 0 && m.timing.every((r) => r.share == null)
@@ -234,7 +229,6 @@ export function TransactionsTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsCo
             { exitType: true },
           )
   }
-  const hire = onTimeCells<SiteRow>(s, 'New hires', (r) => r.location)
   const retroMonth = (d: RetroMonthRow) =>
     d.share == null
       ? null
@@ -260,14 +254,6 @@ export function TransactionsTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsCo
       drill: (r) => (r.medianDaysLate == null ? null : finalPay.completedLate(r)),
     },
     { key: 'rule', label: 'Deadline rule' },
-  ]
-  const hireColumns: Column<SiteRow>[] = [
-    { key: 'location', label: 'Site' },
-    { key: 'region', label: 'Region' },
-    { key: 'starts', label: 'New hires', format: 'int', drill: hire.all },
-    { key: 'ready', label: 'Ready by Day −3', format: 'int', drill: hire.onTime },
-    { key: 'late', label: 'Late', format: 'int', drill: hire.late },
-    { key: 'rate', label: 'Ready %', format: 'pct', drill: hire.all },
   ]
   const retroColumns: Column<RetroMonthRow>[] = [
     { key: 'month', label: 'Cut-off month' },
@@ -386,45 +372,27 @@ export function TransactionsTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsCo
       </Section>
 
       <Section
-        title="New hires and payroll cut-off"
-        dek={`New hires entered and approved by Day −3 (Atlas ON-03), and job and pay changes that missed the payroll cut-off and needed a retro adjustment (Atlas DS-01 target: under ${pctWords(ds01)} of changes).`}
+        title="New hires"
+        dek="New hire readiness by site has moved to Onboarding, First 90 days, beside day-one readiness, so starts are read in one place. The ON-03 service level (hires entered and approved by Day −3) stays on Service levels."
+        actions={
+          <Button size="sm" variant="ghost" onClick={() => goTo('onboarding', 'first90')}>
+            Open in Onboarding
+            <IconChevronRight className="size-3.5" />
+          </Button>
+        }
       >
-        <Figure
-          id="services-new-hire-readiness"
-          uses={m.uses['services-new-hire-readiness']}
-          metric={FIGURE_METRIC['services-new-hire-readiness']}
-          span={6}
-          title="New hire readiness by site"
-          subtitle={`New hire transactions due in the ${per} that were completed by Day −3`}
-          data={m.newHireSites}
-          columns={hireColumns}
-          definitions={[D.newHireReady, D.anonymity]}
-          note={asOfNote(m.asOf, count(hireN, 'new hire'), `target ${pctWords(on03)}`)}
-          empty={m.newHireSites.length ? null : 'No new hires were due in this period.'}
-          detail={
-            m.small ? undefined : { label: 'New hires', columns: TX_DETAIL_COLUMNS, rows: txDetail(hires) }
-          }
-        >
-          <BarList
-            data={m.newHireSites}
-            label="location"
-            value="rate"
-            format="pct"
-            sort="asc"
-            domain={[0, 1]}
-            ref={
-              hireRate == null ? undefined : { value: hireRate, label: `All sites ${fmt(hireRate, 'pct')}` }
-            }
-            secondary={(d) => count(d.starts, 'hire')}
-            tone={(d) => rateTone(d.rate, hireFloor)}
-            onSelect={(d) => drill(hire.all(d))}
-          />
-        </Figure>
+        {null}
+      </Section>
+
+      <Section
+        title="Payroll cut-off"
+        dek={`Job and pay changes that missed the payroll cut-off and needed a retro adjustment (Atlas DS-01 target: under ${pctWords(ds01)} of changes).`}
+      >
         <Figure
           id="services-retro-by-month"
           uses={m.uses['services-retro-by-month']}
           metric={FIGURE_METRIC['services-retro-by-month']}
-          span={6}
+          span={12}
           title="Retro adjustments by month"
           subtitle={`Share of job and pay changes completed after their payroll cut-off, by cut-off month, ${per}`}
           data={m.retro}

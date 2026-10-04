@@ -577,6 +577,309 @@ const riskOfLoss = firstMatch([
   [/^(?:l|1)$/, 'Low'],
 ])
 
+/* ───────────── leave, onboarding, right to work, surveys ───────────── */
+
+/**
+ * Leave category from HRIS leave types. Workers' compensation before medical ("work injury"),
+ * parental before family care ("family leave for birth"). Anything finer than the category
+ * (a diagnosis, a condition) is never read: it either names a category or is not recognized.
+ */
+const leaveReason = firstMatch([
+  [
+    words(
+      'workers comp*',
+      'workmans comp*',
+      'work injury',
+      'work related',
+      'occupational',
+      'workplace injury',
+      'wc',
+    ),
+    "Workers' compensation",
+  ],
+  [
+    words(
+      'parental',
+      'maternity',
+      'paternity',
+      'adoption',
+      'adoptive',
+      'bonding',
+      'birth',
+      'foster',
+      'surrogacy',
+      'baby bonding',
+      'childbirth',
+    ),
+    'Parental',
+  ],
+  [
+    words('military', 'uniformed service*', 'reserve*', 'national guard', 'userra', 'armed forces'),
+    'Military',
+  ],
+  [words('bereavement', 'funeral', 'compassionate', 'death'), 'Bereavement'],
+  [words('jury', 'civic', 'voting', 'witness', 'court', 'election'), 'Civic duty'],
+  [words('sabbatical', 'career break', 'study', 'education*', 'academic'), 'Sabbatical'],
+  [
+    words(
+      'family care',
+      'caregiv*',
+      'carer*',
+      'elder care',
+      'family member',
+      'care of family',
+      'family medical',
+    ),
+    'Family care',
+  ],
+  [
+    words(
+      'medical',
+      'sick*',
+      'illness',
+      'health',
+      'disability',
+      'std',
+      'ltd',
+      'short term',
+      'long term',
+      'surgery',
+    ),
+    'Medical',
+  ],
+  [words('personal', 'unpaid', 'lwop', 'without pay', 'leave of absence'), 'Personal'],
+])
+
+/** "Not started" before "Done" so "not done" lands right; waived and not applicable first. */
+const onboardingStatus = firstMatch([
+  [/^(?:n a|na|n\/a)$/, 'Not needed'],
+  [
+    words(
+      'not needed',
+      'not applicable',
+      'not required',
+      'waived',
+      'exempt',
+      'skipped',
+      'n a',
+      'cancelled',
+      'canceled',
+    ),
+    'Not needed',
+  ],
+  [
+    words(
+      'not started',
+      'not done',
+      'to do',
+      'todo',
+      'open',
+      'new',
+      'assigned',
+      'not complete*',
+      'incomplete',
+    ),
+    'Not started',
+  ],
+  [/^(?:no|false|0)$/, 'Not started'],
+  [
+    words('blocked', 'on hold', 'hold', 'stuck', 'issue', 'escalated', 'waiting', 'failed', 'flagged'),
+    'Blocked',
+  ],
+  [
+    words(
+      'in progress',
+      'started',
+      'ongoing',
+      'wip',
+      'pending',
+      'submitted',
+      'initiated',
+      'in review',
+      'scheduled',
+      'ordered',
+    ),
+    'In progress',
+  ],
+  [
+    words(
+      'done',
+      'complete*',
+      'closed',
+      'finished',
+      'cleared',
+      'approved',
+      'shipped',
+      'delivered',
+      'signed',
+      'yes',
+      'true',
+      'ready',
+    ),
+    'Done',
+  ],
+  [/^1$/, 'Done'],
+])
+
+/**
+ * Work authorization categories. Immigration programs are read into broad categories only, and
+ * citizens and permanent residents both become "Permanent (no expiry)": nationality and
+ * citizenship are never kept.
+ */
+const authorizationType = firstMatch([
+  [
+    fragments('\\bh ?4\\b', '\\bl ?2\\b', '\\bdependa?ent', '\\bspouse', '\\bspousal', '\\be ?3d\\b'),
+    'Dependent work authorization',
+  ],
+  [
+    fragments(
+      '\\bopt\\b',
+      '\\bcpt\\b',
+      '\\bstem\\b',
+      '\\bf ?1\\b',
+      '\\bj ?1\\b',
+      'student',
+      'practical training',
+    ),
+    'Student work authorization',
+  ],
+  [
+    fragments(
+      '\\bead\\b',
+      'employment authori[sz]ation',
+      '\\bi ?766\\b',
+      '\\bc ?0?9\\b',
+      'work authori[sz]ation card',
+    ),
+    'Employment authorization document',
+  ],
+  [fragments('\\bl ?1 ?[ab]?\\b', 'intra ?company', '\\bict\\b'), 'Intra-company transfer'],
+  [
+    fragments(
+      '\\bh ?1 ?b ?1?\\b',
+      '\\be ?3\\b',
+      '\\btn\\b',
+      '\\bo ?1 ?[ab]?\\b',
+      '\\be ?2\\b',
+      'sponsor',
+      'skilled worker',
+      'work visa',
+      'employment pass',
+      'tier 2',
+      'critical skills',
+      'visa',
+    ),
+    'Employer-sponsored visa',
+  ],
+  [
+    fragments('blue card', 'work permit', 'residence permit', 'permit', 'gold card', 'work pass'),
+    'Work permit',
+  ],
+  [
+    fragments(
+      'citizen',
+      '\\bnational\\b',
+      'permanent',
+      'green card',
+      '\\blpr\\b',
+      '\\bpr\\b',
+      'indefinite',
+      'settled',
+      'no expiry',
+      'no expiration',
+      'unrestricted',
+      'not required',
+      '^n a$',
+    ),
+    'Permanent (no expiry)',
+  ],
+  [fragments('temporary', '\\btps\\b', 'parole', '\\bother\\b', 'time limited'), 'Other time-limited'],
+])
+
+const exportLicenseStatus = firstMatch([
+  [
+    words(
+      'not needed',
+      'not required',
+      'n a',
+      'na',
+      'exempt',
+      'none',
+      'no license required',
+      'nlr',
+      'ear99',
+      'no',
+    ),
+    'Not needed',
+  ],
+  [words('expired', 'lapsed'), 'Expired'],
+  [words('denied', 'rejected', 'refused', 'declined', 'returned without action', 'rwa'), 'Denied'],
+  [
+    words(
+      'pending',
+      'applied',
+      'submitted',
+      'in progress',
+      'under review',
+      'filed',
+      'requested',
+      'in review',
+    ),
+    'Pending',
+  ],
+  [words('approved', 'granted', 'issued', 'active', 'valid', 'licensed', 'yes'), 'Approved'],
+])
+
+/** Survey programs. Specific names first: "Onboarding pulse day 30" before plain "pulse". */
+const surveyType = firstMatch([
+  [fragments('hiring manager', '\\bhm\\b', 'intake satisfaction', 'req fill'), 'Hiring manager satisfaction'],
+  [
+    fragments('candidate', '\\bcx\\b', '\\bcnps\\b', 'interview experience', 'applicant'),
+    'Candidate experience',
+  ],
+  [fragments('\\b30\\b', 'thirty'), 'Onboarding pulse day 30'],
+  [fragments('\\b90\\b', 'ninety'), 'Onboarding pulse day 90'],
+  [fragments('stay'), 'Stay interview'],
+  [fragments('\\bexit', 'leaver', 'separation', 'offboarding'), 'Exit survey'],
+  [fragments('return to work', '\\brtw\\b', 'back from leave', 'return from leave'), 'Return to work'],
+  [
+    fragments(
+      'upward',
+      'manager feedback',
+      'manager effectiveness',
+      'manager survey',
+      '\\b180\\b',
+      'leader feedback',
+    ),
+    'Manager feedback',
+  ],
+  [
+    fragments('hr service', '\\bcase', 'ticket', 'help ?desk', 'csat', 'service survey', 'people services'),
+    'HR service survey',
+  ],
+  [
+    fragments('training', 'course', 'learning', 'smile sheet', 'level 1', 'kirkpatrick'),
+    'Training evaluation',
+  ],
+  [fragments('engagement', 'enps', 'pulse', 'culture', 'annual survey', 'opinion'), 'Engagement'],
+])
+
+const surveyScale = firstMatch([
+  [
+    fragments(
+      '\\b0 ?(?:to )?10\\b',
+      '\\b11 ?point',
+      '\\bnps\\b',
+      '\\bltr\\b',
+      '^10$',
+      'ten point',
+      'recommend',
+    ),
+    '0-10',
+  ],
+  [fragments('\\b1 ?(?:to )?5\\b', '\\b5 ?point', '^5$', 'five point', 'likert'), '1-5'],
+])
+
 /** Field-specific normalizers for every enum field in `DATASETS`, keyed `dataset.field`. */
 export const ENUM_NORMALIZERS: Record<string, Normalizer> = {
   'employees.terminationType': terminationType,
@@ -595,6 +898,15 @@ export const ENUM_NORMALIZERS: Record<string, Normalizer> = {
   'succession.criticality': criticality,
   'succession.readiness': readiness,
   'succession.incumbentRiskOfLoss': riskOfLoss,
+  'transactions.leaveReason': leaveReason,
+  'hiringPlan.reqType': reqType,
+  'onboardingTasks.status': onboardingStatus,
+  'rightToWork.authorizationType': authorizationType,
+  'rightToWork.exportLicenseStatus': exportLicenseStatus,
+  'surveyResponses.survey': surveyType,
+  'surveyResponses.scale': surveyScale,
+  'surveyItems.survey': surveyType,
+  'surveyItems.scale': surveyScale,
 }
 
 /** Canonical value for an enum field: exact spelling first, then the field's own vocabulary. */

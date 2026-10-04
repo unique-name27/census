@@ -4,19 +4,10 @@ import { toast } from '@/components/toast'
 import { type AnalyticsContext, useAnalytics } from '@/data/context'
 import type { Filters } from '@/data/scope'
 import { useCensus } from '@/data/store'
-import { computeHrbp, type HrbpModel } from '../engine'
+import { type HrbpModel, hrbpModel } from '../engine'
 
-/** One model per analytics context, shared by the view body and the header actions. */
-const cache = new WeakMap<AnalyticsContext, HrbpModel>()
-
-export function hrbpFor(ctx: AnalyticsContext): HrbpModel {
-  let m = cache.get(ctx)
-  if (!m) {
-    m = computeHrbp(ctx)
-    cache.set(ctx, m)
-  }
-  return m
-}
+/** One model per analytics context, shared by the view body, the header actions and the Scorecard. */
+export const hrbpFor: (ctx: AnalyticsContext) => HrbpModel = hrbpModel
 
 export function useHrbp(): HrbpModel {
   const ctx = useAnalytics()

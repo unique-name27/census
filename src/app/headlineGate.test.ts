@@ -103,18 +103,23 @@ describe('folder-tab headlines on the messy sample', () => {
 
   it('under Production shows only the gold headlines, as the tiles on each page do', () => {
     expect(shown(ctx('gold'))).toEqual({
+      scorecard: true, // Employees is gold
       recruiting: false, // Requisitions is silver
+      onboarding: false, // Upcoming starts read accepted offers; Candidates is bronze
       hrbp: true,
       org: true,
       services: false, // HR cases is bronze
       talent: false, // Succession is bronze
       comp: true,
+      compliance: false, // Right to work is silver
+      listening: false, // Survey responses are silver
       ai: true, // The agent catalog reads no datasets
     })
   })
 
   it('under Validated hides only the bronze ones, and Everything shows them all', () => {
     expect(shown(ctx('silver'))).toMatchObject({ recruiting: true, services: false, talent: false })
+    // The sample has rows in every dataset, so nothing reads No data under Everything.
     expect(Object.values(shown(ctx('bronze'))).every(Boolean)).toBe(true)
   })
 })

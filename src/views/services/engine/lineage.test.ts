@@ -161,9 +161,16 @@ describe('every figure in the view passes its lineage', () => {
   })
 
   it('uses the ids the lineage knows, each one once', () => {
-    const ids = uiSources.flatMap(({ text }) =>
-      [...text.matchAll(/\bid="(services-[a-z0-9-]+)"/g)].map((x) => x[1]),
+    // A linked survey number (`<LinkedSurvey>`) carries Listening's lineage and metric, not this view's.
+    const linked = new Set(
+      uiSources.flatMap(({ text }) =>
+        [...text.matchAll(/<LinkedSurvey\b[^>]*?\bid="(services-[a-z0-9-]+)"/g)].map((x) => x[1]),
+      ),
     )
+    expect([...linked]).toEqual(['services-hr-service-survey'])
+    const ids = uiSources
+      .flatMap(({ text }) => [...text.matchAll(/\bid="(services-[a-z0-9-]+)"/g)].map((x) => x[1]))
+      .filter((id) => !linked.has(id))
     expect([...ids].sort()).toEqual([...FIGURE_IDS].sort())
   })
 })

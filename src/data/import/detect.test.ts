@@ -25,7 +25,7 @@ describe('guessDataset', () => {
       expect(guesses[0].confidence).toBeGreaterThan(0.6)
       expect(guesses[0].missingRequired).toEqual([])
       expect(guesses[0].confidence).toBeGreaterThan(guesses[1].confidence)
-      expect(guesses).toHaveLength(10)
+      expect(guesses).toHaveLength(DATASETS.length)
     },
   )
 

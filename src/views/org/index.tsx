@@ -3,6 +3,7 @@ import { useAnalytics } from '@/data/context'
 import { fmt } from '@/lib/format'
 import type { ViewDef } from '../types'
 import { filterUses, peopleManagers, REPORTING_USES, refs } from './engine'
+import { orgActions } from './engine/actions'
 import { ORG_METRIC } from './metrics'
 import { ChartTab } from './ui/ChartTab'
 import { SandboxTab } from './ui/SandboxTab'
@@ -53,4 +54,5 @@ export const view: ViewDef = {
     uses: refs(REPORTING_USES, filterUses(ctx.filters)),
   }),
   datasets: ['employees', 'requisitions', 'reviews', 'jobChanges'],
+  actions: orgActions,
 }

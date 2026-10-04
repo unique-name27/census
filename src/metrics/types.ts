@@ -9,8 +9,8 @@ import type { FieldRef } from '@/data/quality/fieldRef'
 import type { ViewKey } from '@/data/schema'
 import type { Format } from '@/lib/format'
 
-/** Where a metric appears: a view, or the Data room (data quality rules). */
-export type MetricView = ViewKey | 'data'
+/** Where a metric appears: a view, the Data room (data quality rules) or the Action center. */
+export type MetricView = ViewKey | 'data' | 'actions'
 
 /** A rating from 1 to 5, the key of a rating map. */
 export type RatingKey = 1 | 2 | 3 | 4 | 5

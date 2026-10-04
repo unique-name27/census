@@ -4,6 +4,7 @@
  */
 import { fmt } from '@/lib/format'
 import type { ViewDef } from '../types'
+import { compActions, compSummary } from './engine/actions'
 import { COMPA } from './engine/lineage'
 import { type CompModel, compaHeadline } from './engine/model'
 import { CompHeaderActions } from './HeaderActions'
@@ -62,4 +63,6 @@ export const view: ViewDef = {
   }),
   datasets: ['comp', 'employees', 'reviews', 'jobChanges'],
   HeaderActions: CompHeaderActions,
+  summary: compSummary,
+  actions: compActions,
 }

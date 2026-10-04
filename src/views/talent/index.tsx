@@ -1,5 +1,6 @@
 import type { ViewDef } from '../types'
 import { talentHeadline } from './engine'
+import { talentActions, talentSummary } from './engine/actions'
 import { TalentView } from './ui/TalentView'
 
 export const view: ViewDef = {
@@ -15,4 +16,6 @@ export const view: ViewDef = {
   View: TalentView,
   headline: talentHeadline,
   datasets: ['reviews', 'succession', 'learning', 'employees', 'jobChanges', 'comp'],
+  summary: talentSummary,
+  actions: talentActions,
 }

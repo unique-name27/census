@@ -218,6 +218,45 @@ describe('store', () => {
     expect(st().reference.audit.map((x) => x.action)).toEqual(['add', 'remove', 'add'])
   })
 
+  it('keeps immigration details for the session only, and saves the engagement switch', () => {
+    const st = () => S.useCensus.getState()
+    expect(st().showImmigration).toBe(false)
+    expect(st().engagementSurveys).toBe(false)
+    st().setShowImmigration(true)
+    st().setEngagementSurveys(true)
+    expect(st().showImmigration).toBe(true)
+    const saved = JSON.parse(storage.getItem('census:settings')!)
+    expect(saved).toMatchObject({ engagementSurveys: true })
+    expect(JSON.stringify(saved)).not.toMatch(/immigration/i)
+  })
+
+  it('routes the scorecard, the new tabs and the Action center, and keeps old links', () => {
+    expect(S.parseHash('')).toBeNull()
+    expect(S.parseHash('#actions')).toEqual({ view: 'actions', tab: '' })
+    expect(S.parseHash('#onboarding.plan')).toEqual({ view: 'onboarding', tab: 'plan' })
+    expect(S.parseHash('#recruiting.pipeline')).toEqual({ view: 'recruiting', tab: 'pipeline' })
+    expect(S.parseHash('#nowhere')).toBeNull()
+    expect(S.HOME_VIEW).toBe('scorecard')
+    expect(S.PAGE_VIEWS).toEqual(['data', 'actions'])
+    // Every folder tab is a route.
+    for (const v of ['scorecard', 'compliance', 'listening'] as const) expect(S.ROUTE_VIEWS).toContain(v)
+  })
+
+  it('has every dataset, including the ones added for onboarding, compliance and listening', () => {
+    const s = S.useCensus.getState()
+    for (const k of [
+      'hiringPlan',
+      'onboardingTasks',
+      'rightToWork',
+      'surveyResponses',
+      'surveyItems',
+    ] as const) {
+      expect(s.data[k].length, k).toBeGreaterThan(0)
+      expect(s.sources[k], k).toEqual({ kind: 'sample', rowCount: s.data[k].length })
+      expect(s.versions[k].dataset, k).toBe(k)
+    }
+  })
+
   it('saves settings, never pay amounts, and opens the settings sheet', () => {
     const st = () => S.useCensus.getState()
     st().setTextSize('lg')

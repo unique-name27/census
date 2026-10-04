@@ -38,17 +38,16 @@ export function catalogHeadline(agents: readonly Agent[]): { value: string; labe
   }
 }
 
-/**
- * Which HR areas each view's header links to (docs/VIEWS.md, AI in HR). Onboarding and
- * Compliance link from their own views when those exist.
- */
+/** Which HR areas each view's header links to (docs/VIEWS.md, AI in HR). */
 export const VIEW_AREAS: Partial<Record<ViewKey, readonly AgentArea[]>> = {
   recruiting: ['recruiting'],
+  onboarding: ['onboarding'],
   hrbp: ['hrbp'],
   org: ['hrbp'],
   services: ['services', 'peopleops'],
   talent: ['talent'],
   comp: ['comp'],
+  compliance: ['compliance'],
 }
 
 export interface AgentLink {

@@ -6,6 +6,7 @@
  * the standard shows) so view exports include it.
  */
 import { useState } from 'react'
+import type { Column } from '@/charts/types'
 import { useAnalytics } from '@/data/context'
 import { useCensus } from '@/data/store'
 import { drill } from '@/drill/Drill'
@@ -33,7 +34,7 @@ import { hiddenFindingsText, splitByStandard, type TierGate } from './tier/tierM
 import { useGateFn } from './tier/useTierGate'
 import { toast } from './toast'
 import type { Finding, FindingPerson } from './types'
-import { cx, SeverityIcon } from './ui'
+import { cx, SeverityIcon, Tag } from './ui'
 import { useTableFigure } from './useTableFigure'
 
 /** A name that opens the person's card: quiet until hovered. */
@@ -88,7 +89,28 @@ function People({ people, total }: { people: FindingPerson[]; total?: number }) 
   )
 }
 
-function FindingItem({ finding, gate }: { finding: Finding; gate: TierGate | null }) {
+/**
+ * Where a finding comes from, for a readout that gathers several views' findings (the People
+ * scorecard): the practice is shown as a tag and exported as a column, and "Open in {view}"
+ * replaces the link to a tab of the current view.
+ */
+export interface FindingSource {
+  /** The practice it comes from: "Recruiting". */
+  label: string
+  /** "Open in Recruiting"; with `open`, the link that opens the finding's own view and tab. */
+  openLabel?: string
+  open?: () => void
+}
+
+function FindingItem({
+  finding,
+  gate,
+  source,
+}: {
+  finding: Finding
+  gate: TierGate | null
+  source?: FindingSource | null
+}) {
   const ctx = useAnalytics()
   const view = useCurrentView()
   const setFilters = useCensus((s) => s.setFilters)
@@ -106,6 +128,11 @@ function FindingItem({ finding, gate }: { finding: Finding; gate: TierGate | nul
     <li className="flex gap-2.5 border-t border-rule px-4 py-3.5 first:border-t-0">
       <SeverityIcon severity={finding.severity} className="mt-[3px] size-3.5 shrink-0" />
       <div className="min-w-0 flex-1">
+        {source && (
+          <div className="mb-1">
+            <Tag>{source.label}</Tag>
+          </div>
+        )}
         {/* The badge follows the title's last word, so a narrow column never squeezes the title. */}
         <div className="text-[14px] leading-snug">
           <h3 className="inline font-semibold [font-stretch:100%]">
@@ -150,7 +177,7 @@ function FindingItem({ finding, gate }: { finding: Finding; gate: TierGate | nul
           </p>
         )}
         {!!finding.people?.length && <People people={finding.people} total={finding.peopleTotal} />}
-        {(finding.filter || finding.drill || (finding.tab && view)) && (
+        {(finding.filter || finding.drill || (source ? source.open : finding.tab && view)) && (
           <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
             {finding.drill && (
               <button type="button" className={LINK} onClick={() => drill(finding.drill)}>
@@ -162,7 +189,13 @@ function FindingItem({ finding, gate }: { finding: Finding; gate: TierGate | nul
                 {focus ? `Focus on ${focus}` : 'Focus'}
               </button>
             )}
-            {finding.tab && view && (
+            {source?.open && (
+              <button type="button" className={LINK} onClick={source.open}>
+                {source.openLabel ?? `Open in ${source.label}`}
+                <IconChevronRight className="size-3" />
+              </button>
+            )}
+            {!source && finding.tab && view && (
               <button type="button" className={LINK} onClick={() => goTo(view.key, finding.tab)}>
                 Open {labelInSentence(tabLabel(view, finding.tab))}
                 <IconChevronRight className="size-3" />
@@ -178,6 +211,12 @@ function FindingItem({ finding, gate }: { finding: Finding; gate: TierGate | nul
 /** How many findings show before "Show all". */
 const FIRST = 6
 
+/** The readout columns with "Practice" after "Severity", for findings gathered from several views. */
+const withPractice = (columns: readonly Column[], on: boolean): Column[] =>
+  on
+    ? [columns[0], { key: 'practice', label: 'Practice', format: 'text' }, ...columns.slice(1)]
+    : [...columns]
+
 export function Readout({
   findings,
   span = 4,
@@ -185,6 +224,7 @@ export function Readout({
   id = 'readout',
   emptyText = 'Nothing unusual in this period.',
   className,
+  sourceOf,
 }: {
   findings: Finding[]
   span?: Span
@@ -193,6 +233,8 @@ export function Readout({
   id?: string
   emptyText?: string
   className?: string
+  /** For findings gathered from several views: where each comes from (tag, link and export column). */
+  sourceOf?: (f: Finding) => FindingSource | null
 }) {
   const [expanded, setExpanded] = useState(false)
   const [showHidden, setShowHidden] = useState(false)
@@ -203,15 +245,17 @@ export function Readout({
   const tiered = findings.some((f) => gates.get(f))
   const { shown, hidden } = splitByStandard(findings, gateOfFinding)
   const hiddenText = hidden.length ? hiddenFindingsText(hidden.length, ctx.standard) : undefined
+  const sorted = sortFindings(shown)
   // Exports carry exactly what the standard shows, and say how many were held back.
   useTableFigure({
     id,
     title,
     note: hiddenText,
-    columns: tiered ? READOUT_COLUMNS_WITH_TIER : READOUT_COLUMNS,
-    rows: readoutRows(shown, tiered ? gateOfFinding : undefined),
+    columns: withPractice(tiered ? READOUT_COLUMNS_WITH_TIER : READOUT_COLUMNS, !!sourceOf),
+    rows: readoutRows(sorted, tiered ? gateOfFinding : undefined).map((row, i) =>
+      sourceOf ? { practice: sourceOf(sorted[i])?.label ?? '', ...row } : row,
+    ),
   })
-  const sorted = sortFindings(shown)
   const visible = expanded ? sorted : sorted.slice(0, FIRST)
   const hiddenSorted = sortFindings(hidden)
   return (
@@ -235,7 +279,7 @@ export function Readout({
       ) : (
         <ol>
           {visible.map((f) => (
-            <FindingItem key={f.id} finding={f} gate={gates.get(f) ?? null} />
+            <FindingItem key={f.id} finding={f} gate={gates.get(f) ?? null} source={sourceOf?.(f)} />
           ))}
         </ol>
       )}
@@ -267,7 +311,7 @@ export function Readout({
       {showHidden && hidden.length > 0 && (
         <ol aria-label="Findings below the data standard" className="border-t border-rule bg-sheet-2">
           {hiddenSorted.map((f) => (
-            <FindingItem key={f.id} finding={f} gate={gates.get(f) ?? null} />
+            <FindingItem key={f.id} finding={f} gate={gates.get(f) ?? null} source={sourceOf?.(f)} />
           ))}
         </ol>
       )}

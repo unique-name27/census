@@ -2,8 +2,10 @@
  * Overview: the headline numbers, the readout, the live pipeline, hiring volume and offer
  * acceptance, and where requisitions sit. Every number opens the records behind it.
  */
+import { useMemo } from 'react'
 import { BarList, type Column, Columns, Figure, Lines } from '@/charts'
 import { Button, cx, Grid, goTo, KpiStrip, Readout, Section, spanClass } from '@/components'
+import { useAnalytics } from '@/data/context'
 import { drill } from '@/drill'
 import { formatDate } from '@/lib/dates'
 import { fmt, plural } from '@/lib/format'
@@ -25,6 +27,7 @@ import type { OpenByDeptRow, TtfRow } from '../engine/reqs'
 import type { QuarterAcceptance } from '../engine/sources'
 import { NEXT_STATES } from '../engine/types'
 import { RM } from '../metrics'
+import { overviewKpis } from '../plan'
 import { useRecruitingUi } from '../state'
 import {
   asOfNote,
@@ -42,6 +45,9 @@ import { PipelineBars } from './PipelineBars'
 
 export function OverviewTab() {
   const m = useRecruiting()
+  const ctx = useAnalytics()
+  // The engine's tiles, then Hires vs plan: Onboarding's plan number, opening its Hiring plan tab.
+  const kpis = useMemo(() => overviewKpis(ctx), [ctx])
   const b = m.base
   const openQueue = useRecruitingUi((s) => s.openQueue)
   if (!b.apps.length && !b.reqs.length) return <NoRecruitingData />
@@ -112,7 +118,7 @@ export function OverviewTab() {
 
   return (
     <Grid>
-      <KpiStrip kpis={m.kpis} />
+      <KpiStrip kpis={kpis} />
       {/* Full width on tablets (the right column is too), and sticky on desktop so a readout
           shorter than the right column doesn't leave a hole under it. */}
       <Readout findings={m.findings} span={4} className={cx(TABLET_FULL, 'lg:sticky lg:top-4')} />

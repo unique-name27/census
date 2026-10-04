@@ -51,6 +51,8 @@ export function prepareApp(c: Candidate, req: Requisition | null, asOf: ISODate)
   const current = stageIndex(c.currentStage)
   if ((c.status === 'Active' || ended) && current > furthest && !raw[current]) furthest = current
   if (outcome === 'Hired') furthest = HIRED
+  // A renege (an accepted offer later withdrawn) reached the offer, not a hire.
+  else if (furthest === HIRED) furthest = LAST_OPEN_STAGE
   if (outcome === 'Active') furthest = Math.min(furthest, LAST_OPEN_STAGE)
   const stageEntered =
     outcome === 'Active' && furthest === current && c.stageEnteredDate && c.stageEnteredDate <= asOf

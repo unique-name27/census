@@ -3,6 +3,7 @@ import { useAnalytics } from '@/data/context'
 import { fmt } from '@/lib/format'
 import type { ViewDef } from '../types'
 import { hrbpHeadline } from './engine'
+import { hrbpActions, hrbpSummary } from './engine/actions'
 import { HRBP_DATASETS } from './engine/lineage'
 import { Attrition } from './ui/Attrition'
 import { HeaderActions } from './ui/HeaderActions'
@@ -77,4 +78,6 @@ export const view: ViewDef = {
   },
   datasets: [...HRBP_DATASETS],
   HeaderActions,
+  summary: hrbpSummary,
+  actions: hrbpActions,
 }

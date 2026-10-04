@@ -12,10 +12,14 @@ import type { DatasetKey, Datasets } from '../../schema'
 import { cachedSample, SAMPLE_AS_OF } from '..'
 import { candidatesPlanted } from './extracts/candidates'
 import { casesPlanted } from './extracts/cases'
+import { hiringPlanPlanted } from './extracts/hiringPlan'
 import { jobChangesPlanted } from './extracts/jobChanges'
 import { learningPlanted } from './extracts/learning'
+import { onboardingTasksPlanted } from './extracts/onboardingTasks'
 import { requisitionsPlanted } from './extracts/requisitions'
+import { rightToWorkPlanted } from './extracts/rightToWork'
 import { successionPlanted } from './extracts/succession'
+import { surveyItemsPlanted, surveyResponsesPlanted } from './extracts/surveys'
 import { transactionsPlanted } from './extracts/transactions'
 import { compWithGaps, employeesWithGaps } from './gold'
 import { CERTIFIED, CONFIRMED, FILES, IMPORTED_AT, RAW_DATASETS, type RawDataset } from './plan'
@@ -29,6 +33,11 @@ export const PLANTED: { [K in RawDataset]: (base: Datasets) => Datasets[K] } = {
   transactions: transactionsPlanted,
   succession: successionPlanted,
   learning: learningPlanted,
+  hiringPlan: hiringPlanPlanted,
+  onboardingTasks: onboardingTasksPlanted,
+  rightToWork: rightToWorkPlanted,
+  surveyResponses: surveyResponsesPlanted,
+  surveyItems: surveyItemsPlanted,
 }
 
 export interface StarterSample {

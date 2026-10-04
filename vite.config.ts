@@ -25,5 +25,8 @@ export default defineConfig(({ mode }) => ({
   test: {
     environment: 'node',
     include: ['src/**/*.test.ts'],
+    // Excel round trips (ExcelJS write + SheetJS read of the whole sample) take a few seconds and
+    // slow further when the full suite runs in parallel; the default 5 s timeout made them flaky.
+    testTimeout: 30_000,
   },
 }))

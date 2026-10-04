@@ -346,8 +346,9 @@ describe('memo and the sample', () => {
       if (s.coverage != null) expect(Number.isFinite(s.coverage)).toBe(true)
       expect(q.explain(ref).length).toBeGreaterThan(10)
     }
-    // The clean sample with confirmed mappings is silver everywhere, and rules all pass.
-    for (const k of DATASET_KEYS) expect(q.datasetTier(k), k).toBe('silver')
+    // The clean sample with confirmed mappings is silver everywhere, and rules all pass; a
+    // dataset the sample leaves empty is No data, never a tier it has not earned.
+    for (const k of DATASET_KEYS) expect(q.datasetTier(k), k).toBe(data[k].length ? 'silver' : 'none')
     expect(q.fieldTier('employees.terminationDate')).toBe('silver')
   })
 })

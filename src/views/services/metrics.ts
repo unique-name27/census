@@ -17,7 +17,14 @@ import { CASE_CATEGORIES, TRANSACTION_PROCESS, TRANSACTION_TYPES } from '@/data/
 import { defineMetrics, type MetricInput } from '@/metrics/define'
 import type { MetricDef, ParamDef } from '@/metrics/types'
 import { LEVEL_CLOCKS, SERVICE_LEVELS, type ServiceLevelDef, type ServiceLevelId } from './engine/catalog'
-import { levelUses, lineage, type ServicesFigureId, union } from './engine/lineage'
+import {
+  LEAVE,
+  levelUses,
+  lineage,
+  type ServicesFigureId,
+  SURVEY_FALLBACK_USES,
+  union,
+} from './engine/lineage'
 
 /** Metric ids, by what the view calls them. */
 export const M = {
@@ -36,7 +43,6 @@ export const M = {
   onTime: 'services.tx.onTime',
   daysVsDue: 'services.tx.daysVsDue',
   finalPay: 'services.tx.finalPay',
-  newHireReady: 'services.tx.newHireReady',
   retroShare: 'services.tx.retroShare',
   levelStatus: 'services.levels.status',
   levelGap: 'services.levels.gap',
@@ -50,6 +56,19 @@ export const M = {
   agedBacklog: 'services.readout.agedBacklog',
   retroOver: 'services.readout.retroOverTarget',
   strongest: 'services.readout.strongestCategory',
+  /* leave and return */
+  onLeave: 'services.leave.onLeave',
+  leaveLength: 'services.leave.length',
+  returnsSoon: 'services.leave.returnsSoon',
+  systemsReady: 'services.leave.systemsReady',
+  returnRate: 'services.leave.returnRate',
+  retention: 'services.leave.retention',
+  exitsAfterReturn: 'services.leave.exitsAfterReturn',
+  exitsDuringLeave: 'services.leave.exitsDuringLeave',
+  returnSurvey: 'services.leave.returnSurvey',
+  retentionLow: 'services.readout.retentionAfterReturn',
+  returnsNotReady: 'services.readout.returnsNotReady',
+  exitCluster: 'services.readout.exitsAfterReturn',
 } as const
 
 /** The metric of one Atlas service level in the scorecard: 'services.levels.py05-payroll-2bd'. */
@@ -78,12 +97,18 @@ export const FIGURE_METRIC: Record<ServicesFigureId, string> = {
   'services-tx-on-time-by-type': M.onTime,
   'services-tx-days-early-late': M.daysVsDue,
   'services-final-pay': M.finalPay,
-  'services-new-hire-readiness': M.newHireReady,
   'services-retro-by-month': M.retroShare,
   'services-scorecard': M.levelStatus,
   'services-gap-to-target': M.levelGap,
   'services-response-by-category': M.responseSla,
   'services-atlas-processes': M.processVolume,
+  'services-leave-on-leave': M.onLeave,
+  'services-leave-length': M.leaveLength,
+  'services-leave-return-rate': M.returnRate,
+  'services-leave-returns-soon': M.systemsReady,
+  'services-leave-survey': M.returnSurvey,
+  'services-leave-retention': M.retention,
+  'services-leave-exits': M.exitsAfterReturn,
 }
 
 /* ───────────── settings ───────────── */
@@ -96,6 +121,8 @@ export const DEFAULTS = {
   atRiskPts: 0.05,
   atRiskDaysShare: 0.1,
   atRiskCeilingShare: 0.25,
+  /** Retention after return from leave (VIEWS.md, Leave & return). */
+  retentionTarget: 0.9,
 } as const
 
 const share = (
@@ -462,19 +489,6 @@ const entries: MetricInput[] = [
     owner: OWNER,
   },
   {
-    id: M.newHireReady,
-    name: 'Ready by Day −3',
-    definition:
-      "The hire was entered and approved in the HRIS at least three business days before the start date (the due date), Atlas ON-03. The target is the ON-03 service level's.",
-    formula: 'completedDate ≤ start date − 3 business days',
-    population: 'New hire transactions due in the period, by site and region.',
-    window: PERIOD,
-    unit: 'pct',
-    goodDirection: 'up',
-    uses: union(L.onTime, L.txType, L.site),
-    owner: OWNER,
-  },
-  {
     id: M.retroShare,
     name: 'Retro adjustments',
     definition:
@@ -552,6 +566,171 @@ const entries: MetricInput[] = [
     owner: OWNER,
   },
   ...SERVICE_LEVELS.map(levelEntry),
+
+  /* leave and return */
+  {
+    id: M.onLeave,
+    name: 'On leave now',
+    definition:
+      'People on a leave of absence at the end of the as-of date: a leave start on or before it, no return from leave by then, and still employed. A return entered ahead for a later date does not end the leave yet.',
+    formula: 'leave starts on or before the as-of date without a return or an exit by then',
+    population:
+      'Leave start and Return from leave transactions, each leave start paired with the next return of the same person on or after it. A count behind fewer people than the anonymity minimum shows as "—".',
+    window: AS_OF,
+    unit: 'int',
+    goodDirection: null,
+    uses: union(LEAVE.onLeave, LEAVE.unit, LEAVE.reason),
+    owner: OWNER,
+  },
+  {
+    id: M.leaveLength,
+    name: 'Median leave length',
+    definition:
+      'Median calendar days from the leave start to the return, for people who came back from leave in the period. Medians, so a few very long leaves do not move it.',
+    formula: 'median(return date − leave start date)',
+    population: 'Returns from leave in the period, paired with their leave start.',
+    window: PERIOD,
+    unit: 'days',
+    goodDirection: null,
+    uses: union(LEAVE.length, LEAVE.reason),
+    owner: OWNER,
+  },
+  {
+    id: M.returnsSoon,
+    name: 'Upcoming returns from leave',
+    definition:
+      'People on leave whose planned return date falls between the as-of date and the end of the look-ahead. Each is checked against Atlas LV-03: systems and access ready on the return day.',
+    formula: 'open leaves with as-of date ≤ expected return ≤ as-of date + look-ahead',
+    population: 'People on leave now with a planned return date.',
+    window: 'The as-of date and the days after it.',
+    unit: 'int',
+    goodDirection: null,
+    uses: LEAVE.returnsSoon,
+    owner: OWNER,
+    params: [
+      days(
+        'aheadDays',
+        'Look-ahead',
+        'Planned returns within this many days after the as-of date are listed and counted.',
+        30,
+        120,
+      ),
+      days(
+        'urgentDays',
+        'Urgent within',
+        'A return this many days away or fewer without systems ready is critical, not a warning.',
+        7,
+        60,
+      ),
+    ],
+  },
+  {
+    id: M.systemsReady,
+    name: 'Systems ready for return (LV-03)',
+    definition:
+      'An upcoming return is ready when its Return from leave transaction is entered and processed in the HRIS, so pay and access are active on the day. Not ready when it is entered but not processed, or not entered at all.',
+    formula: 'returns with a processed Return from leave ÷ upcoming returns',
+    population: 'Upcoming returns from leave within the look-ahead.',
+    window: 'The as-of date and the days after it.',
+    unit: 'pct',
+    goodDirection: 'up',
+    uses: LEAVE.systemsReady,
+    owner: OWNER,
+  },
+  {
+    id: M.returnRate,
+    name: 'Return rate',
+    definition:
+      'Leaves that ended in a return to work, as a share of the leaves that ended in the period, by a return or by the person leaving the company while on leave.',
+    formula: 'returned ÷ (returned + left during leave)',
+    population:
+      'Leaves that ended in the period. Leaves still open are left out. A rate behind fewer people than the anonymity minimum shows as "—".',
+    window: 'The period picker for the tile; the last eight quarters, by quarter, for the chart.',
+    unit: 'pct',
+    goodDirection: 'up',
+    uses: LEAVE.returnRate,
+    owner: OWNER,
+  },
+  {
+    id: M.retention,
+    name: 'Retention after return',
+    definition:
+      'People who came back from leave and were still employed a set time after their return, for returns between twice that time and that time before the as-of date, so everyone in the group has had the full time. Split by leave reason when reasons are loaded.',
+    formula: 'still employed at return + horizon ÷ people who returned',
+    population:
+      'Returns from leave in the cohort window, paired with their leave start. A group behind fewer people than the anonymity minimum shows as "—".',
+    window: 'A cohort window before the as-of date, set by the horizon.',
+    unit: 'pct',
+    goodDirection: 'up',
+    target: { value: DEFAULTS.retentionTarget, comparator: '>=' },
+    targetRequired: true,
+    uses: union(LEAVE.retention, LEAVE.reason),
+    owner: OWNER,
+    params: [
+      {
+        key: 'months',
+        label: 'Horizon',
+        description:
+          'Months after the return that a person must still be employed. The cohort is the returns between twice this and this many months before the as-of date.',
+        type: 'months',
+        default: 12,
+        min: 3,
+        max: 24,
+        step: 1,
+      },
+    ],
+  },
+  {
+    id: M.exitsAfterReturn,
+    name: 'Left soon after returning',
+    definition:
+      'People who left the company in the period within a set number of months of coming back from leave. Shown to HR only, on the Leave & return tab, and never by name in a finding.',
+    formula: 'exits in the period with a return from leave in the months before',
+    population:
+      'Leavers in the period, from the roster, matched to their returns from leave. The count shows when the returners behind it reach the anonymity minimum.',
+    window: PERIOD,
+    unit: 'int',
+    goodDirection: 'down',
+    uses: union(LEAVE.exits, LEAVE.exitType),
+    owner: OWNER,
+    params: [
+      {
+        key: 'months',
+        label: 'Months after return',
+        description: 'An exit this many months or fewer after a return from leave counts.',
+        type: 'months',
+        default: 6,
+        min: 1,
+        max: 24,
+        step: 1,
+      },
+    ],
+  },
+  {
+    id: M.exitsDuringLeave,
+    name: 'Left during leave',
+    definition:
+      'Leaves that ended in the period because the person left the company before returning. Shown to HR only, on the Leave & return tab.',
+    formula: 'leaves ended by an exit in the period',
+    population: 'Leaves that ended in the period.',
+    window: PERIOD,
+    unit: 'int',
+    goodDirection: 'down',
+    uses: union(LEAVE.exits, LEAVE.exitType),
+    owner: OWNER,
+  },
+  {
+    id: M.returnSurvey,
+    name: 'Return to work survey',
+    definition:
+      'The headline result of the Return to work survey, sent 30 days after a return, as Listening reports it, with a link to the full results there. Grouped results only, never one person.',
+    population: 'Respondents to the Return to work survey in its latest waves.',
+    window: 'The latest waves on or before the as-of date.',
+    unit: 'num1',
+    goodDirection: 'up',
+    uses: SURVEY_FALLBACK_USES,
+    owner: OWNER,
+  },
 
   /* readout rules */
   {
@@ -834,6 +1013,68 @@ const entries: MetricInput[] = [
       count('minCases', 'Fewest cases', 'The category needs at least this many cases with an outcome.', 50),
     ],
   },
+  {
+    id: M.retentionLow,
+    name: 'Retention after return under target',
+    definition:
+      'Raised when the people who came back from parental leave (or from any leave, when the file has no leave reasons) were still employed after the horizon less often than the retention target, with enough returners to judge.',
+    formula: 'retention after return for the group < target',
+    population: 'Returns from leave in the cohort window, by leave reason.',
+    window: 'A cohort window before the as-of date, set by the horizon.',
+    unit: 'pct',
+    goodDirection: 'up',
+    uses: union(LEAVE.retention, LEAVE.reason),
+    owner: OWNER,
+    params: [
+      count(
+        'minReturners',
+        'Fewest returners',
+        'The group needs at least this many returners in the cohort, and never fewer than the anonymity minimum.',
+        10,
+      ),
+    ],
+  },
+  {
+    id: M.returnsNotReady,
+    name: 'Returns without systems ready',
+    definition:
+      'Raised when people due back from leave within the look-ahead have no processed Return from leave transaction (Atlas LV-03). Critical when one of them is due within the urgent window.',
+    formula: 'upcoming returns not entered or not processed',
+    population: 'Upcoming returns from leave within the look-ahead.',
+    window: 'The as-of date and the days after it.',
+    unit: 'int',
+    goodDirection: 'down',
+    uses: LEAVE.systemsReady,
+    owner: OWNER,
+  },
+  {
+    id: M.exitCluster,
+    name: 'Exits after return concentrated in a department',
+    definition:
+      'Raised, as a count only, when one department holds a large share of the people who left soon after returning from leave in the period. Never names a person.',
+    formula: "department's leavers soon after return ÷ all leavers soon after return",
+    population: 'Leavers in the period within the months after return, by department.',
+    window: PERIOD,
+    unit: 'int',
+    goodDirection: 'down',
+    uses: union(LEAVE.exits, LEAVE.department),
+    owner: OWNER,
+    params: [
+      share(
+        'minShare',
+        'Share in one department',
+        'The department must hold at least this share of the leavers.',
+        0.5,
+        { min: 0.2, max: 1, step: 0.05, format: 'pct0' },
+      ),
+      count(
+        'minLeavers',
+        'Fewest leavers',
+        'The department needs at least this many leavers, and never fewer than the anonymity minimum.',
+        5,
+      ),
+    ],
+  },
 ]
 
 /** Every scorecard row's metric. */
@@ -856,6 +1097,10 @@ const DEPENDS_ON: Readonly<Record<string, readonly string[]>> = {
   [M.retroOver]: [levelMetric('ds01-retro-share')],
   [M.levelStatus]: LEVEL_METRICS,
   [M.levelGap]: [...LEVEL_METRICS, M.levelStatus],
+  [M.systemsReady]: [M.returnsSoon],
+  [M.retentionLow]: [M.retention],
+  [M.returnsNotReady]: [M.returnsSoon],
+  [M.exitCluster]: [M.exitsAfterReturn],
 }
 
 export const metrics: MetricDef[] = defineMetrics('services', entries).map((d) =>

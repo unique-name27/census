@@ -3,7 +3,7 @@ import { computeQuality } from '@/data/quality/compute'
 import { emptyDatasets, req, roster } from '@/data/quality/test-fixtures'
 import type { DatasetVersion, Limiting, QualityIndex } from '@/data/quality/types'
 import { confirmVersion, makeVersion } from '@/data/quality/versions'
-import type { DatasetKey, Datasets } from '@/data/schema'
+import { DATASET_KEYS, type DatasetKey, type Datasets } from '@/data/schema'
 import {
   belowStandardText,
   gateFor,
@@ -226,9 +226,14 @@ describe('dataset counts', () => {
   it('counts datasets per tier, highest first', () => {
     const q = company()
     const counts = tierCounts(q)
-    expect(counts).toEqual({ gold: 0, silver: 1, bronze: 1, none: 8 })
-    expect(tierCountParts(counts).map((p) => p.text)).toEqual(['1 silver', '1 bronze', '8 with no data'])
-    expect(tierCountsText(counts)).toBe('Datasets: 1 silver, 1 bronze, 8 with no data')
+    const none = DATASET_KEYS.length - 2
+    expect(counts).toEqual({ gold: 0, silver: 1, bronze: 1, none })
+    expect(tierCountParts(counts).map((p) => p.text)).toEqual([
+      '1 silver',
+      '1 bronze',
+      `${none} with no data`,
+    ])
+    expect(tierCountsText(counts)).toBe(`Datasets: 1 silver, 1 bronze, ${none} with no data`)
     expect(tierCountsText({ gold: 0, silver: 0, bronze: 0, none: 0 })).toBe('No datasets loaded')
   })
 

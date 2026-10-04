@@ -3,6 +3,7 @@
  * data rows. No SheetJS here, so code that already has rows in memory (the messy sample, pasted
  * tables) can build a sheet without loading the workbook reader.
  */
+import { droppedColumns } from './protected'
 import type { ParsedSheet } from './types'
 
 /** Rows scanned for the header. */
@@ -76,21 +77,33 @@ export function toSheet(name: string, aoa: unknown[][], firstRow: number): Parse
     })
     return Math.max(w, last + 1)
   }, 0)
-  const headers = dedupeHeaders(aoa[headerRow] ?? [], width)
+  const all = dedupeHeaders(aoa[headerRow] ?? [], width)
+  // Protected characteristics and free-text comments never leave this function.
+  const dropped = droppedColumns(all)
+  const skip = new Set(dropped.map((d) => d.header))
+  const headers = all.filter((h) => !skip.has(h))
   const rows: Record<string, unknown>[] = []
   const rowNumbers: number[] = []
   for (let i = headerRow + 1; i < aoa.length; i++) {
     const r = aoa[i]
     if (!r?.some((c) => !isEmptyCell(c))) continue
     const obj: Record<string, unknown> = {}
-    headers.forEach((h, j) => {
+    all.forEach((h, j) => {
+      if (skip.has(h)) return
       const c = r[j]
       obj[h] = isEmptyCell(c) ? null : typeof c === 'string' ? c.trim() : c
     })
     rows.push(obj)
     rowNumbers.push(firstRow + i + 1)
   }
-  return { name, headerRow: firstRow + headerRow, headers, rows, rowNumbers }
+  return {
+    name,
+    headerRow: firstRow + headerRow,
+    headers,
+    rows,
+    rowNumbers,
+    ...(dropped.length ? { dropped } : {}),
+  }
 }
 
 /** Build a ParsedSheet from rows already in memory (pasted tables, the messy sample, tests). */

@@ -10,18 +10,25 @@ import type {
   Candidate,
   CompRecord,
   Employee,
+  HiringPlanLine,
   HrCase,
   HrTransaction,
   JobChange,
   LearningRecord,
+  OnboardingTask,
   Requisition,
   Review,
+  RightToWork,
   SuccessionPlan,
+  SurveyItem,
+  SurveyResponse,
 } from '@/data/schema'
 import { caseCategoryByName, LEVEL_LABELS } from '@/data/schema'
 import { isActiveAt } from '@/data/scope'
-import { daysBetween, hoursBetween } from '@/lib/dates'
+import { daysBetween, formatMonth, hoursBetween } from '@/lib/dates'
+import type { Format } from '@/lib/format'
 import { tenureYears } from '@/lib/people'
+import type { SurveyGroupRow } from '@/lib/surveys'
 import type { DrillSource } from './Drill'
 import {
   activeDirects,
@@ -33,7 +40,7 @@ import {
   reqApplications,
   reqApplicationsSpec,
 } from './related'
-import type { DrillKind, DrillRecordMap, DrillSpec } from './types'
+import type { ActionItemRow, DrillKind, DrillRecordMap, DrillSpec, LeaveGroupRow } from './types'
 
 /** Hidden keys on every display row. */
 export const PERSON_KEY = '__person'
@@ -41,7 +48,10 @@ export const ROW_KEY = '__key'
 /** Hidden key: the records behind a cell, by column key (a manager's org, a req's applications). */
 export const DRILLS_KEY = '__drills'
 
-export type DrillContext = Pick<AnalyticsContext, 'org' | 'asOf' | 'all' | 'showPay'>
+export type DrillContext = Pick<AnalyticsContext, 'org' | 'asOf' | 'all' | 'showPay'> & {
+  /** Work authorization types show per person only while immigration details are on. */
+  showImmigration?: boolean
+}
 
 export interface DrillTable {
   columns: Column[]
@@ -59,6 +69,16 @@ function reqsById(ctx: DrillContext): Map<string, Requisition> {
   if (!m) {
     m = new Map(ctx.all.requisitions.map((r) => [r.reqId, r]))
     reqIndex.set(ctx.all.requisitions, m)
+  }
+  return m
+}
+
+const candIndex = new WeakMap<readonly Candidate[], Map<string, Candidate>>()
+function candidatesById(ctx: DrillContext): Map<string, Candidate> {
+  let m = candIndex.get(ctx.all.candidates)
+  if (!m) {
+    m = new Map(ctx.all.candidates.map((c) => [c.applicationId, c]))
+    candIndex.set(ctx.all.candidates, m)
   }
   return m
 }
@@ -219,6 +239,7 @@ const CANDIDATE_COLUMNS: Column[] = [
   C('appliedDate', 'Applied', { format: 'date' }),
   C('stageEnteredDate', 'In stage since', { format: 'date' }),
   C('nextEventDate', 'Next event', { format: 'date' }),
+  C('startDate', 'Start date', { format: 'date' }),
   C('rejectionReason', 'Reason'),
   C('recruiter', 'Recruiter'),
 ]
@@ -236,6 +257,7 @@ function candidateRow(ctx: DrillContext, c: Candidate): Row {
     appliedDate: c.appliedDate,
     stageEnteredDate: c.stageEnteredDate ?? null,
     nextEventDate: c.nextEventDate ?? null,
+    startDate: c.startDate ?? null,
     rejectionReason: c.rejectionReason ?? null,
     recruiter: c.recruiter ?? r?.recruiter ?? null,
     [PERSON_KEY]: null,
@@ -293,6 +315,7 @@ const TRANSACTION_COLUMNS: Column[] = [
   C('dueDate', 'Due', { format: 'date' }),
   C('completedDate', 'Completed', { format: 'date' }),
   C('daysLate', 'Days late', { format: 'days' }),
+  C('expectedReturnDate', 'Expected return', { format: 'date' }),
   C('processId', 'Process'),
 ]
 function transactionRow(ctx: DrillContext, t: HrTransaction): Row {
@@ -313,6 +336,9 @@ function transactionRow(ctx: DrillContext, t: HrTransaction): Row {
     dueDate: t.dueDate,
     completedDate: done,
     daysLate: late != null && late > 0 ? late : 0,
+    // The leave reason is never shown against a named person (health and family detail): it
+    // appears only in grouped counts.
+    expectedReturnDate: t.expectedReturnDate ?? null,
     processId: t.processId ?? null,
     [PERSON_KEY]: t.employeeId,
     [ROW_KEY]: t.transactionId,
@@ -425,6 +451,262 @@ const compRow = (ctx: DrillContext, c: CompRecord): Row => ({
   [ROW_KEY]: c.employeeId,
 })
 
+const PLAN_COLUMNS: Column[] = [
+  C('period', 'Month'),
+  C('businessUnit', 'Business unit'),
+  C('department', 'Department'),
+  C('location', 'Location'),
+  C('level', 'Level'),
+  C('jobTitle', 'Job title'),
+  C('reqType', 'Req type'),
+  C('plannedHires', 'Planned hires', { format: 'int' }),
+  C('reqId', 'Req ID'),
+  C('reqStatus', 'Req status'),
+  C('positionId', 'Position ID'),
+  C('planVersion', 'Plan version'),
+]
+function planRow(ctx: DrillContext, p: HiringPlanLine, i: number): Row {
+  const req = p.reqId ? reqsById(ctx).get(p.reqId) : undefined
+  return {
+    period: p.period ? formatMonth(p.period) : null,
+    businessUnit: p.businessUnit,
+    department: p.department,
+    location: p.location ?? null,
+    level: levelText(p.level),
+    jobTitle: p.jobTitle ?? null,
+    reqType: p.reqType ?? null,
+    plannedHires: p.plannedHires,
+    reqId: p.reqId ?? null,
+    reqStatus: p.reqId ? (req?.status ?? 'Not found') : null,
+    positionId: p.positionId ?? null,
+    planVersion: p.planVersion ?? null,
+    [PERSON_KEY]: req?.hiringManagerId ?? null,
+    [ROW_KEY]: `${p.planVersion ?? ''}-${p.period}-${p.positionId ?? p.reqId ?? ''}-${i}`,
+    ...(req
+      ? {
+          [DRILLS_KEY]: {
+            reqId: () => ({ kind: 'requisitions', title: `Requisition ${req.reqId}`, rows: [req] }),
+          } satisfies CellDrills,
+        }
+      : {}),
+  }
+}
+
+/**
+ * Where an onboarding task stands at the as-of date: Done, Done late, Overdue, Blocked, In
+ * progress, Not started or Not needed.
+ */
+export function taskState(t: OnboardingTask, asOf: string): string {
+  if (t.status === 'Not needed') return 'Not needed'
+  if (t.completedDate || t.status === 'Done')
+    return t.completedDate && t.dueDate && t.completedDate > t.dueDate ? 'Done late' : 'Done'
+  if (t.dueDate && t.dueDate < asOf) return 'Overdue'
+  if (t.status === 'Blocked') return 'Blocked'
+  return t.status === 'In progress' ? 'In progress' : 'Not started'
+}
+
+const TASK_COLUMNS: Column[] = [
+  C('person', 'Person'),
+  C('department', 'Department'),
+  C('location', 'Location'),
+  C('startDate', 'Start date', { format: 'date' }),
+  C('task', 'Task'),
+  C('owner', 'Owner'),
+  C('dueDate', 'Due', { format: 'date' }),
+  C('completedDate', 'Completed', { format: 'date' }),
+  C('state', 'Status'),
+  C('daysLate', 'Days late', { format: 'days' }),
+  C('processId', 'Process'),
+]
+function taskRow(ctx: DrillContext, t: OnboardingTask, i: number): Row {
+  const e = t.employeeId ? ctx.org.byId.get(t.employeeId) : undefined
+  const c = !e && t.applicationId ? candidatesById(ctx).get(t.applicationId) : undefined
+  const req = c ? reqsById(ctx).get(c.reqId) : undefined
+  const state = taskState(t, ctx.asOf)
+  const end = t.completedDate ?? (state === 'Overdue' ? ctx.asOf : null)
+  const late = end && t.dueDate ? daysBetween(t.dueDate, end) : null
+  return {
+    person: e?.name ?? c?.candidateName ?? t.employeeId ?? t.applicationId ?? null,
+    department: e?.department ?? req?.department ?? null,
+    location: e?.location ?? req?.location ?? null,
+    startDate: e?.hireDate ?? c?.startDate ?? null,
+    task: t.task,
+    owner: t.owner ?? null,
+    dueDate: t.dueDate ?? null,
+    completedDate: t.completedDate ?? null,
+    state,
+    daysLate: state === 'Not needed' ? null : late != null && late > 0 ? late : 0,
+    processId: t.processId ?? null,
+    [PERSON_KEY]: e?.employeeId ?? null,
+    [ROW_KEY]: `${t.employeeId ?? t.applicationId ?? ''}-${t.task}-${i}`,
+  }
+}
+
+const RTW_COLUMNS: Column[] = [
+  C('employeeId', 'Employee ID'),
+  C('name', 'Name'),
+  C('department', 'Department'),
+  C('location', 'Location'),
+  C('authorizationType', 'Authorization type'),
+  C('expiryDate', 'Authorization expiry', { format: 'date' }),
+  C('daysToExpiry', 'Days to expiry', { format: 'days' }),
+  C('reverificationStartedDate', 'Reverification started', { format: 'date' }),
+  C('i9Section1Date', 'I-9 Section 1', { format: 'date' }),
+  C('i9Section2Date', 'I-9 Section 2', { format: 'date' }),
+  C('exportLicenseRequired', 'Export license required'),
+  C('exportLicenseStatus', 'License status'),
+  C('exportLicenseExpiry', 'License expiry', { format: 'date' }),
+]
+function rtwRow(ctx: DrillContext, r: RightToWork): Row {
+  return {
+    employeeId: r.employeeId,
+    ...personCols(ctx, r.employeeId),
+    // Immigration detail: per person only while "Show immigration details" is on.
+    authorizationType: ctx.showImmigration ? (r.authorizationType ?? null) : null,
+    expiryDate: r.expiryDate ?? null,
+    daysToExpiry: r.expiryDate ? daysBetween(ctx.asOf, r.expiryDate) : null,
+    reverificationStartedDate: r.reverificationStartedDate ?? null,
+    i9Section1Date: r.i9Section1Date ?? null,
+    i9Section2Date: r.i9Section2Date ?? null,
+    exportLicenseRequired: r.exportLicenseRequired == null ? null : r.exportLicenseRequired ? 'Yes' : 'No',
+    exportLicenseStatus: r.exportLicenseStatus ?? null,
+    exportLicenseExpiry: r.exportLicenseExpiry ?? null,
+    [PERSON_KEY]: r.employeeId,
+    [ROW_KEY]: r.employeeId,
+  }
+}
+
+/**
+ * Survey answers, for the Data room's quality checks only: which survey, wave and item a row
+ * belongs to. Never the respondent, the date, the score or the subject, so no row can be tied to
+ * a person. Survey numbers in views drill to the surveyGroups kind instead.
+ */
+const RESPONSE_COLUMNS: Column[] = [
+  C('survey', 'Survey'),
+  C('wave', 'Wave'),
+  C('item', 'Item'),
+  C('driver', 'Driver'),
+  C('scale', 'Scale'),
+  C('touchpoint', 'Touchpoint'),
+]
+const responseRow = (_ctx: DrillContext, r: SurveyResponse, i: number): Row => ({
+  survey: r.survey,
+  wave: r.wave,
+  item: r.item,
+  driver: r.driver ?? null,
+  scale: r.scale,
+  touchpoint: r.touchpoint ?? null,
+  [PERSON_KEY]: null,
+  [ROW_KEY]: `response-${i}`,
+})
+
+const ITEM_COLUMNS: Column[] = [
+  C('item', 'Item'),
+  C('survey', 'Survey'),
+  C('driver', 'Driver'),
+  C('text', 'Question'),
+  C('scale', 'Scale'),
+  C('target', 'Target', { format: 'num1' }),
+]
+const itemRow = (_ctx: DrillContext, r: SurveyItem, i: number): Row => ({
+  item: r.item,
+  survey: r.survey ?? 'Every survey',
+  driver: r.driver,
+  text: r.text ?? null,
+  scale: r.scale ?? null,
+  target: r.target ?? null,
+  [PERSON_KEY]: null,
+  [ROW_KEY]: `${r.survey ?? ''}-${r.item}-${i}`,
+})
+
+/** Grouped survey results: counts and scores per group, never one person's answers. */
+const SURVEY_GROUP_COLUMNS: Column[] = [
+  C('survey', 'Survey'),
+  C('wave', 'Wave'),
+  C('groupBy', 'Grouped by'),
+  C('group', 'Group'),
+  C('driver', 'Driver'),
+  C('item', 'Item'),
+  C('respondents', 'Respondents', { format: 'int' }),
+  C('mean', 'Mean score', { format: 'num2' }),
+  C('scale', 'Scale'),
+  C('topBox', 'Top box', { format: 'pct0' }),
+  C('nps', 'NPS', { format: 'int' }),
+  C('shown', 'Shown'),
+]
+const surveyGroupRow = (_ctx: DrillContext, g: SurveyGroupRow, i: number): Row => ({
+  survey: g.survey,
+  wave: g.wave ?? 'Several waves',
+  groupBy: g.groupBy,
+  group: g.group,
+  driver: g.driver,
+  item: g.item,
+  respondents: g.respondents,
+  mean: g.suppressed ? null : g.mean,
+  scale: g.scale === 'mixed' ? 'Mixed' : g.scale,
+  topBox: g.suppressed ? null : g.topBox,
+  nps: g.suppressed ? null : g.nps,
+  shown: g.suppressed ? 'Hidden to protect anonymity' : 'Yes',
+  [PERSON_KEY]: null,
+  [ROW_KEY]: `${g.survey}-${g.wave ?? ''}-${g.group}-${g.driver ?? ''}-${g.item ?? ''}-${i}`,
+})
+
+/** Grouped leave numbers cut by reason: counts and one measure per group, never a named person. */
+const LEAVE_GROUP_COLUMNS: Column[] = [
+  C('groupBy', 'Grouped by'),
+  C('group', 'Group'),
+  C('reason', 'Leave reason'),
+  C('people', 'People', { format: 'int' }),
+  C('leaves', 'Leaves', { format: 'int' }),
+  C('measure', 'Measure'),
+  C('value', 'Value', { format: (r: Row) => (r.valueFormat as Format | undefined) ?? 'num1' }),
+  C('shown', 'Shown'),
+]
+const leaveGroupRow = (_ctx: DrillContext, g: LeaveGroupRow, i: number): Row => ({
+  groupBy: g.groupBy,
+  group: g.group,
+  reason: g.reason,
+  people: g.suppressed ? null : g.people,
+  leaves: g.suppressed ? null : g.leaves,
+  measure: g.measure,
+  value: g.suppressed ? null : g.value,
+  valueFormat: g.format,
+  shown: g.suppressed ? 'Hidden to protect anonymity' : 'Yes',
+  [PERSON_KEY]: null,
+  [ROW_KEY]: `${g.groupBy}-${g.group}-${g.reason ?? ''}-${i}`,
+})
+
+/**
+ * Action center items: what is open, who it waits on, when it is due and the view it comes from.
+ * The About cell opens the item's own records; a row opens the person the item is about.
+ */
+const ACTION_COLUMNS: Column[] = [
+  C('severityLabel', 'Severity'),
+  C('what', 'What is open'),
+  C('subject', 'About'),
+  C('owner', 'Waiting on'),
+  C('ownerGroup', 'Owner group'),
+  C('due', 'Due date', { format: 'date' }),
+  C('dueText', 'Due'),
+  C('from', 'From'),
+  C('status', 'Status'),
+]
+const actionRow = (_ctx: DrillContext, r: ActionItemRow, i: number): Row => ({
+  severityLabel: r.severityLabel,
+  what: r.what,
+  subject: r.subject,
+  owner: r.owner,
+  ownerGroup: r.ownerGroup,
+  due: r.due,
+  dueText: r.dueText,
+  from: r.from,
+  status: r.status,
+  ...(r.subjectDrill ? { [DRILLS_KEY]: { subject: r.subjectDrill } satisfies CellDrills } : {}),
+  [PERSON_KEY]: r.personId,
+  // By position: an employee relations item's id carries its case ID, which never reaches a page.
+  [ROW_KEY]: `item-${i}`,
+})
+
 /* ───────── dispatch ───────── */
 
 type RowFn<K extends DrillKind> = (ctx: DrillContext, r: DrillRecordMap[K], i: number) => Row
@@ -444,6 +726,14 @@ const KINDS: { [K in DrillKind]: { columns: Column[]; row: RowFn<K>; noun: [stri
   },
   learning: { columns: LEARNING_COLUMNS, row: learningRow, noun: ['assignment', 'assignments'] },
   comp: { columns: COMP_COLUMNS, row: compRow, noun: ['person', 'people'] },
+  hiringPlan: { columns: PLAN_COLUMNS, row: planRow, noun: ['plan line', 'plan lines'] },
+  onboardingTasks: { columns: TASK_COLUMNS, row: taskRow, noun: ['task', 'tasks'] },
+  rightToWork: { columns: RTW_COLUMNS, row: rtwRow, noun: ['person', 'people'] },
+  surveyResponses: { columns: RESPONSE_COLUMNS, row: responseRow, noun: ['answer', 'answers'] },
+  surveyItems: { columns: ITEM_COLUMNS, row: itemRow, noun: ['survey item', 'survey items'] },
+  surveyGroups: { columns: SURVEY_GROUP_COLUMNS, row: surveyGroupRow, noun: ['group', 'groups'] },
+  leaveGroups: { columns: LEAVE_GROUP_COLUMNS, row: leaveGroupRow, noun: ['group', 'groups'] },
+  actionItems: { columns: ACTION_COLUMNS, row: actionRow, noun: ['item', 'items'] },
 }
 
 export function drillNoun(kind: DrillKind, n: number): string {
@@ -551,6 +841,14 @@ const ROW_OPENS: Record<DrillKind, string> = {
   succession: 'Select a row to open the incumbent.',
   learning: 'Select a row to open the person.',
   comp: 'Select a row to open the person.',
+  hiringPlan: 'Select a row to open the hiring manager of its requisition.',
+  onboardingTasks: 'Select a row to open the person, once they are in the roster.',
+  rightToWork: 'Select a row to open the person.',
+  surveyResponses: '',
+  surveyItems: '',
+  surveyGroups: '',
+  leaveGroups: '',
+  actionItems: 'Select a row to open the person it is about, when it names one.',
 }
 
 /** What selecting a row does, and whether counts in the table open their own records. */
@@ -559,7 +857,7 @@ export function drillTableHint(
   opts: { rowsOpen: boolean; cellsOpen: boolean },
 ): string | null {
   const parts = [
-    opts.rowsOpen ? ROW_OPENS[kind] : null,
+    opts.rowsOpen ? ROW_OPENS[kind] || null : null,
     opts.cellsOpen ? 'Underlined counts open their own records.' : null,
   ].filter(Boolean)
   return parts.length ? parts.join(' ') : null

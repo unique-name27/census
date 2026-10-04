@@ -27,9 +27,11 @@ export {
   coerceDateTime,
   coerceLevel,
   coerceMoney,
+  coerceMonth,
   coerceNumber,
   coercePercent,
   coerceRating,
+  coerceSurveyScore,
   coerceValue,
   detectDateOrder,
   detectPercentWhole,
@@ -48,6 +50,14 @@ export {
   makeProfile,
   saveProfile,
 } from './profiles'
+export { type DroppedColumn, type DropReason, droppedColumns, droppedText, dropReason } from './protected'
+export {
+  describeRelativeDay,
+  type RelativeDay,
+  readMonth,
+  readRelativeDay,
+  resolveRelativeDay,
+} from './relative'
 export { buildTemplateWorkbook, exportDatasetWorkbook, type TemplateOptions } from './templates'
 export { normalizeHeader, normText } from './text'
 export type * from './types'

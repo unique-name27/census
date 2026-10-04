@@ -3,8 +3,9 @@
  * validation, persistence and the settings file format. The store (`useCensus`) holds the live
  * values and the actions; this module never imports it.
  *
- * Everything persists in this browser under `census:settings`, except showing pay amounts,
- * which lasts for the session only and is never written anywhere. Older keys (`census:theme`,
+ * Everything persists in this browser under `census:settings`, except showing pay amounts and
+ * immigration details, which last for the session only and are never written anywhere (they live
+ * in the store, not here). Older keys (`census:theme`,
  * `census:tools`, `census:comp-cycle-settings`, `census:asOf`) are read when no settings are
  * saved yet, and removed the first time settings are saved.
  *
@@ -151,6 +152,11 @@ export interface Settings {
    */
   compCycle?: CompCycleSettings
   tools: ToolLinks
+  /**
+   * The engagement and eNPS surveys show in Listening. Off by default: engagement was switched
+   * off in the earlier org chart tool, so it is an explicit choice to turn it on.
+   */
+  engagementSurveys: boolean
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -160,6 +166,7 @@ export const DEFAULT_SETTINGS: Settings = {
   dataStandard: DEFAULT_STANDARD,
   asOfOverride: null,
   tools: {},
+  engagementSurveys: false,
 }
 
 export type SettingsSection = 'display' | 'data' | 'privacy' | 'compensation' | 'tools' | 'device'
@@ -225,6 +232,7 @@ export function sanitizeSettings(raw: unknown, today: ISODate = todayISO()): Set
     dataStandard: isDataStandard(r.dataStandard) ? r.dataStandard : DEFAULT_SETTINGS.dataStandard,
     asOfOverride: isReportingDate(r.asOfOverride, today) ? r.asOfOverride : null,
     tools: sanitizeTools(r.tools),
+    engagementSurveys: r.engagementSurveys === true,
   }
 }
 
@@ -296,6 +304,7 @@ export const pickSettings = (s: Settings): Settings => ({
   dataStandard: s.dataStandard,
   asOfOverride: s.asOfOverride,
   tools: s.tools,
+  engagementSurveys: s.engagementSurveys,
 })
 
 /* ───────────── settings file ───────────── */
@@ -381,6 +390,7 @@ export function parseSettingsFile(
   take('motion', clean.motion === raw.motion)
   take('dataStandard', clean.dataStandard === raw.dataStandard)
   take('asOfOverride', raw.asOfOverride === null || clean.asOfOverride === raw.asOfOverride)
+  take('engagementSurveys', typeof raw.engagementSurveys === 'boolean')
   const tools = sanitizeTools(raw.tools)
   if (Object.keys(tools).length) {
     next.tools = { ...current.tools, ...tools }

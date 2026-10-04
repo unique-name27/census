@@ -50,8 +50,9 @@ import {
 } from './facts'
 import { buildFindings } from './findings'
 import { buildKpis, type CaseSummary, caseSummary, openAt } from './kpis'
+import { computeLeave, type LeaveModel } from './leaveModel'
 import { type LevelRow, type ProcessRow, processCoverage, scorecard } from './levels'
-import { figureUses, lineage, type Refs, type ServicesFigureId } from './lineage'
+import { figureUses, leaveFigureUses, lineage, type Refs, type ServicesFigureId } from './lineage'
 import { type ServicesSettings, servicesSettings } from './settings'
 import {
   type FinalPayRow,
@@ -123,6 +124,8 @@ export interface ServicesModel {
   retroSummary: { rate: number | null; retro: number | null; n: number }
   levels: LevelRow[]
   processes: ProcessRow[]
+  /** Leave & return: its measures, KPI strip and readout (engine/leaveModel.ts). */
+  leave: LeaveModel
   /** The fields behind each figure, for its `uses` (engine/lineage.ts). */
   uses: Record<ServicesFigureId, Refs>
 }
@@ -207,6 +210,17 @@ export function compute(ctx: AnalyticsContext): ServicesModel {
     settings,
   })
   const processes = processCoverage(cases, tx, window, min)
+  const leave = computeLeave({
+    transactions: ctx.data.transactions,
+    allTransactions: ctx.all.transactions,
+    people: ctx.org.byId,
+    asOf,
+    window,
+    prior,
+    settings,
+    scope,
+    metrics: ctx.metrics,
+  })
 
   return {
     asOf,
@@ -248,14 +262,33 @@ export function compute(ctx: AnalyticsContext): ServicesModel {
     retroSummary: retroSummary(tx, window, min),
     levels,
     processes,
-    uses: figureUses(L, {
-      caseCols,
-      levels,
-      processes,
-      assignee: aged.some((r) => r.assignee),
-      exitTypes: finalPay.some((r) => r.records.some((f) => f.exitType != null)),
-    }),
+    leave,
+    uses: {
+      ...figureUses(L, {
+        caseCols,
+        levels,
+        processes,
+        assignee: aged.some((r) => r.assignee),
+        exitTypes: finalPay.some((r) => r.records.some((f) => f.exitType != null)),
+      }),
+      ...leaveFigureUses({ hasReasons: leave.hasReasons }),
+    },
   }
+}
+
+const cache = new WeakMap<AnalyticsContext, ServicesModel>()
+
+/**
+ * The model for a context, computed once: the view, its scorecard summary and its Action center
+ * items share it, so opening HR ops after the scorecard costs nothing.
+ */
+export function computeCached(ctx: AnalyticsContext): ServicesModel {
+  let m = cache.get(ctx)
+  if (!m) {
+    m = compute(ctx)
+    cache.set(ctx, m)
+  }
+  return m
 }
 
 function retroSummary(tx: readonly TxFact[], window: Window, min: number): ServicesModel['retroSummary'] {

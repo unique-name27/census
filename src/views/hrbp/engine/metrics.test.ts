@@ -21,6 +21,7 @@ import type { MetricsApi } from '@/metrics/types'
 import { ORG_METRIC } from '@/views/org/metrics'
 import { ID, INHERITS, metrics, SET } from '../metrics'
 import { computeHrbp, type HrbpModel, hrbpHeadline, talkingPoints } from '.'
+import { hrbpActions } from './actions'
 import { cohortSummary } from './attrition'
 import { ctxOf, emp, leaver, many, sampleCtx } from './fixtures'
 import { allRefs, FIGURE } from './lineage'
@@ -172,6 +173,8 @@ describe('every registered setting is read by the engine', () => {
       const m = computeHrbp(ctx)
       talkingPoints(m)
       hrbpHeadline(ctx)
+      // The Action center's stay conversations read their due window.
+      hrbpActions(ctx)
     }
     const missing = paramsOfView('hrbp').filter((r) => !reads.has(r))
     expect(missing).toEqual([])

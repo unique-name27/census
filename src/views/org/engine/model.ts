@@ -97,6 +97,18 @@ export function buildOrgModel(ctx: OrgModelInput): OrgModel {
   }
 }
 
+const cache = new WeakMap<AnalyticsContext, OrgModel>()
+
+/** The model for an analytics context, built once per context (the view and the Action center share it). */
+export function orgModel(ctx: AnalyticsContext): OrgModel {
+  let m = cache.get(ctx)
+  if (!m) {
+    m = buildOrgModel(ctx)
+    cache.set(ctx, m)
+  }
+  return m
+}
+
 /** What the numbers for the org under `rootId` depend on (see `keyFigureUses` and `chartUses`). */
 export function orgLineage(
   m: Pick<OrgModel, 'tree' | 'gates'>,

@@ -75,11 +75,13 @@ describe('sample company, whole company, last 12 months', () => {
   it('story 2: offer acceptance fell to 68% in Q3 from 85%, driven by Bengaluru', () => {
     const f = finding('rec-offer-acceptance')
     expect(f.title).toBe('Offer acceptance fell to 68% in Q3 2026 from 85% in Q2 2026, mostly in Bengaluru.')
-    expect(f.detail).toContain('Bengaluru accepted 10 of 32 offers (31%)')
-    expect(f.detail).toContain('accepted competing offer (13)')
+    // The sample's Q4 starts added 49 Q3 accepts and 23 Q3 declines (src/data/sample/README.md,
+    // Onboarding): the rates and the headline hold, the counts grew.
+    expect(f.detail).toContain('Bengaluru accepted 19 of 61 offers (31%)')
+    expect(f.detail).toContain('accepted competing offer (26)')
     expect(f.filter).toEqual({ location: ['Bengaluru'] })
     const q3 = m.acceptanceByQuarter.find((q) => q.label === 'Q3 2026')!
-    expect(q3.rate).toBeCloseTo(58 / 85, 3)
+    expect(q3.rate).toBeCloseTo(107 / 157, 3)
   })
 
   it('story 3: candidates without a next step; decisions stuck with two hiring managers', () => {
@@ -171,8 +173,8 @@ describe('sample company, whole company, last 12 months', () => {
     expect(m.acceptanceDropBasis).toBe('quarter')
     expect(m.latestQuarter).toMatchObject({ label: 'Q3 2026', complete: true })
     const blr = m.acceptanceByLocationQuarter.find((r) => r.group === 'Bengaluru')!
-    expect(blr).toMatchObject({ hired: 10, offers: 32 })
-    expect(m.companyAcceptanceQuarter).toBeCloseTo(58 / 85, 3)
+    expect(blr).toMatchObject({ hired: 19, offers: 61 })
+    expect(m.companyAcceptanceQuarter).toBeCloseTo(107 / 157, 3)
     for (const r of [...m.acceptanceByLocation, ...m.acceptanceByLocationQuarter])
       expect(r.offers >= 5 || r.rate == null).toBe(true)
   })

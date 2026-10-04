@@ -248,5 +248,6 @@ export function recruitingKpis(b: RecruitingBase): Kpi[] {
     noteDrill: noCands || !active ? undefined : () => activeKpiDrill(b),
     uses: KPI_USES['lacking-next-step'],
   })
+
   return tagKpis(out)
 }

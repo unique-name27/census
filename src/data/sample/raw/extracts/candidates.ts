@@ -1,6 +1,7 @@
 /**
  * Candidates as a raw ATS export: names split into first and last, the ATS's own stage and
- * status names, US dates, and source names that are mostly mappable. 4% of applications carry a
+ * status names, US dates, the start date of accepted offers, and source names that are mostly
+ * mappable. Reneged offers read "Withdrew" with the renege as the reason. 4% of applications carry a
  * source spelling Census does not recognize ("LinkedIn Recruiter", "Indeed").
  */
 import type { Candidate, CandidateStatus, Datasets, Stage } from '../../../schema'
@@ -99,6 +100,7 @@ export function candidatesExtract(base: Datasets): RawExtract<'candidates'> {
     { header: 'Rejection Reason', cell: (r) => r.rejectionReason ?? null },
     { header: 'Next Interview', cell: (r) => mmddyyyy(r.nextEventDate) },
     { header: 'Last Activity', cell: (r) => mmddyyyy(r.lastActivityDate) },
+    { header: 'Start Date', cell: (r) => mmddyyyy(r.startDate) },
   ]
   return {
     dataset: 'candidates',

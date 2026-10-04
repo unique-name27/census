@@ -4,6 +4,7 @@
  * planted stories each view should surface are documented in README.md next to this file.
  */
 import type { Datasets, ISODate } from '../schema'
+import { day } from './calendar'
 import { compRows } from './comp'
 import {
   addContingent,
@@ -15,20 +16,38 @@ import {
   buildHistory,
   employeeRows,
   jobChangeRows,
+  managerOn,
   plantLongTenureL4,
   plantStagnant,
 } from './employees'
+import { hiringPlanRows } from './hiringPlan'
+import { withLeaveHistory } from './leave'
+import type { World } from './model'
 import { NameBook } from './names'
+import { onboardingTaskRows } from './onboarding'
 import { buildOrg } from './org'
+import { preHireRows } from './prehires'
 import { rngFor } from './prng'
 import { withJobFunction } from './raw/jobFunction'
 import { recruitingRows } from './recruiting'
+import { exportPlantsOf, rightToWorkRows } from './rightToWork'
 import { caseRows, transactionRows } from './services'
+import { surveyRows } from './surveys'
 import { isConsecutiveHigh, learningRows, rateCycles, reviewRows, successionRows } from './talent'
 
 /** Fixed reference date for the sample company: the end of Q3 2026. */
 export const SAMPLE_AS_OF: ISODate = '2026-09-30'
 export const SAMPLE_COMPANY = 'Northgate Semiconductor'
+
+/** A person's manager on a date, from the job history (people added later have none). */
+function managerTimeline(world: World): (employeeId: string, date: string) => string | null {
+  const byId = new Map(world.people.map((p) => [p.id, p]))
+  return (employeeId, date) => {
+    const p = byId.get(employeeId)
+    const m = p ? managerOn(p, day(date)) : null
+    return m == null ? null : world.people[m].id
+  }
+}
 
 export function generateSample(): Datasets {
   const names = new NameBook(rngFor('names'))
@@ -45,17 +64,60 @@ export function generateSample(): Datasets {
   assignIds(world)
 
   const { requisitions, candidates } = recruitingRows(world, names, rngFor('recruiting'))
+  const roster = withJobFunction(employeeRows(world))
+  // Accepted offers that start within five weeks are in the HRIS already, as pre-hires.
+  const employees = [...roster, ...preHireRows(roster, candidates, requisitions)]
+  // The original modules, in their original order (each draws from its own stream).
+  const jobChanges = jobChangeRows(world)
+  const cases = caseRows(world, rngFor('cases'), rngFor('cases-late-additions'))
+  const baseTransactions = transactionRows(
+    world,
+    rngFor('transactions'),
+    rngFor('transactions-late-additions'),
+  )
+  const reviews = reviewRows(world)
+  const succession = successionRows(world, rngFor('succession'))
+  const learning = learningRows(world, rngFor('learning'))
+  const comp = compRows(world, rngFor('comp'))
+  const transactions = withLeaveHistory(baseTransactions, roster, rngFor('leave'))
+  const exportPlants = exportPlantsOf(employees)
+  const onboardingTasks = onboardingTaskRows(
+    employees,
+    candidates,
+    requisitions,
+    rngFor('onboarding'),
+    exportPlants,
+  )
+  const surveys = surveyRows(
+    {
+      employees,
+      candidates,
+      requisitions,
+      cases,
+      transactions,
+      learning,
+      reviews,
+      onboardingTasks,
+      managerAt: managerTimeline(world),
+    },
+    rngFor('surveys'),
+  )
   return {
-    employees: withJobFunction(employeeRows(world)),
-    jobChanges: jobChangeRows(world),
+    employees,
+    jobChanges,
     requisitions,
     candidates,
-    cases: caseRows(world, rngFor('cases'), rngFor('cases-late-additions')),
-    transactions: transactionRows(world, rngFor('transactions'), rngFor('transactions-late-additions')),
-    reviews: reviewRows(world),
-    succession: successionRows(world, rngFor('succession')),
-    learning: learningRows(world, rngFor('learning')),
-    comp: compRows(world, rngFor('comp')),
+    cases,
+    transactions,
+    reviews,
+    succession,
+    learning,
+    comp,
+    hiringPlan: hiringPlanRows(employees, requisitions, candidates, rngFor('hiring-plan')),
+    onboardingTasks,
+    rightToWork: rightToWorkRows(employees, onboardingTasks, exportPlants, rngFor('right-to-work')),
+    surveyResponses: surveys.responses,
+    surveyItems: surveys.items,
   }
 }
 

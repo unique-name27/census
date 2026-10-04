@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { DATASET_KEYS, DATASETS, type ViewKey } from '@/data/schema'
+import { DATASET_KEYS, DATASETS, VIEW_KEYS, VIEW_LABEL, type ViewKey } from '@/data/schema'
 import { VIEWS } from './registry'
 
 /** Views that declare a dataset in `ViewDef.datasets`, in folder-tab order. */
@@ -25,5 +25,32 @@ describe('DATASETS[].usedBy', () => {
   it('every view reads only known datasets, and every dataset is read by some view', () => {
     for (const v of VIEWS) for (const d of v.datasets) expect(DATASET_KEYS, v.key).toContain(d)
     for (const def of DATASETS) expect(readers(def.key).length, def.key).toBeGreaterThan(0)
+  })
+})
+
+describe('folder tabs', () => {
+  it('open on the scorecard and follow the employee lifecycle, every view key once', () => {
+    expect(VIEWS.map((v) => v.key)).toEqual([
+      'scorecard',
+      'recruiting',
+      'onboarding',
+      'hrbp',
+      'org',
+      'services',
+      'talent',
+      'comp',
+      'compliance',
+      'listening',
+      'ai',
+    ])
+    expect(VIEWS.map((v) => v.key)).toEqual(VIEW_KEYS)
+    for (const v of VIEWS) expect(v.label, v.key).toBe(VIEW_LABEL[v.key])
+  })
+
+  it('give each view at least one tab with a unique key', () => {
+    for (const v of VIEWS) {
+      expect(v.tabs.length, v.key).toBeGreaterThan(0)
+      expect(new Set(v.tabs.map((t) => t.key)).size, v.key).toBe(v.tabs.length)
+    }
   })
 })

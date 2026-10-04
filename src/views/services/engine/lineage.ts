@@ -118,8 +118,102 @@ export function levelUses(id: ServiceLevelId, L: Lineage): Refs {
   return union(L.onTime, L.txType)
 }
 
-/** Every figure in the view, by its Figure id. */
-export const FIGURE_IDS = [
+/* ───────────── leave and return ───────────── */
+
+/** The field groups behind the Leave & return measures. */
+export interface LeaveLineage {
+  /** Leave start and Return from leave transactions, paired per person by date. */
+  leaves: Refs
+  /** Whether the person was still employed: the roster's termination date. */
+  exit: Refs
+  /** The Atlas leave category on the leave start. */
+  reason: Refs
+  /** The planned return date on the leave start. */
+  expected: Refs
+  /** Whether the return from leave was processed (LV-03). */
+  processed: Refs
+  unit: Refs
+  department: Refs
+  exitType: Refs
+  /** On leave at a date: started, not back and still employed. */
+  onLeave: Refs
+  /** Days from leave start to return. */
+  length: Refs
+  /** Open leaves with a planned return in the next days. */
+  returnsSoon: Refs
+  /** The LV-03 check on those returns. */
+  systemsReady: Refs
+  /** Leaves that ended in a return, of those that ended in a return or an exit. */
+  returnRate: Refs
+  /** Still employed a set time after returning. */
+  retention: Refs
+  /** Left soon after returning, or during a leave. */
+  exits: Refs
+}
+
+const LEAVES: Refs = ['transactions.type', 'transactions.effectiveDate', 'transactions.employeeId']
+const EXIT: Refs = ['employees.terminationDate']
+
+export const LEAVE: LeaveLineage = {
+  leaves: LEAVES,
+  exit: EXIT,
+  reason: ['transactions.leaveReason'],
+  expected: ['transactions.expectedReturnDate'],
+  processed: ['transactions.completedDate'],
+  unit: ['employees.businessUnit'],
+  department: ['employees.department'],
+  exitType: ['employees.terminationType'],
+  onLeave: union(LEAVES, EXIT),
+  length: LEAVES,
+  returnsSoon: union(LEAVES, EXIT, ['transactions.expectedReturnDate']),
+  systemsReady: union(LEAVES, EXIT, ['transactions.expectedReturnDate', 'transactions.completedDate']),
+  returnRate: union(LEAVES, EXIT),
+  retention: union(LEAVES, EXIT),
+  exits: union(LEAVES, EXIT),
+}
+
+/** The Leave & return figures. */
+export const LEAVE_FIGURE_IDS = [
+  'services-leave-on-leave',
+  'services-leave-length',
+  'services-leave-return-rate',
+  'services-leave-returns-soon',
+  'services-leave-survey',
+  'services-leave-retention',
+  'services-leave-exits',
+] as const
+
+export type LeaveFigureId = (typeof LEAVE_FIGURE_IDS)[number]
+
+/** The fields of the Return to work survey number when Listening gives none. */
+export const SURVEY_FALLBACK_USES: Refs = [
+  'surveyResponses.survey',
+  'surveyResponses.respondentKey',
+  'surveyResponses.score',
+]
+
+/**
+ * The fields behind each Leave & return figure. The reason cuts name the leave reason only when
+ * the file has reasons (without them the figures show no reason split).
+ */
+export function leaveFigureUses(x: {
+  hasReasons: boolean
+  surveyUses?: Refs | null
+}): Record<LeaveFigureId, Refs> {
+  const r = when(x.hasReasons, LEAVE.reason)
+  return {
+    'services-leave-on-leave': union(LEAVE.onLeave, LEAVE.unit, r),
+    'services-leave-length': union(LEAVE.length, r),
+    'services-leave-return-rate': LEAVE.returnRate,
+    'services-leave-returns-soon': union(LEAVE.systemsReady, LEAVE.unit),
+    'services-leave-survey': x.surveyUses?.length ? x.surveyUses : SURVEY_FALLBACK_USES,
+    'services-leave-retention': union(LEAVE.retention, r),
+    'services-leave-exits': union(LEAVE.exits, LEAVE.exitType),
+  }
+}
+
+/** Every case and transaction figure in the view, by its Figure id. */
+export const CASE_TX_FIGURE_IDS = [
   'services-cases-by-month',
   'services-sla-by-month',
   'services-cases-by-category',
@@ -135,7 +229,6 @@ export const FIGURE_IDS = [
   'services-tx-on-time-by-type',
   'services-tx-days-early-late',
   'services-final-pay',
-  'services-new-hire-readiness',
   'services-retro-by-month',
   'services-scorecard',
   'services-gap-to-target',
@@ -143,6 +236,10 @@ export const FIGURE_IDS = [
   'services-atlas-processes',
 ] as const
 
+/** Every figure in the view, by its Figure id. */
+export const FIGURE_IDS = [...CASE_TX_FIGURE_IDS, ...LEAVE_FIGURE_IDS] as const
+
+export type CaseTxFigureId = (typeof CASE_TX_FIGURE_IDS)[number]
 export type ServicesFigureId = (typeof FIGURE_IDS)[number]
 
 export interface FigureInputs {
@@ -178,7 +275,7 @@ function processUses(rows: readonly ProcessRow[], L: Lineage): Refs {
 }
 
 /** The fields behind each figure, given which optional columns the files carry. */
-export function figureUses(L: Lineage, x: FigureInputs): Record<ServicesFigureId, Refs> {
+export function figureUses(L: Lineage, x: FigureInputs): Record<CaseTxFigureId, Refs> {
   const c = x.caseCols
   const reopenCols = c.reopened || c.escalated
   return {
@@ -232,7 +329,6 @@ export function figureUses(L: Lineage, x: FigureInputs): Record<ServicesFigureId
     'services-tx-on-time-by-type': union(L.onTime, L.txType, L.txProcess),
     'services-tx-days-early-late': L.onTime,
     'services-final-pay': union(L.onTime, L.txType, L.site, when(x.exitTypes, L.exitType)),
-    'services-new-hire-readiness': union(L.onTime, L.txType, L.site),
     'services-retro-by-month': L.retro,
     'services-scorecard': scorecardUses(x.levels, L),
     'services-gap-to-target': scorecardUses(x.levels, L, 'share'),

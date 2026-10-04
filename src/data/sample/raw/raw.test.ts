@@ -15,8 +15,12 @@ import {
 } from '.'
 import { UNRECOGNIZED_SOURCE_SHARE } from './extracts/candidates'
 import { caseMess, MISSING_FIRST_RESPONSE_SHARE } from './extracts/cases'
+import { LEGACY_GRADES } from './extracts/hiringPlan'
+import { tbdRows } from './extracts/onboardingTasks'
 import { NO_MANAGER_SHARE } from './extracts/requisitions'
+import { PENDING_RENEWAL } from './extracts/rightToWork'
 import { TITLE_ROW, UNMATCHED_SUCCESSOR_SHARE } from './extracts/succession'
+import { UNTAGGED_PROGRAM } from './extracts/surveys'
 import { lostReasonRows, PICKLIST_CHANGE } from './gold'
 import { FUNCTION_BY_UNIT } from './jobFunction'
 
@@ -67,6 +71,12 @@ describe('messy sample', () => {
       transactions: { 'unknown-value': 4 },
       succession: { converted: 5, 'not-in-roster': 13 },
       learning: { unreadable: 5 },
+      hiringPlan: { 'unknown-value': LEGACY_GRADES },
+      // One summary line for the due dates written as days from the start, and the TBD dates.
+      onboardingTasks: { converted: 1, unreadable: tbdRows(base.onboardingTasks).size },
+      rightToWork: { unreadable: PENDING_RENEWAL },
+      surveyResponses: {},
+      surveyItems: {},
     }
     for (const k of RAW_DATASETS) {
       const { result } = messy.imports[k]
@@ -79,11 +89,13 @@ describe('messy sample', () => {
   })
 
   it('auto-maps every foreign header to the field it holds', () => {
-    // Fields the extracts have no column for: built from first and last name, or from the type.
+    // Fields the extracts have no column for: built from first and last name, or from the type
+    // or the checklist task.
     const unmapped: Partial<Record<RawDataset, string[]>> = {
       candidates: ['candidateName'],
       cases: ['processId'],
       transactions: ['processId'],
+      onboardingTasks: ['processId'],
     }
     for (const k of RAW_DATASETS) {
       const { mapping, sheet } = messy.imports[k]
@@ -101,12 +113,17 @@ describe('messy sample', () => {
   it('changes only the planted values, so every planted story survives the import', () => {
     const expected: Record<RawDataset, Record<string, number>> = {
       jobChanges: { fromLevel: 3 },
-      requisitions: { department: 38, hiringManagerId: 17, hiringManager: 17, reqType: 3 },
-      candidates: { source: 371 },
+      requisitions: { department: 38, hiringManagerId: 18, hiringManager: 18, reqType: 3 },
+      candidates: { source: 399 },
       cases: { firstResponseAt: 534, category: 165, processId: 165 },
       transactions: { retro: 4 },
       succession: { successorId: 13 },
       learning: { dueDate: 5 },
+      hiringPlan: { level: LEGACY_GRADES },
+      onboardingTasks: { dueDate: tbdRows(base.onboardingTasks).size },
+      rightToWork: { expiryDate: PENDING_RENEWAL },
+      surveyResponses: { driver: base.surveyResponses.filter((r) => r.survey === UNTAGGED_PROGRAM).length },
+      surveyItems: {},
     }
     for (const k of RAW_DATASETS) expect(diffs(k, messy.data[k]), k).toEqual(expected[k])
     expect(diffs('employees', messy.data.employees)).toEqual({ terminationReason: 139 })
@@ -237,6 +254,60 @@ describe('magnitudes from the data tiers table', () => {
     expect(s.tier).toBe('bronze')
     expect(q.datasetTier('comp')).toBe('gold')
   })
+
+  it('hiring plan: silver, mapping confirmed by finance and TA, three legacy grades left blank', () => {
+    const { q, state } = qualityOf(messy)
+    expect(q.datasetTier('hiringPlan')).toBe('silver')
+    expect(state.versions.hiringPlan.mappingConfirmedBy).toBe('Finance and talent acquisition')
+    expect(q.fieldStats(fieldRef('hiringPlan', 'level')).invalid).toBe(LEGACY_GRADES)
+    // Month periods ("Oct 2026") and counts come back exactly; every req ID resolves.
+    expect(q.checks('hiringPlan').find((r) => r.id === 'references')?.pass).toBe(true)
+    expect(messy.data.hiringPlan.every((l) => l.period.endsWith('-01'))).toBe(true)
+  })
+
+  it('onboarding tasks: bronze raw tool export, relative due dates converted with the start date', () => {
+    const { q, state } = qualityOf(messy)
+    expect(q.datasetTier('onboardingTasks')).toBe('bronze')
+    expect(state.versions.onboardingTasks.mappingConfirmedAt).toBeNull()
+    const converted = messy.imports.onboardingTasks.result.issues.find((i) => i.code === 'converted')
+    expect(converted?.issue).toMatch(/days from the start/)
+    // Every "Day -3" and "Day +3 BD" resolved to the same date the checklist gives, for pre-hires
+    // (roster start) and accepted candidates (ATS start date) alike.
+    const tbd = tbdRows(base.onboardingTasks)
+    messy.data.onboardingTasks.forEach((t, i) => {
+      if (!tbd.has(i)) expect(t.dueDate, `${i}`).toBe(base.onboardingTasks[i].dueDate)
+    })
+    expect(messy.data.onboardingTasks.some((t) => t.applicationId && t.dueDate)).toBe(true)
+  })
+
+  it('right to work: silver, immigration programs read as broad categories, never nationality', () => {
+    const { q, state } = qualityOf(messy)
+    expect(q.datasetTier('rightToWork')).toBe('silver')
+    expect(state.versions.rightToWork.mappingConfirmedBy).toBe('Global mobility')
+    const raw = messy.imports.rightToWork.sheet
+    expect(raw.headers.some((h) => /nation|citizen/i.test(h))).toBe(false)
+    expect(new Set(raw.rows.map((r) => r['Work Authorization']))).toContain('H-1B')
+    expect(messy.data.rightToWork.map((r) => r.authorizationType)).toEqual(
+      base.rightToWork.map((r) => r.authorizationType),
+    )
+    // Two expiries read "Pending renewal" (under 2% of the expiries), so the field stays silver.
+    expect(q.fieldTier(fieldRef('rightToWork', 'expiryDate'))).toBe('silver')
+  })
+
+  it('survey responses: silver, the comments column is dropped as the sheet is read', () => {
+    const { q, state } = qualityOf(messy)
+    expect(q.datasetTier('surveyResponses')).toBe('silver')
+    expect(q.datasetTier('surveyItems')).toBe('silver')
+    expect(state.versions.surveyResponses.mappingConfirmedBy).toBe('People analytics')
+    const sheet = messy.imports.surveyResponses.sheet
+    expect(sheet.dropped).toEqual([{ header: 'Comments', reason: 'comment' }])
+    expect(sheet.headers).not.toContain('Comments')
+    expect(sheet.rows.every((r) => !('Comments' in r))).toBe(true)
+    // The help desk's case survey has no drivers; the Questions sheet supplies them.
+    const blank = messy.data.surveyResponses.filter((r) => !r.driver)
+    expect(blank.length).toBeGreaterThan(0)
+    expect(blank.every((r) => r.survey === UNTAGGED_PROGRAM)).toBe(true)
+  })
 })
 
 describe('starter state', () => {
@@ -245,7 +316,7 @@ describe('starter state', () => {
     for (const k of DATASET_KEYS) {
       const v = state.versions[k]
       const tier = SAMPLE_TIERS[k]
-      expect(!!v.mappingConfirmedAt, k).toBe(tier !== 'bronze')
+      expect(!!v.mappingConfirmedAt, k).toBe(tier === 'silver' || tier === 'gold')
       expect(!!v.certification, k).toBe(tier === 'gold')
     }
     expect(state.versions.jobChanges.mappingConfirmedBy).toBe('HRIS team')

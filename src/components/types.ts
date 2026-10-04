@@ -3,8 +3,20 @@
  */
 import type { FieldRef } from '@/data/quality/fieldRef'
 import type { Filters } from '@/data/scope'
+import type { RouteView } from '@/data/store'
 import type { DrillSource } from '@/drill/Drill'
 import type { Format } from '@/lib/format'
+
+/**
+ * A tab of another view a tile opens: Recruiting's "Hires vs plan" opens Onboarding, Hiring plan.
+ * The producer names it, so shared components never import the view registry.
+ */
+export interface ViewLink {
+  view: RouteView
+  tab?: string
+  /** Where it goes, for the accessible name: "Onboarding, Hiring plan". */
+  label: string
+}
 
 /** A headline number. Missing data is `null` (renders "—"), never 0. */
 export interface Kpi {
@@ -33,6 +45,11 @@ export interface Kpi {
   suppressed?: boolean
   /** Tab to open when the tile is clicked. */
   tab?: string
+  /**
+   * A tab of another view to open when the tile is clicked, in place of `tab` (which opens a tab
+   * of the view the strip sits in).
+   */
+  link?: ViewLink
   /** Plain-English definition for the info popover. */
   definition?: string
   /** The records behind the value; clicking the value opens them (down to each person). */

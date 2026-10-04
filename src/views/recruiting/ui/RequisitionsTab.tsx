@@ -9,6 +9,7 @@ import { drill } from '@/drill'
 import { daysBetween, formatDate } from '@/lib/dates'
 import { fmt, plural } from '@/lib/format'
 import { median } from '@/lib/stats'
+import { LinkedSurvey } from '@/views/listening/LinkedSurvey'
 import { timesText } from '../engine/definitions'
 import {
   ageBinDrill,
@@ -382,6 +383,13 @@ export function RequisitionsTab() {
           note={`${plural(m.recruiters.length, 'recruiter')} · ${fmt(flagged, 'int')} flagged · ${asOfNote(b.asOf)}`}
         />
       </Section>
+
+      <LinkedSurvey
+        survey="Hiring manager satisfaction"
+        id="recruiting-hiring-manager-survey"
+        title="What hiring managers say"
+        dek="One number from the hiring manager survey, sent when a req is filled. Scores for speed, slate quality and communication, by recruiter, are in Listening."
+      />
     </>
   )
 }

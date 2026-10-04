@@ -58,6 +58,18 @@ export function computeHrbp(ctx: AnalyticsContext): HrbpModel {
   }
 }
 
+/** One model per analytics context, shared by the view, its header actions, the Scorecard and the Action center. */
+const cache = new WeakMap<AnalyticsContext, HrbpModel>()
+
+export function hrbpModel(ctx: AnalyticsContext): HrbpModel {
+  let m = cache.get(ctx)
+  if (!m) {
+    m = computeHrbp(ctx)
+    cache.set(ctx, m)
+  }
+  return m
+}
+
 /**
  * Folder-tab number: employees at asOf (with contractors when that setting is on), with the last
  * 8 quarter-end headcounts. Its fields are the Employees tile's (headcount in the scope), plus the

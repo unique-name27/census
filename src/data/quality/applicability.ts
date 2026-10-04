@@ -150,6 +150,8 @@ export const APPLICABILITY: Partial<Record<DatasetKey, Record<string, Applicabil
     onsiteDate: reached('Onsite'),
     offerDate: reached('Offer'),
     hiredDate: reached('Hired'),
+    // Accepted offers; many ATS exports leave it out, which the Onboarding numbers then say.
+    startDate: { applies: each((r) => r.status === 'Hired' || has(r.hiredDate)), scope: 'Accepted offers' },
     rejectedDate: {
       applies: each((r) => LEFT_PROCESS.has(String(r.status))),
       scope: 'Rejected, withdrawn or declined candidates',
@@ -189,6 +191,8 @@ export const APPLICABILITY: Partial<Record<DatasetKey, Record<string, Applicabil
       applies: groupsWithValue('type', 'retro'),
       scope: 'Transaction types that track retro adjustments',
     },
+    leaveReason: { applies: each((r) => r.type === 'Leave start'), scope: 'Leave starts' },
+    expectedReturnDate: { applies: each((r) => r.type === 'Leave start'), scope: 'Leave starts' },
   },
   reviews: {
     // Potential is assessed in some cycles only (usually the annual one).
@@ -210,6 +214,57 @@ export const APPLICABILITY: Partial<Record<DatasetKey, Record<string, Applicabil
     promotionPct: { applies: each(() => true), scope: 'All employees', blankOk: true },
     lastIncreaseDate: { applies: each(() => true), scope: 'All employees', blankOk: true },
     lastIncreasePct: { applies: each(() => true), scope: 'All employees', blankOk: true },
+  },
+  hiringPlan: {
+    // A planned role often has no requisition or position number yet.
+    reqId: { applies: each(() => true), scope: 'All plan lines', blankOk: true },
+    positionId: { applies: each(() => true), scope: 'All plan lines', blankOk: true },
+    planVersion: { applies: each(() => true), scope: 'All plan lines', blankOk: true },
+  },
+  onboardingTasks: {
+    // One of the two names the person: the other is blank by design.
+    employeeId: { applies: each((r) => !has(r.applicationId)), scope: 'Tasks without an application ID' },
+    applicationId: { applies: each((r) => !has(r.employeeId)), scope: 'Tasks without an employee ID' },
+    dueDate: { applies: each((r) => r.status !== 'Not needed'), scope: 'Tasks that are needed' },
+    completedDate: { applies: each((r) => r.status === 'Done'), scope: 'Tasks marked done' },
+  },
+  rightToWork: {
+    // Permanent authorization has no expiry; time-limited authorization must have one.
+    expiryDate: {
+      applies: each((r) => has(r.authorizationType) && r.authorizationType !== 'Permanent (no expiry)'),
+      scope: 'Time-limited authorizations',
+    },
+    reverificationStartedDate: {
+      applies: each((r) => has(r.expiryDate)),
+      scope: 'Authorizations with an expiry',
+      blankOk: true,
+    },
+    // Form I-9 is US only; the roster's work site decides, which this table can't see.
+    i9Section1Date: { applies: each(() => true), scope: 'US employees', blankOk: true },
+    i9Section2Date: { applies: each(() => true), scope: 'US employees', blankOk: true },
+    exportLicenseStatus: {
+      applies: each((r) => r.exportLicenseRequired === true),
+      scope: 'Roles that need a license',
+    },
+    exportLicenseExpiry: {
+      applies: each((r) => r.exportLicenseStatus === 'Approved'),
+      scope: 'Approved licenses',
+    },
+  },
+  surveyResponses: {
+    // The Survey items sheet can name the driver instead.
+    driver: { applies: each(() => true), scope: 'All answers', blankOk: true },
+    reason: { applies: each(() => true), scope: 'All answers', blankOk: true },
+    subjectKey: { applies: each(() => true), scope: 'All answers', blankOk: true },
+    touchpoint: {
+      applies: each((r) => r.survey === 'Candidate experience'),
+      scope: 'Candidate experience answers',
+    },
+  },
+  surveyItems: {
+    survey: { applies: each(() => true), scope: 'All items', blankOk: true },
+    text: { applies: each(() => true), scope: 'All items', blankOk: true },
+    target: { applies: each(() => true), scope: 'All items', blankOk: true },
   },
 }
 

@@ -179,8 +179,9 @@ describe('findings drill to the records behind their headline number', () => {
   it('lacking a next step and offer acceptance', () => {
     expect(resolve(f('rec-lacking-next-step').drill)!.rows.length).toBe(kpi('lacking-next-step').value)
     const acc = resolve(f('rec-offer-acceptance').drill)!
-    expect(acc.rows).toHaveLength(85)
-    expect(extras(acc).filter((x) => x.offerOutcome === 'Accepted')).toHaveLength(58)
+    // 107 of 157 since the sample planted the offers accepted for its Q4 starts (README, Onboarding).
+    expect(acc.rows).toHaveLength(157)
+    expect(extras(acc).filter((x) => x.offerOutcome === 'Accepted')).toHaveLength(107)
     expect(acc.title).toBe('Offers resolved in Q3 2026')
   })
 

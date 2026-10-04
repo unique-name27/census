@@ -10,6 +10,9 @@
  * `metrics` is the metric dictionary with your changes (docs/METRICS.md): engines read every
  * calculation setting through `ctx.metrics.param(id, key)`, and the quality index uses the data
  * quality rules it holds. It is rebuilt only when the dictionary changes.
+ *
+ * Every dataset key is always present in `data` and `all` (an empty list when nothing is
+ * loaded), including datasets added after rows were saved in this browser.
  */
 import { createContext, type ReactNode, use, useMemo } from 'react'
 import { defaultMetrics, metricsApi } from '@/metrics/api'
@@ -22,7 +25,7 @@ import { type DataStandard, DEFAULT_STANDARD } from './quality/tier'
 import type { DatasetVersion, QualityIndex } from './quality/types'
 import { applyReferenceMappings, targetRefs } from './reference/apply'
 import type { AppliedReference, ReferenceMapping } from './reference/types'
-import type { DatasetKey, Datasets, ISODate } from './schema'
+import { type DatasetKey, type Datasets, type ISODate, withAllDatasets } from './schema'
 import {
   buildOrgIndex,
   type Filters,
@@ -65,6 +68,10 @@ export interface AnalyticsContext {
   isSample: boolean
   /** Pay amounts may be shown and exported. */
   showPay: boolean
+  /** Work authorization types may be shown per person and exported (session only). */
+  showImmigration: boolean
+  /** Feature switches from Settings that change what a view shows. */
+  features: Features
   /** Tiers of every dataset and field, with explanations. */
   quality: QualityIndex
   /** The lowest tier the dashboard shows. */
@@ -73,6 +80,12 @@ export interface AnalyticsContext {
   /** The metric dictionary: wording, targets and the calculation settings engines read. */
   metrics: MetricsApi
 }
+
+export interface Features {
+  /** Engagement and eNPS surveys show in Listening (Settings > Privacy; off by default). */
+  engagementSurveys: boolean
+}
+const NO_FEATURES: Features = { engagementSurveys: false }
 
 const NO_MAPPINGS: readonly ReferenceMapping[] = []
 
@@ -147,6 +160,10 @@ export function buildContext(args: {
   filters: Filters
   asOfOverride: ISODate | null
   showPay: boolean
+  /** Off when not given. */
+  showImmigration?: boolean
+  /** Every switch off when not given. */
+  features?: Features
   today?: ISODate
   /** Version records per dataset; tests may leave them out (every dataset is then bronze). */
   versions?: Partial<Record<DatasetKey, DatasetVersion | null>>
@@ -160,7 +177,7 @@ export function buildContext(args: {
 }): AnalyticsContext {
   const { sources, filters, asOfOverride, showPay } = args
   const metrics = args.metrics ?? defaultMetrics()
-  const applied = args.applied ?? referenceLayer(args.data, args.mappings ?? NO_MAPPINGS)
+  const applied = args.applied ?? referenceLayer(withAllDatasets(args.data), args.mappings ?? NO_MAPPINGS)
   const all = applied.datasets
   const isSample = Object.values(sources).every((s) => s.kind === 'sample')
   const asOf = contextAsOf({ data: args.data, sources, asOfOverride, today: args.today })
@@ -187,6 +204,8 @@ export function buildContext(args: {
     sources,
     isSample,
     showPay,
+    showImmigration: args.showImmigration ?? false,
+    features: args.features ?? NO_FEATURES,
     quality: args.quality ?? qualityFor(applied, versions, asOf, qualityRulesOf(metrics)),
     standard: args.standard ?? DEFAULT_STANDARD,
     reference: summaryOf(applied),
@@ -202,12 +221,15 @@ export function AnalyticsProvider({ children }: { children: ReactNode }) {
   const filters = useCensus((s) => s.filters)
   const asOfOverride = useCensus((s) => s.asOfOverride)
   const showPay = useCensus((s) => s.showPay)
+  const showImmigration = useCensus((s) => s.showImmigration)
+  const engagementSurveys = useCensus((s) => s.engagementSurveys)
   const versions = useCensus((s) => s.versions)
   const mappings = useCensus((s) => s.reference.mappings)
   const standard = useCensus((s) => s.dataStandard)
   const metricsState = useCensus((s) => s.metrics)
   // Layers that don't depend on filters, so a filter change only rescopes.
-  const applied = useMemo(() => referenceLayer(data, mappings), [data, mappings])
+  const applied = useMemo(() => referenceLayer(withAllDatasets(data), mappings), [data, mappings])
+  const features = useMemo<Features>(() => ({ engagementSurveys }), [engagementSurveys])
   const asOf = useMemo(() => contextAsOf({ data, sources, asOfOverride }), [data, sources, asOfOverride])
   // One dictionary object per dictionary state; the rules object only changes with a rule's value.
   const metrics = useMemo(() => metricsApi(metricsState), [metricsState])
@@ -221,13 +243,28 @@ export function AnalyticsProvider({ children }: { children: ReactNode }) {
         filters,
         asOfOverride,
         showPay,
+        showImmigration,
+        features,
         versions,
         applied,
         standard,
         quality,
         metrics,
       }),
-    [data, sources, filters, asOfOverride, showPay, versions, applied, standard, quality, metrics],
+    [
+      data,
+      sources,
+      filters,
+      asOfOverride,
+      showPay,
+      showImmigration,
+      features,
+      versions,
+      applied,
+      standard,
+      quality,
+      metrics,
+    ],
   )
   return <Ctx value={value}>{children}</Ctx>
 }

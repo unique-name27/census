@@ -64,6 +64,25 @@ export interface ServicesSettings {
   /** The target in force for each Atlas measure in the scorecard. */
   levelTargets: Readonly<Record<ServiceLevelId, number>>
   atRisk: AtRiskBands
+  /** Leave & return: look-ahead, horizons and readout thresholds. */
+  leave: LeaveSettings
+}
+
+export interface LeaveSettings {
+  /** Planned returns within this many days after the as-of date are upcoming. */
+  aheadDays: number
+  /** An upcoming return this close without systems ready is critical. */
+  urgentDays: number
+  /** Months after a return a person must still be employed (retention cohort horizon). */
+  retentionMonths: number
+  /** Retention after return target (share). */
+  retentionTarget: number
+  /** An exit this many months or fewer after a return counts as soon after returning. */
+  soonMonths: number
+  /** Fewest returners in a group for the retention finding. */
+  minReturners: number
+  /** Share of soon leavers in one department, and the fewest leavers, for the concentration finding. */
+  cluster: { minShare: number; minLeavers: number }
 }
 
 type Reader = Pick<MetricsApi, 'num' | 'target'>
@@ -122,6 +141,15 @@ export function servicesSettings(m: Reader): ServicesSettings {
       pts: n(M.levelStatus, 'atRiskPts'),
       daysShare: n(M.levelStatus, 'atRiskDaysShare'),
       ceilingShare: n(M.levelStatus, 'atRiskCeilingShare'),
+    },
+    leave: {
+      aheadDays: n(M.returnsSoon, 'aheadDays'),
+      urgentDays: n(M.returnsSoon, 'urgentDays'),
+      retentionMonths: n(M.retention, 'months'),
+      retentionTarget: t(M.retention, DEFAULTS.retentionTarget),
+      soonMonths: n(M.exitsAfterReturn, 'months'),
+      minReturners: n(M.retentionLow, 'minReturners'),
+      cluster: { minShare: n(M.exitCluster, 'minShare'), minLeavers: n(M.exitCluster, 'minLeavers') },
     },
   }
 }

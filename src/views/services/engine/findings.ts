@@ -365,7 +365,8 @@ function newHireReadiness(x: FindingInputs): Ranked[] {
       people: late.slice(0, 50).map(personOfTx),
       peopleTotal: late.length > 50 ? late.length : undefined,
       filter: sites.length ? { location: sites.map((s) => s.location) } : undefined,
-      tab: 'transactions',
+      // The ON-03 service level; readiness by site itself is on Onboarding, First 90 days.
+      tab: 'levels',
       drill: drillWhen(x.scope, r.records, () =>
         onTimeDrill(x.scope, r.records, `New hires due, ${r.region}, ${x.scope.per}`),
       ),
@@ -395,7 +396,7 @@ function newHireReadiness(x: FindingInputs): Ranked[] {
       people: late.slice(0, 50).map(personOfTx),
       peopleTotal: late.length > 50 ? late.length : undefined,
       filter: { location: [s.location] },
-      tab: 'transactions',
+      tab: 'levels',
       drill: drillWhen(x.scope, s.records, () =>
         onTimeDrill(x.scope, s.records, `New hires due, ${s.location}, ${x.scope.per}`),
       ),

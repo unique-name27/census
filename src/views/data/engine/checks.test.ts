@@ -15,6 +15,11 @@ const empty = (): Datasets => ({
   succession: [],
   learning: [],
   comp: [],
+  hiringPlan: [],
+  onboardingTasks: [],
+  rightToWork: [],
+  surveyResponses: [],
+  surveyItems: [],
 })
 
 const sample: SourceMeta = { kind: 'sample', rowCount: 0 }

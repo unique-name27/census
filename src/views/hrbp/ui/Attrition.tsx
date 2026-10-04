@@ -9,6 +9,7 @@ import { openPerson } from '@/drill/store'
 import { formatDate } from '@/lib/dates'
 import { fmt } from '@/lib/format'
 import { TENURE_BANDS } from '@/lib/people'
+import { LinkedSurvey } from '@/views/listening/LinkedSurvey'
 import type { HrbpModel } from '../engine'
 import {
   COMPANY_SERIES,
@@ -350,6 +351,13 @@ export function Attrition({ m }: { m: HrbpModel }) {
           />
         </Figure>
       </Section>
+
+      <LinkedSurvey
+        survey="Exit survey"
+        id="hrbp-exit-survey"
+        title="What leavers say"
+        dek="One number from the exit survey, sent at notice of resignation. The reasons, regretted against other leavers and whether people would return are in Listening."
+      />
 
       <Section
         title="Who left"

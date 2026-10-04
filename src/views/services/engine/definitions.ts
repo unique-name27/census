@@ -39,7 +39,6 @@ export function servicesDefinitions(m: Pick<MetricsApi, 'def'>, cfg: ServicesSet
   const k = cfg.minGroup
   const def = (id: string, extra?: string | null) => metricDefinition(m, id, extra)
   const of05 = pctWords(cfg.levelTargets['of05-final-pay'])
-  const on03 = pctWords(cfg.levelTargets['on03-hire-day-minus-3'])
   const ds01 = pctWords(cfg.levelTargets['ds01-retro-share'])
   const payroll = hours(cfg.caseTargets.resolution.get('Payroll'))
   const leave = hours(cfg.caseTargets.resolution.get('Leave & accommodation'))
@@ -63,7 +62,6 @@ export function servicesDefinitions(m: Pick<MetricsApi, 'def'>, cfg: ServicesSet
       M.finalPay,
       `Target ${of05} (Atlas OF-05). Under ${pctWords(cfg.finalPay.floor)} is marked critical, as in the readout.`,
     ),
-    newHireReady: def(M.newHireReady, `Target ${on03} (Atlas ON-03).`),
     retro: def(
       M.retroShare,
       `Atlas DS-01 target: under ${ds01} of changes. The counts are in the table view.`,
@@ -120,6 +118,42 @@ export function servicesDefinitions(m: Pick<MetricsApi, 'def'>, cfg: ServicesSet
     hiddenCounts: {
       term: 'Hidden counts',
       text: `A count of cases or transactions behind fewer than ${k} people shows as "—", so a small scope cannot show that one of its members had, say, an immigration case.`,
+    },
+
+    /* leave and return */
+    onLeave: def(M.onLeave),
+    leaveLength: def(M.leaveLength),
+    returnsSoon: def(
+      M.returnsSoon,
+      `Look-ahead ${formatParamNumber(cfg.leave.aheadDays, { type: 'days' })}; critical within ${formatParamNumber(cfg.leave.urgentDays, { type: 'days' })}.`,
+    ),
+    systemsReady: def(M.systemsReady),
+    returnRate: def(M.returnRate),
+    retention: def(
+      M.retention,
+      `Horizon ${formatParamNumber(cfg.leave.retentionMonths, { type: 'months' })}. Target ${pctWords(cfg.leave.retentionTarget)}.`,
+    ),
+    exitsAfterReturn: def(
+      M.exitsAfterReturn,
+      `Within ${formatParamNumber(cfg.leave.soonMonths, { type: 'months' })} of the return.`,
+    ),
+    exitsDuringLeave: def(M.exitsDuringLeave),
+    returnSurvey: def(M.returnSurvey),
+    leavePairing: {
+      term: 'Leaves',
+      text: 'Each Leave start transaction is paired with the next Return from leave of the same person on or after it. A leave ends with that return, or when the person leaves the company first. A return entered ahead for a later date does not end the leave yet.',
+    },
+    leaveReasons: {
+      term: 'Leave reasons',
+      text: `The Atlas's nine leave categories, at category level only, with no medical or family detail. A reason appears only in grouped numbers, never beside a name: numbers cut by reason open as groups, and lists of people leave the reason out. Within a group a reason is named only when at least ${k} people share it and not everyone in the group does; the rest is "Other reasons".`,
+    },
+    leaveGroups: {
+      term: 'Small groups',
+      text: `A count, rate or median of leaves needs at least ${k} different people; otherwise it shows as "—" (hidden to protect anonymity). Groups behind fewer than ${k} people fold into "Other (k)", where k is the number of groups folded.`,
+    },
+    hrOnly: {
+      term: 'Shown to HR only',
+      text: 'Exits soon after a return and exits during a leave are listed for HR on this tab. They never appear by name in a finding, are left out of the People scorecard, and whole-view exports leave this tab out.',
     },
   } satisfies Record<string, Definition>
 }

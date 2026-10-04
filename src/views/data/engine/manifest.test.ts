@@ -30,9 +30,19 @@ const sampleSources = (data: Datasets): Record<DatasetKey, SourceMeta> =>
 describe('labels', () => {
   it('names the views a dataset feeds, in folder-tab order', () => {
     expect(feedsText(['talent', 'hrbp'])).toBe('People stats, Talent')
-    const all = ['comp', 'services', 'talent', 'org', 'hrbp', 'recruiting'] as const
-    expect(feedsText(all)).toBe('All six views')
-    expect(feedsLine(all)).toBe('Feeds all six views')
+    const all = [
+      'listening',
+      'compliance',
+      'comp',
+      'services',
+      'talent',
+      'org',
+      'hrbp',
+      'onboarding',
+      'recruiting',
+    ] as const
+    expect(feedsText(all)).toBe('All nine views')
+    expect(feedsLine(all)).toBe('Feeds all nine views')
     expect(feedsText(['comp', 'services', 'talent', 'hrbp', 'recruiting'])).toBe(
       'Recruiting, People stats, HR ops, Talent, Compensation',
     )
@@ -48,14 +58,18 @@ describe('labels', () => {
       feeds,
     })
     const text = Object.fromEntries(rows.map((r) => [r.key, r.feedsText]))
-    expect(text.jobChanges).toBe('People stats, Org chart, Talent, Compensation')
+    expect(text.jobChanges).toBe('Onboarding, People stats, Org chart, Talent, Compensation')
     expect(text.comp).toBe('Talent, Compensation')
-    expect(text.requisitions).toBe('Recruiting, Org chart')
+    expect(text.requisitions).toBe('Recruiting, Onboarding, Org chart, Listening')
     expect(text.reviews).toBe('People stats, Org chart, Talent, Compensation')
     // Recruiting reads requisitions and candidates only.
-    expect(text.employees).toBe('People stats, Org chart, HR ops, Talent, Compensation')
-    // Every view's declared datasets are listed as feeding it.
-    for (const v of VIEWS)
+    expect(text.employees).toBe(
+      'Onboarding, People stats, Org chart, HR ops, Talent, Compensation, Compliance, Listening',
+    )
+    expect(text.rightToWork).toBe('Compliance')
+    // Every view's declared datasets are listed as feeding it. The scorecard reads the views'
+    // summaries, not the datasets, so it is never listed.
+    for (const v of VIEWS.filter((x) => x.key !== 'scorecard'))
       for (const d of v.datasets) expect(rows.find((r) => r.key === d)?.feeds).toContain(v.key)
   })
 
@@ -142,23 +156,30 @@ describe('the sample company in the Data room', () => {
   it('lists all ten datasets with their sample row counts', () => {
     expect(rows.map((r) => r.key)).toEqual(DATASET_KEYS)
     expect(Object.fromEntries(rows.map((r) => [r.key, r.rows]))).toEqual({
-      employees: 2055,
+      // Grown with the sample's onboarding, compliance and listening data (src/data/sample/README.md):
+      // 25 pre-hires, the offers accepted for the Q4 starts and the returns from leave.
+      employees: 2080,
       jobChanges: 1797,
-      requisitions: 556,
-      candidates: 9279,
+      requisitions: 597,
+      candidates: 9975,
       cases: 6676,
-      transactions: 3526,
+      transactions: 3550,
       reviews: 5169,
       succession: 90,
       learning: 10984,
       comp: 1450,
+      hiringPlan: 312,
+      onboardingTasks: 5472,
+      rightToWork: 1682,
+      surveyResponses: 19963,
+      surveyItems: 40,
     })
-    expect(manifestSummary(rows).text).toBe('41,582 rows across 10 datasets')
-    expect(manifestSummary(rows).totalRows).toBe(41_582)
+    expect(manifestSummary(rows).text).toBe(`69,837 rows across ${DATASET_KEYS.length} datasets`)
+    expect(manifestSummary(rows).totalRows).toBe(69_837)
   })
 
   it('finds every required field filled and nothing to flag', () => {
-    for (const r of rows) {
+    for (const r of rows.filter((x) => x.rows > 0)) {
       for (const f of r.coverage.fields.filter((x) => x.requirement === 'required'))
         expect(f.share, `${r.key}.${f.key}`).toBe(1)
       expect(r.checks, r.key).toEqual([])
@@ -174,13 +195,14 @@ describe('the sample company in the Data room', () => {
     expect(field('employees', 'terminationReason')).toMatchObject({ expected: 497, share: 1 })
     expect(field('employees', 'regrettable')).toMatchObject({ expected: 347, filled: 347, share: 1 })
     // The CEO has no manager by design.
-    expect(field('employees', 'managerId')).toMatchObject({ expected: 2054, filled: 2054, share: 1 })
-    expect(field('candidates', 'offerDate')).toMatchObject({ expected: 641, filled: 641 })
-    expect(field('candidates', 'coordinator')).toMatchObject({ expected: 1800, filled: 1800 })
-    expect(field('candidates', 'hiredDate')).toMatchObject({ expected: 525, filled: 525 })
-    expect(field('candidates', 'rejectedDate')).toMatchObject({ expected: 8297, filled: 8297 })
-    expect(field('requisitions', 'filledDate')).toMatchObject({ expected: 399, filled: 399 })
-    expect(field('requisitions', 'closedDate')).toMatchObject({ expected: 427, filled: 427 })
+    expect(field('employees', 'managerId')).toMatchObject({ expected: 2079, filled: 2079, share: 1 })
+    expect(field('candidates', 'offerDate')).toMatchObject({ expected: 715, filled: 715 })
+    expect(field('candidates', 'coordinator')).toMatchObject({ expected: 1952, filled: 1952 })
+    // Accepted offers, the two reneges included.
+    expect(field('candidates', 'hiredDate')).toMatchObject({ expected: 576, filled: 576 })
+    expect(field('candidates', 'rejectedDate')).toMatchObject({ expected: 8944, filled: 8944 })
+    expect(field('requisitions', 'filledDate')).toMatchObject({ expected: 440, filled: 440 })
+    expect(field('requisitions', 'closedDate')).toMatchObject({ expected: 468, filled: 468 })
     expect(field('jobChanges', 'fromManagerId')).toMatchObject({ expected: 1034, filled: 1034 })
     expect(field('succession', 'readiness')).toMatchObject({ expected: 84, filled: 84 })
     expect(rows.find((r) => r.key === 'employees')?.coverage.core).toBe(1)
@@ -199,8 +221,9 @@ describe('the sample company in the Data room', () => {
     ])
   })
 
-  it('reports coverage as a finite share for every dataset', () => {
-    for (const r of rows) {
+  it('reports coverage as a finite share for every dataset with rows, and none without', () => {
+    for (const r of rows.filter((x) => x.rows === 0)) expect(r.coverage.core, r.key).toBeNull()
+    for (const r of rows.filter((x) => x.rows > 0)) {
       expect(Number.isFinite(r.coverage.core)).toBe(true)
       expect(r.coverage.core).toBeGreaterThan(0.9)
       expect(r.coverage.core).toBeLessThanOrEqual(1)
@@ -228,7 +251,7 @@ describe('the sample company in the Data room', () => {
 
   it('exports the manifest and every field without values', () => {
     const m = manifestExportRows(rows)
-    expect(m).toHaveLength(10)
+    expect(m).toHaveLength(DATASET_KEYS.length)
     expect(Object.keys(m[0])).toEqual(MANIFEST_COLUMNS.map((c) => c.key))
     const cov = coverageExportRows(rows)
     expect(cov).toHaveLength(rows.reduce((a, r) => a + r.coverage.fields.length, 0))

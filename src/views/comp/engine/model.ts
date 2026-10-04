@@ -328,6 +328,21 @@ export function computeComp(ctx: AnalyticsContext, settings?: CycleSettings): Co
   }
 }
 
+const cache = new WeakMap<AnalyticsContext, CompModel>()
+
+/**
+ * The model for an analytics context with the settings in force, built once per context (the
+ * view, the Scorecard and the Action center share it).
+ */
+export function compModel(ctx: AnalyticsContext): CompModel {
+  let m = cache.get(ctx)
+  if (!m) {
+    m = computeComp(ctx)
+    cache.set(ctx, m)
+  }
+  return m
+}
+
 /** Folder-tab headline: median compa-ratio of the scope. Cheap: one pass over comp rows. */
 export function compaHeadline(ctx: AnalyticsContext): number | null {
   const pop = buildPopulation(

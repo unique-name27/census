@@ -8,15 +8,19 @@ import { autoMap } from '../../import/automap'
 import { sheetFromRows } from '../../import/sheet'
 import type { ImportResult, Mapping, ParsedSheet } from '../../import/types'
 import type { SampleSeed, SampleSeedEntry } from '../../quality/seed'
-import { type DatasetKey, type Datasets, datasetDef, type Employee } from '../../schema'
+import { type Candidate, type DatasetKey, type Datasets, datasetDef, type Employee } from '../../schema'
 import { cachedSample } from '..'
 import type { RawExtract } from './extract'
 import { candidatesExtract } from './extracts/candidates'
 import { casesExtract } from './extracts/cases'
+import { hiringPlanExtract } from './extracts/hiringPlan'
 import { jobChangesExtract } from './extracts/jobChanges'
 import { learningExtract } from './extracts/learning'
+import { onboardingTasksExtract } from './extracts/onboardingTasks'
 import { requisitionsExtract } from './extracts/requisitions'
+import { rightToWorkExtract } from './extracts/rightToWork'
 import { successionExtract } from './extracts/succession'
+import { surveyItemsExtract, surveyResponsesExtract } from './extracts/surveys'
 import { transactionsExtract } from './extracts/transactions'
 import { RAW_DATASETS, type RawDataset } from './plan'
 import { certify, goldRows, rawEntryMeta, type StarterSample } from './starter'
@@ -29,6 +33,11 @@ const EXTRACTS: { [K in RawDataset]: (base: Datasets) => RawExtract<K> } = {
   transactions: transactionsExtract,
   succession: successionExtract,
   learning: learningExtract,
+  hiringPlan: hiringPlanExtract,
+  onboardingTasks: onboardingTasksExtract,
+  rightToWork: rightToWorkExtract,
+  surveyResponses: surveyResponsesExtract,
+  surveyItems: surveyItemsExtract,
 }
 
 /** The raw extract of one dataset, built from the clean sample (with the certified gaps applied). */
@@ -42,10 +51,14 @@ export interface ImportedExtract<K extends DatasetKey = DatasetKey> {
   result: ImportResult<K>
 }
 
-/** Read an extract the way the Data room reads an upload: header detection, auto-mapping, import. */
+/**
+ * Read an extract the way the Data room reads an upload: header detection, auto-mapping, import.
+ * Accepted candidates give onboarding tasks keyed by application ID their start dates.
+ */
 export function importExtract<K extends DatasetKey>(
   extract: RawExtract<K>,
   roster: readonly Employee[],
+  candidates?: readonly Candidate[],
 ): ImportedExtract<K> {
   const sheet = sheetFromRows(extract.sheetName, extract.aoa)
   if (!sheet) throw new Error(`The ${extract.dataset} extract has no rows.`)
@@ -56,6 +69,7 @@ export function importExtract<K extends DatasetKey>(
     def,
     mapping,
     roster: extract.dataset === 'employees' ? undefined : roster,
+    candidates: extract.dataset === 'onboardingTasks' ? candidates : undefined,
   })
   return { extract, sheet, mapping, result }
 }
@@ -110,7 +124,7 @@ export function buildMessySample(base: Datasets = cachedSample()): MessySample {
   const entries = seed as Partial<Record<DatasetKey, SampleSeedEntry>>
   const data: Record<DatasetKey, unknown> = { ...gold }
   for (const key of RAW_DATASETS) {
-    const imp: ImportedExtract = importExtract(rawExtract(key, gold), gold.employees)
+    const imp: ImportedExtract = importExtract(rawExtract(key, gold), gold.employees, gold.candidates)
     imports[key] = imp
     entries[key] = importedEntry(key, imp)
     data[key] = imp.result.rows
@@ -140,7 +154,11 @@ export async function completeMessySample(
   const entries = seed as Partial<Record<DatasetKey, SampleSeedEntry>>
   for (const key of RAW_DATASETS) {
     await nextTask()
-    const imp: ImportedExtract = importExtract(rawExtract(key, gold), starter.data.employees)
+    const imp: ImportedExtract = importExtract(
+      rawExtract(key, gold),
+      starter.data.employees,
+      starter.data.candidates,
+    )
     entries[key] = importedEntry(key, imp, starter.data[key])
   }
   return seed

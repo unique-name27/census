@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { useAnalytics } from '@/data/context'
-import { computeTalent } from '../engine'
+import { talentModel } from '../engine'
 import { LearningTab } from './LearningTab'
 import { OverviewTab } from './OverviewTab'
 import { PerformanceTab } from './PerformanceTab'
@@ -9,7 +9,7 @@ import { SuccessionTab } from './SuccessionTab'
 
 export function TalentView({ tab }: { tab: string }) {
   const ctx = useAnalytics()
-  const model = useMemo(() => computeTalent(ctx), [ctx])
+  const model = useMemo(() => talentModel(ctx), [ctx])
   switch (tab) {
     case 'performance':
       return <PerformanceTab m={model} />

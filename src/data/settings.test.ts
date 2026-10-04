@@ -56,6 +56,7 @@ describe('settings', () => {
       },
     })
     expect(s).toEqual({
+      engagementSurveys: false,
       theme: 'system',
       textSize: 'lg',
       motion: 'reduce',
@@ -198,6 +199,26 @@ describe('settings', () => {
       ok: false,
       error: 'The file holds no settings Census can use.',
     })
+  })
+})
+
+describe('the engagement surveys switch', () => {
+  it('is off by default, only true when saved as true, and travels in the settings file', () => {
+    expect(DEFAULT_SETTINGS.engagementSurveys).toBe(false)
+    expect(sanitizeSettings({ engagementSurveys: 'yes' }).engagementSurveys).toBe(false)
+    expect(sanitizeSettings({ engagementSurveys: true }).engagementSurveys).toBe(true)
+    const storage = new MemoryStorage()
+    saveSettings({ ...DEFAULT_SETTINGS, engagementSurveys: true }, storage)
+    expect(loadSettings(storage).engagementSurveys).toBe(true)
+    const file = { kind: 'census-settings', version: 1, settings: { engagementSurveys: true } }
+    const r = parseSettingsFile(file, DEFAULT_SETTINGS)
+    expect(r.ok && r.settings.engagementSurveys).toBe(true)
+    expect(r.ok && r.applied).toEqual(['engagementSurveys'])
+    const bad = parseSettingsFile(
+      { ...file, settings: { engagementSurveys: 1, theme: 'dark' } },
+      DEFAULT_SETTINGS,
+    )
+    expect(bad.ok && bad.settings.engagementSurveys).toBe(false)
   })
 })
 

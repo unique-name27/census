@@ -3,6 +3,7 @@
  * and free of the views' registries (the assembled catalog is in `./catalog`).
  */
 import { isFieldRef } from '@/data/quality/fieldRef'
+import { VIEW_LABEL } from '@/data/schema'
 import { sameParam, validateParam } from './params'
 import type { MetricDef, MetricField, MetricView, ParamDef, TextField } from './types'
 import { TEXT_FIELDS } from './types'
@@ -75,14 +76,9 @@ export function withRequired(defs: readonly MetricDef[], required: readonly Metr
 
 /** Tab labels, for the dictionary page and its export. */
 export const METRIC_VIEW_LABEL: Record<MetricView, string> = {
-  recruiting: 'Recruiting',
-  hrbp: 'People stats',
-  org: 'Org chart',
-  services: 'HR ops',
-  talent: 'Talent',
-  comp: 'Compensation',
-  ai: 'AI in HR',
+  ...VIEW_LABEL,
   data: 'Data room',
+  actions: 'Action center',
 }
 
 const VIEWS = Object.keys(METRIC_VIEW_LABEL) as MetricView[]

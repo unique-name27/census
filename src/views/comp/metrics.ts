@@ -150,6 +150,8 @@ export const metrics: MetricDef[] = defineMetrics('comp', [
     window: SNAPSHOT,
     unit: 'pct',
     goodDirection: 'up',
+    // A common benchmark: four in five people paid inside the healthy band.
+    target: { value: 0.8, comparator: '>=' },
     uses: COMPA,
     owner: REWARDS,
     params: [
@@ -245,6 +247,7 @@ export const metrics: MetricDef[] = defineMetrics('comp', [
     window: SNAPSHOT,
     unit: 'pct',
     goodDirection: 'down',
+    target: { value: 0.02, comparator: '<=' },
     // The readout lists each person's department and where the gap concentrates.
     uses: refs(POSITION, ANY_GROUP, FX),
     owner: OWNER,

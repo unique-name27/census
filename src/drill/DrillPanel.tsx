@@ -23,7 +23,7 @@ import { PersonCard } from './PersonCard'
 import { buildDrillTable, DRILLS_KEY, drillNoun, drillTableHint, ROW_KEY, rowPerson } from './records'
 import { useDrillStore } from './store'
 import { drillTier } from './tier'
-import type { DrillSpec } from './types'
+import { type DrillSpec, drillDataset } from './types'
 
 /**
  * The tier of the drilled number (from the spec's `uses`), or of the dataset the records come
@@ -34,7 +34,9 @@ function RecordsTier({ spec }: { spec: DrillSpec }) {
   const t = drillTier(quality, spec)
   return (
     <span className="flex shrink-0 items-center gap-1.5">
-      {t.ofDataset && <span className="text-[12px] text-muted">{datasetDef(spec.kind).label} data</span>}
+      {t.ofDataset && (
+        <span className="text-[12px] text-muted">{datasetDef(drillDataset(spec.kind)).label} data</span>
+      )}
       <TierBadge tier={t.tier} explain={t.explain} dataset={t.dataset} />
     </span>
   )
@@ -176,6 +178,24 @@ function RecordsView({ spec, from }: { spec: DrillSpec; from: string | null }) {
       {!ctx.showPay && spec.kind === 'comp' && (
         <p className="text-[12px] text-muted">
           Pay amounts are hidden. Switch on "Show pay amounts" in Settings or in Compensation to include them.
+        </p>
+      )}
+      {!ctx.showImmigration && spec.kind === 'rightToWork' && (
+        <p className="text-[12px] text-muted">
+          Authorization types are hidden. Switch on "Show immigration details" in Settings, Privacy to include
+          them for this session.
+        </p>
+      )}
+      {(spec.kind === 'surveyGroups' || spec.kind === 'surveyResponses') && (
+        <p className="text-[12px] text-muted">
+          Survey results open as groups, never as one person's answers. Groups under the anonymity minimum
+          show counts only.
+        </p>
+      )}
+      {spec.kind === 'leaveGroups' && (
+        <p className="text-[12px] text-muted">
+          Leave numbers by reason open as groups, never as named people, so a leave reason is never shown
+          beside a name. Groups under the anonymity minimum show no counts.
         </p>
       )}
       <DataTable

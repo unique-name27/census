@@ -17,7 +17,7 @@ import { Button } from '@/components/ui'
 import { useAnalytics } from '@/data/context'
 import { summarizeIssues } from '@/data/import/issues'
 import type { Tier } from '@/data/quality'
-import { DATASET_KEYS, type DatasetKey, type Datasets } from '@/data/schema'
+import { DATASET_KEYS, DATASETS, type DatasetKey, type Datasets } from '@/data/schema'
 import { useCensus } from '@/data/store'
 import { VIEWS } from '@/views/registry'
 import {
@@ -138,7 +138,7 @@ function DatasetsTab({
         <Figure
           id="data-manifest"
           title="Datasets"
-          subtitle={`Ten datasets feed the ${VIEW_COUNT_TEXT}. Replace any one with your own export; the others keep running on the sample. Open a row for its raw sheet, mapping, quality and certification.`}
+          subtitle={`${DATASETS.length} datasets feed the ${VIEW_COUNT_TEXT}; the hiring plan, onboarding tasks, right to work and survey sheets are optional. Replace any one with your own export; the others keep running on the sample. Open a row for its raw sheet, mapping, quality and certification.`}
           data={summaryRows}
           columns={manifestColumns(rows, ctx.all)}
           definitions={DEFINITIONS}

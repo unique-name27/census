@@ -69,6 +69,11 @@ export function datasets(partial: Partial<Datasets> = {}): Datasets {
     succession: [],
     learning: [],
     comp: [],
+    hiringPlan: [],
+    onboardingTasks: [],
+    rightToWork: [],
+    surveyResponses: [],
+    surveyItems: [],
     ...partial,
   }
 }

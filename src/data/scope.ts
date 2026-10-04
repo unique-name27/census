@@ -7,10 +7,21 @@
  *  - cases by requesterId (or the case's own location when the requester is unknown);
  *  - requisitions by their own org fields, with the leader filter matching the hiring manager;
  *  - candidates by their requisition;
- *  - succession plans by the incumbent.
+ *  - succession plans by the incumbent;
+ *  - right to work by employeeId; onboarding tasks and survey answers by their person (the
+ *    employee, else the candidate's requisition);
+ *  - hiring plan lines by their own org fields (see `planMatcher`);
+ *  - survey items (reference data) are never scoped.
  */
 import { addDays, addMonths, formatRange, iso, monthEnd, ms, quarterStart } from '@/lib/dates'
-import type { Datasets, Employee, ISODate, Requisition } from './schema'
+import {
+  type Datasets,
+  type Employee,
+  type HiringPlanLine,
+  type ISODate,
+  type Requisition,
+  withAllDatasets,
+} from './schema'
 
 /* ───────────── periods ───────────── */
 
@@ -194,8 +205,42 @@ function reqMatcher(filters: Filters, index: OrgIndex): (r: Requisition | undefi
   }
 }
 
+/**
+ * Plan lines in scope: by their own org fields like requisitions. A leader filter keeps lines
+ * linked to a requisition in scope, and lines for a business unit and department where the
+ * leader's org (current and former people) works.
+ */
+function planMatcher(
+  filters: Filters,
+  index: OrgIndex,
+  reqIds: ReadonlySet<string>,
+): (p: HiringPlanLine) => boolean {
+  let depts: Set<string> | null = null
+  if (filters.leaderId) {
+    depts = new Set<string>()
+    for (const id of subtreeIds(index, filters.leaderId)) {
+      const e = index.byId.get(id)
+      if (e) depts.add(`${e.businessUnit}\u0001${e.department}`)
+    }
+  }
+  const bu = new Set(filters.businessUnit)
+  const dept = new Set(filters.department)
+  const loc = new Set(filters.location)
+  const lvl = new Set(filters.level)
+  return (p) => {
+    if (depts && !(p.reqId && reqIds.has(p.reqId)) && !depts.has(`${p.businessUnit}\u0001${p.department}`))
+      return false
+    if (bu.size && !bu.has(p.businessUnit)) return false
+    if (dept.size && !dept.has(p.department)) return false
+    if (loc.size && !loc.has(p.location ?? '')) return false
+    if (lvl.size && !lvl.has(p.level ?? '')) return false
+    return true
+  }
+}
+
 /** Apply the org filters to every dataset. Period filters are applied by each metric engine. */
-export function scopeDatasets(all: Datasets, filters: Filters, index: OrgIndex): Datasets {
+export function scopeDatasets(input: Datasets, filters: Filters, index: OrgIndex): Datasets {
+  const all = withAllDatasets(input)
   if (!hasOrgFilter(filters)) return all
   const empOk = employeeMatcher(filters, index)
   const byEmp = <T extends { employeeId: string }>(rows: T[]) =>
@@ -203,14 +248,30 @@ export function scopeDatasets(all: Datasets, filters: Filters, index: OrgIndex):
   const reqOk = reqMatcher(filters, index)
   const reqs = all.requisitions.filter(reqOk)
   const reqIds = new Set(reqs.map((r) => r.reqId))
+  const candidates = all.candidates.filter((c) => reqIds.has(c.reqId))
+  const appIds = new Set(candidates.map((c) => c.applicationId))
   const locOnly =
     !filters.leaderId && !filters.businessUnit.length && !filters.department.length && !filters.level.length
   const loc = new Set(filters.location)
+  // A task or survey answer follows its person: the employee when in the roster, else the
+  // candidate's requisition.
+  const personOk = (employeeId: string | null | undefined, applicationId: string | null | undefined) => {
+    const e = employeeId ? index.byId.get(employeeId) : undefined
+    if (e) return empOk(e)
+    return !!applicationId && appIds.has(applicationId)
+  }
+  const planOk = planMatcher(filters, index, reqIds)
   return {
     employees: all.employees.filter(empOk),
     jobChanges: byEmp(all.jobChanges),
     requisitions: reqs,
-    candidates: all.candidates.filter((c) => reqIds.has(c.reqId)),
+    candidates,
+    hiringPlan: all.hiringPlan.filter(planOk),
+    onboardingTasks: all.onboardingTasks.filter((t) => personOk(t.employeeId, t.applicationId)),
+    rightToWork: byEmp(all.rightToWork),
+    surveyResponses: all.surveyResponses.filter((r) => personOk(r.respondentKey, r.respondentKey)),
+    // Reference data: what each item measures, the same for every org.
+    surveyItems: all.surveyItems,
     cases: all.cases.filter((c) => {
       const e = c.requesterId ? index.byId.get(c.requesterId) : undefined
       if (e) return empOk(e)

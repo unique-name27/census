@@ -142,3 +142,48 @@ describe('applicability table', () => {
     }
   })
 })
+
+describe('fields added for onboarding, compliance and listening', () => {
+  it('ask for an expiry only on time-limited authorization', () => {
+    const rows: Row[] = [
+      { authorizationType: 'Permanent (no expiry)' },
+      { authorizationType: 'Employer-sponsored visa' },
+      { authorizationType: null },
+    ]
+    expect(which('rightToWork', 'expiryDate', rows)).toEqual([false, true, false])
+    expect(
+      which('rightToWork', 'exportLicenseStatus', [
+        { exportLicenseRequired: true },
+        { exportLicenseRequired: false },
+      ]),
+    ).toEqual([true, false])
+  })
+
+  it('ask for one person column per task, and a completed date only on done tasks', () => {
+    const rows: Row[] = [{ employeeId: 'E1' }, { applicationId: 'A1' }]
+    expect(which('onboardingTasks', 'employeeId', rows)).toEqual([true, false])
+    expect(which('onboardingTasks', 'applicationId', rows)).toEqual([false, true])
+    expect(
+      which('onboardingTasks', 'completedDate', [{ status: 'Done' }, { status: 'Not started' }]),
+    ).toEqual([true, false])
+  })
+
+  it('ask for a leave reason and return date on leave starts only, and a start date on accepted offers', () => {
+    expect(which('transactions', 'leaveReason', [{ type: 'Leave start' }, { type: 'Termination' }])).toEqual([
+      true,
+      false,
+    ])
+    expect(
+      which('candidates', 'startDate', [
+        { status: 'Hired' },
+        { status: 'Active' },
+        { status: 'Withdrawn', hiredDate: '2026-09-01' },
+      ]),
+    ).toEqual([true, false, true])
+  })
+
+  it('never lower a tier for blanks that are normal', () => {
+    expect(APPLICABILITY.surveyResponses?.driver?.blankOk).toBe(true)
+    expect(APPLICABILITY.hiringPlan?.reqId?.blankOk).toBe(true)
+  })
+})

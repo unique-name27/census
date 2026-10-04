@@ -261,6 +261,8 @@ export const metrics: MetricDef[] = defineMetrics('recruiting', [
     window: `${PERIOD} Reqs count in the period of their filled date.`,
     unit: 'days',
     goodDirection: 'down',
+    // A common benchmark for professional roles; the Scorecard judges the median against it.
+    target: { value: 45, comparator: '<=' },
     uses: FILLED_REQ,
     usesWhen: [AT_START],
     owner: OWNER,
@@ -289,6 +291,7 @@ export const metrics: MetricDef[] = defineMetrics('recruiting', [
     window: `${PERIOD} By quarter, the last 8 quarters.`,
     unit: 'pct',
     goodDirection: 'up',
+    target: { value: 0.85, comparator: '>=' },
     uses: OUTCOME,
     owner: OWNER,
     params: [

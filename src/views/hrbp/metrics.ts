@@ -132,6 +132,7 @@ export const SET = {
   materialAbsolute: ref(ID.material, 'absolute'),
   clusterMinExits: ref(ID.regrettedCluster, 'minExits'),
   clusterCriticalExits: ref(ID.regrettedCluster, 'criticalExits'),
+  clusterStayDays: ref(ID.regrettedCluster, 'stayWithinDays'),
   aboveGap: ref(ID.voluntaryAbove, 'gap'),
   aboveMinAvgHeadcount: ref(ID.voluntaryAbove, 'minAvgHeadcount'),
   aboveMinExits: ref(ID.voluntaryAbove, 'minExits'),
@@ -349,6 +350,8 @@ export const metrics: MetricDef[] = withSources(
       window: RATE_WINDOW,
       unit: 'pct',
       goodDirection: 'down',
+      // A common benchmark for technology employers; the Scorecard judges the rate against it.
+      target: { value: 0.1, comparator: '<=' },
       uses: uses(VOLUNTARY),
       owner: OWNER,
     },
@@ -362,6 +365,7 @@ export const metrics: MetricDef[] = withSources(
       window: RATE_WINDOW,
       unit: 'pct',
       goodDirection: 'down',
+      target: { value: 0.05, comparator: '<=' },
       uses: uses(REGRETTED),
       owner: OWNER,
       params: [
@@ -390,6 +394,7 @@ export const metrics: MetricDef[] = withSources(
         'The cohort hired 12 to 24 months before the as-of date, whatever the period. The change compares with the cohort a year earlier, or with the company under an org filter.',
       unit: 'pct',
       goodDirection: 'down',
+      target: { value: 0.15, comparator: '<=' },
       uses: uses(FIRST_YEAR),
       owner: OWNER,
       params: [
@@ -842,6 +847,17 @@ export const metrics: MetricDef[] = withSources(
           max: 30,
           step: 1,
           format: 'int',
+        },
+        {
+          key: SET.clusterStayDays.key,
+          label: 'Stay conversations due within',
+          description:
+            'In the Action center, stay conversations with the rest of a flagged team are due this many days after the latest regretted exit.',
+          type: 'days',
+          default: 30,
+          min: 7,
+          max: 120,
+          step: 1,
         },
       ],
     },

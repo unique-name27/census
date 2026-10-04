@@ -9,6 +9,7 @@ import {
   kpiRows,
   kpiValueText,
   SUPPRESSED_NOTE,
+  tileTarget,
   unitOf,
 } from './kpiModel'
 import type { TierGate } from './tier/tierModel'
@@ -202,6 +203,36 @@ describe('kpiRows with tiers', () => {
       value: null,
       tier: 'No data',
       note: 'No data: Employees termination reason is missing',
+    })
+  })
+})
+
+describe('tileTarget', () => {
+  const view = {
+    key: 'recruiting' as const,
+    tabs: [
+      { key: 'overview', label: 'Overview' },
+      { key: 'pipeline', label: 'Pipeline' },
+    ],
+  }
+
+  it('opens a tab of the view showing the tile, named by its label', () => {
+    expect(tileTarget(kpi({ tab: 'pipeline' }), view)).toEqual({
+      view: 'recruiting',
+      tab: 'pipeline',
+      label: 'Pipeline',
+    })
+    expect(tileTarget(kpi({ tab: 'pipeline' }), null)).toBeNull()
+    expect(tileTarget(kpi({}), view)).toBeNull()
+  })
+
+  it('opens a tab of another view when the tile carries a link, outside a view too', () => {
+    const link = { view: 'onboarding' as const, tab: 'plan', label: 'Onboarding, Hiring plan' }
+    expect(tileTarget(kpi({ tab: 'pipeline', link }), view)).toEqual(link)
+    expect(tileTarget(kpi({ link: { view: 'listening', label: 'Listening' } }), null)).toEqual({
+      view: 'listening',
+      tab: '',
+      label: 'Listening',
     })
   })
 })

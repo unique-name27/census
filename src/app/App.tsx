@@ -1,6 +1,7 @@
 /**
  * The Census shell: band (masthead + folder tabs), then for a view the filter row, the view header
- * and the view body; or the Data room. Owns theme, routing, tooltips and toasts.
+ * and the view body; or one of the masthead's pages (the Data room, the Action center). Owns
+ * theme, routing, tooltips and toasts.
  */
 import { MotionConfig, motion } from 'motion/react'
 import { useEffect } from 'react'
@@ -11,11 +12,13 @@ import { Toaster, toast } from '@/components/toast'
 import { TooltipProvider } from '@/components/ui'
 import { AnalyticsProvider, useAnalytics } from '@/data/context'
 import { SAMPLE_COMPANY } from '@/data/sample'
-import { useCensus } from '@/data/store'
+import { DATASET_KEYS, type ViewKey } from '@/data/schema'
+import { PAGE_VIEWS, useCensus } from '@/data/store'
 import { DrillPanel } from '@/drill'
+import { ActionCenter } from '@/views/actions'
 import { DataRoom } from '@/views/data'
 import { VIEWS, viewByKey } from '@/views/registry'
-import type { ViewDef } from '@/views/types'
+import { type ViewDef, withFeatureTabs } from '@/views/types'
 import { ViewErrorBoundary } from './ErrorBoundary'
 import { resolveTab } from './exportMeta'
 import { FilterBar } from './FilterBar'
@@ -28,9 +31,12 @@ import { VIEW_BODY_ID, ViewHeader } from './ViewHeader'
 
 const PAGE = 'mx-auto w-full max-w-[1440px] px-(--gutter)'
 
-function ViewPage({ view, requestedTab }: { view: ViewDef; requestedTab: string }) {
+function ViewPage({ view: registered, requestedTab }: { view: ViewDef; requestedTab: string }) {
   const filters = useCensus((s) => s.filters)
   const resetFilters = useCensus((s) => s.resetFilters)
+  // Tabs behind a Settings switch (Listening's Engagement) show only while it is on.
+  const engagementSurveys = useCensus((s) => s.engagementSurveys)
+  const view = withFeatureTabs(registered, { engagementSurveys })
   const tab = resolveTab(view.tabs, requestedTab)
   const hasSubTabs = view.tabs.length > 1
   return (
@@ -67,6 +73,37 @@ function ViewPage({ view, requestedTab }: { view: ViewDef; requestedTab: string 
   )
 }
 
+const ACTION_TABS = [{ key: 'open', label: 'Open items' }]
+
+/**
+ * The Action center page: the filter row (the leader filter is its "my team" mode), then the page
+ * itself, with a figure registry so its tables export like any view's.
+ */
+function ActionsPage({ requestedTab }: { requestedTab: string }) {
+  const filters = useCensus((s) => s.filters)
+  const resetFilters = useCensus((s) => s.resetFilters)
+  return (
+    <div>
+      <FilterBar />
+      <FigureRegistryProvider key="actions">
+        <CurrentViewProvider
+          value={{
+            key: 'actions',
+            label: 'Actions',
+            tabs: ACTION_TABS,
+            tab: resolveTab(ACTION_TABS, requestedTab),
+            datasets: DATASET_KEYS,
+          }}
+        >
+          <ViewErrorBoundary resetKey={`actions.${JSON.stringify(filters)}`} onResetFilters={resetFilters}>
+            <ActionCenter />
+          </ViewErrorBoundary>
+        </CurrentViewProvider>
+      </FigureRegistryProvider>
+    </div>
+  )
+}
+
 function Footer() {
   const { isSample } = useAnalytics()
   // The Data room header already says where files are kept; don't repeat it under the page.
@@ -94,7 +131,8 @@ function Footer() {
 function Shell() {
   useHashRouting()
   const route = useCensus((s) => s.route)
-  const view = route.view === 'data' ? null : (viewByKey.get(route.view) ?? VIEWS[0])
+  const page = PAGE_VIEWS.includes(route.view) ? route.view : null
+  const view = page ? null : (viewByKey.get(route.view as ViewKey) ?? VIEWS[0])
   return (
     <div className="flex min-h-dvh flex-col">
       <a
@@ -113,6 +151,8 @@ function Shell() {
         <div className={`${PAGE} pb-16`}>
           {view ? (
             <ViewPage view={view} requestedTab={route.tab} />
+          ) : page === 'actions' ? (
+            <ActionsPage requestedTab={route.tab} />
           ) : (
             <ViewErrorBoundary resetKey="data">
               <DataRoom />

@@ -6,6 +6,7 @@ import { drill, openPerson } from '@/drill'
 import { formatDate } from '@/lib/dates'
 import { fmt, plural } from '@/lib/format'
 import { targetStatus } from '@/metrics/api'
+import { LinkedSurvey } from '@/views/listening/LinkedSurvey'
 import type { TalentModel } from '../engine'
 import type { CourseRow, OverdueCell } from '../engine/learning'
 import { FIGURE_METRIC, TALENT_METRIC as M } from '../engine/settings'
@@ -225,6 +226,13 @@ export function LearningTab({ m }: { m: TalentModel }) {
           />
         </Figure>
       </Section>
+
+      <LinkedSurvey
+        survey="Training evaluation"
+        id="talent-training-evaluation"
+        title="What learners say"
+        dek="One number from the training evaluation, sent after a course. Usefulness and relevance by course are in Listening."
+      />
     </>
   )
 }

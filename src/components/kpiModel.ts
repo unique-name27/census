@@ -4,7 +4,9 @@
 import type { Column } from '@/charts/types'
 import { TIER_LABEL } from '@/data/quality/tier'
 import { MIN_GROUP } from '@/data/schema'
+import type { RouteView } from '@/data/store'
 import { DASH, type Format, fmt, fmtDelta, isNum, plural } from '@/lib/format'
+import type { CurrentView } from './currentView'
 import type { TierGate } from './tier/tierModel'
 import type { Kpi } from './types'
 
@@ -38,6 +40,26 @@ export function kpiValueText(k: Pick<Kpi, 'value' | 'format' | 'suppressed'>): s
 export function kpiDeltaText(k: Pick<Kpi, 'delta' | 'format' | 'suppressed'>): string | null {
   if (k.suppressed || !isNum(k.delta)) return null
   return fmtDelta(k.delta, k.format)
+}
+
+/** Where a tile opens: `view` and `tab`, and its name for the accessible label. */
+export interface TileTarget {
+  view: RouteView
+  tab: string
+  label: string
+}
+
+/**
+ * Where clicking a tile goes: another view's tab when it carries a `link`, else a tab of the
+ * view showing it (`tab`, named by that view's tab label); null when it opens nothing.
+ */
+export function tileTarget(
+  k: Pick<Kpi, 'tab' | 'link'>,
+  view: Pick<CurrentView, 'key' | 'tabs'> | null,
+): TileTarget | null {
+  if (k.link) return { view: k.link.view, tab: k.link.tab ?? '', label: k.link.label }
+  if (!k.tab || !view) return null
+  return { view: view.key, tab: k.tab, label: view.tabs.find((t) => t.key === k.tab)?.label ?? k.tab }
 }
 
 /** The unit a number in `format` is counted in, for the unit columns of exports. */

@@ -10,13 +10,13 @@ const sources = (uploaded: Partial<Record<DatasetKey, SourceMeta>> = {}) =>
   >
 
 describe('provenance', () => {
-  it('counts uploaded datasets out of ten', () => {
-    expect(uploadedCount(sources())).toEqual({ uploaded: 0, total: 10 })
+  it('counts uploaded datasets out of all of them', () => {
+    expect(uploadedCount(sources())).toEqual({ uploaded: 0, total: DATASET_KEYS.length })
     const s = sources({
       requisitions: { kind: 'upload', rowCount: 40, fileName: 'reqs.xlsx' },
       candidates: { kind: 'upload', rowCount: 900 },
     })
-    expect(uploadedCount(s)).toEqual({ uploaded: 2, total: 10 })
+    expect(uploadedCount(s)).toEqual({ uploaded: 2, total: DATASET_KEYS.length })
   })
 
   it('says "Sample data" when every dataset a view reads is sample', () => {

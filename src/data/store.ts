@@ -1,5 +1,5 @@
 /**
- * App state (Zustand). Holds the ten datasets with a version record each (mapping, import
+ * App state (Zustand). Holds every dataset with a version record each (mapping, import
  * counts, certification), your reference mappings, the settings, your metric dictionary changes
  * with their change log, the global filters and the route.
  *
@@ -72,7 +72,15 @@ import {
 } from './reference/state'
 import type { NewReferenceMapping, ReferenceState } from './reference/types'
 import { cachedSample, SAMPLE_AS_OF } from './sample'
-import { DATASET_KEYS, type DatasetKey, type Datasets, type ISODate, type ViewKey } from './schema'
+import {
+  DATASET_KEYS,
+  type DatasetKey,
+  type Datasets,
+  emptyDatasets,
+  type ISODate,
+  type ViewKey,
+  withAllDatasets,
+} from './schema'
 import { DEFAULT_FILTERS, type Filters, resolveAsOf } from './scope'
 import {
   type CompCycleSettings,
@@ -98,21 +106,31 @@ import { listenToTabs, postToTabs } from './tabSync'
 export type { SampleSeed, SampleSeedEntry, SampleSeedLoader } from './quality/seed'
 export type { ThemePref } from './settings'
 
-export type RouteView = ViewKey | 'data'
+/** A folder tab, or one of the two pages reached from the masthead: the Data room and Actions. */
+export type RouteView = ViewKey | 'data' | 'actions'
 export interface Route {
   view: RouteView
   tab: string
 }
 export const ROUTE_VIEWS: RouteView[] = [
+  'scorecard',
   'recruiting',
+  'onboarding',
   'hrbp',
   'org',
   'services',
   'talent',
   'comp',
+  'compliance',
+  'listening',
   'ai',
   'data',
+  'actions',
 ]
+/** The page Census opens on when the address names none. */
+export const HOME_VIEW: RouteView = 'scorecard'
+/** Pages reached from the masthead rather than a folder tab. */
+export const PAGE_VIEWS: readonly RouteView[] = ['data', 'actions']
 
 export interface SourceMeta {
   kind: 'sample' | 'upload'
@@ -163,6 +181,11 @@ export interface CensusState extends Settings {
   route: Route
   /** Pay amounts are shown and exported. In memory only: off on every load, never persisted. */
   showPay: boolean
+  /**
+   * Work authorization types show per person (drill rows, tables, exports). In memory only, like
+   * pay amounts: off on every load, never persisted. Aggregates are always shown.
+   */
+  showImmigration: boolean
   settingsOpen: SettingsRequest
   /** Your metric dictionary changes (wording, targets, settings) and their change log. */
   metrics: MetricsState
@@ -178,6 +201,9 @@ export interface CensusState extends Settings {
   resetFilters: () => void
   navigate: (view: RouteView, tab?: string, opts?: { scroll?: boolean }) => void
   setShowPay: (on: boolean) => void
+  setShowImmigration: (on: boolean) => void
+  /** Turn the engagement and eNPS surveys on or off in Listening (saved in this browser). */
+  setEngagementSurveys: (on: boolean) => void
 
   /* settings */
   setTheme: (t: ThemePref) => void
@@ -266,19 +292,6 @@ const LS = {
     }
   },
 }
-
-const emptyData = (): Datasets => ({
-  employees: [],
-  jobChanges: [],
-  requisitions: [],
-  candidates: [],
-  cases: [],
-  transactions: [],
-  reviews: [],
-  succession: [],
-  learning: [],
-  comp: [],
-})
 
 const perKey = <T>(make: (k: DatasetKey) => T): Record<DatasetKey, T> =>
   Object.fromEntries(DATASET_KEYS.map((k) => [k, make(k)])) as Record<DatasetKey, T>
@@ -463,8 +476,9 @@ export const useCensus = create<CensusState>((set, getState) => {
     return v
   }
 
-  const plain = sample
-  const empty = emptyData()
+  // Datasets the sample doesn't include yet start empty, so every key is always present.
+  const plain = (): Datasets => withAllDatasets(sample())
+  const empty = emptyDatasets()
 
   return {
     ...initialSettings,
@@ -478,8 +492,9 @@ export const useCensus = create<CensusState>((set, getState) => {
     history: perKey(() => []),
     reference: EMPTY_REFERENCE,
     filters: { ...DEFAULT_FILTERS, ...LS.get<Partial<Filters>>('filters', {}) },
-    route: parseHash(typeof location === 'undefined' ? '' : location.hash) ?? { view: 'recruiting', tab: '' },
+    route: parseHash(typeof location === 'undefined' ? '' : location.hash) ?? { view: HOME_VIEW, tab: '' },
     showPay: false,
+    showImmigration: false,
     settingsOpen: { open: false, section: null, nonce: 0 },
     metrics: initialMetrics,
     compCycle: cycleMirror(initialMetrics),
@@ -584,6 +599,10 @@ export const useCensus = create<CensusState>((set, getState) => {
     setShowPay(on) {
       set({ showPay: on })
     },
+    setShowImmigration(on) {
+      set({ showImmigration: on })
+    },
+    setEngagementSurveys: (engagementSurveys) => patchSettings({ engagementSurveys }),
 
     /* ───────────── settings ───────────── */
 
@@ -670,6 +689,7 @@ export const useCensus = create<CensusState>((set, getState) => {
         compCycle: cycleMirror(EMPTY_METRICS),
         filters: { ...DEFAULT_FILTERS },
         showPay: false,
+        showImmigration: false,
         storageUnavailable: false,
       })
       // Other open tabs start over too, so their next save doesn't bring anything back.

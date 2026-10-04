@@ -76,6 +76,11 @@ const empty = (): Datasets => ({
   succession: [],
   learning: [],
   comp: [],
+  hiringPlan: [],
+  onboardingTasks: [],
+  rightToWork: [],
+  surveyResponses: [],
+  surveyItems: [],
 })
 
 export function ctxOf(

@@ -15,6 +15,7 @@ import {
   type Datasets,
   type FieldDef,
   LEVELS,
+  VIEW_LABEL,
   type ViewKey,
 } from '../schema'
 
@@ -28,15 +29,7 @@ async function loadExcel(): Promise<ExcelModule> {
 
 const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 
-const VIEW_LABELS: Record<ViewKey, string> = {
-  recruiting: 'Recruiting',
-  hrbp: 'People stats',
-  org: 'Org chart',
-  services: 'HR ops',
-  talent: 'Talent',
-  comp: 'Compensation',
-  ai: 'AI in HR',
-}
+const VIEW_LABELS: Record<ViewKey, string> = VIEW_LABEL
 
 const TYPE_LABELS: Record<FieldDef['type'], string> = {
   string: 'Text',
@@ -261,7 +254,7 @@ async function toBlob(wb: Workbook): Promise<Blob> {
 const today = () => new Date().toISOString().slice(0, 10)
 
 export interface TemplateOptions {
-  /** Datasets to include, in this order; all ten by default. */
+  /** Datasets to include, in this order; every dataset by default. */
   datasets?: DatasetKey[]
   /** Example rows to pre-fill (e.g. the sample company). */
   sample?: Datasets

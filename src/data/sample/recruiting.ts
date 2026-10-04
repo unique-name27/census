@@ -3,6 +3,8 @@
  * actually hired (and from internal transfers), plus recent accepts who start after the as-of
  * date. Applicant pipelines are simulated stage by stage; offer declines are planned per quarter so
  * the acceptance trend is controlled; open requisitions carry the live pipeline with next steps.
+ * Every accepted offer carries its start date. The offers accepted for the fourth-quarter starts,
+ * with the Bengaluru declines and reneges around them, come last from their own stream.
  */
 import type { Candidate, CandidateStatus, Level, Requisition, Stage } from '../schema'
 import { stageIndex } from '../schema'
@@ -21,7 +23,7 @@ import { CORP, DEPTS, type DeptSpec, deptSpec, EO, GTM, OPS, SE, SS } from './de
 import { hireTitle, managerOn } from './employees'
 import { activeOn, type World } from './model'
 import type { NameBook } from './names'
-import type { Rng } from './prng'
+import { type Rng, rngFor } from './prng'
 import { drawIcLevel, roleFor, titleAt, titleFor } from './titles'
 
 type Kind = 'filled' | 'open' | 'hold' | 'cancelled'
@@ -65,6 +67,8 @@ interface App {
   reason: string | null
   next: Day | null
   last: Day
+  /** First day of an accepted offer (the roster hire date, the transfer date or a future start). */
+  start: Day | null
 }
 
 const Q3_START = day('2026-07-01')
@@ -169,6 +173,92 @@ const SOURCE_PASS: Record<string, number> = {
   University: 1,
   'Careers site': 0.85,
   'Job board': 0.6,
+}
+
+/* ───────────── offers accepted for the fourth-quarter starts ───────────── */
+
+/**
+ * The second-half hiring plan (released in July) puts most of its starts in Q4 2026, so offers
+ * accepted in Q3 for October to December starts: [department, site, hires on the req]. Silicon
+ * Engineering has few (it is behind its plan, and Design Verification decisions are stuck); none
+ * sit in Design Verification or Analog & Mixed-Signal, and none are senior, so the bottleneck and
+ * time-to-fill stories keep their numbers. With the ten earlier accepts who start after the as-of
+ * date, 59 people start in Q4.
+ */
+const UPCOMING: readonly (readonly [string, string, number])[] = [
+  ['Digital Design', 'Austin', 1],
+  ['Digital Design', 'Bengaluru', 1],
+  ['Digital Design', 'San Jose', 1],
+  ['Physical Design', 'Hsinchu', 1],
+  ['DFT', 'San Jose', 1],
+  ['DFT', 'Bengaluru', 2],
+  ['Architecture', 'Munich', 1],
+  ['Software', 'Bengaluru', 2],
+  ['Software', 'Bengaluru', 1],
+  ['Software', 'Seattle', 2],
+  ['Software', 'San Jose', 1],
+  ['Software', 'Toronto', 1],
+  ['Software', 'Vancouver', 1],
+  ['Firmware', 'Bengaluru', 2],
+  ['Firmware', 'Raleigh', 1],
+  ['Firmware', 'San Jose', 1],
+  ['Systems Validation', 'Hsinchu', 2],
+  ['Systems Validation', 'Shanghai', 1],
+  ['Hardware Engineering', 'San Jose', 1],
+  ['Hardware Engineering', 'Boulder', 1],
+  ['Test & Product Engineering', 'Hsinchu', 2],
+  ['Test & Product Engineering', 'Shanghai', 1],
+  ['Test & Product Engineering', 'Ho Chi Minh City', 2],
+  ['Test & Product Engineering', 'Austin', 1],
+  ['Supply Chain', 'Shanghai', 1],
+  ['Supply Chain', 'San Jose', 1],
+  ['Quality & Reliability', 'San Jose', 1],
+  ['Quality & Reliability', 'Hsinchu', 1],
+  ['Sales', 'Munich', 1],
+  ['Sales', 'Shanghai', 2],
+  ['Sales', 'San Jose', 1],
+  ['Sales', 'Austin', 1],
+  ['Field Applications', 'Hsinchu', 1],
+  ['Field Applications', 'Munich', 1],
+  ['Field Applications', 'San Jose', 1],
+  ['Product Marketing', 'San Jose', 1],
+  ['Finance', 'San Jose', 1],
+  ['Finance', 'Bengaluru', 1],
+  ['People', 'San Jose', 1],
+  ['Legal', 'San Jose', 1],
+  ['Facilities', 'Austin', 1],
+]
+const UPCOMING_LEVELS = new Set<Level>(['L1', 'L2', 'L3', 'L4'])
+/** The fourth-quarter starts run from the first Monday in October to the last Monday of the year. */
+const UPCOMING_FIRST = day('2026-10-05')
+const UPCOMING_LAST = day('2026-12-28')
+/**
+ * Declines added with them, so Q3 acceptance stays at 68% with Bengaluru at 31%: 20 on Bengaluru
+ * reqs, 3 elsewhere.
+ */
+const UPCOMING_DECLINES = { bengaluru: 20, elsewhere: 3 } as const
+/** Bengaluru reneges (accepted in July or August, withdrawn before the start), by reason. */
+const RENEGES: readonly string[] = [
+  'Reneged: counteroffer from current employer',
+  'Reneged: accepted another offer',
+]
+
+/** When an offer for a fourth-quarter start is accepted, by notice period: [first, last] day. */
+function acceptWindow(site: string): [Day, Day] {
+  const last = AS_OF - 5
+  switch (site) {
+    case 'Bengaluru':
+      return [day('2026-07-06'), last]
+    case 'Munich':
+      return [day('2026-07-20'), last]
+    case 'Hsinchu':
+    case 'Shanghai':
+    case 'Ho Chi Minh City':
+    case 'Haifa':
+      return [day('2026-08-18'), last]
+    default:
+      return [day('2026-09-01'), last]
+  }
 }
 
 /* ───────────── stage simulation ───────────── */
@@ -355,6 +445,7 @@ export function recruitingRows(
     reason: null,
     next: null,
     last: applied,
+    start: null,
   })
 
   /** Stage dates for someone who received an offer on `offer`, worked backwards. */
@@ -480,6 +571,7 @@ export function recruitingRows(
         const a = newApp(req, acc.name, acc.source, 0)
         pathTo(a, acc.accepted - rng.int(2, 6))
         a.hired = acc.accepted
+        a.start = acc.start
         a.stage = 'Hired'
         a.status = 'Hired'
         a.entered = acc.accepted
@@ -729,6 +821,180 @@ export function recruitingRows(
     }
   }
 
+  /* Offers accepted for the fourth-quarter starts, from their own stream after every draw above. */
+  const up = rngFor('recruiting-upcoming')
+  /** Stage dates for an offer accepted (or declined) on `decided`, worked backwards with `up`. */
+  const pathBack = (a: App, decided: Day) => {
+    a.offer = decided - up.int(2, 6)
+    a.onsite = a.offer - up.int(5, 12)
+    a.hmDay = a.onsite - up.int(5, 12)
+    a.screen = a.hmDay - up.int(4, 10)
+    a.applied = a.screen - Math.max(1, Math.round(up.lognormal(4, 0.5)))
+  }
+  const hiringManager = (dept: string, site: string): number | null => {
+    const ok = (p: (typeof people)[number]) => !p.tags.has('pd-austin-manager') && !p.tags.has('hm-awaiting')
+    const local = managersIn(dept, site).filter(ok)
+    const any = managersIn(dept).filter(ok)
+    return (local.length ? up.pick(local) : any.length ? up.pick(any) : null)?.idx ?? null
+  }
+  UPCOMING.forEach(([dept, site, hires], i) => {
+    const spec = deptSpec(dept)
+    let drawn = roleFor(spec, drawIcLevel(spec, site, up), up)
+    for (let k = 0; k < 10 && !UPCOMING_LEVELS.has(drawn.level); k++)
+      drawn = roleFor(spec, drawIcLevel(spec, site, up), up)
+    if (!UPCOMING_LEVELS.has(drawn.level)) drawn = roleFor(spec, 'L3', up)
+    const req: Req = {
+      title: titleFor(drawn.track, drawn.level),
+      bu: spec.bu,
+      dept,
+      site,
+      level: drawn.level,
+      hm: hiringManager(dept, site),
+      recruiter: recruiterFor(spec.bu, dept, site),
+      opened: 0,
+      targetStart: null,
+      filled: null,
+      closed: null,
+      holdDay: null,
+      kind: 'filled',
+      reqType: up.chance(0.2) ? 'Backfill' : 'New',
+      priority: up.pickPair<Priority>([
+        ['Critical', 8],
+        ['High', 40],
+        ['Standard', 52],
+      ]),
+      openings: hires,
+      plant: 'none',
+    }
+    // The first accept falls in the site's window; the others on the req follow within two weeks.
+    const [lo, hi] = acceptWindow(site)
+    let accepted = up.int(lo, hi)
+    let earliest = Number.POSITIVE_INFINITY
+    for (let h = 0; h < hires; h++) {
+      let start = 0
+      for (let k = 0; k < 40; k++) {
+        const at = h === 0 ? up.int(lo, hi) : Math.min(hi, accepted + up.int(0, 14))
+        const s = nextMonday(at + noticeDays(site, up))
+        if (s >= UPCOMING_FIRST && s <= UPCOMING_LAST) {
+          accepted = at
+          start = s
+          break
+        }
+      }
+      if (!start) {
+        accepted = hi
+        start = Math.min(UPCOMING_LAST, Math.max(UPCOMING_FIRST, nextMonday(hi + noticeDays(site, up))))
+      }
+      const source = hireSource(up, accepted, drawn.level)
+      const a = newApp(req, names.name(site), source === 'Job board' ? 'Careers site' : source, 0)
+      pathBack(a, accepted)
+      a.hired = accepted
+      a.start = start
+      a.stage = 'Hired'
+      a.status = 'Hired'
+      a.entered = accepted
+      a.last = accepted
+      earliest = Math.min(earliest, a.applied)
+      req.filled = Math.max(req.filled ?? 0, accepted)
+      apps.push(a)
+    }
+    // Time to fill alternates either side of the company median, so the median stays where it was.
+    const ttf = i % 2 === 0 ? up.int(34, 49) : up.int(55, 74)
+    const filled = req.filled!
+    req.opened = Math.min(filled - ttf, earliest - up.int(2, 6))
+    req.targetStart = req.opened + up.int(75, 110)
+    req.closed = Math.min(AS_OF, filled + up.int(0, 3))
+    reqs.push(req)
+    firstOffer.set(req, Math.min(...apps.filter((a) => a.req === req).map((a) => a.offer!)))
+    // Their applicant pools, closed when the req filled. They came through the careers site,
+    // referrals and sourcing: the job boards were not used for these roles.
+    const span = Math.max(1, filled - req.opened)
+    const n = Math.round(
+      up.lognormal(baseApplicants(req.level) * (site === 'Bengaluru' ? 1.4 : 1), 0.3) *
+        0.66 *
+        (1 + 0.4 * (hires - 1)),
+    )
+    for (let k = 0; k < n; k++) {
+      const applied = req.opened + 1 + Math.floor(span * up.next() ** 1.5)
+      const drawnSource = applicantSource(up, applied, req.level)
+      const a = newApp(
+        req,
+        names.name(site),
+        drawnSource === 'Job board' ? 'Careers site' : drawnSource,
+        applied,
+      )
+      simulate(a, filled, 'Position filled', up)
+      apps.push(a)
+    }
+  })
+
+  // Q3 declines that keep acceptance where the quarter's story puts it: mostly in Bengaluru, never
+  // in Design Verification or Analog (their pipelines carry other stories).
+  const declinable = (req: Req) =>
+    req.plant === 'none' &&
+    req.dept !== 'Design Verification' &&
+    req.dept !== 'Analog & Mixed-Signal' &&
+    (req.kind === 'filled' || (req.kind === 'open' && AS_OF - req.opened > 45))
+  const declineWindow = (req: Req): [Day, Day] => [
+    Math.max(Q3_START, req.opened + 25),
+    req.kind === 'filled' ? Math.min(AS_OF - 1, (firstOffer.get(req) ?? AS_OF) - 1) : AS_OF - 1,
+  ]
+  for (const [inBengaluru, count] of [
+    [true, UPCOMING_DECLINES.bengaluru],
+    [false, UPCOMING_DECLINES.elsewhere],
+  ] as const) {
+    const pool = reqs.filter((req) => {
+      if (!declinable(req) || (req.site === 'Bengaluru') !== inBengaluru) return false
+      const [lo, hi] = declineWindow(req)
+      return lo + 12 <= hi
+    })
+    for (let i = 0, guard = 0; i < count && pool.length && guard < count * 30; guard++) {
+      const req = up.pick(pool)
+      const [lo, hi] = declineWindow(req)
+      const declined = up.int(lo + 12, hi)
+      const source = declineSource(up, req.level)
+      const a = newApp(req, names.name(req.site), source === 'Job board' ? 'Careers site' : source, 0)
+      pathBack(a, declined)
+      if (a.applied <= req.opened) continue
+      a.stage = 'Offer'
+      a.entered = a.offer!
+      close(
+        a,
+        'Declined',
+        declined,
+        up.pickPair(inBengaluru ? DECLINE_REASONS_BENGALURU_Q3 : DECLINE_REASONS),
+      )
+      apps.push(a)
+      i++
+    }
+  }
+
+  // Two Bengaluru offers accepted in the summer and withdrawn before the start (reneges). The req
+  // stayed open, or a later candidate filled it.
+  const renegeWindow = (req: Req): [Day, Day] => [
+    Math.max(day('2026-07-06'), req.opened + 40),
+    Math.min(day('2026-08-21'), req.kind === 'filled' ? (firstOffer.get(req) ?? AS_OF) - 7 : AS_OF - 60),
+  ]
+  const renegeReqs = reqs.filter((req) => {
+    if (req.site !== 'Bengaluru' || !declinable(req)) return false
+    const [lo, hi] = renegeWindow(req)
+    return lo <= hi
+  })
+  const renegeOn = up.sample(renegeReqs, RENEGES.length)
+  for (const [k, reason] of RENEGES.entries()) {
+    const req = renegeOn[k]
+    const [lo, hi] = renegeWindow(req)
+    const accepted = up.int(lo, hi)
+    const a = newApp(req, names.name(req.site), up.pick(['Sourced', 'Referral', 'Careers site']), 0)
+    pathBack(a, accepted)
+    a.hired = accepted
+    a.start = nextMonday(accepted + up.int(70, 80))
+    a.stage = 'Hired'
+    a.entered = accepted
+    close(a, 'Withdrawn', Math.min(AS_OF - 2, a.start - up.int(14, 21)), reason)
+    apps.push(a)
+  }
+
   /* Emit. */
   reqs.sort((x, y) => x.opened - y.opened || (x.title < y.title ? -1 : 1))
   const reqId = new Map<Req, string>()
@@ -797,6 +1063,7 @@ export function recruitingRows(
       rejectionReason: a.reason,
       nextEventDate: isoOrNull(a.next),
       lastActivityDate: iso(Math.min(AS_OF, a.last)),
+      startDate: a.hired != null ? isoOrNull(a.start) : null,
     }
   })
   return { requisitions, candidates }

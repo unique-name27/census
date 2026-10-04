@@ -85,7 +85,7 @@ export function rowsSpec<K extends DrillKind>(args: {
   rows: readonly number[]
   note?: string
 }): DrillSpec<K> | null {
-  const list = args.data[args.kind] as unknown as readonly DrillRecordMap[K][]
+  const list = args.data[args.kind as DatasetKey] as unknown as readonly DrillRecordMap[K][]
   const rows = at(list, args.rows)
   if (!rows.length) return null
   return { kind: args.kind, title: args.title, subtitle: args.subtitle, rows, note: args.note }
