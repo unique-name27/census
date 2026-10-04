@@ -14,17 +14,20 @@ export function CompHeaderActions() {
   return (
     <>
       {/* Short labels on phones keep the header actions inside a 375px screen. */}
-      <Switch
-        checked={showPay}
-        onChange={setShowPay}
-        label={
-          <span>
-            Show pay<span className="max-sm:hidden"> amounts</span>
-          </span>
-        }
-      />
+      <span data-tour="comp-pay-switch" className="inline-flex">
+        <Switch
+          checked={showPay}
+          onChange={setShowPay}
+          label={
+            <span>
+              Show pay<span className="max-sm:hidden"> amounts</span>
+            </span>
+          }
+        />
+      </span>
       <Button
         size="md"
+        data-tour="comp-cycle-settings"
         variant="secondary"
         aria-label="Cycle settings, in Metric definitions"
         onClick={() => openMetricDefinitions({ view: 'comp' })}

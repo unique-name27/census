@@ -39,6 +39,16 @@ function ViewPage({ view: registered, requestedTab }: { view: ViewDef; requested
   const view = withFeatureTabs(registered, { engagementSurveys })
   const tab = resolveTab(view.tabs, requestedTab)
   const hasSubTabs = view.tabs.length > 1
+  // A feature tab switched off while open (Engagement) shows the first tab: the address follows,
+  // so a reload or a shared link doesn't name a tab that isn't there.
+  const dropped =
+    !!requestedTab &&
+    registered.tabs.some((t) => t.key === requestedTab) &&
+    !view.tabs.some((t) => t.key === requestedTab)
+  const navigate = useCensus((s) => s.navigate)
+  useEffect(() => {
+    if (dropped) navigate(view.key, tab, { scroll: false })
+  }, [dropped, navigate, view.key, tab])
   return (
     <div id={VIEW_PANEL_ID} role="tabpanel" aria-labelledby={`tab-${view.key}`}>
       {/* The org, period and data-standard filters change nothing on a view that reads no datasets. */}

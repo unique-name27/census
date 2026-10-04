@@ -60,7 +60,7 @@ export function ReportMenu() {
     <Menu
       width={276}
       trigger={
-        <Button icon={<IconSlides />} caret disabled={!ready || !!busy}>
+        <Button data-tour="scorecard-report" icon={<IconSlides />} caret disabled={!ready || !!busy}>
           {busy ? 'Building report…' : 'Monthly people report'}
         </Button>
       }

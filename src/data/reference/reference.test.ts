@@ -81,6 +81,20 @@ describe('applyReferenceMappings', () => {
     expect(r.datasets.employees[0]).toBe(d.employees[0])
   })
 
+  it('moves the department in the hiring plan too', () => {
+    const d = company()
+    d.hiringPlan = [
+      { businessUnit: 'Systems', department: 'DV' },
+      { businessUnit: 'Silicon', department: 'DV' },
+      { businessUnit: 'Systems', department: 'Firmware' },
+    ] as Datasets['hiringPlan']
+    const r = applyReferenceMappings(d, [m({ kind: 'move-department', department: 'DV', to: 'Silicon' })])
+    expect(r.datasets.hiringPlan.map((p) => p.businessUnit)).toEqual(['Silicon', 'Silicon', 'Systems'])
+    expect(r.changes['hiringPlan.businessUnit']).toBe(1)
+    expect(r.rows['hiringPlan.businessUnit']).toEqual([0])
+    expect(d.hiringPlan[0].businessUnit).toBe('Systems')
+  })
+
   it('assigns a job family to a function', () => {
     const r = applyReferenceMappings(company(), [
       m({ kind: 'move-family', jobFamily: 'Verification', to: 'Engineering' }),

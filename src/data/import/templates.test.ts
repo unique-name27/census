@@ -78,6 +78,18 @@ describe('template round trip', () => {
 })
 
 describe('template layout', () => {
+  it('adds the notes it is given under the Read me introduction', async () => {
+    const ExcelJS = await excel()
+    const note = 'Compensation is left out because pay amounts are off.'
+    const blob = await buildTemplateWorkbook({ datasets: ['employees'], notes: [note] })
+    const wb = new ExcelJS.Workbook()
+    await wb.xlsx.load(await blob.arrayBuffer())
+    const readMe = wb.getWorksheet('Read me')!
+    const lines = [1, 2, 3, 4, 5].map((r) => readMe.getRow(r).getCell(1).value)
+    expect(lines.slice(0, 4)).toContain(note)
+    expect(lines.indexOf(note)).toBeGreaterThan(1)
+  })
+
   it('marks required headers, freezes them and adds dropdowns for list fields', async () => {
     const ExcelJS = await excel()
     const blob = await buildTemplateWorkbook({

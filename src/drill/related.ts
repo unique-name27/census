@@ -111,7 +111,7 @@ export function openCasesSpec(ctx: RelatedContext, id: string): DrillSpec<'cases
     title: `Open HR cases raised by ${nameOf(ctx, id)}`,
     subtitle: asOfLine(ctx),
     rows,
-    hide: ['requester', 'resolvedAt', 'hoursToResolve', 'withinTarget', 'csat'],
+    hide: ['requester', 'resolvedAt', 'hoursToResolve', 'withinTarget'],
     extra: {
       columns: [{ key: 'daysOpen', label: 'Days open', format: 'days' }],
       values: (c) => ({ daysOpen: Math.max(0, daysBetween(c.openedAt.slice(0, 10), ctx.asOf)) }),

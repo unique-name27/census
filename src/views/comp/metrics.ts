@@ -383,6 +383,7 @@ export const metrics: MetricDef[] = defineMetrics('comp', [
     name: 'Merit %',
     definition:
       'The merit increase proposed this cycle as a share of base salary. Promotion increases are reported apart and never counted as merit.',
+    formula: 'proposed merit increase ÷ base salary (meritPct in the Compensation data)',
     population: 'People with a merit proposal.',
     window: CYCLE,
     unit: 'pct2',

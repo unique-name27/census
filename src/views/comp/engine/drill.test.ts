@@ -228,7 +228,7 @@ describe('drill-down on the sample company', () => {
     })
     const b = computeComp(scoped, DEFAULT_SETTINGS)
     const spec = resolve(b.kpis.find((k) => k.id === 'below-min')!.drill)!
-    expect(spec.subtitle).toBe(`${scoped.scopeLabel} · as of 30 Sep 2026`)
+    expect(spec.subtitle).toBe(`As of 30 Sep 2026 · ${scoped.scopeLabel}`)
     expect(spec.rows).toHaveLength(b.ranges.below.length)
     const inScope = new Set(scoped.data.employees.map((e) => e.employeeId))
     expect((spec.rows as readonly CompRecord[]).every((r) => inScope.has(r.employeeId))).toBe(true)

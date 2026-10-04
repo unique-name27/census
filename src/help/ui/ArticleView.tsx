@@ -1,0 +1,242 @@
+/**
+ * One help article in the Help sheet: its blocks with inline links, the definitions it explains
+ * (from the metric dictionary, with your wording), its tour, and for the generated articles the
+ * glossary or the release notes.
+ */
+import type { ReactNode, Ref } from 'react'
+import { Button, cx } from '@/components/ui'
+import { useAnalytics } from '@/data/context'
+import { formatDate } from '@/lib/dates'
+import { METRICS } from '@/metrics/catalog'
+import { DATA_TABS } from '@/views/data/links'
+import { metricHref, openMetricDefinition } from '@/views/data/metrics/open'
+import { buildGlossary, PAGE_LABEL } from '../glossary'
+import { followLink, linkHref } from '../links'
+import { type HelpLink, parseInline } from '../markup'
+import { closeHelp, startTour, useHelp } from '../store'
+import { tourById } from '../tours'
+import type { Block, HelpArticle } from '../types'
+import { RELEASE_NOTES } from '../whatsNew'
+
+export const LINK_CLASS =
+  'rounded-[2px] font-medium text-link underline decoration-1 underline-offset-2 hover:decoration-2'
+
+function HelpLinkView({ link }: { link: HelpLink }) {
+  const href = linkHref(link)
+  if (href)
+    return (
+      <a
+        href={href}
+        className={LINK_CLASS}
+        onClick={(e) => {
+          // A modified click opens the page in a new tab as usual.
+          if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
+          e.preventDefault()
+          followLink(link)
+        }}
+      >
+        {link.label}
+      </a>
+    )
+  return (
+    <button type="button" className={cx(LINK_CLASS, 'text-left')} onClick={() => followLink(link)}>
+      {link.label}
+    </button>
+  )
+}
+
+/** Text with its inline links. */
+export function RichText({ text }: { text: string }) {
+  return (
+    <>
+      {parseInline(text).map((p, i) =>
+        'text' in p ? <span key={i}>{p.text}</span> : <HelpLinkView key={i} link={p.link} />,
+      )}
+    </>
+  )
+}
+
+function BlockView({ block }: { block: Block }) {
+  if ('h' in block)
+    return <h3 className="cut-head mt-5 text-[15px] leading-snug font-semibold text-ink">{block.h}</h3>
+  if ('p' in block)
+    return (
+      <p className="mt-2 text-[13px] leading-[1.55] text-ink-2">
+        <RichText text={block.p} />
+      </p>
+    )
+  if ('note' in block)
+    return (
+      <p className="mt-3 rounded-control bg-sheet-2 px-3 py-2 text-[12px] leading-snug text-ink-2">
+        <RichText text={block.note} />
+      </p>
+    )
+  const List = 'ul' in block ? 'ul' : 'ol'
+  const items = 'ul' in block ? block.ul : block.ol
+  return (
+    <List
+      className={cx(
+        'mt-2 flex flex-col gap-1.5 pl-5 text-[13px] leading-[1.5] text-ink-2 marker:text-muted',
+        List === 'ul' ? 'list-disc' : 'list-decimal',
+      )}
+    >
+      {items.map((t, i) => (
+        <li key={i}>
+          <RichText text={t} />
+        </li>
+      ))}
+    </List>
+  )
+}
+
+function Section({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <section className="mt-6 border-t border-rule pt-4">
+      <h3 className="eyebrow">{title}</h3>
+      {children}
+    </section>
+  )
+}
+
+/** A metric's name and definition as they are in force, with a link to its entry. */
+function DefinitionItem({ id }: { id: string }) {
+  const { metrics } = useAnalytics()
+  const def = metrics.def(id)
+  if (!def) return null
+  return (
+    <li className="py-2">
+      <a
+        href={metricHref(id)}
+        onClick={(e) => {
+          if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
+          e.preventDefault()
+          closeHelp()
+          openMetricDefinition(id)
+        }}
+        className={cx(LINK_CLASS, 'text-[13px]')}
+      >
+        {def.name}
+      </a>
+      <p className="mt-0.5 text-[12px] leading-snug text-ink-2">{def.definition}</p>
+    </li>
+  )
+}
+
+function Glossary() {
+  const { metrics } = useAnalytics()
+  const entries = buildGlossary(METRICS.map((m) => metrics.def(m.id) ?? m))
+  return (
+    <Section title={`${entries.length} terms`}>
+      <dl className="mt-1 divide-y divide-rule">
+        {entries.map((e) => (
+          <div key={e.id} className="py-2.5">
+            <dt className="flex flex-wrap items-baseline gap-x-2">
+              <a
+                href={metricHref(e.id)}
+                onClick={(ev) => {
+                  if (ev.button !== 0 || ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey) return
+                  ev.preventDefault()
+                  closeHelp()
+                  openMetricDefinition(e.id)
+                }}
+                className={cx(LINK_CLASS, 'text-[13px]')}
+              >
+                {e.term}
+              </a>
+              <span className="text-[12px] text-muted">{e.where}</span>
+            </dt>
+            <dd className="mt-0.5 text-[12px] leading-snug text-ink-2">{e.definition}</dd>
+          </div>
+        ))}
+      </dl>
+    </Section>
+  )
+}
+
+function WhatsNew() {
+  return (
+    <div className="mt-2 flex flex-col gap-5">
+      {RELEASE_NOTES.map((r, i) => (
+        <section key={`${r.date}-${i}`}>
+          <p className="text-[12px] text-muted">{formatDate(r.date)}</p>
+          <h3 className="cut-head text-[15px] leading-snug font-semibold text-ink">{r.title}</h3>
+          <ul className="mt-1.5 flex list-disc flex-col gap-1 pl-5 text-[13px] leading-[1.5] text-ink-2 marker:text-muted">
+            {r.items.map((t, j) => (
+              <li key={j}>{t}</li>
+            ))}
+          </ul>
+        </section>
+      ))}
+    </div>
+  )
+}
+
+/** "Recruiting", or a Data room tab by its own name ("Data quality"). */
+function pageName(view: keyof typeof PAGE_LABEL, tab?: string): string {
+  if (view === 'data' && tab) return DATA_TABS.find((t) => t.route === tab)?.label ?? PAGE_LABEL.data
+  return PAGE_LABEL[view] ?? view
+}
+
+export function ArticleView({
+  article,
+  titleRef,
+}: {
+  article: HelpArticle
+  titleRef: Ref<HTMLHeadingElement>
+}) {
+  const tour = tourById(article.tour)
+  const route = article.route
+  const completed = useHelp((s) => s.prefs.completed)
+  return (
+    <article className="px-5 pt-2 pb-8">
+      <h2
+        ref={titleRef}
+        tabIndex={-1}
+        className="cut-head rounded-[2px] text-[22px] leading-tight font-semibold outline-none focus-visible:outline-2 focus-visible:outline-focus"
+      >
+        {article.title}
+      </h2>
+      <p className="mt-1 text-[13px] leading-snug text-muted">{article.summary}</p>
+      {(tour || route) && (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {tour && (
+            <Button size="sm" variant="primary" onClick={() => startTour(tour.id)}>
+              {completed.includes(tour.id) ? 'Take the tour again' : 'Take the tour'}
+              <span className="font-normal opacity-80">· {tour.length}</span>
+            </Button>
+          )}
+          {route && (
+            <Button
+              size="sm"
+              onClick={() =>
+                followLink({
+                  kind: 'route',
+                  target: route.tab ? `${route.view}.${route.tab}` : route.view,
+                  label: '',
+                })
+              }
+            >
+              Open {pageName(route.view, route.tab)}
+            </Button>
+          )}
+        </div>
+      )}
+      <div className="mt-2">
+        {article.body.map((b, i) => (
+          <BlockView key={i} block={b} />
+        ))}
+      </div>
+      {article.generated === 'whats-new' && <WhatsNew />}
+      {article.metrics && article.metrics.length > 0 && (
+        <Section title="Definitions">
+          <ul className="divide-y divide-rule">
+            {article.metrics.map((id) => (
+              <DefinitionItem key={id} id={id} />
+            ))}
+          </ul>
+        </Section>
+      )}
+      {article.generated === 'glossary' && <Glossary />}
+    </article>
+  )
+}

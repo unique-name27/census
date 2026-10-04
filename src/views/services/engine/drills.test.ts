@@ -61,8 +61,11 @@ describe('drills on the sample company', () => {
     const timed = resolved.filter((f) => f.resolutionHours != null)
     expect(shown(spec(kpi('time-to-resolve').drill), timed)).toBe(m.summary.medianHours.n)
 
-    const scored = resolved.filter((f) => f.csat != null)
-    expect(shown(spec(kpi('csat').drill), scored)).toBe(m.summary.csat.n)
+    // Satisfaction opens every resolved case (who the survey went to), never who answered.
+    const csat = spec(kpi('csat').drill)
+    expect(shown(csat, resolved)).toBe(resolved.length)
+    expect(csat.note).toContain(`Mean of ${m.summary.csat.n.toLocaleString('en-US')} responses`)
+    expect(buildDrillTable(csat, ctx).columns.map((c) => c.key)).not.toContain('csat')
   })
 
   it('opens the judged transactions behind on time, late ones first', () => {
@@ -306,8 +309,9 @@ describe('KPI changes and notes open the records they state', () => {
     const resolved = m.summary.rows.resolved.filter((f) => f.resolutionHours != null)
     expect(shown(spec(ttr.noteDrill), resolved)).toBe(num(ttr.note, /([\d,]+) cases resolved/))
     const csat = kpi('csat')
-    const rated = m.summary.rows.resolved.filter((f) => f.csat != null)
-    expect(shown(spec(csat.noteDrill), rated)).toBe(num(csat.note, /([\d,]+) responses/))
+    expect(spec(csat.noteDrill).note).toContain(
+      `Mean of ${num(csat.note, /([\d,]+) responses/).toLocaleString('en-US')} responses`,
+    )
     const tx = kpi('tx-on-time')
     expect(spec(tx.noteDrill).rows.length).toBe(num(tx.note, /([\d,]+) due/))
     const [ok, due] = spec(tx.deltaDrill)

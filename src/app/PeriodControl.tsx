@@ -23,7 +23,7 @@ export function PeriodControl() {
   const setFilters = useCensus((s) => s.setFilters)
   const [open, setOpen] = useState(false)
   const [custom, setCustom] = useState({ start: ctx.window.start, end: ctx.window.end, editing: false })
-  const error = customRangeError(custom.start, custom.end)
+  const error = customRangeError(custom.start, custom.end, ctx.asOf)
   const isCustom = filters.period === 'custom'
   const showCustom = isCustom || custom.editing
 
@@ -45,7 +45,11 @@ export function PeriodControl() {
     <Popover.Root open={open} onOpenChange={onOpenChange}>
       <Popover.Trigger
         render={
-          <Button caret aria-label={`Period: ${isCustom ? ctx.window.label : PERIOD_LABELS[filters.period]}`}>
+          <Button
+            caret
+            data-tour="filter-period"
+            aria-label={`Period: ${isCustom ? ctx.window.label : PERIOD_LABELS[filters.period]}`}
+          >
             {isCustom ? ctx.window.label : PERIOD_LABELS[filters.period]}
           </Button>
         }
@@ -84,7 +88,7 @@ export function PeriodControl() {
                     <input
                       type="date"
                       value={custom.start}
-                      max={custom.end || undefined}
+                      max={custom.end && custom.end < ctx.asOf ? custom.end : ctx.asOf}
                       onChange={(e) => setCustom({ ...custom, start: e.target.value })}
                       className={cx(DATE_INPUT, 'mt-1')}
                     />
@@ -95,6 +99,7 @@ export function PeriodControl() {
                       type="date"
                       value={custom.end}
                       min={custom.start || undefined}
+                      max={ctx.asOf}
                       onChange={(e) => setCustom({ ...custom, end: e.target.value })}
                       className={cx(DATE_INPUT, 'mt-1')}
                     />

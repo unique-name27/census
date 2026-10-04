@@ -10,6 +10,7 @@
  */
 import type { Column } from '@/charts/types'
 import type { Employee, ISODate, Requisition } from '@/data/schema'
+import { asOfLine, subtitleOf } from '@/drill/subtitle'
 import { type DrillExtra, type DrillSpec, drillSpec } from '@/drill/types'
 import { formatDate } from '@/lib/dates'
 import { fmt, plural } from '@/lib/format'
@@ -30,14 +31,15 @@ export interface DrillScope {
   filtered?: boolean
 }
 
+/**
+ * A drill subtitle, worded like every other view's (`@/drill/subtitle`): "As of 30 Sep 2026 ·
+ * Allison Carter's org", or "Reorg sandbox · what-if on the org as of 30 Sep 2026".
+ */
 export function scopeLine(s: DrillScope): string {
-  return [
-    s.label,
-    s.scenario ? `what-if on the org as of ${formatDate(s.asOf)}` : `as of ${formatDate(s.asOf)}`,
-    s.filtered ? 'people matching the filters' : null,
-  ]
-    .filter(Boolean)
-    .join(' · ')
+  const filtered = s.filtered && 'people matching the filters'
+  return s.scenario
+    ? subtitleOf(s.label, `what-if on the org as of ${formatDate(s.asOf)}`, filtered)
+    : asOfLine(s.asOf, s.label, filtered)
 }
 
 /** "Whole company" for the top of the tree, else "{name}'s org". */
@@ -178,7 +180,7 @@ export function orgDrill(tree: OrgTree, id: string, scope: DrillScope): DrillSpe
     sortBy: 'layer',
     note: top
       ? 'Everyone active on the as-of date, every worker type.'
-      : `Everyone below ${nameIn(tree, id)} at every level, not counting them. Layer 2 reports to them directly.`,
+      : `Everyone below ${nameIn(tree, id)} at every level, contractors and interns included. ${nameIn(tree, id)} is not counted. Layer 2 reports to them directly.`,
   })
 }
 
@@ -291,6 +293,31 @@ export function flagKindDrill(
     columns: ['directs', 'totalOrg', 'flags'],
     flags,
     sortBy: 'directs',
+  })
+}
+
+/* ───────── open roles ───────── */
+
+/**
+ * The requisition behind one open-role placeholder card (the chart's "Open roles" switch), with
+ * the hiring manager named in the note. Null when the req is not on the chart.
+ */
+export function openRoleDrill(
+  tree: OrgTree,
+  reqRecords: ReadonlyMap<string, Requisition>,
+  reqId: string,
+  scope: DrillScope,
+): DrillSpec<'requisitions'> | null {
+  const r = reqRecords.get(reqId)
+  if (!r) return null
+  const manager = r.hiringManagerId ? tree.people.get(r.hiringManagerId)?.name : undefined
+  return drillSpec({
+    kind: 'requisitions',
+    title: `Open role: ${r.jobTitle}`,
+    subtitle: scopeLine(scope),
+    rows: [r],
+    hide: ['filledDate'],
+    note: manager ? `Open on the as-of date, with ${manager} as hiring manager.` : 'Open on the as-of date.',
   })
 }
 

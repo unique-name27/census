@@ -41,6 +41,14 @@ describe('summary for the People scorecard', () => {
     expect(fp?.value).toBeLessThan(1)
   })
 
+  it('opens the exits due from the final pay note, as many as it states', () => {
+    const fp = s.kpis.find((k) => k.id === 'final-pay')!
+    const n = Number(fp.note!.match(/([\d,]+) exits due/)![1].replace(/\D/g, ''))
+    const note = resolveDrill(fp.noteDrill)
+    expect(note?.rows.length).toBe(n)
+    expect(note?.uses).toEqual(fp.uses)
+  })
+
   it('ranks the readout with the leave findings, minus the HR-only one and minus names', () => {
     const order = { critical: 0, warning: 1, info: 2, good: 3 }
     const sev = s.findings.map((f) => order[f.severity])

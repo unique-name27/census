@@ -110,9 +110,16 @@ export function PersonCard({ employeeId }: { employeeId: string }) {
                   {count(p.directs.length, 'direct report', 'direct reports')}
                 </Drill>
                 {' · '}
-                <Drill spec={lists.org} label={`Show the ${fmt(p.orgSize, 'int')} people in ${e.name}'s org`}>
-                  {`${fmt(p.orgSize, 'int')} in their org`}
+                {/* Everyone below them, contractors and interns too; the leader filter and headcount
+                    count employees with the leader, so the card says what it counts. */}
+                <Drill
+                  spec={lists.org}
+                  label={`Show the ${count(p.orgSize, 'person', 'people')} below ${e.name}`}
+                >
+                  {`${count(p.orgSize, 'person', 'people')} below them`}
                 </Drill>
+                {p.orgContingent > 0 &&
+                  `, including ${count(p.orgContingent, 'contractor or intern', 'contractors or interns')}`}
               </>
             ) : (
               'No direct reports'

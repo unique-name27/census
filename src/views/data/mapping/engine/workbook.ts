@@ -103,7 +103,7 @@ export function mappingRows(
       case 'move-department':
         return {
           ...base,
-          field: 'Employees and Requisitions: Business unit',
+          field: 'Employees, Requisitions and Hiring plan: Business unit',
           fieldRef: 'employees.businessUnit',
           scope: SCOPE_LABEL.field,
           subject: m.department,

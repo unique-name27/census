@@ -20,6 +20,7 @@ import {
   issueCounts,
   issuesFileStem,
   learnedPicks,
+  leftOutNotes,
   openValueRows,
   openValues,
   orderedFields,
@@ -256,6 +257,11 @@ describe('validation summary helpers', () => {
     expect(sampleWorkbookDatasets(true)).toHaveLength(DATASET_KEYS.length)
     expect(sampleWorkbookDatasets(false)).not.toContain('comp')
     expect(sampleWorkbookDatasets(false)).toHaveLength(DATASET_KEYS.length - 1)
+    // The workbook's Read me says why the sheet is missing.
+    expect(leftOutNotes(['comp'])).toEqual([
+      'Compensation is left out because pay amounts are off. Turn them on in Settings, then download again to include it.',
+    ])
+    expect(leftOutNotes([])).toEqual([])
   })
 })
 

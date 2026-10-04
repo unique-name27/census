@@ -54,7 +54,7 @@ describe('HRBP engine on the sample company', () => {
 
   it('story 2: Bengaluru voluntary attrition 18.8% against 9.4% for the company', () => {
     const f = find('hrbp-voluntary-location')
-    expect(f.title).toBe('Voluntary attrition in Bengaluru is 18.8%, 9.4 pts above the company')
+    expect(f.title).toBe('Voluntary attrition in Bengaluru is 18.8%, 9.4 pts above the company.')
     expect(f.detail).toContain('“Career growth or promotion” (20)')
     expect(f.detail).toContain('“Base salary” (18)')
     expect(f.filter).toEqual({ location: ['Bengaluru'] })
@@ -78,7 +78,7 @@ describe('HRBP engine on the sample company', () => {
   it('story 3: first-year attrition in Go-to-Market 27.0% (10 of 37) against 8.3% elsewhere', () => {
     const f = find('hrbp-first-year')
     expect(f.title).toBe(
-      'First-year attrition in Go-to-Market is 27.0% (10 of 37 hires), against 8.3% elsewhere',
+      'First-year attrition in Go-to-Market is 27.0% (10 of 37 hires), against 8.3% elsewhere.',
     )
     expect(f.detail).toContain('Sales accounts for 7 of the 10')
     expect(f.filter).toEqual({ businessUnit: ['Go-to-Market'] })
@@ -86,7 +86,7 @@ describe('HRBP engine on the sample company', () => {
 
   it('story 4: span outliers (3 with 12+, 4 with exactly 1) and the new manager with 9', () => {
     const spans = find('hrbp-span-outliers')
-    expect(spans.title).toBe('3 managers have 12 or more direct reports and 4 have only one')
+    expect(spans.title).toBe('3 managers have 12 or more direct reports and 4 have only one.')
     for (const name of ['Nisha Iyer', 'Rohan Murthy', 'Wei-Lun Lee']) expect(spans.detail).toContain(name)
     const wide = m.org.managers
       .filter((x) => x.directs >= 12)
@@ -105,7 +105,7 @@ describe('HRBP engine on the sample company', () => {
 
   it('story 5: Silicon Engineering grew 13.9% (488 to 556) while Corporate was flat', () => {
     const f = find('hrbp-uneven-growth')
-    expect(f.title).toBe('Silicon Engineering grew 13.9% in 12 months, from 488 to 556 people')
+    expect(f.title).toBe('Silicon Engineering grew 13.9% in 12 months, from 488 to 556 people.')
     expect(f.detail).toContain('Corporate was flat at 196')
     const corp = m.workforce.growth.find((g) => g.group === 'Corporate')!
     expect(corp).toMatchObject({ yearAgo: 196, now: 196 })

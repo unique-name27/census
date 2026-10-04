@@ -147,12 +147,12 @@ export function promotionRate(
  * against last year (year to date); otherwise the same months a year earlier, so a promotion
  * cycle inside the window is never set against a window without one.
  */
-export function promotionComparison(p: Prep): { window: Window; label: string } {
+export function promotionComparison(p: Prep): { window: Window; label: string; part: string } {
   const { period } = p.ctx.filters
   if (period === 'ytd' || p.window.months >= 11.5) {
-    return { window: p.prior, label: priorLabel(period, p.window.months) }
+    return { window: p.prior, label: priorLabel(period, p.window.months), part: 'prior period' }
   }
-  return { window: yearEarlier(p.window), label: 'vs same period last year' }
+  return { window: yearEarlier(p.window), label: 'vs same period last year', part: 'same period last year' }
 }
 
 export function sinceBand(years: number | null): (typeof SINCE_BANDS)[number] {

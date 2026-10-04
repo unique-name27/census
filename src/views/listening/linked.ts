@@ -49,7 +49,7 @@ export function linkedMinimum(
  */
 export function linkedHeadline(ctx: AnalyticsContext, survey: SurveyType): SurveyHeadline | null {
   const h = surveyHeadline(ctx, survey)
-  if (!h || h.suppressed || ctx.isCompany || !surveyProgramOf.get(survey)?.managerCuts) return h
+  if (!h || ctx.isCompany || !surveyProgramOf.get(survey)?.managerCuts) return h
   if (h.respondents < linkedMinimum(ctx, survey))
     return { ...h, value: null, suppressed: true, change: null, status: 'none', drill: null }
   return { ...h, change: null }

@@ -29,7 +29,8 @@ import type { MappingModel } from './model'
 const NEW = '\u0000new'
 const KINDS: EditKind[] = ['move-department', 'move-family', 'merge', 'rename']
 const HINT: Record<EditKind, string> = {
-  'move-department': 'Put a department under another business unit, in Employees and Requisitions.',
+  'move-department':
+    'Put a department under another business unit, in Employees, Requisitions and the Hiring plan.',
   'move-family': 'Put a job family under a job function, in Employees.',
   merge: 'Read several spellings as one value, for example "DV" and "Design Verification".',
   rename: 'Change what a value is called everywhere it appears.',

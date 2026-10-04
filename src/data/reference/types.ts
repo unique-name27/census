@@ -14,7 +14,7 @@ interface Base {
   at: string
 }
 
-/** Move a department to another business unit (employees and requisitions). */
+/** Move a department to another business unit (employees, requisitions and the hiring plan). */
 export interface MoveDepartment extends Base {
   kind: 'move-department'
   department: string

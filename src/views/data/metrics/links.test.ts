@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
+import { METRIC_VIEW_LABEL } from '@/metrics/registry'
 import { parseDataTab } from '../links'
-import { arrivalAt, isMetricsTab, metricsTab, parseMetricsTab } from './links'
+import { arrivalAt, isMetricsTab, METRIC_VIEWS, metricsTab, parseMetricsTab } from './links'
 
 describe('metricsTab', () => {
   it('addresses the dictionary, a view filter, a metric, or both', () => {
@@ -31,6 +32,19 @@ describe('parseMetricsTab', () => {
       { view: 'talent', metric: 'privacy.anonymity' },
     ] as const)
       expect(parseMetricsTab(metricsTab(r))).toEqual(r)
+  })
+
+  it('round-trips a filter to every view the View select offers', () => {
+    expect([...METRIC_VIEWS].sort()).toEqual(Object.keys(METRIC_VIEW_LABEL).sort())
+    for (const view of METRIC_VIEWS) {
+      expect(parseMetricsTab(metricsTab({ view }))).toEqual({ view, metric: null })
+      expect(parseMetricsTab(metricsTab({ view, metric: 'privacy.anonymity' }))).toEqual({
+        view,
+        metric: 'privacy.anonymity',
+      })
+    }
+    for (const view of ['scorecard', 'onboarding', 'compliance', 'listening', 'actions'] as const)
+      expect(parseMetricsTab(`metrics:${view}`).view).toBe(view)
   })
 
   it('ignores what it does not recognize', () => {

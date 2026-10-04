@@ -7,6 +7,7 @@
 import { describe, expect, it } from 'vitest'
 import { resolveDrill } from '@/drill/Drill'
 import { buildDrillTable, DRILLS_KEY, PERSON_KEY } from '@/drill/records'
+import type { DrillSpec } from '@/drill/types'
 import { defaultMetrics } from '@/metrics/api'
 import { metricsWith, paramRef, paramsOfView, recordParamReads } from '@/metrics/testing'
 import { M, P } from '../metrics'
@@ -224,9 +225,20 @@ describe('counts and drills', () => {
       expect(ctx.metrics.def(k.metricId!), k.id).toBeDefined()
       expect(k.uses?.length, k.id).toBeGreaterThan(0)
       const spec = resolveDrill(k.drill)
-      expect(spec?.kind, k.id).toBe('actionItems')
-      if (k.id !== 'owners') expect(spec?.rows.length, k.id).toBe(k.value)
+      expect(spec?.kind, k.id).toBe(k.id === 'owners' ? 'actionOwners' : 'actionItems')
+      expect(spec?.rows.length, k.id).toBe(k.value)
     }
+    // Each owner's count opens exactly that owner's items, and together they are every open item.
+    const owners = resolveDrill(by.owners.drill) as DrillSpec<'actionOwners'>
+    let total = 0
+    for (const o of owners.rows) {
+      const items = resolveDrill(o.itemsDrill) as DrillSpec<'actionItems'> | null
+      expect(items?.kind).toBe('actionItems')
+      expect(items?.rows.length, o.owner).toBe(o.items)
+      expect(new Set(items?.rows.map((r) => r.owner))).toEqual(new Set([o.owner]))
+      total += o.items
+    }
+    expect(total).toBe(4)
     expect(countActions(open, ctx).bySeverity).toEqual({ critical: 1, warning: 2, info: 1, good: 0 })
   })
 

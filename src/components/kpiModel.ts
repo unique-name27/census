@@ -51,14 +51,19 @@ export interface TileTarget {
 
 /**
  * Where clicking a tile goes: another view's tab when it carries a `link`, else a tab of the
- * view showing it (`tab`, named by that view's tab label); null when it opens nothing.
+ * view showing it (`tab`, named by that view's tab label); null when it opens nothing, or when it
+ * would open the tab already on screen (`view.tab`).
  */
 export function tileTarget(
   k: Pick<Kpi, 'tab' | 'link'>,
-  view: Pick<CurrentView, 'key' | 'tabs'> | null,
+  view: (Pick<CurrentView, 'key' | 'tabs'> & { tab?: string }) | null,
 ): TileTarget | null {
-  if (k.link) return { view: k.link.view, tab: k.link.tab ?? '', label: k.link.label }
-  if (!k.tab || !view) return null
+  const here = (v: string, tab: string) => !!view?.tab && v === view.key && tab === view.tab
+  if (k.link) {
+    const tab = k.link.tab ?? ''
+    return here(k.link.view, tab) ? null : { view: k.link.view, tab, label: k.link.label }
+  }
+  if (!k.tab || !view || here(view.key, k.tab)) return null
   return { view: view.key, tab: k.tab, label: view.tabs.find((t) => t.key === k.tab)?.label ?? k.tab }
 }
 
@@ -215,7 +220,11 @@ export function kpiRows(
       changeText: changeText ?? '',
       changeUnit: change.value == null ? '' : change.unit,
       comparedWith: change.value == null ? '' : (k.deltaLabel ?? ''),
-      note: hidden ? (gate.reason ?? '') : k.suppressed ? SUPPRESSED_NOTE : (k.note ?? ''),
+      note: hidden
+        ? (gate.reason ?? '')
+        : k.suppressed
+          ? (k.suppressedNote ?? SUPPRESSED_NOTE)
+          : (k.note ?? ''),
       [VALUE_FORMAT]: value.format,
       [CHANGE_FORMAT]: change.format,
       [TREND_FORMAT]: value.format,

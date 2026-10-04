@@ -83,6 +83,7 @@ export function DropZone({ className }: { className?: string }) {
     // Dropping is a pointer shortcut; the Choose files button is the keyboard path.
     <section
       aria-label="Add files"
+      data-tour="data-dropzone"
       onDragEnter={onDragOver}
       onDragOver={onDragOver}
       onDragLeave={(e) => {

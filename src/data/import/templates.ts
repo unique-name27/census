@@ -7,6 +7,7 @@
  * uploaded again unchanged.
  */
 import type { DataValidation, Workbook, Worksheet } from 'exceljs'
+import { addListsSheet, type SheetList } from '../lists/sheet'
 import {
   DATASET_KEYS,
   DATASETS,
@@ -63,10 +64,28 @@ const VALIDATION_SPARE_ROWS = 500
 const headerLabel = (f: FieldDef) => (f.required ? `${f.label} *` : f.label)
 const requirement = (f: FieldDef) => (f.required ? 'Required' : f.recommended ? 'Recommended' : 'Optional')
 
-function allowedValues(dataset: DatasetKey, f: FieldDef): string {
+/**
+ * An official list for a template column (Settings > Official lists): the dropdown offers its
+ * active values from the hidden Lists sheet, through the workbook name.
+ */
+export type TemplateList = SheetList
+
+/** Official lists by the field they fill (`dataset.field`). */
+export type TemplateLists = Readonly<Record<string, TemplateList>>
+
+const LEVEL_TITLES = 'Titles such as Senior, Staff, Director or VP are converted.'
+
+function allowedValues(dataset: DatasetKey, f: FieldDef, official?: TemplateList): string {
+  // The official list names the values; how Census reads other spellings still applies.
+  if (official)
+    return [
+      `A value from the official ${official.label.toLowerCase()} list (${official.name} in this workbook).`,
+      f.type === 'level' ? LEVEL_TITLES : '',
+    ]
+      .filter(Boolean)
+      .join(' ')
   if (f.type === 'enum') return (f.values ?? []).join(', ')
-  if (f.type === 'level')
-    return `${LEVELS.join(', ')}. Titles such as Senior, Staff, Director or VP are converted.`
+  if (f.type === 'level') return `${LEVELS.join(', ')}. ${LEVEL_TITLES}`
   if (f.type === 'boolean') return 'Yes, No'
   if (dataset === 'reviews' && /rating/i.test(f.key)) return '1-5, or labels such as Meets or Exceeds'
   return ''
@@ -133,7 +152,9 @@ function addDatasetSheet(
   fields: FieldDef[],
   rows: readonly Record<string, unknown>[],
   payValues: boolean,
+  lists?: TemplateLists,
 ): Worksheet {
+  const officialOf = (f: FieldDef) => lists?.[`${def.key}.${f.key}`]
   const ws = wb.addWorksheet(def.sheet, { views: [{ state: 'frozen', ySplit: 1 }] })
   ws.columns = fields.map((f) => ({
     header: headerLabel(f),
@@ -146,7 +167,7 @@ function addDatasetSheet(
     fields.map((f) => (f.required ? FILL_REQUIRED : f.recommended ? FILL_RECOMMENDED : FILL_OPTIONAL)),
   )
   fields.forEach((f, i) => {
-    const allowed = allowedValues(def.key, f)
+    const allowed = allowedValues(def.key, f, officialOf(f))
     ws.getRow(1).getCell(i + 1).note = [
       f.description,
       `${requirement(f)}.`,
@@ -160,6 +181,20 @@ function addDatasetSheet(
 
   const lastRow = rows.length + 1 + VALIDATION_SPARE_ROWS
   fields.forEach((f, i) => {
+    const official = officialOf(f)
+    if (official) {
+      const col = columnLetter(i + 1)
+      ;(ws as unknown as RangeValidations).dataValidations.add(`${col}2:${col}${lastRow}`, {
+        type: 'list',
+        allowBlank: true,
+        formulae: [official.name],
+        showErrorMessage: true,
+        errorStyle: 'warning',
+        errorTitle: `Check ${f.label.toLowerCase()}`,
+        error: `Census expects a value from the official ${official.label.toLowerCase()} list. Other values are checked when you upload.`,
+      })
+      return
+    }
     const list = listFor(f)
     if (!list) return
     const col = columnLetter(i + 1)
@@ -176,7 +211,7 @@ function addDatasetSheet(
   return ws
 }
 
-function addFieldsSheet(wb: Workbook, defs: DatasetDef[], includePay: boolean): void {
+function addFieldsSheet(wb: Workbook, defs: DatasetDef[], includePay: boolean, lists?: TemplateLists): void {
   const ws = wb.addWorksheet('Fields', { views: [{ state: 'frozen', ySplit: 1 }] })
   ws.columns = [
     { header: 'Sheet', key: 'sheet', width: 18 },
@@ -196,7 +231,7 @@ function addFieldsSheet(wb: Workbook, defs: DatasetDef[], includePay: boolean): 
         column: headerLabel(f),
         requirement: requirement(f),
         type: TYPE_LABELS[f.type],
-        allowed: allowedValues(def.key, f),
+        allowed: allowedValues(def.key, f, lists?.[`${def.key}.${f.key}`]),
         description: f.description,
         pay: f.pay ? 'Yes' : '',
       })
@@ -262,6 +297,30 @@ export interface TemplateOptions {
   sampleRows?: number
   /** Write pay amounts in the example rows. Pay columns are always present; their cells stay blank unless this is true. */
   includePay?: boolean
+  /** Extra lines for the top of the Read me sheet, such as why a dataset is left out. */
+  notes?: string[]
+  /**
+   * Official lists by field (`dataset.field`): those columns get a dropdown of the list's active
+   * values, held on a hidden Lists sheet with a workbook name per list.
+   */
+  lists?: TemplateLists
+}
+
+/** The hidden Lists sheet, with the lists the included fields use (once each). */
+function addUsedLists(
+  wb: Workbook,
+  defs: readonly DatasetDef[],
+  fields: (def: DatasetDef) => FieldDef[],
+  lists?: TemplateLists,
+): void {
+  if (!lists) return
+  const used = new Map<string, TemplateList>()
+  for (const def of defs)
+    for (const f of fields(def)) {
+      const l = lists[`${def.key}.${f.key}`]
+      if (l && !used.has(l.name)) used.set(l.name, l)
+    }
+  if (used.size) addListsSheet(wb, [...used.values()])
 }
 
 /** Build the upload template workbook. */
@@ -279,6 +338,7 @@ export async function buildTemplateWorkbook(opts: TemplateOptions = {}): Promise
     [
       `Prepared ${today()}. Fill one sheet per dataset, then upload the file in the Data room.`,
       'Census recognizes each sheet by its columns, so sheets can be renamed, removed or reordered.',
+      ...(opts.notes ?? []),
     ],
     defs,
   )
@@ -287,9 +347,10 @@ export async function buildTemplateWorkbook(opts: TemplateOptions = {}): Promise
       string,
       unknown
     >[]
-    addDatasetSheet(wb, def, def.fields, rows, !!opts.includePay)
+    addDatasetSheet(wb, def, def.fields, rows, !!opts.includePay, opts.lists)
   }
-  addFieldsSheet(wb, defs, true)
+  addFieldsSheet(wb, defs, true, opts.lists)
+  addUsedLists(wb, defs, (d) => d.fields, opts.lists)
   return toBlob(wb)
 }
 
@@ -297,7 +358,7 @@ export async function buildTemplateWorkbook(opts: TemplateOptions = {}): Promise
 export async function exportDatasetWorkbook<K extends DatasetKey>(
   key: K,
   rows: readonly Datasets[K][number][],
-  opts: { includePay: boolean },
+  opts: { includePay: boolean; lists?: TemplateLists },
 ): Promise<Blob> {
   const ExcelJS = await loadExcel()
   const def = DATASETS.find((d) => d.key === key)
@@ -306,8 +367,8 @@ export async function exportDatasetWorkbook<K extends DatasetKey>(
   wb.creator = 'Census'
   wb.created = new Date()
   const fields = def.fields.filter((f) => opts.includePay || !f.pay)
-  addDatasetSheet(wb, def, fields, rows as unknown as Record<string, unknown>[], opts.includePay)
-  addFieldsSheet(wb, [def], opts.includePay)
+  addDatasetSheet(wb, def, fields, rows as unknown as Record<string, unknown>[], opts.includePay, opts.lists)
+  addFieldsSheet(wb, [def], opts.includePay, opts.lists)
   addReadMe(
     wb,
     `Census export: ${def.label}`,
@@ -320,5 +381,6 @@ export async function exportDatasetWorkbook<K extends DatasetKey>(
     ],
     [def],
   )
+  addUsedLists(wb, [def], () => fields, opts.lists)
   return toBlob(wb)
 }

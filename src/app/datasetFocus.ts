@@ -29,7 +29,9 @@ export function openDatasetQuality(key: DatasetKey, panel: DatasetPanel = 'quali
   useDrillStore.getState().close()
   closeSettings()
   useDatasetFocus.setState((s) => ({ key, panel, nonce: s.nonce + 1 }))
-  goTo('data')
+  // The address names the dataset and panel (`#data.candidates-quality`, as the Data room reads
+  // it), so Back, Forward, a reload and a shared link come back to it.
+  goTo('data', `${key}-${panel}`)
 }
 
 /** The Data room calls this once it has acted on a request, so a later visit starts plain. */

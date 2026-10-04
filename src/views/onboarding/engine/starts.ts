@@ -98,6 +98,22 @@ export function dueOf(
   return def.businessDays ? addBusinessDays(start, def.dueDay) : addDays(start, def.dueDay)
 }
 
+/**
+ * Days a task ran past its due date: completed late, or still open past due (to the as-of date).
+ * Null when it is not needed, has no due date, or is open and not yet due (nothing to measure).
+ */
+export function daysLateOf(
+  t: Pick<OnboardingTask, 'completedDate'>,
+  due: ISODate | null,
+  state: TaskState,
+  asOf: ISODate,
+): number | null {
+  if (state === 'Not needed' || !due) return null
+  const end = t.completedDate ?? (state === 'Overdue' ? asOf : null)
+  if (!end) return null
+  return Math.max(0, daysBetween(due, end))
+}
+
 /** Where a task stands (the same words as the onboarding tasks drill). */
 export function stateOf(t: OnboardingTask, due: ISODate | null, asOf: ISODate): TaskState {
   if (t.status === 'Not needed') return 'Not needed'

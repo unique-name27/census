@@ -235,13 +235,15 @@ export function SurveyBlock({
           sm.prior ? `${sm.prior.wave} to ${wave}` : null,
         )}
         empty={
-          !sm.prior
-            ? 'Only one wave so far, so there is nothing to compare.'
-            : noFive
-              ? 'This survey has no 1 to 5 questions to compare.'
-              : changes.every((c) => c.delta == null)
-                ? `Each driver has fewer than ${min} respondents in one of the two waves, so changes are hidden.`
-                : null
+          !sm.compare
+            ? `Shown for the whole company only. In a filtered scope this survey can come down to one manager’s team, so each number needs ${min} or more respondents and waves are not compared.`
+            : !sm.prior
+              ? 'Only one wave so far, so there is nothing to compare.'
+              : noFive
+                ? 'This survey has no 1 to 5 questions to compare.'
+                : changes.every((c) => c.delta == null)
+                  ? `Each driver has fewer than ${min} respondents in one of the two waves, so changes are hidden.`
+                  : null
         }
       >
         <Columns

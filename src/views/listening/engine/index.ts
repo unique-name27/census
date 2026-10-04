@@ -14,7 +14,7 @@ import type { FieldRef } from '@/data/quality/fieldRef'
 import type { SurveyType } from '@/data/schema'
 import { addMonths, formatRange } from '@/lib/dates'
 import { fmt, plural } from '@/lib/format'
-import { aggregate, type Breakdown, groupRows, type SurveyGroupRow } from '@/lib/surveys'
+import { aggregate, type Breakdown, groupRows, rateHidden, type SurveyGroupRow } from '@/lib/surveys'
 import type { Headline, ViewSummary } from '@/views/types'
 import { M, scoreMetric } from '../metrics'
 import { type AreaTab, type HeadlineKind, PROGRAMS, type ProgramMeta } from './catalog'
@@ -51,7 +51,7 @@ import { buildFindings } from './findings'
 import * as L from './lineage'
 import { invitedDrill, type RateResult, rateOf, type SurveyModel, surveyModel } from './measures'
 import { answersOf, type Prepared, prepare } from './prepare'
-import { type ListeningSettings, listeningSettings, STATUS_WORD, type Status } from './settings'
+import { type ListeningSettings, listeningSettingsFor, STATUS_WORD, type Status } from './settings'
 
 export interface ProgramRow {
   survey: SurveyType
@@ -74,8 +74,11 @@ export interface ProgramRow {
   statusWord: string
   rate: number | null
   invited: number
-  responded: number
+  /** Invited people who answered; null while the rate is hidden. */
+  responded: number | null
   rateKnown: boolean
+  /** The rate is hidden to protect anonymity (a handful invited, answering or not answering). */
+  rateSuppressed: boolean
   /** Distinct respondents in the period. */
   periodRespondents: number
   /** Waves that started in the 12 months to the as-of date. */
@@ -104,7 +107,7 @@ export interface ListeningModel {
   active: number
   /** Distinct respondents in the period across programs. */
   respondents: number
-  pooledRate: { invited: number; responded: number; rate: number | null; programs: number }
+  pooledRate: { invited: number; responded: number; rate: number | null; programs: number; hidden: boolean }
   priorPooledRate: number | null
   kpis: Kpi[]
   findings: Finding[]
@@ -219,7 +222,7 @@ const cache = new WeakMap<AnalyticsContext, ListeningModel>()
 export function compute(ctx: AnalyticsContext): ListeningModel {
   const hit = cache.get(ctx)
   if (hit) return hit
-  const s = listeningSettings(ctx.metrics)
+  const s = listeningSettingsFor(ctx)
   const p = prepare(ctx)
   const uses = usesFor(p)
   const programs = shownPrograms(ctx)
@@ -230,7 +233,7 @@ export function compute(ctx: AnalyticsContext): ListeningModel {
   const yearStart = addMonths(ctx.asOf, -12)
   const rows: ProgramRow[] = programs.map((prog) => {
     const m = surveys.get(prog.survey)
-    const rate: RateResult = m?.rate ?? rateOf(ctx, p, prog.survey, ctx.window)
+    const rate: RateResult = m?.rate ?? rateOf(ctx, p, prog.survey, ctx.window, s.minOf[prog.survey])
     return {
       survey: prog.survey,
       name: prog.name,
@@ -252,6 +255,7 @@ export function compute(ctx: AnalyticsContext): ListeningModel {
       invited: rate.invited,
       responded: rate.responded,
       rateKnown: !rate.unknown,
+      rateSuppressed: rate.suppressed,
       periodRespondents: m?.periodRespondents ?? 0,
       wavesInYear: m ? m.waves.filter((w) => w.start > yearStart).length : 0,
     }
@@ -273,15 +277,18 @@ export function compute(ctx: AnalyticsContext): ListeningModel {
 
   const active = [...surveys.values()].filter((m) => m.all.some((r) => r.responseDate > yearStart)).length
   const respondents = new Set([...surveys.values()].flatMap((m) => m.period.map((r) => r.respondentKey))).size
-  const pooled = pool(rows.filter((r) => r.rateKnown && r.invited > 0))
+  const pooled = pool(rows, s.minGroup)
   // A program only compares with the prior period when it ran then (had answers in it).
   const ranIn = (survey: SurveyType, w: { start: string; end: string }) =>
     answersOf(p, survey).some((r) => r.responseDate >= w.start && r.responseDate <= w.end)
   const priorPooled = pool(
     programs
       .filter((prog) => ranIn(prog.survey, ctx.prior))
-      .map((prog) => rateOf(ctx, p, prog.survey, ctx.prior))
-      .filter((r) => !r.unknown && r.invited > 0),
+      .map((prog) => {
+        const r = rateOf(ctx, p, prog.survey, ctx.prior, s.minOf[prog.survey])
+        return { ...r, rateKnown: !r.unknown, rateSuppressed: r.suppressed }
+      }),
+    s.minGroup,
   )
 
   /* Area cuts. */
@@ -365,13 +372,13 @@ export function compute(ctx: AnalyticsContext): ListeningModel {
     courses: model.courses,
     engagementByOrg: model.engagementByOrg,
     rates: rows
-      .filter((r) => r.rateKnown && r.invited > 0)
+      .filter((r) => r.rateKnown && r.invited > 0 && r.rate != null && r.responded != null)
       .map((r) => ({
         survey: r.survey,
         name: r.name,
         rate: r.rate,
         invited: r.invited,
-        responded: r.responded,
+        responded: r.responded as number,
       })),
   })
   const out: ListeningModel = { ...model, findings, kpis: [] }
@@ -380,46 +387,83 @@ export function compute(ctx: AnalyticsContext): ListeningModel {
   return out
 }
 
-function pool(list: readonly { invited: number; responded: number }[]) {
-  const invited = list.reduce((a, r) => a + r.invited, 0)
-  const responded = list.reduce((a, r) => a + r.responded, 0)
-  return { invited, responded, rate: invited ? responded / invited : null, programs: list.length }
+/** A program whose own rate shows, so it counts in the pooled response rate. */
+const inPool = (r: {
+  invited: number
+  responded: number | null
+  rateKnown: boolean
+  rateSuppressed: boolean
+}): boolean => r.rateKnown && !r.rateSuppressed && r.invited > 0 && r.responded != null
+
+/**
+ * The rate pooled over the programs whose own rate shows (a hidden one is left out, so the pool
+ * less the shown ones can't give it away), itself hidden under the same rule.
+ */
+function pool(
+  list: readonly { invited: number; responded: number | null; rateKnown: boolean; rateSuppressed: boolean }[],
+  min: number,
+) {
+  const shown = list.filter(inPool)
+  const invited = shown.reduce((a, r) => a + r.invited, 0)
+  const responded = shown.reduce((a, r) => a + (r.responded ?? 0), 0)
+  const hidden = rateHidden(invited, responded, min)
+  return {
+    invited,
+    responded,
+    rate: invited && !hidden ? responded / invited : null,
+    programs: shown.length,
+    hidden,
+  }
 }
 
 /* ───────────── drills shared by the KPIs and the overview ───────────── */
 
 /** Programs as drill rows: respondents per program in the period, with invited and response rate. */
-export function programDrill(ctx: AnalyticsContext, m: ListeningModel, title: string) {
+export function programDrill(
+  ctx: AnalyticsContext,
+  m: ListeningModel,
+  title: string,
+  opts: { pooled?: boolean } = {},
+) {
   const byName = new Map(m.programs.map((r) => [r.survey as string, r]))
+  // The pooled response rate's own programs, or every program with answers.
+  const list = opts.pooled
+    ? m.programs.filter(inPool).map((r) => ({ survey: r.survey, name: r.name, sm: m.surveys.get(r.survey) }))
+    : [...m.surveys.values()].map((sm) => ({ survey: sm.survey, name: sm.program.name, sm }))
   const rows: SurveyGroupRow[] = []
-  for (const sm of m.surveys.values())
+  for (const { survey, name, sm } of list)
     rows.push(
       ...groupRows(
         [
           {
-            group: sm.program.name,
+            group: name,
             ...aggregate(
-              sm.period.filter((r) => r.scale === (sm.program.headline === 'nps' ? '0-10' : '1-5')),
-              { min: sm.min },
+              sm?.period.filter((r) => r.scale === (sm.program.headline === 'nps' ? '0-10' : '1-5')) ?? [],
+              { min: sm?.min ?? m.settings.minGroup },
             ),
           },
         ],
-        { survey: sm.survey, wave: null, groupBy: 'Program' },
+        { survey, wave: null, groupBy: 'Program' },
       ),
     )
+  const sentAfter =
+    'Invited counts come from the records each program is sent after; who answered is never listed.'
   return groupsDrill(rows, {
     wave: null,
     title,
     subtitle: `${ctx.window.label} · ${ctx.scopeLabel}`,
     min: m.settings.minGroup,
     uses: m.uses.programs,
-    note: 'Invited counts come from the records each program is sent after; who answered is never listed.',
+    note: opts.pooled
+      ? `The ${plural(rows.length, 'program')} whose invited population Census can work out and whose rate shows, as pooled in the response rate. ${sentAfter}`
+      : sentAfter,
     extra: {
       columns: [
         { key: 'invited', label: 'Invited', format: 'int' },
         { key: 'responded', label: 'Invited who answered', format: 'int' },
         { key: 'rate', label: 'Response rate', format: 'pct' },
       ],
+      // A hidden rate (a handful invited, answering or not) shows its invited count only.
       values: (row) => {
         const r = byName.get(row.survey)
         return r?.rateKnown
@@ -490,9 +534,12 @@ export function responseRateKpi(ctx: AnalyticsContext, m: ListeningModel): Kpi {
     deltaLabel: 'vs prior period',
     goodDirection: 'up',
     deltaMaterial: delta != null && Math.abs(delta) >= 0.05,
-    note: r.programs
-      ? `${fmt(r.responded, 'int')} of ${fmt(r.invited, 'int')} invited · ${plural(r.programs, 'program')}`
-      : 'Invited population not known',
+    suppressed: r.hidden,
+    note: r.hidden
+      ? 'Hidden to protect anonymity'
+      : r.programs
+        ? `${fmt(r.responded, 'int')} of ${fmt(r.invited, 'int')} invited · ${plural(r.programs, 'program')}`
+        : 'Invited population not known',
     uses: [
       ...L.union(
         L.WAVE,
@@ -501,7 +548,14 @@ export function responseRateKpi(ctx: AnalyticsContext, m: ListeningModel): Kpi {
       ),
     ],
     tab: 'overview',
-    drill: r.programs ? () => programDrill(ctx, m, 'Response rate by survey program') : undefined,
+    drill: r.programs
+      ? () => programDrill(ctx, m, 'Response rate by survey program', { pooled: true })
+      : undefined,
+    // "2,068 of 4,636 invited · 7 programs": the same grouped programs, answered and invited.
+    noteDrill:
+      r.programs && !r.hidden
+        ? () => programDrill(ctx, m, 'Answered and invited by survey program', { pooled: true })
+        : undefined,
   }
 }
 
@@ -518,6 +572,7 @@ export function headlineKpi(ctx: AnalyticsContext, m: ListeningModel, sm: Survey
     goodDirection: 'up',
     deltaMaterial: sm.material,
     suppressed: sm.headline.suppressed,
+    suppressedNote: sm.min > m.settings.minGroup ? `Hidden to protect anonymity (n < ${sm.min})` : undefined,
     note: sm.latest ? `${sm.latest.wave} · ${plural(sm.headline.respondents, 'respondent')}` : 'No waves yet',
     uses: m.uses.drivers,
     tab,
@@ -557,11 +612,20 @@ export function surveyKpis(ctx: AnalyticsContext, m: ListeningModel, sm: SurveyM
       label: 'Response rate',
       value: sm.rate.rate,
       format: 'pct',
+      suppressed: sm.rate.suppressed,
+      suppressedNote: sm.rate.suppressed
+        ? `Hidden to protect anonymity: ${plural(sm.rate.invited, 'person', 'people')} invited`
+        : undefined,
       note: sm.rate.unknown
         ? 'Invited population not known'
-        : `${fmt(sm.rate.responded, 'int')} of ${fmt(sm.rate.invited, 'int')} invited · period`,
+        : sm.rate.suppressed
+          ? `${fmt(sm.rate.invited, 'int')} invited · hidden to protect anonymity`
+          : `${fmt(sm.rate.responded, 'int')} of ${fmt(sm.rate.invited, 'int')} invited · period`,
       uses: rateUses,
-      drill: sm.rate.unknown ? undefined : () => invitedDrill(ctx, sm.survey, ctx.window, rateUses),
+      drill:
+        sm.rate.unknown || sm.rate.invited < sm.min
+          ? undefined
+          : () => invitedDrill(ctx, sm.survey, ctx.window, rateUses),
     },
     {
       id: `below-${sm.program.key}`,

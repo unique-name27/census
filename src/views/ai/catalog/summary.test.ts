@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import { SAMPLE_AGENTS } from './sample'
-import { agentLinkFor, audiencePhrase, catalogHeadline, isSampleCatalog, VIEW_AREAS } from './summary'
+import {
+  agentLinkFor,
+  agentsTab,
+  areasOfTab,
+  audiencePhrase,
+  catalogHeadline,
+  isSampleCatalog,
+  VIEW_AREAS,
+} from './summary'
 import { AGENT_AREAS } from './types'
 
 describe('catalog headline', () => {
@@ -68,5 +76,22 @@ describe('audiencePhrase', () => {
     expect(audiencePhrase(['managers', 'hr'])).toBe('HR team and managers')
     expect(audiencePhrase(['employees', 'hr', 'managers'])).toBe('HR team, managers and employees')
     expect(audiencePhrase([])).toBe('')
+  })
+})
+
+describe('the area filter in the address', () => {
+  it('round-trips the areas a header link opens, in catalog order', () => {
+    for (const areas of Object.values(VIEW_AREAS)) expect(areasOfTab(agentsTab(areas))).toEqual(areas)
+    expect(agentsTab(['compliance'])).toBe('agents:compliance')
+    expect(agentsTab(['peopleops', 'services'])).toBe('agents:services+peopleops')
+    expect(agentsTab([])).toBe('agents')
+  })
+
+  it('reads no areas from the plain tab or from names it does not know', () => {
+    expect(areasOfTab('agents')).toEqual([])
+    expect(areasOfTab('')).toEqual([])
+    expect(areasOfTab(undefined)).toEqual([])
+    expect(areasOfTab('agents:nowhere')).toEqual([])
+    expect(areasOfTab('agents:talent+nowhere')).toEqual(['talent'])
   })
 })

@@ -993,10 +993,6 @@ export const ATLAS_JURISDICTIONS: readonly AtlasJurisdiction[] = [
         url: 'https://herzoglaw.co.il/en/news-and-insights/new-and-amended-102-rules/',
       },
       {
-        title: 'Baker McKenzie Global Equity Matrix - Israel RS/RSU',
-        url: 'https://resourcehub.bakermckenzie.com/en/resources/global-equity-matrix/emea/israel/topics/rsrsu',
-      },
-      {
         title: 'NASPP - Hiring in Israel: how Section 102 shapes equity compensation',
         url: 'https://www.naspp.com/blog/hiring-in-israel--how-section-102-shapes-equity-compensation',
       },

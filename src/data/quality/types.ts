@@ -6,6 +6,7 @@ import type { DatasetKey, ISODate } from '../schema'
 import type { FieldRef } from './fieldRef'
 import type { Freshness, QualityRules } from './rules'
 import type { Tier } from './tier'
+import type { VocabOverlay } from './vocab'
 
 /* ───────────── versions ───────────── */
 
@@ -205,6 +206,8 @@ export interface Limiting {
 export interface QualityIndex {
   /** The thresholds this index was computed with (the metric dictionary's data quality rules). */
   rules: QualityRules
+  /** The official lists this index checked values against (null: the built-in vocabularies only). */
+  vocab?: VocabOverlay | null
   datasetTier(key: DatasetKey): Tier
   fieldTier(ref: FieldRef): Tier
   fieldStats(ref: FieldRef): FieldStats

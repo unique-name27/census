@@ -76,3 +76,6 @@ export const settingPct = (v: number): string => formatParamNumber(v, { type: 'p
 
 /** A setting's points, trimmed: "3 pts", "0.2 pts". */
 export const settingPts = (v: number): string => formatParamNumber(v, { type: 'percent', format: 'pts' })
+
+/** A finding headline as a sentence: ends with a period, like every other practice's readout. */
+export const sentence = (t: string): string => (/[.?!]$/.test(t) ? t : `${t}.`)

@@ -40,7 +40,14 @@ import {
   reqApplications,
   reqApplicationsSpec,
 } from './related'
-import type { ActionItemRow, DrillKind, DrillRecordMap, DrillSpec, LeaveGroupRow } from './types'
+import type {
+  ActionItemRow,
+  ActionOwnerRow,
+  DrillKind,
+  DrillRecordMap,
+  DrillSpec,
+  LeaveGroupRow,
+} from './types'
 
 /** Hidden keys on every display row. */
 export const PERSON_KEY = '__person'
@@ -278,7 +285,6 @@ const CASE_COLUMNS: Column[] = [
   C('resolvedAt', 'Resolved', { format: 'date' }),
   C('hoursToResolve', 'Hours to resolve', { format: 'hours' }),
   C('withinTarget', 'Within target'),
-  C('csat', 'Satisfaction', { format: 'num1' }),
 ]
 function caseRow(ctx: DrillContext, c: HrCase): Row {
   const cat = caseCategoryByName.get(c.category)
@@ -299,7 +305,8 @@ function caseRow(ctx: DrillContext, c: HrCase): Row {
     resolvedAt: c.resolvedAt ?? null,
     hoursToResolve: hours,
     withinTarget: hours == null || target == null ? null : hours <= target ? 'Yes' : 'No',
-    csat: c.csat ?? null,
+    // No satisfaction score: it is the HR service survey answer, so a case's score is one
+    // person's answer and shows only as a group mean (Listening privacy rules).
     [PERSON_KEY]: er ? null : (c.requesterId ?? null),
     [ROW_KEY]: c.caseId,
   }
@@ -535,7 +542,8 @@ function taskRow(ctx: DrillContext, t: OnboardingTask, i: number): Row {
     dueDate: t.dueDate ?? null,
     completedDate: t.completedDate ?? null,
     state,
-    daysLate: state === 'Not needed' ? null : late != null && late > 0 ? late : 0,
+    // Blank (—) when there is nothing to measure yet: open and not yet due, or no due date.
+    daysLate: state === 'Not needed' || late == null ? null : Math.max(0, late),
     processId: t.processId ?? null,
     [PERSON_KEY]: e?.employeeId ?? null,
     [ROW_KEY]: `${t.employeeId ?? t.applicationId ?? ''}-${t.task}-${i}`,
@@ -707,6 +715,25 @@ const actionRow = (_ctx: DrillContext, r: ActionItemRow, i: number): Row => ({
   [ROW_KEY]: `item-${i}`,
 })
 
+/** Action center owners: one row per person or team, with the count of items that wait on them. */
+const ACTION_OWNER_COLUMNS: Column[] = [
+  C('owner', 'Waiting on'),
+  C('ownerGroup', 'Owner group'),
+  C('items', 'Open items', { format: 'int' }),
+  C('overdue', 'Overdue', { format: 'int' }),
+  C('critical', 'Critical', { format: 'int' }),
+]
+const actionOwnerRow = (_ctx: DrillContext, r: ActionOwnerRow, i: number): Row => ({
+  owner: r.owner,
+  ownerGroup: r.ownerGroup,
+  items: r.items,
+  overdue: r.overdue,
+  critical: r.critical,
+  ...(r.itemsDrill ? { [DRILLS_KEY]: { items: r.itemsDrill } satisfies CellDrills } : {}),
+  [PERSON_KEY]: r.personId,
+  [ROW_KEY]: `owner-${i}`,
+})
+
 /* ───────── dispatch ───────── */
 
 type RowFn<K extends DrillKind> = (ctx: DrillContext, r: DrillRecordMap[K], i: number) => Row
@@ -734,6 +761,7 @@ const KINDS: { [K in DrillKind]: { columns: Column[]; row: RowFn<K>; noun: [stri
   surveyGroups: { columns: SURVEY_GROUP_COLUMNS, row: surveyGroupRow, noun: ['group', 'groups'] },
   leaveGroups: { columns: LEAVE_GROUP_COLUMNS, row: leaveGroupRow, noun: ['group', 'groups'] },
   actionItems: { columns: ACTION_COLUMNS, row: actionRow, noun: ['item', 'items'] },
+  actionOwners: { columns: ACTION_OWNER_COLUMNS, row: actionOwnerRow, noun: ['owner', 'owners'] },
 }
 
 export function drillNoun(kind: DrillKind, n: number): string {
@@ -849,6 +877,7 @@ const ROW_OPENS: Record<DrillKind, string> = {
   surveyGroups: '',
   leaveGroups: '',
   actionItems: 'Select a row to open the person it is about, when it names one.',
+  actionOwners: 'Select a row to open the person, when the owner is one.',
 }
 
 /** What selecting a row does, and whether counts in the table open their own records. */

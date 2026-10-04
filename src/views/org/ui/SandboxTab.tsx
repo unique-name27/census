@@ -360,7 +360,7 @@ export function SandboxTab() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+      <div data-tour="org-sandbox-toolbar" className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <Segmented<MoveMode>
           label="What moves when you drag"
           value={mode}

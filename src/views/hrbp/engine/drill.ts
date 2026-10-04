@@ -9,6 +9,7 @@
  */
 import type { Column } from '@/charts/types'
 import type { Employee, ISODate, JobChange } from '@/data/schema'
+import { subtitleOf } from '@/drill/subtitle'
 import { type DrillExtra, type DrillSpec, drillSpec } from '@/drill/types'
 import { daysBetween, formatDate } from '@/lib/dates'
 import type { Prep } from './base'
@@ -58,7 +59,8 @@ export function periodName(p: Prep): string {
 }
 
 /** Subtitle of a drill: the window, then the scope ("1 Oct 2025 – 30 Sep 2026 · Whole company"). */
-export const scopeLine = (p: Prep, when: string = p.window.label): string => `${when} · ${p.ctx.scopeLabel}`
+export const scopeLine = (p: Prep, when: string = p.window.label): string =>
+  subtitleOf(when, p.ctx.scopeLabel)
 
 /** "Voluntary leavers, Bengaluru, last 12 months": the parts that are set, joined. */
 export const titled = (...parts: (string | null | undefined | false)[]): string =>

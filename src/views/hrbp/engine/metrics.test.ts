@@ -383,7 +383,7 @@ describe('changing a setting changes the numbers built on it', () => {
     ]
     const id = 'hrbp-new-hire-concentration'
     expect(finding(computeHrbp(ctxOf({ employees: team })), id)?.title).toBe(
-      "3 of Morgan Diaz's 6 direct reports were hired in the last 6 months",
+      "3 of Morgan Diaz's 6 direct reports were hired in the last 6 months.",
     )
     expect(finding(withSettings(team, { [ID.newHires]: { share: 0.6 } }), id)).toBeUndefined()
     expect(finding(withSettings(team, { [ID.newHires]: { minTeam: 7 } }), id)).toBeUndefined()
@@ -397,11 +397,11 @@ describe('the readout rules follow their settings on the sample company', () => 
 
   it('span outliers: wide and narrow thresholds', () => {
     expect(finding(base, 'hrbp-span-outliers')!.title).toBe(
-      '3 managers have 12 or more direct reports and 4 have only one',
+      '3 managers have 12 or more direct reports and 4 have only one.',
     )
     const m = run({ [ORG_METRIC.wideSpan]: { minDirects: 14 }, [ORG_METRIC.narrowSpan]: { maxDirects: 2 } })
     const f = finding(m, 'hrbp-span-outliers')!
-    expect(f.title).toMatch(/^1 manager has 14 or more direct reports and \d+ have 2 or fewer$/)
+    expect(f.title).toMatch(/^1 manager has 14 or more direct reports and \d+ have 2 or fewer\.$/)
     expect(f.metricId).toBe(ID.spanOutliers)
     // The span chart marks the buckets the thresholds cover.
     expect(m.org.spanBuckets.filter((b) => b.outlier).map((b) => b.bucket)).toEqual(['1', '2'])
@@ -426,7 +426,7 @@ describe('the readout rules follow their settings on the sample company', () => 
     expect(finding(base, 'hrbp-first-year')!.title).toContain('Go-to-Market is 27.0%')
     // Above 30% only Sales qualifies (7 of 18 hires left); above 40% nothing does.
     expect(finding(run({ [ID.firstYearHigh]: { threshold: 0.3 } }), 'hrbp-first-year')!.title).toBe(
-      'First-year attrition in Sales is 38.9% (7 of 18 hires), against 9.0% elsewhere',
+      'First-year attrition in Sales is 38.9% (7 of 18 hires), against 9.0% elsewhere.',
     )
     expect(finding(run({ [ID.firstYearHigh]: { threshold: 0.4 } }), 'hrbp-first-year')).toBeUndefined()
   })

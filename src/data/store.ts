@@ -31,6 +31,8 @@ import { loadMetrics, METRICS_KEY, saveMetrics } from '@/metrics/persist'
 import { qualityRulesOf } from '@/metrics/quality'
 import type { EditResult, MetricEdit, MetricImportReport, MetricsState } from '@/metrics/types'
 import type { ApplyOptions, ImportIssue, Mapping, ParsedSheet } from './import/types'
+import { listsFileSection } from './lists/persist'
+import { useLists } from './lists/store'
 import {
   buildSampleState,
   mergeStoredSample,
@@ -644,7 +646,12 @@ export const useCensus = create<CensusState>((set, getState) => {
       set((s) => ({ settingsOpen: { ...s.settingsOpen, open: false } }))
     },
     exportSettings: () =>
-      settingsBlob(pickSettings(getState()), new Date(), metricsFileSection(getState().metrics)),
+      settingsBlob(
+        pickSettings(getState()),
+        new Date(),
+        metricsFileSection(getState().metrics),
+        listsFileSection(useLists.getState().state),
+      ),
     importSettings(json) {
       const st = getState()
       const r = parseSettingsFile(json, pickSettings(st), undefined, st.compCycle)
@@ -672,10 +679,21 @@ export const useCensus = create<CensusState>((set, getState) => {
         report = mergeReports(report, c.report)
       }
       commitMetrics(state)
-      return report ? { ...r, metrics: report } : r
+      // Official lists in the file replace the saved ones, list by list (logged, can be undone).
+      const lists =
+        r.listsSection !== undefined ? useLists.getState().importSection(r.listsSection) : undefined
+      const listsSummary = lists?.ok ? lists.summary : undefined
+      const listsError = lists && !lists.ok ? lists.error : undefined
+      return {
+        ...r,
+        ...(report ? { metrics: report } : {}),
+        ...(listsSummary ? { listsSummary } : {}),
+        ...(listsError ? { listsError } : {}),
+      }
     },
     async clearDevice() {
       const failed = await clearCensusStorage()
+      useLists.getState().reset()
       const base = buildSampleState(plain(), loadedSeed, sampleAsOf)
       for (const r of base.raws) rememberRaw(r)
       set({

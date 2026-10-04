@@ -225,7 +225,7 @@ export function DictionaryBar({
   }
 
   return (
-    <div>
+    <div data-tour="metric-dictionary-bar">
       <div className="flex flex-wrap items-end gap-x-6 gap-y-3">
         <div className="flex flex-wrap items-center gap-2">
           <Button icon={<IconDownload />} disabled={busy != null} onClick={() => void download()}>

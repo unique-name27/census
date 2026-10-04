@@ -200,7 +200,7 @@ describe('a metric held by a bronze dataset and a field of it', () => {
     expect(row.limitingLabel).toBe('Candidates source')
     expect(row.limiting.ref).toBe('candidates.source')
     expect(row.why).toBe(
-      'Candidates mapping not yet confirmed. 10% of source values are not recognized or defaulted; silver allows 2%.',
+      'Candidates mapping not yet confirmed. Source has 10% of values not recognized or defaulted; a field needs 2% or less to count as silver.',
     )
   })
 

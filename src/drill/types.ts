@@ -87,6 +87,24 @@ export interface ActionItemRow {
 }
 
 /**
+ * An owner in the Action center (drill kind `actionOwners`): who open items wait on and how many,
+ * one row per person or team (a person in two owner groups is one row). The open-items count
+ * opens that owner's items.
+ */
+export interface ActionOwnerRow {
+  owner: string
+  /** The owner groups they appear in, in owner-group order ("Managers, HR business partners"). */
+  ownerGroup: string
+  /** The person, when the owner is one; null for a team or queue. */
+  personId: string | null
+  items: number
+  overdue: number
+  critical: number
+  /** Opens this owner's open items. */
+  itemsDrill: DrillSource
+}
+
+/**
  * The records each drill kind shows. One kind per dataset, plus two grouped kinds: survey
  * numbers drill to grouped counts and scores (`surveyGroups`, `SurveyGroupRow`), never to an
  * individual's answers, and leave numbers cut by reason drill to grouped counts
@@ -112,6 +130,7 @@ export interface DrillRecordMap {
   surveyGroups: SurveyGroupRow
   leaveGroups: LeaveGroupRow
   actionItems: ActionItemRow
+  actionOwners: ActionOwnerRow
 }
 export type DrillKind = keyof DrillRecordMap
 
@@ -122,7 +141,7 @@ export const drillDataset = (kind: DrillKind): DatasetKey =>
     : kind === 'leaveGroups'
       ? 'transactions'
       : // Action items come from every dataset; their specs always name the fields they read.
-        kind === 'actionItems'
+        kind === 'actionItems' || kind === 'actionOwners'
         ? 'employees'
         : kind
 
@@ -145,6 +164,11 @@ export interface DrillSpec<K extends DrillKind = DrillKind> {
   hide?: string[]
   /** One-line explanation of how the rows were selected. */
   note?: string
+  /**
+   * What one row stands for, singular and plural, when the kind's own word would mislead: accepted
+   * offers listed as upcoming starts count as "starts", not "applications".
+   */
+  noun?: readonly [string, string]
   /**
    * The fields the drilled number is computed from (its figure's `uses`). The panel and its
    * exports then show that number's tier; without them, the tier of the records' dataset.

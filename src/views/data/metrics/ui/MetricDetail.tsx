@@ -93,7 +93,11 @@ export function MetricDetail({
 
   return (
     <div className="flex flex-col gap-4">
-      <section aria-labelledby={`${slug}-name`} className="rounded-sheet bg-sheet px-4 pt-3.5 pb-1">
+      <section
+        aria-labelledby={`${slug}-name`}
+        data-tour="metric-detail"
+        className="rounded-sheet bg-sheet px-4 pt-3.5 pb-1"
+      >
         <div className="flex items-start gap-3">
           <div className="min-w-0 flex-1">
             <p className="eyebrow">

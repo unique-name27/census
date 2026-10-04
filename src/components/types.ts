@@ -43,6 +43,11 @@ export interface Kpi {
   note?: string
   /** Shown instead of the value when a group is too small: "Hidden to protect anonymity". */
   suppressed?: boolean
+  /**
+   * The reason under a suppressed value when it is not the anonymity minimum of 5, e.g. a manager
+   * cut's "Hidden to protect anonymity (n < 10)".
+   */
+  suppressedNote?: string
   /** Tab to open when the tile is clicked. */
   tab?: string
   /**

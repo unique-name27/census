@@ -117,6 +117,15 @@ describe('scorecard summary and Action center', () => {
     expect(summary(ctx).kpis[1].value).toBeCloseTo(115 / 120, 10)
   })
 
+  it('opens the subset each reverification and I-9 note states', () => {
+    const s = view.summary!(ctx)
+    for (const id of ['compliance-reverification', 'compliance-i9']) {
+      const k = s.kpis.find((x) => x.id === id)!
+      const stated = Number(k.note!.match(/^([\d,]+) of/)![1].replace(/\D/g, ''))
+      expect(resolveDrill(k.noteDrill)?.rows.length, id).toBe(stated)
+    }
+  })
+
   it('lists reverification, I-9 and license items for their owners', () => {
     const items = actions(ctx)
     const by = (role: string) => items.filter((x) => x.ownerRole === role)

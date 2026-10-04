@@ -2,7 +2,7 @@
  * Settings → This device: save the settings to a file, load them from one, or clear everything
  * Census stored in this browser (with a confirm step in the page).
  */
-import { useId, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { IconDownload, IconReset, IconUpload } from '@/components/icons'
 import { toast } from '@/components/toast'
 import { Button } from '@/components/ui'
@@ -18,6 +18,14 @@ function ClearEverything() {
   const [busy, setBusy] = useState(false)
   const confirmId = useId()
   const cancelRef = useRef<HTMLButtonElement>(null)
+  // Cancel takes the confirmation away: focus goes back to the button that asked for it.
+  const openRef = useRef<HTMLButtonElement>(null)
+  const cancelled = useRef(false)
+  useEffect(() => {
+    if (confirming || !cancelled.current) return
+    cancelled.current = false
+    openRef.current?.focus()
+  }, [confirming])
   const clear = async () => {
     setBusy(true)
     try {
@@ -40,6 +48,7 @@ function ClearEverything() {
         hint="Deletes uploads, mappings, certifications, metric definition changes and settings that Census stored in this browser, then starts over on the sample data."
       >
         <Button
+          ref={openRef}
           icon={<IconReset />}
           onClick={() => {
             setConfirming(true)
@@ -68,7 +77,14 @@ function ClearEverything() {
         <Button variant="primary" disabled={busy} onClick={() => void clear()}>
           {busy ? 'Clearing…' : 'Clear everything'}
         </Button>
-        <Button ref={cancelRef} disabled={busy} onClick={() => setConfirming(false)}>
+        <Button
+          ref={cancelRef}
+          disabled={busy}
+          onClick={() => {
+            cancelled.current = true
+            setConfirming(false)
+          }}
+        >
           Cancel
         </Button>
       </div>
@@ -92,9 +108,20 @@ export function DeviceSection() {
       return
     }
     const r = importSettings(text)
-    if (r.ok)
-      toast('Settings imported', { tone: 'good', description: importDescription(r.applied, r.metrics) })
-    else toast('Settings not imported', { tone: 'critical', description: r.error })
+    if (!r.ok) {
+      toast('Settings not imported', { tone: 'critical', description: r.error })
+      return
+    }
+    toast('Settings imported', {
+      tone: 'good',
+      description: importDescription(r.applied, r.metrics, r.listsSummary),
+    })
+    // The rest of the file applied; its official lists did not, so that gets its own warning.
+    if (r.listsError)
+      toast('The official lists were not imported', {
+        tone: 'critical',
+        description: `${r.listsError} The lists in this browser stay as they were.`,
+      })
   }
   return (
     <SettingsBlock
@@ -103,7 +130,7 @@ export function DeviceSection() {
     >
       <Field
         label="Settings file"
-        hint="Move your settings to another browser or computer. The file holds display, data and tool link settings and your metric definitions (wording, targets and calculation settings, with their change log); it never holds pay amounts or data."
+        hint="Move your settings to another browser or computer. The file holds display, data and tool link settings, your metric definitions (wording, targets and calculation settings, with their change log) and the official lists you saved; it never holds pay amounts or data."
       >
         <Button icon={<IconDownload />} onClick={onExport}>
           Export settings

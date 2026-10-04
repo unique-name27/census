@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import type { RuleResult } from '@/data/quality'
-import { certifyOutcomeText, draftsOff, newControlDraft, readiness, revokeText } from './certify'
+import {
+  certifyOutcomeText,
+  draftsOff,
+  draftsUnusable,
+  expectedError,
+  newControlDraft,
+  readiness,
+  revokeText,
+  validateControls,
+} from './certify'
 
 const rule = (id: RuleResult['id'], gate: RuleResult['gate'], pass: boolean): RuleResult => ({
   id,
@@ -42,6 +51,22 @@ describe('what certifying would do', () => {
     )
     const blocked = readiness(SILVER.map((r) => (r.id === 'mapping-confirmed' ? { ...r, pass: false } : r)))
     expect(certifyOutcomeText('Job changes', blocked, 0)).toBeNull()
+  })
+
+  it('never says gold while a total has no number or text that is not one', () => {
+    const ready = readiness(SILVER)
+    const blank = newControlDraft('rows', 'a')
+    const text = { ...newControlDraft('rows', 'b'), expected: 'abc' }
+    const fine = { ...newControlDraft('rows', 'c'), expected: '1,797' }
+    expect(draftsUnusable([blank, text, fine])).toBe(2)
+    expect(certifyOutcomeText('Candidates', ready, 0, 1)).toBe(
+      'A control total is not complete. Enter its numbers, or remove it, to certify.',
+    )
+    expect(certifyOutcomeText('Candidates', ready, 0, 2)).toMatch(/^2 control totals are not complete/)
+    expect(expectedError('abc')).toBe('Enter a number.')
+    expect(expectedError('')).toBeNull()
+    expect(expectedError('$1,452')).toBeNull()
+    expect(validateControls([text]).errors.b).toMatch(/^Enter a number/)
   })
 
   it('counts the typed totals that parse and miss the data', () => {

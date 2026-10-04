@@ -46,10 +46,21 @@ export function readiness(rules: readonly RuleResult[]): Readiness {
 /**
  * What certifying now would do, with the control totals typed so far: gold, or silver because a
  * total does not reconcile or another gold check fails. Null when certifying is not possible yet.
- * `off`: the typed totals that do not reconcile with the data.
+ * `off`: the typed totals that do not reconcile with the data. `unusable`: totals without a
+ * number (or with text that is not one) or with an allowed difference out of range, which stop
+ * the certification until they are fixed or removed.
  */
-export function certifyOutcomeText(label: string, ready: Readiness, off: number): string | null {
+export function certifyOutcomeText(
+  label: string,
+  ready: Readiness,
+  off: number,
+  unusable = 0,
+): string | null {
   if (!ready.canCertify) return null
+  if (unusable > 0)
+    return unusable === 1
+      ? 'A control total is not complete. Enter its numbers, or remove it, to certify.'
+      : `${unusable} control totals are not complete. Enter their numbers, or remove them, to certify.`
   const also = ready.goldAlsoNeeds.map((r) => r.label.toLowerCase())
   if (off > 0) {
     const totals = `${off} control ${off === 1 ? 'total does' : 'totals do'} not reconcile`
@@ -157,6 +168,16 @@ export function draftsOff(
   return n
 }
 
+/** What is wrong with an Expected entry as typed: null while it is blank or a number. */
+export function expectedError(text: string): string | null {
+  return text.trim() && parseAmount(text) == null ? 'Enter a number.' : null
+}
+
+/** Control totals that cannot be used yet: no number, text that is not a number, or a bad allowed difference. */
+export function draftsUnusable(drafts: readonly ControlDraft[]): number {
+  return drafts.filter((d) => parseAmount(d.expected) == null || parseTolerance(d.tolerance) == null).length
+}
+
 export interface ValidatedControls {
   totals: Omit<ControlTotal, 'actual'>[]
   /** Draft ID → what to fix. */
@@ -169,7 +190,10 @@ export function validateControls(drafts: readonly ControlDraft[]): ValidatedCont
   for (const d of drafts) {
     const expected = parseAmount(d.expected)
     const tolerance = parseTolerance(d.tolerance)
-    if (expected == null) errors[d.id] = 'Enter the expected number, such as 1,452.'
+    if (expected == null)
+      errors[d.id] = d.expected.trim()
+        ? 'Enter a number, the total from your source report.'
+        : 'Enter the expected number from your source report.'
     else if (tolerance == null) errors[d.id] = 'Enter an allowed difference between 0% and 10%.'
     else
       totals.push({ label: d.label.trim() || CONTROL_LABEL[d.metric], metric: d.metric, expected, tolerance })

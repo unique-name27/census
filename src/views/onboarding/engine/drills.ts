@@ -15,21 +15,31 @@ import type {
   SurveyType,
 } from '@/data/schema'
 import { PERSON_KEY } from '@/drill/records'
+import { asOfLine, windowLine } from '@/drill/subtitle'
 import { type DrillSpec, drillSpec } from '@/drill/types'
-import { formatDate, formatRange } from '@/lib/dates'
+import { formatDate, monthEnd } from '@/lib/dates'
+import { fmt, plural } from '@/lib/format'
 import { type Breakdown, groupRows, type SurveyAggregate } from '@/lib/surveys'
 import type { OnboardingBase } from './base'
-import { COVERAGE_LABEL, type PlanLineView } from './plan'
-import { type Readiness, readinessOf, type Start, type TaskView } from './starts'
+import { COVERAGE_LABEL, type CoverageRow, type PlanLineView, type PlanModel } from './plan'
+import { daysLateOf, type Readiness, readinessOf, type Start, type TaskView } from './starts'
 
 type Uses = readonly FieldRef[] | undefined
 
 /** "1 Oct 2025 – 30 Sep 2026 · Whole company". */
 export const windowSub = (b: OnboardingBase, w: { start: string; end: string } = b.window): string =>
-  `${formatRange(w.start, w.end)} · ${b.scopeLabel}`
+  windowLine(w, b.scopeLabel)
 
-/** "On 30 Sep 2026 · Whole company". */
-export const asOfSub = (b: OnboardingBase): string => `On ${formatDate(b.asOf)} · ${b.scopeLabel}`
+/** "As of 30 Sep 2026 · Whole company". */
+export const asOfSub = (b: OnboardingBase): string => asOfLine(b.asOf, b.scopeLabel)
+
+/** The plan year to date: "1 Apr 2026 – 30 Sep 2026 · Whole company" (starts counted against the plan). */
+export const planYtdSub = (b: OnboardingBase, p: { start: string; toDate: string }): string =>
+  windowSub(b, { start: p.start, end: p.toDate })
+
+/** One calendar month: "1 Jun 2026 – 30 Jun 2026 · Whole company". */
+export const monthSub = (b: OnboardingBase, month: string): string =>
+  windowSub(b, { start: `${month}-01`, end: monthEnd(`${month}-01`) })
 
 const C = (key: string, label: string, extra: Partial<Column> = {}): Column => ({ key, label, ...extra })
 
@@ -79,6 +89,8 @@ export function startsDrill(
       kind: 'candidates',
       title,
       subtitle,
+      // Each row is a person starting, though the record is their accepted offer.
+      noun: ['start', 'starts'],
       rows: withCandidate.map((s) => s.candidate!),
       hide: ['currentStage', 'stageEnteredDate', 'nextEventDate', 'rejectionReason', 'appliedDate'],
       extra: {
@@ -104,6 +116,7 @@ export function startsDrill(
     kind: 'employees',
     title,
     subtitle,
+    noun: ['start', 'starts'],
     rows: starts.map((s) => s.employee!),
     hide: ['tenure', 'directReports', 'orgSize'],
     extra: {
@@ -133,7 +146,14 @@ export function tasksDrill(
       columns: [],
       values: (t: OnboardingTask) => {
         const v = byTask.get(t)!
-        return { dueDate: v.due, state: v.state, owner: v.owner }
+        // Days late from the effective due date (the checklist fills blank ones); blank while
+        // a task is open and not yet due.
+        return {
+          dueDate: v.due,
+          state: v.state,
+          owner: v.owner,
+          daysLate: daysLateOf(t, v.due, v.state, b.asOf),
+        }
       },
     },
     note: o.note,
@@ -157,6 +177,47 @@ export function employeesDrill(
     uses: o.uses,
     extra: o.extra,
   })
+}
+
+/**
+ * The tasks behind one start's "7 of 10 done": the day-one tasks only (`readiness: true`; I-9
+ * tasks at US sites), so the panel lists exactly the tasks counted. Later tasks such as the 30,
+ * 60 and 90-day check-ins are left out, and the note says so.
+ */
+export function dayOneTasksDrill(
+  b: OnboardingBase,
+  r: Readiness,
+  name: string,
+  o: { uses?: Uses } = {},
+): DrillSpec<'onboardingTasks'> | null {
+  return tasksDrill(b, r.tasks, `Day-one tasks, ${name}`, {
+    note: `${r.done} of ${r.total} done. Only the tasks that count toward day one are listed; later tasks such as the 30, 60 and 90-day check-ins are not.`,
+    uses: o.uses,
+  })
+}
+
+/** The roster records of a list of starts (people who started have one; offers alone do not). */
+export const startEmployees = (list: readonly Start[]): Employee[] =>
+  list.flatMap((p) => (p.employee ? [p.employee] : []))
+
+/**
+ * A day-one readiness bar or point (a month, a site): the starts who were not ready on day one.
+ * When everyone was ready (a 100% bar) it opens the starts who were, so every bar opens records.
+ */
+export function readinessDrill(
+  b: OnboardingBase,
+  rows: readonly Start[],
+  ready: ReadonlySet<Start>,
+  where: string,
+  o: { subtitle?: string; uses?: Uses } = {},
+): DrillSpec<'employees'> | null {
+  const notReady = rows.filter((p) => !ready.has(p))
+  return notReady.length
+    ? employeesDrill(b, startEmployees(notReady), `Not ready on day one, ${where}`, o)
+    : employeesDrill(b, startEmployees(rows), `Ready on day one, ${where}`, {
+        ...o,
+        note: 'Everyone here had every day-one task done by their first day.',
+      })
 }
 
 export function candidatesDrill(
@@ -202,7 +263,11 @@ export function reqsDrill(
   })
 }
 
-/** Plan lines, with what stands behind each one. */
+/**
+ * Plan lines, with what stands behind each one. A line can plan more than one start, so when the
+ * planned starts differ from the line count the subtitle says so ("102 planned starts"): the
+ * number clicked is the planned starts, the panel counts lines.
+ */
 export function planDrill(
   b: OnboardingBase,
   views: readonly PlanLineView[],
@@ -211,10 +276,12 @@ export function planDrill(
 ): DrillSpec<'hiringPlan'> | null {
   if (!views.length) return null
   const byLine = new Map(views.map((v) => [v.line, v]))
+  const starts = views.reduce((n, v) => n + v.line.plannedHires, 0)
+  const sub = o.subtitle ?? asOfSub(b)
   return drillSpec({
     kind: 'hiringPlan',
     title,
-    subtitle: o.subtitle ?? asOfSub(b),
+    subtitle: starts === views.length ? sub : `${plural(starts, 'planned start')} · ${sub}`,
     rows: views.map((v) => v.line),
     extra: {
       columns: [C('coverage', 'Behind it')],
@@ -226,6 +293,81 @@ export function planDrill(
     note: o.note,
     uses: o.uses,
   })
+}
+
+/**
+ * How a gap to plan is reached, for its drill: "Gap = 195 planned − (120 started + 30 committed +
+ * 7.0 forecast) = 38." and what the listed lines are.
+ */
+export function gapNote(
+  planned: number,
+  started: number,
+  committed: number,
+  forecast: number,
+  uncoveredListed: boolean,
+): string {
+  const gap = planned - (started + committed + forecast)
+  return [
+    `Gap = ${fmt(planned, 'int')} planned − (${fmt(started, 'int')} started + ${fmt(committed, 'int')} committed + ${fmt(forecast, 'num1')} forecast) = ${fmt(Math.round(gap), 'int')}.`,
+    uncoveredListed
+      ? 'Listed: the future plan lines with no accepted offer or open req.'
+      : 'Every future plan line has an accepted offer or an open req, so all plan lines are listed.',
+  ].join(' ')
+}
+
+/** The drills of one plan coverage row; null where the number is 0 (nothing to open). */
+export interface CoverageDrills {
+  planYtd: (() => DrillSpec<'hiringPlan'> | null) | null
+  actualYtd: (() => DrillSpec<'employees'> | null) | null
+  planFull: (() => DrillSpec<'hiringPlan'> | null) | null
+  gap: (() => DrillSpec<'hiringPlan'> | null) | null
+}
+
+/**
+ * The records behind one row of the plan coverage table (a business unit or a department).
+ * Starts to date carry the plan year to date as their window, not the view's period. Planned
+ * starts open their plan lines, with the planned-start total in the subtitle when a line plans
+ * more than one. The gap opens the future lines with nothing behind them yet, or every line of
+ * the row when each one is covered, with the sum in the note.
+ */
+export function coverageDrills(
+  b: OnboardingBase,
+  p: PlanModel,
+  r: CoverageRow,
+  where: string,
+  uses: { plan: Uses; actual: Uses; gap: Uses },
+): CoverageDrills {
+  const lines = new Set(r.lines)
+  const rowViews = p.views.filter((v) => lines.has(v.line))
+  const open = p.noReq.filter((v) => lines.has(v.line))
+  const gapLines = open.length ? open : rowViews
+  return {
+    planYtd: r.planYtd
+      ? () =>
+          planDrill(
+            b,
+            rowViews.filter((v) => v.line.period <= p.toDate),
+            `Planned starts to date, ${where}`,
+            { uses: uses.plan },
+          )
+      : null,
+    actualYtd: r.actualYtd
+      ? () =>
+          employeesDrill(b, r.actual, `Starts to date, ${where}`, {
+            subtitle: planYtdSub(b, p),
+            uses: uses.actual,
+          })
+      : null,
+    planFull: r.planFull ? () => planDrill(b, rowViews, `Plan lines, ${where}`, { uses: uses.plan }) : null,
+    gap:
+      Math.round(r.gap) > 0 && gapLines.length
+        ? () =>
+            planDrill(b, gapLines, `Plan lines still to cover, ${where}`, {
+              note: gapNote(r.planFull, r.actualYtd, r.committed, r.forecast, open.length > 0),
+              uses: uses.gap,
+            })
+        : null,
+  }
 }
 
 export function learningDrill(

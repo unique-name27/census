@@ -136,9 +136,9 @@ export function promotionsComparisonSpec(p: Prep, movement: MovementModel) {
       note: shareNote(ref.promotions, ['promotion', 'promotions'], ref.avgHeadcount),
     })
   }
-  const w = promotionComparison(p).window
+  const { window: w, part } = promotionComparison(p)
   const ref = movement.priorPromotions
-  return changesSpec(p, titled('Promotions', 'comparison period'), promotionsIn(p.changes, w), {
+  return changesSpec(p, titled('Promotions', part), promotionsIn(p.changes, w), {
     when: w.label,
     note: shareNote(ref.promotions, ['promotion', 'promotions'], ref.avgHeadcount),
   })
@@ -153,6 +153,9 @@ export function firstYearSummary(p: Prep, emps = p.emps, asOf = p.asOf): CohortS
   })
   return p.has.terminationDate ? s : { ...s, rate: null }
 }
+
+/** A window with nobody in it (an early custom range): every rate says so, not a missing column. */
+const NO_HEADCOUNT = 'No headcount in this period'
 
 export function computeKpis(p: Prep, movement: MovementModel): KpiModel {
   const { emps, companyEmps, window, prior, asOf, ctx } = p
@@ -259,11 +262,15 @@ export function computeKpis(p: Prep, movement: MovementModel): KpiModel {
       goodDirection: 'down',
       deltaMaterial: p.material(delta, r.ref),
       spark,
+      // A missing column is named only when it is what stops the rate; a window with nobody in
+      // it says so on every rate.
       note:
         value == null && !suppressed
-          ? left
-            ? missing
-            : NO_LEAVERS
+          ? !left
+            ? NO_LEAVERS
+            : r.own.avgHeadcount <= 0
+              ? NO_HEADCOUNT
+              : missing
           : `${count(r.own.events, noun[0], noun[1])} over an average headcount of ${avgText(r.own.avgHeadcount)}${annualized}`,
       suppressed,
       tab: 'attrition',
@@ -371,7 +378,7 @@ export function computeKpis(p: Prep, movement: MovementModel): KpiModel {
       'Attrition',
       all,
       sparkRate((g) => g.exits, left),
-      'No headcount in this period',
+      NO_HEADCOUNT,
       ['exit', 'exits'],
       { title: 'Leavers', rows: records.exits },
       ATTRITION,

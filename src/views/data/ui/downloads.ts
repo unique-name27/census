@@ -6,14 +6,17 @@
 import type { Column, ExportMeta } from '@/charts'
 import type { ImportIssue } from '@/data/import'
 import { ISSUE_COLUMNS, issueTableRows } from '@/data/import/issues'
+import { templateLists } from '@/data/lists/effective'
+import { useLists } from '@/data/lists/store'
 import type { Tier } from '@/data/quality/tier'
 import { generateSample, SAMPLE_COMPANY } from '@/data/sample'
 import { DATASET_KEYS, type DatasetKey, type Datasets, datasetDef } from '@/data/schema'
+import { useCensus } from '@/data/store'
 import { todayISO } from '@/lib/dates'
 import { toCsv } from '@/lib/export/csv'
 import { downloadBlob, MIME } from '@/lib/export/download'
 import { slug } from '@/lib/export/names'
-import { sampleWorkbookDatasets } from '../engine/flow'
+import { leftOutNotes, sampleWorkbookDatasets } from '../engine/flow'
 import { LINEAGE_COLUMNS, type LineageRow, lineageExportRows } from '../engine/lineage'
 import {
   COVERAGE_COLUMNS,
@@ -24,6 +27,11 @@ import {
 } from '../engine/manifest'
 import { loadImportLib } from '../state/session'
 
+/** Dropdowns for the template columns that have an official list (Settings > Official lists). */
+function officialDropdowns() {
+  return templateLists(useLists.getState().state, useCensus.getState().sources)
+}
+
 /** Every row of every dataset of the sample company, in the upload layout. */
 export async function downloadSampleWorkbook(
   includePay: boolean,
@@ -33,24 +41,30 @@ export async function downloadSampleWorkbook(
   const lib = await loadImportLib()
   const sample = generateSample()
   const datasets = sampleWorkbookDatasets(includePay)
+  const leftOut = DATASET_KEYS.filter((k) => !datasets.includes(k))
   const blob = await lib.buildTemplateWorkbook({
     sample,
     datasets,
     sampleRows: Number.MAX_SAFE_INTEGER,
     includePay,
+    notes: leftOutNotes(leftOut),
+    lists: officialDropdowns(),
   })
   downloadBlob(blob, `census-sample-${slug(SAMPLE_COMPANY)}.xlsx`)
   return {
     rows: datasets.reduce((a, k) => a + sample[k].length, 0),
     datasets,
-    leftOut: DATASET_KEYS.filter((k) => !datasets.includes(k)),
+    leftOut,
   }
 }
 
-/** Headers, dropdowns and help sheets with no rows; all ten datasets, or one. */
+/** Headers, dropdowns and help sheets with no rows; every dataset, or one. */
 export async function downloadTemplate(key?: DatasetKey): Promise<void> {
   const lib = await loadImportLib()
-  const blob = await lib.buildTemplateWorkbook(key ? { datasets: [key] } : {})
+  const blob = await lib.buildTemplateWorkbook({
+    ...(key ? { datasets: [key] } : {}),
+    lists: officialDropdowns(),
+  })
   downloadBlob(blob, key ? `census-template-${slug(datasetDef(key).sheet)}.xlsx` : 'census-template.xlsx')
 }
 
@@ -61,7 +75,7 @@ export async function downloadCurrent<K extends DatasetKey>(
   includePay: boolean,
 ): Promise<void> {
   const lib = await loadImportLib()
-  const blob = await lib.exportDatasetWorkbook(key, rows, { includePay })
+  const blob = await lib.exportDatasetWorkbook(key, rows, { includePay, lists: officialDropdowns() })
   downloadBlob(blob, `census-${slug(datasetDef(key).sheet)}-${todayISO()}.xlsx`)
 }
 

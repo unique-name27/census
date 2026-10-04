@@ -16,8 +16,9 @@ import { STAGES } from '@/data/schema'
 import type { Window } from '@/data/scope'
 import { isActiveAt } from '@/data/scope'
 import { PERSON_KEY } from '@/drill/records'
+import { asOfLine, windowLine } from '@/drill/subtitle'
 import { type DrillSpec, drillSpec } from '@/drill/types'
-import { daysBetween, formatDate, formatMonth, quarterStart } from '@/lib/dates'
+import { daysBetween, formatDate, formatMonth, formatRange, quarterStart } from '@/lib/dates'
 import { fmt, plural } from '@/lib/format'
 import { median } from '@/lib/stats'
 import type { RecruitingBase } from './base'
@@ -44,13 +45,12 @@ const lower = (s: string) => s.toLowerCase()
 const stageWord = (i: number) => lower(STAGES[i] ?? 'Applied')
 const days = (v: number | null) => fmt(v != null ? Math.round(v) : null, 'days')
 
-/** "1 Oct 2025 to 30 Sep 2026" */
-export const rangeText = (w: Span): string => `${formatDate(w.start)} to ${formatDate(w.end)}`
-/** "1 Oct 2025 to 30 Sep 2026 · Whole company" */
-export const windowSub = (b: RecruitingBase, w: Span = b.window): string =>
-  `${rangeText(w)} · ${b.scopeLabel}`
-/** "On 30 Sep 2026 · Whole company" */
-export const asOfSub = (b: RecruitingBase): string => `On ${formatDate(b.asOf)} · ${b.scopeLabel}`
+/** "1 Oct 2025 – 30 Sep 2026": the window as every drill subtitle writes it (`formatRange`). */
+export const rangeText = (w: Span): string => formatRange(w.start, w.end)
+/** "1 Oct 2025 – 30 Sep 2026 · Whole company" */
+export const windowSub = (b: RecruitingBase, w: Span = b.window): string => windowLine(w, b.scopeLabel)
+/** "As of 30 Sep 2026 · Whole company" */
+export const asOfSub = (b: RecruitingBase): string => asOfLine(b.asOf, b.scopeLabel)
 /** "Applications received 1 Oct 2025 to 30 Sep 2026 · Whole company" */
 export const cohortSub = (b: RecruitingBase, w: Span = b.window): string =>
   `Applications received ${rangeText(w)} · ${b.scopeLabel}`
@@ -486,7 +486,7 @@ export function priorOpenReqsKpiDrill(b: RecruitingBase): DrillSpec<'requisition
   const change = b.req.open.length - list.length
   return reqDrill(list, {
     title: `Reqs open on ${formatDate(on)}`,
-    subtitle: `On ${formatDate(on)} · ${b.scopeLabel}`,
+    subtitle: asOfLine(on, b.scopeLabel),
     note: `The comparison for the ${plural(b.req.open.length, 'req')} open on ${formatDate(b.asOf)}: ${change > 0 ? `${fmt(change, 'int')} more` : change < 0 ? `${fmt(-change, 'int')} fewer` : 'the same number'} now.`,
     extras: [
       {

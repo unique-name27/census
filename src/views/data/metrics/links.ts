@@ -9,11 +9,15 @@
  *
  * Pure, so the parsing is unit-tested; `open.ts` navigates.
  */
+import { VIEW_KEYS } from '@/data/schema'
 import type { MetricView } from '@/metrics/types'
 
 export const METRICS_ROUTE = 'metrics'
 
-const VIEWS: readonly MetricView[] = ['recruiting', 'hrbp', 'org', 'services', 'talent', 'comp', 'ai', 'data']
+/** Every view a metric can belong to: the folder tabs, the Data room and the Action center. */
+export const METRIC_VIEWS: readonly MetricView[] = [...VIEW_KEYS, 'data', 'actions']
+
+const VIEWS = METRIC_VIEWS
 
 const isMetricView = (s: string): s is MetricView => (VIEWS as readonly string[]).includes(s)
 

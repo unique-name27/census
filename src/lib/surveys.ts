@@ -427,22 +427,36 @@ export function waveChange(
 export interface ResponseRate {
   /** People invited (the known population). */
   invited: number
-  /** Invited people who answered at least once. */
-  responded: number
-  /** responded ÷ invited; null when nobody was invited. */
+  /** Invited people who answered at least once; null while the rate is hidden. */
+  responded: number | null
+  /** responded ÷ invited; null when nobody was invited or the rate is hidden. */
   rate: number | null
   /** Respondents not in the invited population (a key mismatch or an outdated list). */
   outside: number
+  /** Hidden to protect anonymity: see `rateHidden`. */
+  suppressed: boolean
+}
+
+/**
+ * Whether a response rate must be hidden: fewer people invited than the minimum, or between one
+ * and the minimum less one who answered, or who didn't. The invited people can be listed by
+ * name, so a rate over a handful of them (0% of 2, 100% of 4) would say who answered.
+ */
+export function rateHidden(invited: number, responded: number, min: number): boolean {
+  if (invited <= 0 || min <= 1) return false
+  const missing = invited - responded
+  return invited < min || (responded > 0 && responded < min) || (missing > 0 && missing < min)
 }
 
 /**
  * Response rate against an invited population when it is known: the employee IDs (or
- * application IDs) who were sent the wave. A rate is a count of people, never an answer, so it
- * is shown at any size; the views still hide it for groups under the minimum.
+ * application IDs) who were sent the wave. With `min` (the survey's anonymity minimum) the rate
+ * and the count who answered are null when `rateHidden` says so; the invited count stays.
  */
 export function responseRate(
   responses: readonly SurveyResponse[],
   invited: ReadonlySet<string> | readonly string[],
+  opts: { min?: number } = {},
 ): ResponseRate {
   const pop = invited instanceof Set ? invited : new Set(invited as readonly string[])
   const who = new Set(responses.map((r) => r.respondentKey))
@@ -452,7 +466,14 @@ export function responseRate(
     if (pop.has(k)) responded++
     else outside++
   }
-  return { invited: pop.size, responded, rate: pop.size ? responded / pop.size : null, outside }
+  const suppressed = rateHidden(pop.size, responded, opts.min ?? 0)
+  return {
+    invited: pop.size,
+    responded: suppressed ? null : responded,
+    rate: pop.size && !suppressed ? responded / pop.size : null,
+    outside,
+    suppressed,
+  }
 }
 
 /* ───────────── joining respondents (group labels only) ───────────── */

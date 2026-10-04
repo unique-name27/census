@@ -2,7 +2,8 @@
  * The targets and thresholds in force, read once per context from the metric dictionary
  * (`ctx.metrics`), so an edited setting recomputes the whole view and nothing reads a constant.
  */
-import type { SurveyType } from '@/data/schema'
+import type { AnalyticsContext } from '@/data/context'
+import { type SurveyType, surveyProgramOf } from '@/data/schema'
 import { surveyMinimumsOf } from '@/metrics/privacy'
 import type { MetricsApi, MetricTarget } from '@/metrics/types'
 import { M, P, scoreMetric } from '../metrics'
@@ -70,6 +71,29 @@ export function listeningSettings(m: MetricsApi): ListeningSettings {
     returnGap: m.num(M.returnTiming, P.gap),
     lowCourse: m.num(M.byCourse, P.lowScore),
   }
+}
+
+/**
+ * A survey about managers (manager feedback, engagement) in a narrowed scope: a leader,
+ * department or location filter can bring it down to one manager's team, so every number then
+ * needs the manager-cut minimum and the change since the wave before is not shown.
+ */
+export const managerScoped = (ctx: Pick<AnalyticsContext, 'isCompany'>, survey: SurveyType): boolean =>
+  !ctx.isCompany && !!surveyProgramOf.get(survey)?.managerCuts
+
+/**
+ * The settings for a context: the dictionary's, with the manager-cut minimum (10) as the
+ * smallest group for each survey about managers while the scope is narrowed (`managerScoped`).
+ */
+export function listeningSettingsFor(
+  ctx: Pick<AnalyticsContext, 'metrics' | 'isCompany'>,
+): ListeningSettings {
+  const s = listeningSettings(ctx.metrics)
+  if (ctx.isCompany) return s
+  const minOf = { ...s.minOf }
+  for (const p of PROGRAMS)
+    if (managerScoped(ctx, p.survey)) minOf[p.survey] = Math.max(minOf[p.survey], s.minManager)
+  return { ...s, minOf }
 }
 
 export type Status = 'met' | 'watch' | 'missed' | 'none'

@@ -295,6 +295,7 @@ export const metrics: MetricDef[] = withSources(
       name: 'Hires',
       definition:
         'Employees who started in the period (hire date in the Employees data). Interns are not included, and contractors only when "Count contractors in headcount" is on. Recruiting counts offers accepted by the accept date instead, so the two numbers can differ.',
+      formula: 'count of employees with a hire date in the period',
       population: EMPLOYEES,
       window: `${PERIOD}. The monthly chart covers the last 12 months.`,
       unit: 'int',
@@ -306,6 +307,7 @@ export const metrics: MetricDef[] = withSources(
       id: ID.exits,
       name: 'Exits',
       definition: 'Employees whose termination date falls in the period, of any exit type.',
+      formula: 'count of employees with a termination date in the period',
       population: EMPLOYEES,
       window: `${PERIOD}. The monthly chart covers the last 12 months.`,
       unit: 'int',
@@ -430,6 +432,7 @@ export const metrics: MetricDef[] = withSources(
       id: ID.promotions,
       name: 'Promotions',
       definition: 'Promotion events in the period from Job changes. A person promoted twice counts twice.',
+      formula: 'count of Promotion events with an effective date in the period',
       population: 'Job changes of employees in scope.',
       window: `${PERIOD}. Periods shorter than a year compare with the same months a year earlier.`,
       unit: 'int',
@@ -455,6 +458,7 @@ export const metrics: MetricDef[] = withSources(
       name: 'Transfers and lateral moves',
       definition:
         'Transfer and Lateral move events in the period from Job changes. A transfer moves a person to a different department or manager line; a lateral move changes their role at the same level.',
+      formula: 'count of Transfer and Lateral move events with an effective date in the period',
       population: 'Job changes of employees in scope.',
       window: PERIOD,
       unit: 'int',
@@ -479,6 +483,7 @@ export const metrics: MetricDef[] = withSources(
       id: ID.demotions,
       name: 'Demotions',
       definition: 'Demotion events in the period from Job changes.',
+      formula: 'count of Demotion events with an effective date in the period',
       population: 'Job changes of employees in scope.',
       window: PERIOD,
       unit: 'int',
@@ -491,6 +496,8 @@ export const metrics: MetricDef[] = withSources(
       name: 'Time since last promotion',
       definition:
         'Employees on the as-of date by years since their last Promotion event. Never promoted means no Promotion event on record since hire, including people hired recently.',
+      formula:
+        '(as-of date − latest Promotion date on or before it) ÷ 365.25, in bands; never promoted without a Promotion event',
       population: EMPLOYEES,
       window: AS_OF,
       unit: 'int',
@@ -505,6 +512,7 @@ export const metrics: MetricDef[] = withSources(
       name: 'Tenure',
       definition:
         'Years from hire date to the as-of date (365.25 days a year). The average is hidden under the anonymity minimum (5 employees by default).',
+      formula: '(as-of date − hire date) in days ÷ 365.25; average = mean over employees',
       population: EMPLOYEES,
       window: AS_OF,
       unit: 'years',
@@ -517,6 +525,8 @@ export const metrics: MetricDef[] = withSources(
       name: 'Contractors and interns',
       definition:
         "Active contractors and interns on the as-of date by site or business unit, with each group's share of its active workers. Worker type is the employment type on the roster; the table also lists employees, so each group's mix is complete.",
+      formula:
+        'active workers by type, per site or business unit; share = workers of the type ÷ active workers in the group',
       population: 'Active workers of every type.',
       window: AS_OF,
       unit: 'int',
@@ -570,6 +580,7 @@ export const metrics: MetricDef[] = withSources(
       id: ID.managers,
       name: 'Managers',
       definition: 'Active people in scope with at least one active direct report.',
+      formula: 'count of active people with at least one active direct report',
       population: 'Active workers of every type.',
       window: AS_OF,
       unit: 'int',
@@ -582,6 +593,7 @@ export const metrics: MetricDef[] = withSources(
       name: 'Span of control',
       definition:
         'Active direct reports of a manager, counting employees, contractors and interns. A manager is anyone in scope with at least one active direct report.',
+      formula: 'count of active direct reports of the manager, every worker type',
       population: 'Active workers of every type.',
       window: AS_OF,
       unit: 'int',
@@ -607,6 +619,7 @@ export const metrics: MetricDef[] = withSources(
       name: 'Median span',
       definition:
         'The middle value of active direct reports per manager, counting employees, contractors and interns. Half of managers have this many or more.',
+      formula: 'median(active direct reports per manager)',
       population: 'Active workers of every type.',
       window: AS_OF,
       unit: 'num1',
@@ -631,6 +644,7 @@ export const metrics: MetricDef[] = withSources(
       name: 'Layers',
       definition:
         'Reporting levels from the top of the group to its deepest person. One person alone is 1 layer.',
+      formula: 'deepest layer, with the top of the group as layer 1',
       population: 'Active workers of every type.',
       window: AS_OF,
       unit: 'int',
@@ -642,6 +656,7 @@ export const metrics: MetricDef[] = withSources(
       id: ID.totalOrg,
       name: 'Total org',
       definition: 'Everyone below the manager, at every level, active today.',
+      formula: 'count of active people below the manager, at every level',
       population: 'Active workers of every type.',
       window: AS_OF,
       unit: 'int',
@@ -654,6 +669,8 @@ export const metrics: MetricDef[] = withSources(
       name: 'New manager',
       definition:
         'Hired, or promoted from an individual level (L) to a manager level (M or E), within the new manager window (12 months by default). The window is set once, on the Org chart.',
+      formula:
+        'managing since > as-of date − new manager window; managing since = move from an L level to an M or E level, else hire date',
       population: 'Managers in scope.',
       window: 'The new manager window before the as-of date (default 12 months).',
       unit: 'int',
@@ -666,6 +683,8 @@ export const metrics: MetricDef[] = withSources(
       name: 'Manager flag',
       definition:
         'Overloaded at the wide span (12 or more direct reports by default, set on the Org chart), Heavy from 9 by default up to the wide span, Light under 3 by default, New when managing for less than the new manager window (12 months by default), otherwise Healthy. Executives (E levels) lead leadership teams and are flagged only when new.',
+      formula:
+        'E levels: New or Healthy only · direct reports ≥ wide span: Overloaded · ≥ heavy at: Heavy · < light under: Light · new manager: New · else Healthy',
       population: 'Managers in scope.',
       window: AS_OF,
       unit: 'text',
@@ -704,6 +723,7 @@ export const metrics: MetricDef[] = withSources(
       name: 'Single-report chains',
       definition:
         'A manager with exactly one active direct report who in turn has people below them (5 or more by default, set on the Org chart). The layer adds a step without adding reach.',
+      formula: "direct reports = 1 and the report's total org ≥ team below the only report",
       population: 'Active workers of every type.',
       window: AS_OF,
       unit: 'int',
@@ -818,6 +838,8 @@ export const metrics: MetricDef[] = withSources(
       name: 'Regretted exits under one manager',
       definition:
         'Flags the manager with the most regretted exits from their team in the last 12 months, when they have enough to flag (2 or more by default). It is critical at 3 or more by default.',
+      formula:
+        'regretted exits in the last 12 months per manager ≥ exits to flag; critical at ≥ exits to mark critical',
       population: 'Regretted leavers with a manager on record.',
       window: LAST_12,
       unit: 'int',
@@ -937,7 +959,9 @@ export const metrics: MetricDef[] = withSources(
       id: ID.firstYearHigh,
       name: 'High first-year attrition',
       definition:
-        'Flags first-year attrition above the rate to flag (20% by default), for the scope, or else for the business unit, department or location with the most excess leavers among groups with enough hires and first-year leavers (10 and 3 by default).',
+        'Flags first-year attrition above the rate to flag (20% by default) for the scope. Otherwise it looks by business unit, then department, then location, and the first of these with a hit names the group with the most excess leavers among groups whose own rate is above the rate to flag and that have enough hires and first-year leavers (10 and 3 by default).',
+      formula:
+        'first-year attrition > rate to flag for the scope; else, by business unit, then department, then location, the group with rate > rate to flag, hires ≥ smallest group and leavers ≥ fewest first-year leavers, and the most leavers − hires × scope rate',
       population: 'The first-year cohort (see First-year attrition).',
       window: 'The cohort hired 12 to 24 months before the as-of date.',
       unit: 'pct',
@@ -987,6 +1011,7 @@ export const metrics: MetricDef[] = withSources(
       name: 'Span outliers',
       definition:
         'Flags managers at or above the wide span (12 direct reports by default) and managers at or below the narrow span (1 by default). Both are set once, on the Org chart. The span of control chart marks the same groups.',
+      formula: 'managers with direct reports ≥ wide span, or direct reports ≤ narrow span',
       population: 'Managers in scope.',
       window: AS_OF,
       unit: 'int',
@@ -999,6 +1024,7 @@ export const metrics: MetricDef[] = withSources(
       name: 'New managers leading large teams',
       definition:
         'Flags new managers (see New manager) who lead enough direct reports (5 or more by default). It is a warning when one leads 8 or more by default.',
+      formula: 'new managers with direct reports ≥ team size to flag; a warning at ≥ team size for a warning',
       population: 'Managers in scope.',
       window: AS_OF,
       unit: 'int',
@@ -1035,6 +1061,8 @@ export const metrics: MetricDef[] = withSources(
       name: 'Deep reporting chains',
       definition:
         'Flags people below the deep-chain layer (7 by default, set on the Org chart), counting the top of the scope as layer 1. It is a warning when the deepest chain has 11 or more layers by default.',
+      formula:
+        'people with layer > deep chain below layer (the top of the scope is layer 1); a warning when the deepest layer ≥ layers for a warning',
       population: 'Active workers of every type.',
       window: AS_OF,
       unit: 'int',

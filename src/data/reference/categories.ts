@@ -41,16 +41,26 @@ const c = (
 }
 
 export const CATEGORIES: readonly CategoryDef[] = [
-  c('businessUnit', 'Business unit', 'org', ['employees.businessUnit', 'requisitions.businessUnit']),
+  c('businessUnit', 'Business unit', 'org', [
+    'employees.businessUnit',
+    'requisitions.businessUnit',
+    'hiringPlan.businessUnit',
+  ]),
   c('department', 'Department', 'org', [
     'employees.department',
     'requisitions.department',
     'jobChanges.fromDepartment',
     'jobChanges.toDepartment',
+    'hiringPlan.department',
   ]),
   c('costCenter', 'Cost center', 'org', ['employees.costCenter']),
   // Every company has its own sites, so locations and countries have no fixed list.
-  c('location', 'Location', 'org', ['employees.location', 'requisitions.location', 'cases.location']),
+  c('location', 'Location', 'org', [
+    'employees.location',
+    'requisitions.location',
+    'cases.location',
+    'hiringPlan.location',
+  ]),
   c('country', 'Country', 'org', ['employees.country']),
   // Functions are open: JOB_FUNCTIONS are the suggested values (the move form offers them), and a
   // company's own function is a value like any other, never "not in the list".

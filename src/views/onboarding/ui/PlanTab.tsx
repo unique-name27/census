@@ -11,7 +11,7 @@ import type { Requisition } from '@/data/schema'
 import { drill } from '@/drill'
 import { formatDate, formatMonth } from '@/lib/dates'
 import { fmt, plural } from '@/lib/format'
-import { employeesDrill, planDrill, reqsDrill, startsDrill } from '../engine/drills'
+import { coverageDrills, employeesDrill, monthSub, planDrill, reqsDrill, startsDrill } from '../engine/drills'
 import { forecastWithin } from '../engine/forecast'
 import { ACCEPTED, ACTUAL, FORECAST, OPEN_REQS, PLAN, PLAN_REQ, UPCOMING, union } from '../engine/lineage'
 import { COVERAGE_LABEL, type CoverageRow, cumulative, isUncovered, type PlanLineView } from '../engine/plan'
@@ -73,7 +73,10 @@ export function PlanTab() {
       format: 'int',
       drill: (r) =>
         drillIf(r.actual, () =>
-          employeesDrill(b, byMonth.get(r.month)!.actualPeople, `Starts in ${r.monthName}`, { uses: ACTUAL }),
+          employeesDrill(b, byMonth.get(r.month)!.actualPeople, `Starts in ${r.monthName}`, {
+            subtitle: monthSub(b, r.month),
+            uses: ACTUAL,
+          }),
         ),
     },
     {
@@ -118,6 +121,9 @@ export function PlanTab() {
   }))
   type CovRow = (typeof covRows)[number]
   const where = (r: CoverageRow) => (r.department ? `${r.businessUnit}, ${r.department}` : r.businessUnit)
+  const covUses = { plan: planUses, actual: ACTUAL, gap: union(planUses, ACCEPTED) }
+  const covDrills = new Map(covRows.map((x) => [x.r, coverageDrills(b, p, x.r, where(x.r), covUses)]))
+  const covDrill = (x: CovRow) => covDrills.get(x.r)!
   const covColumns: Column<CovRow>[] = [
     { key: 'businessUnit', label: 'Business unit' },
     ...(cut === 'department' ? [{ key: 'department', label: 'Department' } as Column<CovRow>] : []),
@@ -125,40 +131,22 @@ export function PlanTab() {
       key: 'planYtd',
       label: 'Plan to date',
       format: 'int',
-      drill: (x) =>
-        drillIf(x.planYtd, () =>
-          planDrill(
-            b,
-            p.views.filter((v) => x.r.lines.includes(v.line) && v.line.period <= p.toDate),
-            `Planned starts to date, ${where(x.r)}`,
-            { uses: planUses },
-          ),
-        ),
+      drill: (x) => covDrill(x).planYtd,
     },
     {
       key: 'actualYtd',
       label: 'Actual to date',
       format: 'int',
-      drill: (x) =>
-        drillIf(x.actualYtd, () =>
-          employeesDrill(b, x.r.actual, `Starts to date, ${where(x.r)}`, { uses: ACTUAL }),
-        ),
+      // Plan year to date, not the view's period.
+      drill: (x) => covDrill(x).actualYtd,
     },
     { key: 'vsPlan', label: 'Vs plan', format: 'pct' },
-    { key: 'statusText', label: 'Status' },
+    { key: 'statusText', label: 'Plan status' },
     {
       key: 'planFull',
       label: 'Full-year plan',
       format: 'int',
-      drill: (x) =>
-        drillIf(x.planFull, () =>
-          planDrill(
-            b,
-            p.views.filter((v) => x.r.lines.includes(v.line)),
-            `Plan lines, ${where(x.r)}`,
-            { uses: planUses },
-          ),
-        ),
+      drill: (x) => covDrill(x).planFull,
     },
     {
       key: 'committed',
@@ -190,7 +178,13 @@ export function PlanTab() {
           ),
         ),
     },
-    { key: 'gapRounded', label: 'Gap', format: 'int' },
+    {
+      key: 'gapRounded',
+      label: 'Gap',
+      format: 'int',
+      // The future lines with nothing behind them yet, with the sum in the note.
+      drill: (x) => covDrill(x).gap,
+    },
   ]
 
   /* The coming quarter. */

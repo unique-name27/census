@@ -325,6 +325,19 @@ export function sampleWorkbookDatasets(includePay: boolean): DatasetKey[] {
   return DATASET_KEYS.filter((k) => includePay || !datasetDef(k).fields.some((f) => f.pay && f.required))
 }
 
+/**
+ * The Read me line for the datasets a sample workbook leaves out while pay amounts are off, so
+ * the missing sheet is explained in the file as well as in the toast.
+ */
+export function leftOutNotes(leftOut: readonly DatasetKey[]): string[] {
+  if (!leftOut.length) return []
+  const names = leftOut.map((k) => datasetDef(k).sheet).join(' and ')
+  const one = leftOut.length === 1
+  return [
+    `${names} ${one ? 'is' : 'are'} left out because pay amounts are off. Turn them on in Settings, then download again to include ${one ? 'it' : 'them'}.`,
+  ]
+}
+
 /** Toast after an apply: "Employees replaced: 1,912 rows". */
 export function replacedMessage(datasetLabel: string, rows: number): string {
   return `${datasetLabel} replaced: ${fmt(rows, 'int')} ${rows === 1 ? 'row' : 'rows'}`

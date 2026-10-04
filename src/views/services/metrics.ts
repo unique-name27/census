@@ -343,7 +343,7 @@ const entries: MetricInput[] = [
     name: 'First response SLA met',
     definition:
       "Share of cases opened in the period with a first reply within their category's response target, in calendar hours. A case resolved without a logged reply counts its resolution as the reply.",
-    formula: 'firstResponseAt − openedAt ≤ response target',
+    formula: 'cases with firstResponseAt − openedAt ≤ response target ÷ cases judged',
     population:
       "Cases opened in the period. Each is judged against its category's response target set here; a case whose file gives it a target different from the standard one for its category keeps its own.",
     window: TREND,
@@ -421,7 +421,7 @@ const entries: MetricInput[] = [
     id: M.firstContact,
     name: 'First-contact resolution',
     definition: 'Resolved cases handled at Tier 0 or Tier 1 that were neither reopened nor escalated.',
-    formula: 'resolved ∧ ¬reopened ∧ ¬escalated ∧ tier ∈ {0, 1}',
+    formula: 'resolved cases with ¬reopened ∧ ¬escalated ∧ tier ∈ {0, 1} ÷ cases resolved',
     population: 'Cases resolved in the period, by owning team.',
     window: PERIOD,
     unit: 'pct',
@@ -479,7 +479,7 @@ const entries: MetricInput[] = [
     name: 'Final pay on time',
     definition:
       "Termination transactions completed on or before the final pay deadline for the leaver's site and exit type (Atlas OF-05). The target is the OF-05 service level's.",
-    formula: 'completedDate ≤ dueDate, by jurisdiction',
+    formula: 'on time ÷ (on time + completed late + open past due), by jurisdiction',
     population:
       "Termination transactions due in the period. The jurisdiction comes from the leaver's site in the roster; jurisdictions behind fewer leavers than the anonymity minimum fold into Other.",
     window: PERIOD,
@@ -508,6 +508,8 @@ const entries: MetricInput[] = [
     name: 'Service level status',
     definition:
       'Met when the actual reaches the target. At risk when it misses by no more than the at-risk band for its kind of target; missed otherwise. A ceiling share such as the DS-01 retro share uses a band relative to the target, because a fixed band in points would be several times the target itself. No status without an actual.',
+    formula:
+      'Met: actual meets target · At risk: miss ≤ the at-risk band (points for percentage targets, a share of the target for day targets and ceilings) · Missed: beyond it',
     population: 'Each Atlas measure in the scorecard, scored on the period.',
     window: PERIOD,
     unit: 'text',
@@ -724,6 +726,7 @@ const entries: MetricInput[] = [
     name: 'Return to work survey',
     definition:
       'The headline result of the Return to work survey, sent 30 days after a return, as Listening reports it, with a link to the full results there. Grouped results only, never one person.',
+    formula: 'mean of the 1-5 answers in the latest Return to work wave, as Listening reports it',
     population: 'Respondents to the Return to work survey in its latest waves.',
     window: 'The latest waves on or before the as-of date.',
     unit: 'num1',

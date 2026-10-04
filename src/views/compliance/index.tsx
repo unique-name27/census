@@ -39,15 +39,17 @@ function ComplianceHeaderActions() {
   const on = useCensus((s) => s.showImmigration)
   const set = useCensus((s) => s.setShowImmigration)
   return (
-    <Switch
-      checked={on}
-      onChange={set}
-      label={
-        <span>
-          Show immigration<span className="max-sm:hidden"> details</span>
-        </span>
-      }
-    />
+    <span data-tour="compliance-immigration-switch" className="inline-flex">
+      <Switch
+        checked={on}
+        onChange={set}
+        label={
+          <span>
+            Show immigration<span className="max-sm:hidden"> details</span>
+          </span>
+        }
+      />
+    </span>
   )
 }
 

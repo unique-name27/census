@@ -17,7 +17,7 @@ export function StandardControl() {
   const counts = tierCounts(ctx.quality)
   const parts = tierCountParts(counts)
   return (
-    <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1.5">
+    <div data-tour="data-standard" className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1.5">
       <Tip content={STANDARD_HINT[standard]}>
         <span className="text-[12px] font-medium text-ink-2">Data standard</span>
       </Tip>

@@ -76,8 +76,16 @@ export function dictionaryImportText(
 export function importDescription(
   applied: readonly (keyof Settings)[],
   metrics?: Pick<MetricImportReport, 'changed' | 'rejected' | 'unknown' | 'summary'>,
+  /** What the file changed in the official lists, as one sentence. */
+  lists?: string,
 ): string {
-  if (!metrics) return importedText(applied)
-  const parts = [applied.length ? importedText(applied) : null, dictionaryImportText(metrics)]
+  if (!metrics && !lists) return importedText(applied)
+  const parts = [
+    applied.length || !metrics ? importedText(applied) : null,
+    metrics ? dictionaryImportText(metrics) : null,
+    lists ?? null,
+  ]
+  // A file with only lists in it says so without "Nothing in the file could be applied."
+  if (!applied.length && !metrics) parts[0] = null
   return parts.filter(Boolean).join(' ')
 }

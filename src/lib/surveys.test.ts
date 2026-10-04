@@ -18,6 +18,7 @@ import {
   managerWindowStart,
   npsOf,
   percentOfScale,
+  rateHidden,
   respondentIndex,
   respondentKey,
   responseRate,
@@ -229,8 +230,33 @@ describe('response rates', () => {
       responded: 3,
       rate: 0.75,
       outside: 1,
+      suppressed: false,
     })
     expect(responseRate(rows, new Set<string>()).rate).toBeNull()
+  })
+
+  it('hides a rate that could say who answered', () => {
+    const rows = [...many(3, 4), r('Z9', 3)]
+    // Four invited is under the minimum of 5: the rate and who answered are hidden, the invited count stays.
+    expect(responseRate(rows, ['E0', 'E1', 'E2', 'E3'], { min: 5 })).toEqual({
+      invited: 4,
+      responded: null,
+      rate: null,
+      outside: 1,
+      suppressed: true,
+    })
+    // 0% and 100% of a small list name who did and didn't answer.
+    expect(rateHidden(4, 0, 5)).toBe(true)
+    expect(rateHidden(4, 4, 5)).toBe(true)
+    expect(rateHidden(1, 0, 5)).toBe(true)
+    // At the minimum and above, a rate shows unless a handful answered, or a handful didn't.
+    expect(rateHidden(5, 5, 5)).toBe(false)
+    expect(rateHidden(12, 0, 5)).toBe(false)
+    expect(rateHidden(12, 6, 5)).toBe(false)
+    expect(rateHidden(12, 3, 5)).toBe(true)
+    expect(rateHidden(12, 9, 5)).toBe(true)
+    expect(rateHidden(0, 0, 5)).toBe(false)
+    expect(rateHidden(3, 1, 0)).toBe(false)
   })
 })
 

@@ -23,6 +23,7 @@ import {
   drillWhen,
   escalateDrill,
   firstContactDrill,
+  lockedReason,
   oneCaseDrill,
   openDrill,
   reopenDrill,
@@ -129,16 +130,21 @@ export function CasesTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext }
   type TeamOut = (typeof teams)[number]
 
   /* Drill sources, shared by the charts and their table views. */
+  // Employee relations rows and groups under the minimum open nothing, so their numbers are plain.
   const slaCategory = (d: CategoryRow) =>
     d.slaRate == null
       ? null
-      : () => resolutionDrill(s, d.records, titled('Cases judged on resolution SLA', d.category, per))
+      : drillWhen(s, d.records, () =>
+          resolutionDrill(s, d.records, titled('Cases judged on resolution SLA', d.category, per)),
+        )
   const responseCategory = (d: CategoryRow) =>
     d.responseRate == null
       ? null
-      : () => responseDrill(s, d.records, titled('Cases judged on first response SLA', d.category, per))
-  const resolveCategory = (d: ResolveRow) => () =>
-    resolveTimeDrill(s, d.records, titled('Cases resolved', d.category, per))
+      : drillWhen(s, d.records, () =>
+          responseDrill(s, d.records, titled('Cases judged on first response SLA', d.category, per)),
+        )
+  const resolveCategory = (d: ResolveRow) =>
+    drillWhen(s, d.records, () => resolveTimeDrill(s, d.records, titled('Cases resolved', d.category, per)))
   const arrivalCell = (d: ArrivalRow) =>
     d.share == null
       ? null
@@ -154,13 +160,17 @@ export function CasesTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext }
   const channelCsat = (d: ChannelRow) =>
     d.csat == null
       ? null
-      : () => csatDrill(s, d.resolvedRecords, titled('Cases rated for satisfaction', d.channel, per))
+      : drillWhen(s, d.resolvedRecords, () =>
+          csatDrill(s, d.resolvedRecords, titled('Cases behind the satisfaction score', d.channel, per)),
+        )
   const reopened = (d: ReopenRow) =>
-    d.reopenRate == null ? null : () => reopenDrill(s, d.records, titled('Reopened cases', d.category, per))
+    d.reopenRate == null
+      ? null
+      : drillWhen(s, d.records, () => reopenDrill(s, d.records, titled('Reopened cases', d.category, per)))
   const escalated = (d: ReopenRow) =>
     d.escalateRate == null
       ? null
-      : () => escalateDrill(s, d.records, titled('Escalated cases', d.category, per))
+      : drillWhen(s, d.records, () => escalateDrill(s, d.records, titled('Escalated cases', d.category, per)))
   const categoryOpened = (d: ReopenRow) =>
     drillWhen(s, d.records, () =>
       caseDrill(s, d.records, {
@@ -205,7 +215,9 @@ export function CasesTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext }
       drill: (r) =>
         r.slaRate == null
           ? null
-          : () => resolutionDrill(s, r.openedRecords, titled('Cases judged on resolution SLA', r.team, per)),
+          : drillWhen(s, r.openedRecords, () =>
+              resolutionDrill(s, r.openedRecords, titled('Cases judged on resolution SLA', r.team, per)),
+            ),
     },
     {
       key: 'median',
@@ -214,7 +226,9 @@ export function CasesTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext }
       drill: (r) =>
         r.median == null
           ? null
-          : () => resolveTimeDrill(s, r.resolvedRecords, titled('Cases resolved', r.team, per)),
+          : drillWhen(s, r.resolvedRecords, () =>
+              resolveTimeDrill(s, r.resolvedRecords, titled('Cases resolved', r.team, per)),
+            ),
     },
     {
       key: 'csat',
@@ -223,7 +237,9 @@ export function CasesTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext }
       drill: (r) =>
         r.csat == null
           ? null
-          : () => csatDrill(s, r.resolvedRecords, titled('Cases rated for satisfaction', r.team, per)),
+          : drillWhen(s, r.resolvedRecords, () =>
+              csatDrill(s, r.resolvedRecords, titled('Cases behind the satisfaction score', r.team, per)),
+            ),
     },
     {
       key: 'firstContact',
@@ -232,7 +248,9 @@ export function CasesTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext }
       drill: (r) =>
         r.firstContact == null
           ? null
-          : () => firstContactDrill(s, r.resolvedRecords, titled('First-contact resolution', r.team, per)),
+          : drillWhen(s, r.resolvedRecords, () =>
+              firstContactDrill(s, r.resolvedRecords, titled('First-contact resolution', r.team, per)),
+            ),
     },
   ]
   const slaColumns: Column<CategoryRow>[] = [
@@ -245,13 +263,14 @@ export function CasesTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext }
       format: 'int',
       drill: (r) =>
         r.slaMet
-          ? () =>
+          ? drillWhen(s, r.records, () =>
               resolutionOutcomeDrill(
                 s,
                 r.records,
                 true,
                 titled('Cases that met the resolution SLA', r.category, per),
-              )
+              ),
+            )
           : null,
     },
     { key: 'slaRate', label: 'Resolution SLA met', format: 'pct', drill: slaCategory },
@@ -380,6 +399,8 @@ export function CasesTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext }
             secondary={(d) => count(d.slaN, 'case')}
             tone={(d) => rateTone(d.slaRate, slaTarget)}
             onSelect={(d) => drill(slaCategory(d))}
+            selectable={(d) => !!slaCategory(d)}
+            lockedNote={(d) => lockedReason(s, d.records)}
           />
         </Figure>
         <Figure
@@ -413,6 +434,8 @@ export function CasesTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext }
             format="pct0"
             labels={{ min: '10th percentile', max: '90th percentile', mid: 'Median', range: 'Middle 50%' }}
             onSelect={(d) => drill(resolveCategory(d))}
+            selectable={(d) => !!resolveCategory(d)}
+            lockedNote={(d) => lockedReason(s, d.records)}
           />
         </Figure>
       </Section>
@@ -455,6 +478,8 @@ export function CasesTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext }
             yOrder={days}
             rowHeight={32}
             onSelect={(d) => drill(arrivalCell(d))}
+            selectable={(d) => !!arrivalCell(d)}
+            lockedNote={(d) => lockedReason(s, d.records)}
           />
         </Figure>
         <Figure
@@ -484,6 +509,8 @@ export function CasesTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext }
             secondary={(d) => count(d.responses, 'response')}
             tone={(d) => (channelGap(d) >= cfg.csatGap.gap ? 'warning' : 'default')}
             onSelect={(d) => drill(channelCsat(d))}
+            selectable={(d) => !!channelCsat(d)}
+            lockedNote={(d) => lockedReason(s, d.resolvedRecords)}
           />
         </Figure>
       </Section>
@@ -526,6 +553,12 @@ export function CasesTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext }
             format="pct"
             onSelect={(d) => drill(categoryOpened(d.row))}
             onSelectSegment={(d) => drill(d.measure === 'Reopened' ? reopened(d.row) : escalated(d.row))}
+            selectable={(d, segment) =>
+              segment
+                ? !!(d.measure === 'Reopened' ? reopened(d.row) : escalated(d.row))
+                : !!categoryOpened(d.row)
+            }
+            lockedNote={(d) => lockedReason(s, d.row.records)}
           />
         </Figure>
         <Figure

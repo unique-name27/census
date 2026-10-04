@@ -33,8 +33,12 @@ export function Overview({ ctx, m }: { ctx: AnalyticsContext; m: ListeningModel 
     const sm = m.surveys.get(r.survey)
     return sm?.latest ? () => headlineDrill(ctx, sm, m.uses.drivers) : null
   }
+  // The invited people are listed only when there are at least the survey's minimum of them: a
+  // shorter named list beside the respondent count would say who answered.
   const invited = (r: ProgramRow) =>
-    r.rateKnown && r.invited ? () => invitedDrill(ctx, r.survey, ctx.window, m.uses.rate(r.survey)) : null
+    r.rateKnown && r.invited >= s.minOf[r.survey]
+      ? () => invitedDrill(ctx, r.survey, ctx.window, m.uses.rate(r.survey))
+      : null
   const fmtOf = (r: ProgramDatum) => (r.kind === 'nps' ? 'int' : 'num2')
   const changeDrill = (r: ProgramRow) => {
     const sm = m.surveys.get(r.survey)
@@ -69,7 +73,13 @@ export function Overview({ ctx, m }: { ctx: AnalyticsContext; m: ListeningModel 
       drill: (r) => (r.change == null ? null : () => changeDrill(r)),
     },
     { key: 'statusWord', label: 'Status' },
-    { key: 'rate', label: 'Response rate', format: 'pct', drill: invited },
+    // A hidden rate opens nothing: the invited list beside it would say who answered.
+    {
+      key: 'rate',
+      label: 'Response rate',
+      format: 'pct',
+      drill: (r) => (r.rate == null ? null : invited(r)),
+    },
     { key: 'invitedShown', label: 'Invited', format: 'int', drill: invited },
   ]
   const yearStart = addMonths(ctx.asOf, -12)

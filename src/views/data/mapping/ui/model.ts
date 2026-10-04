@@ -5,9 +5,17 @@
  */
 import { useMemo } from 'react'
 import { type AnalyticsContext, useAnalytics } from '@/data/context'
+import { inventoryVocab, officialParentMaps } from '@/data/lists/effective'
+import { useOfficialLists } from '@/data/lists/useOfficialLists'
 import { applyReferenceMappings, inferStructure, type StructureReport } from '@/data/reference'
 import { useCensus } from '@/data/store'
-import { type Conflict, jobConflicts, orgConflicts } from '../engine/conflicts'
+import {
+  type Conflict,
+  jobConflicts,
+  officialConflicts,
+  orgConflicts,
+  withOfficialParents,
+} from '../engine/conflicts'
 import { type EditOptions, editOptions } from '../engine/edit'
 import { remapSpellings } from '../engine/lists'
 import {
@@ -63,9 +71,15 @@ export function useMappingModel(): MappingModel {
   const data = ctx.all
   const asOf = ctx.asOf
   const issues = raw.issues
+  // The official lists (Settings > Official lists): their values decide what is "not in the list",
+  // and their parents what sits in the wrong place.
+  const { lists } = useOfficialLists()
+  const vocab = inventoryVocab(lists)
+  const parents = officialParentMaps(lists)
   const derived = useMemo(() => {
-    const report = inferStructure(data, { asOf, spellings, issues })
+    const report = inferStructure(data, { asOf, spellings, issues, vocab })
     const emps = data.employees
+    const official = officialConflicts(report, parents, emps)
     const active = report.org.flatMap((e) => e.rows)
     return {
       report,
@@ -76,11 +90,11 @@ export function useMappingModel(): MappingModel {
       familyRows: familyRows(report, emps),
       titleRows: titleRows(report, emps),
       heat: familyLevelCells(report, emps),
-      orgConflicts: orgConflicts(report),
-      jobConflicts: jobConflicts(report, emps),
+      orgConflicts: withOfficialParents(orgConflicts(report), official, parents, 'org'),
+      jobConflicts: withOfficialParents(jobConflicts(report, emps), official, parents, 'job'),
       options: editOptions(report, data),
     }
-  }, [data, asOf, spellings, issues])
+  }, [data, asOf, spellings, issues, vocab, parents])
 
   return { ctx, raw, perMapping, skipped, ...derived }
 }

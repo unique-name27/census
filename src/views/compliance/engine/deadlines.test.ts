@@ -68,6 +68,17 @@ describe('deadlines for the jurisdictions with people', () => {
     ])
   })
 
+  it('counts employees only, like every headcount', () => {
+    const contractor = emp({ location: 'San Jose', employmentType: 'Contractor' })
+    const intern = emp({ location: 'Munich', country: 'Germany', employmentType: 'Intern' })
+    const withOthers = computeDeadlines({ asOf: FROM, employees: [sj, mu, left, contractor, intern] }, 60)
+    expect(withOthers.jurisdictions.map((j) => [j.jurisdiction.id, j.people.length])).toEqual([
+      ['us', 1],
+      ['us-ca', 1],
+      ['de', 1],
+    ])
+  })
+
   it('lists entries in the next 60 days only for those jurisdictions, soonest first', () => {
     expect(m.until).toBe('2026-11-29')
     expect(m.upcoming.length).toBeGreaterThan(0)

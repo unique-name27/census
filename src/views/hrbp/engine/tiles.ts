@@ -44,10 +44,10 @@ export function movementKpis(p: Prep, mv: MovementModel): Kpi[] {
       // The comparison window's promotions in this scope (always the scope's own history).
       deltaDrill: mv.priorPromotions.promotions
         ? () => {
-            const w = promotionComparison(p).window
+            const { window: w, part } = promotionComparison(p)
             return changesSpec(
               p,
-              titled('Promotions', scopePart(p), 'comparison period'),
+              titled('Promotions', scopePart(p), part),
               p.changes.filter(
                 (c) => c.changeType === 'Promotion' && c.effectiveDate >= w.start && c.effectiveDate <= w.end,
               ),

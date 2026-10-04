@@ -12,7 +12,16 @@ import { fmt, plural } from '@/lib/format'
 import { aggregate, respondentIndex } from '@/lib/surveys'
 import { M } from '../metrics'
 import type { OnboardingBase } from './base'
-import { candidatesDrill, employeesDrill, planDrill, reqsDrill, startsDrill, tasksDrill } from './drills'
+import {
+  candidatesDrill,
+  employeesDrill,
+  planDrill,
+  planYtdSub,
+  reqsDrill,
+  startsDrill,
+  tasksDrill,
+  windowSub,
+} from './drills'
 import type { First90Model } from './first90'
 import {
   ACCEPTED,
@@ -315,7 +324,7 @@ function lateTaskFinding(b: OnboardingBase, f: First90Model, ctx: AnalyticsConte
         b,
         late.map((x) => x.task),
         `${task}, late, ${seg.value}`,
-        { subtitle: `${b.windowWords} · ${b.scopeLabel}`, uses },
+        { subtitle: windowSub(b), uses },
       ),
     uses,
     impact: 50 + seg.impact * 100,
@@ -380,7 +389,7 @@ function checkInFinding(b: OnboardingBase, f: First90Model): Ranked | null {
           b,
           late.map((x) => x.task),
           'Check-ins late or missed',
-          { uses },
+          { subtitle: windowSub(b), uses },
         ),
       uses,
       impact: 10,
@@ -404,7 +413,7 @@ function checkInFinding(b: OnboardingBase, f: First90Model): Ranked | null {
         b,
         rows.map((x) => x.task),
         `Check-ins due, ${seg.value}`,
-        { subtitle: `${b.windowWords} · ${b.scopeLabel}`, uses },
+        { subtitle: windowSub(b), uses },
       ),
     uses,
     impact: 20 + seg.impact * 100,
@@ -462,7 +471,7 @@ function i9Finding(b: OnboardingBase, f: First90Model): Ranked | null {
         b,
         x.late.map((i) => i.task),
         'I-9 Section 2 completed late',
-        { uses },
+        { subtitle: windowSub(b), uses },
       ),
     uses,
     impact: 25 + x.late.length,
@@ -587,7 +596,11 @@ function planFindings(b: OnboardingBase, p: PlanModel | null): Ranked[] {
           : `Review the ${r.businessUnit} hiring plan with its leaders.`,
       tab: 'plan',
       filter: { businessUnit: [r.businessUnit] },
-      drill: () => employeesDrill(b, r.actual, `Starts to date, ${r.businessUnit}`, { uses }),
+      drill: () =>
+        employeesDrill(b, r.actual, `Starts to date, ${r.businessUnit}`, {
+          subtitle: planYtdSub(b, p),
+          uses,
+        }),
       uses,
       impact: Math.abs((r.vsPlan ?? 1) - 1) * 10,
     })

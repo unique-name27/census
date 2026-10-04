@@ -99,6 +99,49 @@ function useItemActions() {
   }
 }
 
+/* ───────── focus after a row goes ───────── */
+
+const nextSiblings = (el: Element | null | undefined, back: boolean): Element[] => {
+  const out: Element[] = []
+  for (
+    let r = back ? el?.previousElementSibling : el?.nextElementSibling;
+    r;
+    r = back ? r.previousElementSibling : r.nextElementSibling
+  )
+    out.push(r)
+  return out
+}
+
+/**
+ * Handled, Snooze and Reopen take their row out of the list, and focus would drop to the page.
+ * Note the candidates before it goes (the same button on the next item, then the previous item,
+ * the owner's toggle, the next owner's toggle on the page, then the ones before, the page heading)
+ * and focus the first still on the page once the list has re-rendered. Nothing moves when the row
+ * stayed.
+ */
+function keepFocusNear(button: HTMLElement) {
+  const action = `[data-item-action="${button.dataset.itemAction ?? ''}"]`
+  const row = button.closest('[data-item-row]')
+  const owner = row?.closest('[data-owner-row]')
+  const own = owner?.querySelector<HTMLElement>('[data-owner-toggle]') ?? null
+  // Every owner on the page, so the last item of a group's last owner moves on to the next group.
+  const toggles = [...document.querySelectorAll<HTMLElement>('[data-owner-toggle]')]
+  const at = own ? toggles.indexOf(own) : -1
+  const candidates = [
+    ...nextSiblings(row, false).map((r) => r.querySelector<HTMLElement>(action)),
+    ...nextSiblings(row, true).map((r) => r.querySelector<HTMLElement>(action)),
+    own,
+    ...toggles.slice(at + 1),
+    ...toggles.slice(0, Math.max(0, at)).reverse(),
+  ].filter((el): el is HTMLElement => el != null)
+  window.setTimeout(() => {
+    if (button.isConnected) return
+    const target =
+      candidates.find((el) => el.isConnected) ?? document.querySelector<HTMLElement>('[data-actions-heading]')
+    target?.focus()
+  }, 0)
+}
+
 /* ───────── one item ───────── */
 
 function SubjectLink({ a }: { a: OpenAction }) {
@@ -149,7 +192,10 @@ function ItemRow({ a, mode, status }: { a: OpenAction; mode: ListMode; status: I
   const days = daysToDue(a.item.due, asOf)
   const overdue = days != null && days < 0
   return (
-    <li className="grid grid-cols-1 gap-x-3 gap-y-1.5 border-t border-rule py-2.5 pr-4 pl-4 sm:grid-cols-[76px_minmax(0,1fr)_auto] sm:pl-10">
+    <li
+      data-item-row=""
+      className="grid grid-cols-1 gap-x-3 gap-y-1.5 border-t border-rule py-2.5 pr-4 pl-4 sm:grid-cols-[76px_minmax(0,1fr)_auto] sm:pl-10"
+    >
       <div className="pt-px">
         <StatusPill severity={a.item.severity} quiet label={SEVERITY_WORD[a.item.severity]} />
       </div>
@@ -182,7 +228,11 @@ function ItemRow({ a, mode, status }: { a: OpenAction; mode: ListMode; status: I
                 size="sm"
                 variant="ghost"
                 icon={<IconCheck className="size-3.5" />}
-                onClick={() => act.handle(a)}
+                data-item-action="handle"
+                onClick={(e) => {
+                  keepFocusNear(e.currentTarget)
+                  act.handle(a)
+                }}
                 aria-label={`Mark handled: ${a.item.subject.label}`}
               >
                 Handled
@@ -191,7 +241,11 @@ function ItemRow({ a, mode, status }: { a: OpenAction; mode: ListMode; status: I
                 size="sm"
                 variant="ghost"
                 icon={<IconSnooze className="size-3.5" />}
-                onClick={() => act.snooze(a)}
+                data-item-action="snooze"
+                onClick={(e) => {
+                  keepFocusNear(e.currentTarget)
+                  act.snooze(a)
+                }}
                 aria-label={`Snooze ${act.snoozeDays} days: ${a.item.subject.label}`}
               >
                 Snooze {act.snoozeDays} d
@@ -202,7 +256,11 @@ function ItemRow({ a, mode, status }: { a: OpenAction; mode: ListMode; status: I
               size="sm"
               variant="ghost"
               icon={<IconReset className="size-3.5" />}
-              onClick={() => act.reopen(a)}
+              data-item-action="reopen"
+              onClick={(e) => {
+                keepFocusNear(e.currentTarget)
+                act.reopen(a)
+              }}
               aria-label={`Reopen: ${a.item.subject.label}`}
             >
               Reopen
@@ -237,6 +295,7 @@ function CopyNoteButton({ block }: { block: OwnerBlock }) {
       <Button
         size="sm"
         variant="ghost"
+        data-tour="actions-copy-note"
         icon={<IconCopy className="size-3.5" />}
         onClick={() => void copy()}
         aria-label={`Copy note for ${block.name}`}
@@ -286,10 +345,11 @@ function OwnerRow({
   const overdueItems = block.items.filter((a) => (daysToDue(a.item.due, ctx.asOf) ?? 0) < 0)
   const listId = `actions-owner-${block.key.replace(/[^a-zA-Z0-9-]/g, '-')}`
   return (
-    <li className="border-t border-rule first:border-t-0">
+    <li data-owner-row="" className="border-t border-rule first:border-t-0">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-2 py-1.5 sm:flex-nowrap">
         <button
           type="button"
+          data-owner-toggle=""
           aria-expanded={open}
           aria-controls={listId}
           onClick={onToggle}
@@ -441,7 +501,11 @@ export function OwnerSheet({
             </>
           )}
         </p>
-        <ul aria-label={`Owners in ${group.label}`} className="border-t border-rule">
+        <ul
+          aria-label={`Owners in ${group.label}`}
+          data-tour="actions-owner-sheet"
+          className="border-t border-rule"
+        >
           {owners.map((b) => (
             <OwnerRow
               key={b.key}

@@ -93,6 +93,8 @@ const PERIOD = 'The period picker (default last 12 months).'
 const LATEST = 'The latest wave on or before the as-of date.'
 const GROUPED =
   'Groups with fewer respondents than the minimum are hidden. Survey numbers drill to grouped counts, never to one person’s answers.'
+const ANSWERED =
+  'Answers in scope with a valid score, dated on or before the as-of date. Engagement answers count only while Engagement surveys is on in Settings.'
 
 const num = (
   key: string,
@@ -158,6 +160,7 @@ const ENTRIES: MetricInput[] = [
     name: 'Survey programs running',
     definition: 'Survey programs with at least one answer in the last 12 months to the as-of date.',
     formula: 'count of programs with an answer dated in the last 12 months',
+    population: ANSWERED,
     window: 'The 12 months to the as-of date.',
     unit: 'int',
     goodDirection: null,
@@ -170,6 +173,7 @@ const ENTRIES: MetricInput[] = [
     definition:
       'Distinct people who answered any survey in the period. A person who answered two surveys counts once.',
     formula: 'distinct respondent keys with an answer in the period',
+    population: `${ANSWERED} Who answered is never listed, only counted by program.`,
     window: PERIOD,
     unit: 'int',
     goodDirection: null,
@@ -197,6 +201,10 @@ const ENTRIES: MetricInput[] = [
     name: 'Survey status',
     definition:
       'Met when a survey’s headline reaches its target, Watch when it misses by less than the watch margin, Missed beyond it.',
+    formula:
+      'Met: headline meets target · Watch: miss ≤ watch margin on 1-5, or watch margin for NPS · Missed: beyond it',
+    population: `Each program's headline answers in its latest wave. ${GROUPED}`,
+    window: LATEST,
     unit: 'text',
     goodDirection: null,
     uses: ANSWER,
@@ -232,6 +240,9 @@ const ENTRIES: MetricInput[] = [
     name: 'Survey waves',
     definition:
       'When each wave of each survey ran: from its first answer to its last, with the people who answered.',
+    formula: 'per survey wave: first answer date to last answer date, and distinct respondents',
+    population: ANSWERED,
+    window: 'Waves that ended in the 12 months to the as-of date.',
     unit: 'int',
     goodDirection: null,
     uses: union(WAVE, RESPONDENT),
@@ -282,6 +293,7 @@ const ENTRIES: MetricInput[] = [
     definition:
       'The latest wave’s score less the wave before it, per driver. No change shows when either wave has fewer respondents than the minimum.',
     formula: 'latest wave mean − prior wave mean',
+    population: `Answers in the two waves compared, per driver on the 1 to 5 scale and for the headline. A survey about managers compares waves for the whole company only. ${GROUPED}`,
     window: 'The latest wave on or before the as-of date and the one before it.',
     unit: 'num2',
     goodDirection: 'up',
@@ -341,6 +353,7 @@ const ENTRIES: MetricInput[] = [
     definition:
       'The reason candidates who declined an offer chose in the candidate survey, counted once per candidate.',
     formula: 'distinct candidates per reason',
+    population: `Candidate experience answers in the period that give a decline reason, the first one per candidate. ${GROUPED}`,
     window: PERIOD,
     unit: 'int',
     goodDirection: null,

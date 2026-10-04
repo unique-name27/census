@@ -29,6 +29,9 @@ export interface Block extends Window {
   key: string
 }
 
+/** A finding headline as a sentence: ends with a period, like every other practice's readout. */
+export const sentence = (t: string): string => (/[.?!]$/.test(t) ? t : `${t}.`)
+
 /** Trailing window of n whole months ending at asOf (calendar-aligned when asOf is a month end). */
 export function trailing(asOf: ISODate, months: 3 | 6 | 12): Window {
   const preset = months === 12 ? 't12m' : months === 6 ? 't6m' : 't3m'

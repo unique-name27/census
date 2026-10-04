@@ -87,7 +87,8 @@ export function RipplePreview({
                 {' in their org'}
               </>
             )}{' '}
-            move to <strong className="font-semibold">{name(a.toManagerId)}</strong>.
+            {a.mode === 'team' && others.length > 0 ? 'move' : 'moves'} to{' '}
+            <strong className="font-semibold">{name(a.toManagerId)}</strong>.
           </>
         )}
       </p>

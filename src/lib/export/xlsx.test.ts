@@ -28,6 +28,12 @@ describe('sheet names', () => {
     expect(sanitizeSheetName("'Quoted'")).toBe('Quoted')
     expect(sanitizeSheetName('a/b\\c*d')).toBe('a b c d')
     expect(sanitizeSheetName('x'.repeat(40))).toHaveLength(31)
+    // A long name is cut between words, never inside one.
+    expect(sanitizeSheetName('Overview · Hires and exits by month')).toBe('Overview · Hires and exits by…')
+    expect(sanitizeSheetName('Workforce · Contractors and interns by site')).toBe(
+      'Workforce · Contractors and…',
+    )
+    expect(sanitizeSheetName('Exactly thirty-one characters!!')).toBe('Exactly thirty-one characters!!')
     expect(sanitizeSheetName('  ')).toBe('Sheet')
     expect(sanitizeSheetName('History')).toBe('History (1)')
   })
@@ -39,7 +45,7 @@ describe('sheet names', () => {
       'Summary (3)',
     ])
     const [a, b] = uniqueSheetNames([long, long])
-    expect(a).toHaveLength(31)
+    expect(a).toBe('Regretted attrition by…')
     expect(b.endsWith(' (2)')).toBe(true)
     expect(b.length).toBeLessThanOrEqual(31)
   })

@@ -163,7 +163,7 @@ export function ExportMenu({ view, tab }: { view: ViewDef; tab: string }) {
     <Menu
       width={284}
       trigger={
-        <Button icon={<IconDownload />} caret disabled={!!busy}>
+        <Button data-tour="view-export" icon={<IconDownload />} caret disabled={!!busy}>
           {busy ? 'Exporting…' : 'Export'}
         </Button>
       }

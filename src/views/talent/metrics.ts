@@ -282,6 +282,8 @@ export const metrics: MetricDef[] = defineMetrics('talent', [
     name: 'Role status',
     definition:
       'Covered: at least one successor ready now. Thin: successors named, none ready now. No successor: nobody named, or everyone named has left.',
+    formula:
+      'Covered: a ready-now successor still employed · Thin: successors named and still employed, none ready now · No successor: none',
     population: 'Roles in the succession plans whose incumbent is in scope.',
     window: AS_OF,
     unit: 'text',

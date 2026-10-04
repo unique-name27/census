@@ -648,6 +648,8 @@ function SurveyFigure({
   const rows = survey
     ? [{ survey: 'Return to work', measure: survey.label, value: survey.value, valueFormat: survey.format }]
     : []
+  // Answers loaded but none in this scope (a filter) is not the same as none loaded at all.
+  const loaded = ctx.all.surveyResponses.some((r) => r.survey === 'Return to work')
   const columns: Column<(typeof rows)[number]>[] = [
     { key: 'survey', label: 'Survey' },
     { key: 'measure', label: 'Measure' },
@@ -675,7 +677,9 @@ function SurveyFigure({
       empty={
         survey
           ? null
-          : 'No Return to work survey results yet. They show here, linked to Listening, once survey answers are loaded.'
+          : loaded
+            ? 'No Return to work answers in this scope.'
+            : 'No Return to work survey results yet. They show here, linked to Listening, once survey answers are loaded.'
       }
     >
       {survey && (

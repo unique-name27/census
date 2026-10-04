@@ -12,7 +12,7 @@ import type { TipContent, TipRow } from '../core/tooltip'
 import { axisX, gridX, housePlot, type PlotBuildContext, PlotChart } from '../plot'
 import { seriesColor, useChartTheme } from '../theme'
 import { extent, numericAxis } from './scale'
-import { type ChartBaseProps, type Key, numAt, textAt } from './shared'
+import { type ChartBaseProps, gateOf, type Key, numAt, textAt } from './shared'
 
 export interface RangeMarker<T> {
   key: Key<T>
@@ -69,6 +69,8 @@ export function RangeBars<T extends object>({
   xDomain,
   rowHeight = 32,
   onSelect,
+  selectable,
+  lockedNote,
   ariaLabel,
 }: RangeBarsProps<T>) {
   const quartiles = !!q1 && !!q3
@@ -220,6 +222,10 @@ export function RangeBars<T extends object>({
     )
   }
 
+  /** A row with nothing drawn (every value hidden) never opens; the view's gate decides the rest. */
+  const hasRange = (r: Row<T>) =>
+    r.min != null || r.max != null || r.mid != null || r.marks.some((v) => v != null)
+  const open = gateOf<Row<T>>(hasRange, selectable ? (r) => selectable(r.datum) : undefined)
   const tip = (r: Row<T>): TipContent => {
     const out: TipRow[] = [
       { value: fmt(r.min, format), label: labels?.min ?? 'Minimum', strong: false },
@@ -234,7 +240,8 @@ export function RangeBars<T extends object>({
         shape: 'dot' as const,
       })),
     ]
-    return { title: r.label, rows: out }
+    const locked = onSelect && !open(r) && hasRange(r) ? lockedNote?.(r.datum) : null
+    return { title: r.label, rows: out, ...(locked ? { note: locked } : {}) }
   }
 
   return (
@@ -243,6 +250,7 @@ export function RangeBars<T extends object>({
       height={height}
       legend={legend}
       tip={tip}
+      selectable={open}
       onSelect={onSelect ? (r) => onSelect(r.datum) : undefined}
       ariaLabel={ariaLabel}
     />

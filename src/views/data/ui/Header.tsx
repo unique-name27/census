@@ -11,17 +11,36 @@ import { Button, cx } from '@/components/ui'
 import { useAnalytics } from '@/data/context'
 import { type DatasetKey, datasetDef } from '@/data/schema'
 import { useCensus } from '@/data/store'
+import { AboutViewLink } from '@/help/ui/AboutViewLink'
 import { fmt } from '@/lib/format'
 import type { ManifestSummary } from '../engine/manifest'
-import { DATA_TABS, type DataTab } from '../links'
+import { DATA_TABS, type DataTab, tabRoute } from '../links'
 import { useImportLogs } from '../state/importLog'
 import { downloadSampleWorkbook, downloadTemplate } from './downloads'
 import { useBusy } from './useBusy'
 
-const COUNT_WORDS = ['No', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten']
+const COUNT_WORDS = [
+  'No',
+  'One',
+  'Two',
+  'Three',
+  'Four',
+  'Five',
+  'Six',
+  'Seven',
+  'Eight',
+  'Nine',
+  'Ten',
+  'Eleven',
+  'Twelve',
+  'Thirteen',
+  'Fourteen',
+  'Fifteen',
+  'Sixteen',
+]
 
 /**
- * "Nine datasets, 39,994 rows. Compensation was left out because pay amounts are off; … This is the
+ * "Fourteen datasets, 68,387 rows. Compensation was left out because pay amounts are off; … This is the
  * clean sample, …". The workbook is the clean sample; the app shows the messy one.
  */
 export function sampleToastText(done: {
@@ -30,7 +49,7 @@ export function sampleToastText(done: {
   leftOut: readonly DatasetKey[]
 }): string {
   const n = done.datasets.length
-  const head = `${done.leftOut.length ? (COUNT_WORDS[n] ?? n) : 'All ten'} datasets, ${fmt(done.rows, 'int')} rows.`
+  const head = `${done.leftOut.length ? (COUNT_WORDS[n] ?? fmt(n, 'int')) : `All ${COUNT_WORDS[n]?.toLowerCase() ?? fmt(n, 'int')}`} datasets, ${fmt(done.rows, 'int')} rows.`
   const clean = 'This is the clean sample, so some numbers and tiers differ from the ones on screen.'
   if (!done.leftOut.length) return `${head} ${clean}`
   const names = done.leftOut.map((k) => datasetDef(k).label).join(' and ')
@@ -97,6 +116,7 @@ function DataTabs({ active }: { active: DataTab }) {
     <div
       role="tablist"
       aria-label="Data room sections"
+      data-tour="data-tabs"
       className="-mx-(--gutter) flex gap-6 overflow-x-auto px-(--gutter) [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
     >
       {DATA_TABS.map((t, i) => {
@@ -147,6 +167,9 @@ export function DataRoomHeader({ summary, tab }: { summary: ManifestSummary; tab
             anywhere.
           </p>
           <p className="mt-1 text-[13px] text-ink-2">{summary.text}</p>
+          <p className="mt-1">
+            <AboutViewLink view="data" tab={tabRoute(tab)} label="About this page" />
+          </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Button

@@ -85,6 +85,19 @@ describe('guessDataset', () => {
     expect(isTemplateHelpSheet('Read me')).toBe(true)
     expect(isTemplateHelpSheet('fields')).toBe(true)
     expect(isTemplateHelpSheet('Employees')).toBe(false)
+    // Lists is the template's only beside its Read me or Fields.
+    expect(isTemplateHelpSheet('Lists', ['Read me', 'Employees', 'Lists'])).toBe(true)
+    expect(isTemplateHelpSheet('Lists', ['Employees', 'Lists'])).toBe(false)
+    expect(isTemplateHelpSheet('Lists')).toBe(true)
+    expect(
+      guessDataset({
+        name: 'Lists',
+        headerRow: 0,
+        headers: ['Employee ID', 'Name', 'Hire date'],
+        rows: [],
+        rowNumbers: [],
+      })[0].confidence,
+    ).toBeGreaterThan(0)
     const g = guessDataset(
       sheet('Fields', [
         'Sheet',

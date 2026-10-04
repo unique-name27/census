@@ -202,8 +202,10 @@ export const metrics: MetricDef[] = defineMetrics('compliance', [
     id: M.mix,
     name: 'Authorization mix',
     definition:
-      'Active people by broad authorization category. Citizens and permanent residents are both "Permanent (no expiry)"; nationality and citizenship are never held. Categories with fewer people than the anonymity minimum fold into Other, and the people behind a count open only while "Show immigration details" is on.',
-    population: 'Employees and interns active at the as-of date with a right to work row.',
+      'Active employees by broad authorization category (contractors and interns are reported separately). Citizens and permanent residents are both "Permanent (no expiry)"; nationality and citizenship are never held. Categories with fewer people than the anonymity minimum fold into Other, and the people behind a count open only while "Show immigration details" is on.',
+    formula: 'active employees with a right to work row, by authorization category ÷ all of them',
+    population:
+      'Employees active at the as-of date with a right to work row. Interns are reported separately.',
     window: AS_OF,
     unit: 'int',
     goodDirection: null,
@@ -291,7 +293,9 @@ export const metrics: MetricDef[] = defineMetrics('compliance', [
     id: M.licenseStatus,
     name: 'Export licenses by status',
     definition:
-      'People whose role needs an export-control license, active or starting soon, by license status. A license past its expiry date counts as Expired.',
+      'People whose role needs an export-control license, active or starting soon, by license status. A license past its expiry date counts as Expired, unless it was Denied.',
+    formula:
+      'active people and pre-hires whose role needs a license, by status; a license past its expiry date reads Expired, unless it was Denied',
     population: 'Employees and interns active at the as-of date, and pre-hires.',
     window: AS_OF,
     unit: 'int',
@@ -330,7 +334,8 @@ export const metrics: MetricDef[] = defineMetrics('compliance', [
       'Entries of the Atlas statutory calendar that fall after the as-of date and within the look-ahead (60 days by default), for the jurisdictions where someone in scope works. US federal entries apply wherever someone works at a US site. An entry without a named day counts for its whole month.',
     formula:
       'calendar entries dated in (as-of date, as-of date + look-ahead], jurisdictions with active people',
-    population: 'Jurisdictions of the sites of people active at the as-of date.',
+    population:
+      'Jurisdictions of the sites of employees active at the as-of date (contractors and interns are reported separately).',
     window: NEXT,
     unit: 'int',
     goodDirection: null,
@@ -352,6 +357,11 @@ export const metrics: MetricDef[] = defineMetrics('compliance', [
     name: 'Readout: reverification overdue',
     definition:
       'Raised when any active person is inside the reverification lead time without a start, naming the business unit with the most such people. Critical when one of the authorizations ends within a set number of days (30 by default).',
+    formula:
+      'raised when reverification overdue > 0; critical when expiry date − as-of date ≤ critical within for any of them',
+    population:
+      'As Reverification overdue: employees and interns active at the as-of date with a right to work row.',
+    window: AS_OF,
     unit: 'int',
     goodDirection: 'down',
     dependsOn: [M.reverificationOverdue],
@@ -373,6 +383,11 @@ export const metrics: MetricDef[] = defineMetrics('compliance', [
     name: 'Readout: I-9 Section 2 late',
     definition:
       'Raised when I-9 Section 2 on time misses its target, naming the site with the most late starts. Critical when the on-time share is below a set share (90% by default).',
+    formula:
+      'raised when I-9 Section 2 on time < its target with late starts; critical when on time < critical below',
+    population:
+      'As I-9 Section 2 on time: employees at a US site who started in the period and have a right to work row.',
+    window: 'The period picker (default last 12 months).',
     unit: 'pct',
     goodDirection: 'up',
     dependsOn: [M.i9Section2],
@@ -392,6 +407,12 @@ export const metrics: MetricDef[] = defineMetrics('compliance', [
     name: 'Readout: expiries cluster in one month',
     definition:
       'Raised when one month of the planning window holds at least a set number of expiring authorizations (5 by default) and at least a set share of them (25% by default), so reverification can be planned as a batch.',
+    formula:
+      "busiest month's expiries ≥ smallest cluster, and busiest month ÷ expiries in the planning window ≥ share of the window",
+    population:
+      'As Work authorizations expiring: employees and interns active at the as-of date whose authorization ends in the planning window.',
+    window:
+      'The planning window (180 days by default) from the day after the as-of date, by month of the expiry date.',
     unit: 'int',
     goodDirection: null,
     dependsOn: [M.expiring],
@@ -423,6 +444,12 @@ export const metrics: MetricDef[] = defineMetrics('compliance', [
     views: ['actions'],
     definition:
       'Open compliance items handed to the Action center: reverification to start (Global mobility), I-9 Section 2 past due and not complete (People operations) and export licenses not in force for someone working or starting (Trade compliance). Reverification items also show a set number of days before they fall due.',
+    formula:
+      'reverifications ended, overdue or due to start within the reverification notice + I-9 Section 2 past due + licenses not in force for people working or starting',
+    population:
+      'Employees and interns active at the as-of date with a right to work row (reverification), US employees still employed who started in the period (I-9), and active people and pre-hires whose role needs an export license.',
+    window:
+      'At the as-of date. I-9 items cover starts in the period; upcoming license items use the look-ahead of Upcoming starts with a license pending.',
     unit: 'int',
     goodDirection: 'down',
     dependsOn: [M.reverificationOnTime, M.i9Section2, M.pendingStarts],

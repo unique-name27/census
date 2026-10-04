@@ -31,6 +31,7 @@ import {
   isSampleCatalog,
   toggleArea,
 } from '../catalog'
+import { useAreasFromRoute } from '../link'
 import { useAiAgents } from '../state'
 import { AgentCard } from './AgentCard'
 import { AgentDialog } from './AgentDialog'
@@ -44,6 +45,7 @@ function UseNote({ sample }: { sample: boolean }) {
   return (
     <aside
       aria-label="Responsible use"
+      data-tour="ai-use-note"
       className="col-span-full flex min-w-0 gap-3 rounded-sheet bg-sheet px-4 py-3.5 lg:col-span-4"
     >
       <IconInfo className="mt-0.5 shrink-0 text-ink-2" />
@@ -151,7 +153,7 @@ function FilterRow({ agents, shown }: { agents: readonly Agent[]; shown: number 
   const audiences = facetCounts(agents, filters, 'audiences', AGENT_AUDIENCES)
   const statuses = facetCounts(agents, filters, 'statuses', AGENT_STATUSES)
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    <div data-tour="ai-filters" className="flex flex-wrap items-center gap-2">
       <label htmlFor={searchId} className="relative flex h-8 w-full items-center sm:w-72">
         <span className="sr-only">Search agents</span>
         <IconSearch className="pointer-events-none absolute left-2.5 text-muted" />
@@ -250,6 +252,7 @@ function CatalogFigure({ agents, sample }: { agents: readonly Agent[]; sample: b
 /* ───────── the tab ───────── */
 
 export function AgentsTab() {
+  useAreasFromRoute()
   const agents = useAiAgents((s) => s.agents)
   const filters = useAiAgents((s) => s.filters)
   const clearFilters = useAiAgents((s) => s.clearFilters)

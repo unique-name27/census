@@ -38,10 +38,10 @@ const texts = (key: DatasetKey) => rows.find((r) => r.key === key)!.checks.map((
 describe('issues from the quality index', () => {
   it('names the fields that hold a raw extract at bronze', () => {
     expect(texts('candidates')).toContain(
-      '4% of source values are not recognized or defaulted; silver allows 2%.',
+      'Source has 4% of values not recognized or defaulted; a field needs 2% or less to count as silver.',
     )
     const cases = texts('cases')
-    expect(cases.some((t) => /^2\.5% of category values are not recognized/.test(t))).toBe(true)
+    expect(cases.some((t) => /^Category has 2\.5% of values not recognized/.test(t))).toBe(true)
     expect(cases.some((t) => /^First response is 92% filled/.test(t))).toBe(true)
   })
 

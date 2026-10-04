@@ -8,7 +8,9 @@
  *   filled reads "94.6%" against a 95% bar, never "95%");
  * - above 0 and below 100 it never reads "0%" or "100%": 3 blanks in 694 rows read "99.5%"
  *   filled (one decimal, rounded down), 5 rows of 10,984 read "99.9%" filled and "0.05%" with an
- *   issue (two decimals, rounded up, under 0.1%).
+ *   issue (two decimals, rounded up, under 0.1%);
+ * - under 1% it keeps one decimal, as the Datasets tab writes an import error share: 3 rows of
+ *   597 read "0.5%", 3 of 312 "1.0%", on both tabs.
  *
  * `shareCell` gives the number and the format a table cell or an Excel cell needs to show exactly
  * the same text as `shareText`. Pure.
@@ -39,14 +41,14 @@ export function shareCell(share: number | null | undefined, against?: ShareAgain
     if (tenths > 0 && tenths < 1000) return { value: tenths / 1000, format: 'pct' }
   }
   const whole = Math.round(share * 100)
-  if (whole >= 1 && whole <= 99) return { value: share, format: 'pct0' }
+  if (share >= 0.01 && whole <= 99) return { value: share, format: 'pct0' }
   if (whole >= 100) {
     // Short of 100%: one decimal rounded down, or two when even that reads 100.0%.
     const tenths = Math.floor(share * 1000 + EPS)
     if (tenths < 1000) return { value: tenths / 1000, format: 'pct' }
     return { value: Math.min(9999, Math.floor(share * 10_000 + EPS)) / 10_000, format: 'pct2' }
   }
-  // Above 0%: one decimal, or two (rounded up) under 0.1%.
+  // Above 0% and under 1%: one decimal, or two (rounded up) under 0.1%.
   if (share >= 0.001) return { value: Math.round(share * 1000) / 1000, format: 'pct' }
   return { value: Math.max(1, Math.ceil(share * 10_000 - EPS)) / 10_000, format: 'pct2' }
 }

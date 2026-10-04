@@ -55,9 +55,30 @@ mapping you can change, shows what will import and what needs attention, then re
 dataset. It remembers your mapping for files with the same layout. Download the sample workbook
 or a blank template to see the expected columns.
 
-Ten datasets: Employees, Job changes, Requisitions, Candidates, HR cases, HR transactions,
-Reviews, Succession, Learning, Compensation. Any of them can stay on sample data while you replace
-the others.
+Fourteen datasets: Employees, Job changes, Requisitions, Candidates, HR cases, HR transactions,
+Reviews, Succession, Learning, Compensation, and the optional Hiring plan, Onboarding tasks, Right
+to work and Survey responses. Any of them can stay on sample data while you replace the others.
+
+Each dataset and each number carries a tier (no data, bronze, silver, gold), and the data standard
+switch in the filter row chooses the lowest tier a number needs to be shown. The Data room shows
+the raw sheet, the mapping, the quality checks and certification for every dataset.
+
+## Definitions and official lists
+
+- **Metric definitions** (Data room): every metric's wording, formula, population, window, target
+  and settings. Edits are logged, can be undone, and export to Excel.
+- **Settings › Formulas**: a searchable index of how every number is calculated, exportable to
+  Excel and CSV.
+- **Settings › Official lists**: the approved business units, departments, job functions and
+  families, levels, locations, cost centers and other categories. Values in the data that are not
+  on an official list count as not recognized, and one click maps them or adds them. The lists
+  export as a workbook with named ranges for Excel dropdowns, and the templates use them.
+
+## Help
+
+The **Help** button (or the ? key) searches articles and every metric definition, and starts the
+guided tours: Getting started, Using your own data, Data quality and definitions, and one per view.
+"Report a problem" copies a summary of the app's state with no people data in it.
 
 ## Privacy
 

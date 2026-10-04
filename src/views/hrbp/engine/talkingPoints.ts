@@ -10,7 +10,7 @@ import { type DataStandard, type FieldRef, meetsStandard, STANDARD_LABEL } from 
 import { addDays, formatDate } from '@/lib/dates'
 import { fmt } from '@/lib/format'
 import type { HrbpModel } from '.'
-import { count, possessive, quoted } from './base'
+import { count, possessive, quoted, sentence } from './base'
 import { windowPhrase } from './kpis'
 import {
   ATTRITION,
@@ -157,7 +157,7 @@ export function talkingPoints(m: HrbpModel): string {
   const top = listed.find((f) => f.severity === 'critical') ?? listed.find((f) => f.severity !== 'good')
   if (top)
     points.push({
-      text: `Top item to raise: ${top.title}.${top.action ? ` ${top.action}` : ''}`,
+      text: `Top item to raise: ${sentence(top.title)}${top.action ? ` ${top.action}` : ''}`,
       uses: top.uses,
     })
 

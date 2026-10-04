@@ -1,8 +1,8 @@
 /**
  * Top line of the band: wordmark, whose data this is (and whether pay amounts or immigration
  * details are on for this session), the as-of date, related tools, the Action center with its
- * open-item count, the Data room and Settings (theme and every other preference live in the
- * Settings sheet).
+ * open-item count, the Data room, Settings (theme and every other preference live in the
+ * Settings sheet) and Help (articles, tours, shortcuts and "Report a problem").
  */
 import type { SVGProps } from 'react'
 
@@ -12,6 +12,7 @@ import { Button, cx, Tag } from '@/components/ui'
 import { useAnalytics } from '@/data/context'
 import { SAMPLE_COMPANY } from '@/data/sample'
 import { HOME_VIEW, openSettings, useCensus } from '@/data/store'
+import { HelpButton } from '@/help/ui/HelpButton'
 import { formatDate } from '@/lib/dates'
 import { fmt } from '@/lib/format'
 import { useOpenActionCount } from '@/views/actions'
@@ -103,6 +104,7 @@ function ActionsButton() {
   const count = useOpenActionCount()
   return (
     <Button
+      data-tour="masthead-actions"
       variant={onActions ? 'secondary' : 'ghost'}
       icon={<IconActions />}
       aria-current={onActions ? 'page' : undefined}
@@ -152,18 +154,21 @@ export function Masthead() {
         <ToolsMenu />
         <ActionsButton />
         <Button
+          data-tour="masthead-data"
           variant={onDataRoom ? 'secondary' : 'ghost'}
           icon={<IconDatabase />}
           aria-current={onDataRoom ? 'page' : undefined}
+          aria-label={`Data room, ${uploaded} of ${total} uploaded`}
           onClick={() => goTo('data')}
         >
-          Data room
+          <span className="hidden sm:inline">Data room</span>
           <span className={cx('hidden font-normal sm:inline', onDataRoom ? 'text-ink-2' : 'text-muted')}>
             {uploaded} of {total} uploaded
           </span>
         </Button>
         <Button
           ref={settingsTrigger}
+          data-tour="masthead-settings"
           variant={settingsOpen ? 'secondary' : 'ghost'}
           icon={<IconGear />}
           aria-haspopup="dialog"
@@ -173,6 +178,7 @@ export function Masthead() {
         >
           <span className="hidden sm:inline">Settings</span>
         </Button>
+        <HelpButton />
       </div>
     </div>
   )

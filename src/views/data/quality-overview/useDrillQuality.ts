@@ -49,7 +49,8 @@ export function useDrillQuality(): QualityIndex {
       computeQuality(ctx.all, versions, issues && Object.keys(issues).length ? issues : undefined, {
         asOf: ctx.asOf,
         rules: strict,
+        vocab: ctx.quality.vocab,
       }),
-    [issues, ctx.all, versions, ctx.asOf, strict],
+    [issues, ctx.all, versions, ctx.asOf, strict, ctx.quality.vocab],
   )
 }

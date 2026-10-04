@@ -2,15 +2,17 @@
  * The head of a view: name, the scope / window / as-of line with where the data came from (left
  * out for a view that reads no datasets), the view's own controls, the "Show data quality" switch,
  * Export, and underline sub-tabs. With the switch on, a strip under the tabs names the datasets
- * the view reads with their tiers.
+ * the view reads with their tiers. Under the scope line, "About this view" opens the view's help
+ * article.
  */
-import { type KeyboardEvent, useRef } from 'react'
+import { type KeyboardEvent, useEffect, useRef } from 'react'
 import { goTo } from '@/components/navigation'
 import { cx, Tag, Tip } from '@/components/ui'
 import { useAnalytics } from '@/data/context'
+import { AboutViewLink } from '@/help/ui/AboutViewLink'
 import { formatDate } from '@/lib/dates'
 import { fmt } from '@/lib/format'
-import { AI_AGENTS_HASH, openAgents, useAgentLink } from '@/views/ai/link'
+import { agentsHash, openAgents, useAgentLink } from '@/views/ai/link'
 import { QualityDatasetStrip, QualityLensSwitch } from '@/views/data/quality-overview/DatasetStrip'
 import type { ViewDef } from '@/views/types'
 import { ExportMenu } from './ExportMenu'
@@ -50,12 +52,12 @@ function AgentsLink({ view }: { view: ViewDef }) {
   const link = useAgentLink(view.key)
   if (!link) return null
   return (
-    <p className="mt-1 text-[12px] leading-snug">
+    <span className="text-[12px] leading-snug">
       <a
-        href={AI_AGENTS_HASH}
+        href={agentsHash(link.areas)}
         aria-label={link.label}
         onClick={(e) => {
-          // A modified click opens the catalog in a new tab as usual (unfiltered).
+          // A modified click opens the filtered catalog in a new tab as usual.
           if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
           e.preventDefault()
           openAgents(link.areas)
@@ -64,12 +66,25 @@ function AgentsLink({ view }: { view: ViewDef }) {
       >
         {link.text}
       </a>
-    </p>
+    </span>
   )
 }
 
 function SubTabs({ view, active }: { view: ViewDef; active: string }) {
   const refs = useRef<(HTMLButtonElement | null)[]>([])
+  const at = view.tabs.findIndex((t) => t.key === active)
+  // On a narrow screen the strip scrolls sideways: arriving at a later tab (a link, a KPI tile, an
+  // address) brings the selected tab into view. Only the strip scrolls, never the page.
+  useEffect(() => {
+    const el = refs.current[at]
+    const strip = el?.parentElement
+    if (!el || !strip || strip.scrollWidth <= strip.clientWidth) return
+    const box = strip.getBoundingClientRect()
+    const tab = el.getBoundingClientRect()
+    const pad = 16
+    if (tab.left < box.left + pad) strip.scrollLeft -= box.left + pad - tab.left
+    else if (tab.right > box.right - pad) strip.scrollLeft += tab.right - (box.right - pad)
+  }, [at])
   const onKeyDown = (i: number) => (e: KeyboardEvent<HTMLButtonElement>) => {
     const next = rovingIndex(e.key, i, view.tabs.length)
     if (next == null) return
@@ -81,6 +96,7 @@ function SubTabs({ view, active }: { view: ViewDef; active: string }) {
     <div
       role="tablist"
       aria-label={`${view.label} sections`}
+      data-tour="view-tabs"
       className="-mx-(--gutter) flex gap-6 overflow-x-auto px-(--gutter) [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
     >
       {view.tabs.map((t, i) => {
@@ -139,12 +155,20 @@ export function ViewHeader({ view, tab }: { view: ViewDef; tab: string }) {
               </span>
             </div>
           )}
-          <AgentsLink view={view} />
+          {/* Quiet links: this view's help article, and the AI agents for its area. */}
+          <p className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-0.5">
+            <AboutViewLink view={view.key} tab={tab} />
+            <AgentsLink view={view} />
+          </p>
         </div>
-        <div className="flex max-w-full min-w-0 flex-wrap items-center gap-2">
+        <div data-tour="view-controls" className="flex max-w-full min-w-0 flex-wrap items-center gap-2">
           {Actions && <Actions />}
           {/* The quality lens: tier, limiting field and rows left out on every number. */}
-          {view.datasets.length > 0 && <QualityLensSwitch />}
+          {view.datasets.length > 0 && (
+            <span data-tour="quality-lens" className="inline-flex">
+              <QualityLensSwitch />
+            </span>
+          )}
           <ExportMenu view={view} tab={tab} />
         </div>
       </div>

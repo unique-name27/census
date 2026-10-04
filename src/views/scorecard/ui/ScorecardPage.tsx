@@ -10,6 +10,7 @@ import type { FindingSource } from '@/components/Readout'
 import type { Finding } from '@/components/types'
 import { Button, cx, Popover } from '@/components/ui'
 import { useAnalytics } from '@/data/context'
+import { WelcomeCard } from '@/help/ui/WelcomeCard'
 import { formatDate } from '@/lib/dates'
 import { plural } from '@/lib/format'
 import { definitionOf } from '@/metrics/api'
@@ -37,7 +38,7 @@ function TargetsPopover({ model }: { model: ScorecardModel }) {
       align="end"
       width={360}
       trigger={
-        <Button size="sm" variant="ghost">
+        <Button size="sm" variant="ghost" data-tour="scorecard-targets">
           Targets
         </Button>
       }
@@ -154,6 +155,7 @@ export function ScorecardPage() {
   if (!model)
     return (
       <Grid>
+        <WelcomeCard />
         <Waiting title="People scorecard" wide />
         <Waiting title="Top findings across Census" wide={false} />
       </Grid>
@@ -161,6 +163,7 @@ export function ScorecardPage() {
   const listed = [...model.findings.top, ...model.findings.hidden]
   return (
     <Grid>
+      <WelcomeCard />
       <ScoreFigure model={model} updating={updating} />
       <Readout
         id="scorecard-findings"

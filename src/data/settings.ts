@@ -18,6 +18,7 @@ import { normalizeUrl } from '@/app/tools'
 import { todayISO } from '@/lib/dates'
 import type { MetricsFileSection } from '@/metrics/imports'
 import type { MetricImportReport } from '@/metrics/types'
+import type { ListsFileSection } from './lists/persist'
 import { type DataStandard, DEFAULT_STANDARD, isDataStandard } from './quality/tier'
 import type { ISODate } from './schema'
 
@@ -169,10 +170,20 @@ export const DEFAULT_SETTINGS: Settings = {
   engagementSurveys: false,
 }
 
-export type SettingsSection = 'display' | 'data' | 'privacy' | 'compensation' | 'tools' | 'device'
+export type SettingsSection =
+  | 'display'
+  | 'data'
+  | 'formulas'
+  | 'lists'
+  | 'privacy'
+  | 'compensation'
+  | 'tools'
+  | 'device'
 export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
   'display',
   'data',
+  'formulas',
+  'lists',
   'privacy',
   'compensation',
   'tools',
@@ -181,6 +192,8 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
 export const SECTION_LABEL: Record<SettingsSection, string> = {
   display: 'Display',
   data: 'Data',
+  formulas: 'Formulas',
+  lists: 'Official lists',
   privacy: 'Privacy',
   compensation: 'Compensation cycle',
   tools: 'Related tools',
@@ -319,18 +332,26 @@ export interface SettingsFile {
   settings: Settings
   /** The metric dictionary: your wording, targets and settings, with the change log. */
   metrics?: MetricsFileSection
+  /** The official lists you saved (Settings > Official lists). */
+  lists?: ListsFileSection
 }
 
 export const settingsFileName = (today: ISODate): string => `census-settings-${today}.json`
 
 /** The settings (and the metric dictionary, when given) as a downloadable JSON file. Pay amounts are never in it. */
-export function settingsBlob(s: Settings, now = new Date(), metrics?: MetricsFileSection): Blob {
+export function settingsBlob(
+  s: Settings,
+  now = new Date(),
+  metrics?: MetricsFileSection,
+  lists?: ListsFileSection,
+): Blob {
   const file: SettingsFile = {
     kind: SETTINGS_FILE_KIND,
     version: SETTINGS_FILE_VERSION,
     exportedAt: now.toISOString(),
     settings: pickSettings(s),
     ...(metrics ? { metrics } : {}),
+    ...(lists ? { lists } : {}),
   }
   return new Blob([JSON.stringify(file, null, 2)], { type: 'application/json' })
 }
@@ -342,10 +363,16 @@ export type ImportSettingsResult =
       applied: (keyof Settings)[]
       /** The file's metric dictionary section, for the store to apply (`importMetricsSection`). */
       metricsSection?: unknown
+      /** The file's official lists section, for the store to apply (`importListsSection`). */
+      listsSection?: unknown
       /** Cycle values from a file saved before the dictionary; the store moves them into the comp metrics. */
       compCycle?: CompCycleSettings
       /** What the store changed in the metric dictionary (set by the store's `importSettings`). */
       metrics?: MetricImportReport
+      /** What the store changed in the official lists, in a sentence (set by the store's `importSettings`). */
+      listsSummary?: string
+      /** Why the file's official lists could not be read; nothing in them was applied. */
+      listsError?: string
     }
   | { ok: false; error: string }
 
@@ -400,7 +427,8 @@ export function parseSettingsFile(
     ? sanitizeCompCycle(raw.compCycle, currentCycle)
     : undefined
   const metricsSection = d.metrics && typeof d.metrics === 'object' ? d.metrics : undefined
-  if (!applied.length && !cycle && !metricsSection)
+  const listsSection = d.lists && typeof d.lists === 'object' ? d.lists : undefined
+  if (!applied.length && !cycle && !metricsSection && !listsSection)
     return { ok: false, error: 'The file holds no settings Census can use.' }
   delete next.compCycle
   return {
@@ -408,6 +436,7 @@ export function parseSettingsFile(
     settings: next,
     applied,
     ...(metricsSection ? { metricsSection } : {}),
+    ...(listsSection ? { listsSection } : {}),
     ...(cycle ? { compCycle: cycle } : {}),
   }
 }

@@ -428,7 +428,11 @@ function channelGap(x: FindingInputs): Ranked[] {
       action: `Review a sample of low-scoring ${c.channel.toLowerCase()} cases with the team leads and look at moving routine requests to the portal.`,
       tab: 'cases',
       drill: drillWhen(x.scope, c.resolvedRecords, () =>
-        csatDrill(x.scope, c.resolvedRecords, `Cases rated for satisfaction, ${c.channel}, ${x.scope.per}`),
+        csatDrill(
+          x.scope,
+          c.resolvedRecords,
+          `Cases behind the satisfaction score, ${c.channel}, ${x.scope.per}`,
+        ),
       ),
       uses: union(x.lineage.csat, x.lineage.channel),
       rank: 7,

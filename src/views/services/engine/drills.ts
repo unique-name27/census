@@ -332,20 +332,24 @@ export function resolveTimeDrill(
   })
 }
 
-/** Resolved cases with a satisfaction score, lowest first; the note gives the mean. */
+/**
+ * The resolved cases behind a satisfaction score: everyone the survey went to. A case's score is
+ * its requester's survey answer (the HR service survey), so neither who answered nor any one
+ * score is listed; the note gives the mean and the number of responses.
+ */
 export function csatDrill(
   s: DrillScope,
   resolved: readonly CaseFact[] | null | undefined,
   title: string,
   subtitle?: string,
 ): DrillSpec<'cases'> | null {
-  const scored = (resolved ?? []).filter((f) => f.csat != null)
+  const rows = resolved ?? []
+  const scored = rows.filter((f) => f.csat != null)
   const avg = mean(scored.map((f) => f.csat as number))
-  return caseDrill(s, scored, {
+  return caseDrill(s, rows, {
     title,
     subtitle,
-    order: (a, b) => (a.csat as number) - (b.csat as number),
-    note: `Mean of ${plural(scored.length, 'response')}: ${fmt(avg, 'num1')} out of 5.`,
+    note: `Mean of ${plural(scored.length, 'response')}: ${fmt(avg, 'num1')} out of 5. The survey goes to the requester of each resolved case; who answered and what they scored are never listed.`,
   })
 }
 
@@ -627,4 +631,20 @@ export function drillWhen<T>(
   if (!group?.length || !(listed ? s.on : canDrill(s, group))) return undefined
   const listable = group.some((f) => !('caseId' in f) || !isRowPrivate(f))
   return listable ? thunk : undefined
+}
+
+/**
+ * Why a number over this group opens nothing, for a chart tooltip beside a value that isn't
+ * clickable; null when it opens (or when there is nothing behind it).
+ */
+export function lockedReason(
+  s: DrillScope,
+  group: readonly (CaseFact | TxFact)[] | null | undefined,
+): string | null {
+  if (!group?.length) return null
+  if (group.every((f) => 'caseId' in f && isRowPrivate(f)))
+    return 'Employee relations cases are counted, never listed'
+  if (!canDrill(s, group))
+    return `Fewer than ${s.minGroup ?? MIN_GROUP} people, so the records are not listed`
+  return null
 }

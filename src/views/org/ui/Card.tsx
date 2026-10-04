@@ -37,6 +37,8 @@ export interface CardProps {
   posInSet: number
   onToggle: (id: string) => void
   onSelect: (id: string) => void
+  /** Opens the requisition behind an open-role card; without it the card is plain. */
+  onOpenReq?: (id: string) => void
   /** The records behind the counts; without it the counts are plain text. */
   countDrill?: (id: string, which: 'directs' | 'org') => DrillSource
 }
@@ -45,7 +47,7 @@ const pos = (c: PlacedCard) => ({ left: c.x, top: c.y, width: c.w, height: c.h }
 
 export const Card = memo(function Card(p: CardProps) {
   const { card } = p
-  if (card.kind === 'req') return <ReqCard card={card} req={p.req} />
+  if (card.kind === 'req') return <ReqCard card={card} req={p.req} onOpen={p.onOpenReq} />
 
   const e = p.person
   const name = e?.name ?? 'Whole company'
@@ -225,16 +227,45 @@ function Minus() {
   )
 }
 
-function ReqCard({ card, req }: { card: PlacedCard; req: ReqStub | undefined }) {
+/**
+ * A dashed placeholder for an open requisition under its hiring manager. With `onOpen` a click (or
+ * Enter once it has focus) opens the requisition; keyboard users also reach it from the hiring
+ * manager's detail panel ("Open roles").
+ */
+function ReqCard({
+  card,
+  req,
+  onOpen,
+}: {
+  card: PlacedCard
+  req: ReqStub | undefined
+  onOpen?: (id: string) => void
+}) {
+  const open = onOpen && req ? () => onOpen(card.id) : undefined
   return (
     <div
       data-card={card.id}
       role="treeitem"
       aria-level={card.depth + 1}
       aria-selected={false}
-      aria-label={`Open role: ${req?.jobTitle ?? ''}`}
+      aria-label={`Open role: ${req?.jobTitle ?? ''}${req ? `, ${req.reqId}` : ''}`}
+      title={open ? `Show requisition ${req?.reqId}` : undefined}
       tabIndex={-1}
-      className="absolute flex flex-col rounded-sheet border border-dashed border-rule-strong px-3 pt-2 pb-2 text-left"
+      onClick={open}
+      onKeyDown={
+        open
+          ? (ev) => {
+              if (ev.key !== 'Enter' && ev.key !== ' ') return
+              ev.preventDefault()
+              ev.stopPropagation()
+              open()
+            }
+          : undefined
+      }
+      className={cx(
+        'absolute flex flex-col rounded-sheet border border-dashed border-rule-strong px-3 pt-2 pb-2 text-left',
+        open && 'cursor-pointer hover:border-ink-2 hover:bg-hover',
+      )}
       style={pos(card)}
     >
       <span className="eyebrow">Open role</span>

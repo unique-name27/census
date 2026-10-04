@@ -77,7 +77,11 @@ export function AgentCard({ agent, className }: { agent: Agent; className?: stri
   // Labeled by the link itself: a Pilot or Live agent that still has its sample link says so too.
   const sampleLink = !!href && isSampleUrl(href)
   return (
-    <article aria-labelledby={titleId} className={cx('flex flex-col rounded-sheet bg-sheet', className)}>
+    <article
+      aria-labelledby={titleId}
+      data-tour="ai-agent-card"
+      className={cx('flex flex-col rounded-sheet bg-sheet', className)}
+    >
       <header className="flex items-start gap-2 px-4 pt-3.5">
         <div className="min-w-0 flex-1">
           <h4 id={titleId} className="cut-head text-[16px] leading-snug font-semibold text-ink">

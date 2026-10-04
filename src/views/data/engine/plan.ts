@@ -159,17 +159,20 @@ export const DATASET_ORDER: readonly DatasetKey[] = DATASET_KEYS
 /**
  * The sheets of a workbook worth walking: not the template's help sheets, and not sheets with
  * no rows (a blank template has headers on every sheet). `noRows` names the ones left out.
+ * `isHelpSheet` is given every sheet name of the workbook, so it can tell the template's own
+ * Lists sheet (beside its Read me) from a sheet of yours that happens to share the name.
  */
 export function usableSheets<S extends { name: string; rows: readonly unknown[] }>(
   book: { sheets: readonly S[]; emptySheets: readonly string[] },
-  isHelpSheet: (name: string) => boolean,
+  isHelpSheet: (name: string, sheetNames: readonly string[]) => boolean,
 ): { sheets: S[]; noRows: string[] } {
-  const content = book.sheets.filter((s) => !isHelpSheet(s.name))
+  const names = [...book.sheets.map((s) => s.name), ...book.emptySheets]
+  const content = book.sheets.filter((s) => !isHelpSheet(s.name, names))
   return {
     sheets: content.filter((s) => s.rows.length > 0),
     noRows: [
       ...content.filter((s) => s.rows.length === 0).map((s) => s.name),
-      ...book.emptySheets.filter((n) => !isHelpSheet(n)),
+      ...book.emptySheets.filter((n) => !isHelpSheet(n, names)),
     ],
   }
 }

@@ -21,7 +21,7 @@ export function ManagersTab({ ctx, m }: { ctx: AnalyticsContext; m: ListeningMod
     <AreaFrame
       m={m}
       tab="managers"
-      dek={`What people say about their own manager, twice a year. A manager’s own results show only with ${m.settings.minManager} or more distinct respondents over the last four quarters; everyone else is counted, never shown.`}
+      dek={`What people say about their own manager, twice a year. A manager’s own results show only with ${m.settings.minManager} or more distinct respondents over the last four quarters; everyone else is counted, never shown.${ctx.isCompany ? '' : ` With a filter on, every number here needs ${m.settings.minManager} or more respondents and waves are not compared, since the scope can be one manager’s team.`}`}
     >
       <WithSurvey m={m} survey="Manager feedback">
         {(sm) => (
@@ -117,7 +117,8 @@ function ManagerCuts({ ctx, m, sm }: { ctx: AnalyticsContext; m: ListeningModel;
         other="mean"
         domain={[0, 5]}
         ref={{ value: s.lowManager, label: `low score ${fmt(s.lowManager, 'num1')}` }}
-        secondary={(d) => `${d.department ?? ''} · n ${fmt(d.respondents, 'int')}`}
+        // The count first: on a narrow chart the department is what gets shortened.
+        secondary={(d) => `n ${fmt(d.respondents, 'int')}${d.department ? ` · ${d.department}` : ''}`}
         glyphTone={(d) => (d.low ? 'warning' : 'default')}
         onSelect={(d) => drill(() => open(d))}
       />

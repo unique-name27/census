@@ -8,7 +8,7 @@
  * from anywhere.
  */
 import { Dialog as BDialog } from '@base-ui/react/dialog'
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef } from 'react'
 import { DataTable } from '@/charts/DataTable'
 import { useExportMeta } from '@/charts/useExportMeta'
 import { IconChevronRight, IconClose, IconCopy, IconDownload, IconFile } from '@/components/icons'
@@ -57,11 +57,21 @@ export function DrillPanel() {
     depth.current = stack.length
     if (was && stack.length) body.current?.querySelector<HTMLElement>('h2')?.focus({ preventScroll: true })
   }, [stack.length])
+  // Closing returns focus to the control that opened the panel. Base UI's own choice skips a
+  // control inside another open dialog (a count in Settings), which left focus behind that dialog.
+  const open = stack.length > 0
+  const opener = useRef<HTMLElement | null>(null)
+  useLayoutEffect(() => {
+    if (open) opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
+  }, [open])
   return (
     <BDialog.Root open={stack.length > 0} onOpenChange={(o) => !o && close()}>
       <BDialog.Portal>
         <BDialog.Backdrop className="fixed inset-0 z-40 bg-overlay transition-opacity duration-150 data-[ending-style]:opacity-0 data-[starting-style]:opacity-0" />
-        <BDialog.Popup className="fixed top-0 right-0 bottom-0 z-50 flex w-[min(820px,100vw)] flex-col bg-page text-ink shadow-(--shadow-pop) outline-none transition-transform duration-200 ease-out data-[ending-style]:translate-x-6 data-[ending-style]:opacity-0 data-[starting-style]:translate-x-6 data-[starting-style]:opacity-0 pt-[env(safe-area-inset-top,0px)] pb-[env(safe-area-inset-bottom,0px)]">
+        <BDialog.Popup
+          finalFocus={() => (opener.current?.isConnected ? opener.current : true)}
+          className="fixed top-0 right-0 bottom-0 z-50 flex w-[min(820px,100vw)] flex-col bg-page text-ink shadow-(--shadow-pop) outline-none transition-transform duration-200 ease-out data-[ending-style]:translate-x-6 data-[ending-style]:opacity-0 data-[starting-style]:translate-x-6 data-[starting-style]:opacity-0 pt-[env(safe-area-inset-top,0px)] pb-[env(safe-area-inset-bottom,0px)]"
+        >
           <div className="flex items-center gap-2 border-b border-rule px-5 pt-3 pb-2.5">
             {stack.length > 1 && (
               <Button variant="ghost" size="sm" onClick={back} className="-ml-2">
@@ -156,7 +166,9 @@ function RecordsView({ spec, from }: { spec: DrillSpec; from: string | null }) {
             {spec.title}
           </BDialog.Title>
           <BDialog.Description className="mt-1 text-[13px] text-ink-2">
-            {drillNoun(spec.kind, table.rows.length)}
+            {spec.noun
+              ? `${fmt(table.rows.length, 'int')} ${table.rows.length === 1 ? spec.noun[0] : spec.noun[1]}`
+              : drillNoun(spec.kind, table.rows.length)}
             {spec.subtitle ? ` · ${spec.subtitle}` : ''}
           </BDialog.Description>
           {spec.note && <p className="mt-1 max-w-[70ch] text-[12px] text-muted">{spec.note}</p>}

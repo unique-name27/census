@@ -52,7 +52,16 @@ import {
 import type { CompModel } from './model'
 import type { CompPerson } from './population'
 import { defaultRules, lowCompaAt, marketFlag } from './rules'
-import { isAre, joinAnd, levelSpan, people as peopleText, pts2, settingPct, windowPhrase } from './text'
+import {
+  isAre,
+  joinAnd,
+  levelSpan,
+  people as peopleText,
+  pts2,
+  sentence,
+  settingPct,
+  windowPhrase,
+} from './text'
 
 /*
  * Every threshold here is a setting in the metric dictionary, read through `m.rules`: the low
@@ -733,7 +742,7 @@ function goodNews(m: FindingsInput, others: readonly Ranked[]): Ranked[] {
 const RANK: Record<Severity, number> = { critical: 0, warning: 1, info: 2, good: 3 }
 
 function toFinding(r: Ranked): Finding {
-  const f: Finding = { id: r.id, severity: r.severity, title: r.title }
+  const f: Finding = { id: r.id, severity: r.severity, title: sentence(r.title) }
   if (r.metricId) f.metricId = r.metricId
   if (r.detail) f.detail = r.detail
   if (r.action) f.action = r.action

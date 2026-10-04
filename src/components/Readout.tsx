@@ -113,6 +113,8 @@ function FindingItem({
 }) {
   const ctx = useAnalytics()
   const view = useCurrentView()
+  // The tab with the detail, unless it is the tab already on screen (the link would do nothing).
+  const openTab = finding.tab && view && finding.tab !== view.tab ? finding.tab : null
   const setFilters = useCensus((s) => s.setFilters)
   const nameOf = (id: string) => ctx.org.byId.get(id)?.name
   const focus = finding.filter ? describeFocus(finding.filter, nameOf) : ''
@@ -177,7 +179,7 @@ function FindingItem({
           </p>
         )}
         {!!finding.people?.length && <People people={finding.people} total={finding.peopleTotal} />}
-        {(finding.filter || finding.drill || (source ? source.open : finding.tab && view)) && (
+        {(finding.filter || finding.drill || (source ? source.open : openTab)) && (
           <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
             {finding.drill && (
               <button type="button" className={LINK} onClick={() => drill(finding.drill)}>
@@ -195,9 +197,9 @@ function FindingItem({
                 <IconChevronRight className="size-3" />
               </button>
             )}
-            {!source && finding.tab && view && (
-              <button type="button" className={LINK} onClick={() => goTo(view.key, finding.tab)}>
-                Open {labelInSentence(tabLabel(view, finding.tab))}
+            {!source && openTab && view && (
+              <button type="button" className={LINK} onClick={() => goTo(view.key, openTab)}>
+                Open {labelInSentence(tabLabel(view, openTab))}
                 <IconChevronRight className="size-3" />
               </button>
             )}
@@ -261,6 +263,7 @@ export function Readout({
   return (
     <section
       aria-label={title}
+      data-tour="readout"
       className={cx(spanClass(span), 'flex flex-col self-start rounded-sheet bg-sheet', className)}
     >
       <header className="flex items-baseline gap-2 border-b border-rule px-4 pt-3 pb-2.5">

@@ -9,7 +9,7 @@ import { metricsWith } from '@/metrics/testing'
 import { M } from '../metrics'
 import { onboardingBase } from './base'
 import { onboardingSettings } from './settings'
-import { dueOf, normalizeName, readinessOf, readyOnDayOne, stateOf, viewTask } from './starts'
+import { daysLateOf, dueOf, normalizeName, readinessOf, readyOnDayOne, stateOf, viewTask } from './starts'
 import { AS_OF, cand, emp, fixtureContext, req, task } from './testkit'
 
 const S = onboardingSettings(defaultMetrics())
@@ -126,6 +126,21 @@ describe('tasks', () => {
     expect(stateOf(task({ task: 'x', status: 'Blocked' }), '2026-10-01', AS_OF)).toBe('Blocked')
     expect(stateOf(task({ task: 'x', status: 'Not needed' }), '2026-09-01', AS_OF)).toBe('Not needed')
     expect(stateOf(task({ task: 'x', status: 'In progress' }), null, AS_OF)).toBe('In progress')
+  })
+
+  it('counts days late from the effective due date, blank while a task is open and not yet due', () => {
+    // Overdue: to the as-of date (30 Sep).
+    expect(daysLateOf(task({ task: 'x' }), '2026-09-25', 'Overdue', AS_OF)).toBe(5)
+    // Done late and done on time.
+    expect(
+      daysLateOf(task({ task: 'x', completedDate: '2026-09-03' }), '2026-09-01', 'Done late', AS_OF),
+    ).toBe(2)
+    expect(daysLateOf(task({ task: 'x', completedDate: '2026-08-30' }), '2026-09-01', 'Done', AS_OF)).toBe(0)
+    // Not yet due, not needed, or no due date: nothing to measure.
+    expect(daysLateOf(task({ task: 'x' }), '2026-11-11', 'Not started', AS_OF)).toBeNull()
+    expect(daysLateOf(task({ task: 'x' }), '2026-10-02', 'Blocked', AS_OF)).toBeNull()
+    expect(daysLateOf(task({ task: 'x' }), '2026-09-01', 'Not needed', AS_OF)).toBeNull()
+    expect(daysLateOf(task({ task: 'x' }), null, 'In progress', AS_OF)).toBeNull()
   })
 })
 

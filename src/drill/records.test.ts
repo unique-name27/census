@@ -7,6 +7,7 @@ import type { SourceMeta } from '@/data/store'
 import { resolveDrill } from './Drill'
 import { personSummary } from './person'
 import { buildDrillTable, drillNoun, drillTableHint, PERSON_KEY, rowPerson } from './records'
+import { activeOrg } from './related'
 import { drillSpec } from './types'
 
 const data = generateSample()
@@ -110,6 +111,15 @@ describe('person summary', () => {
     expect(p.chain.at(-1)?.managerId ?? null).toBeNull()
     expect(p.directs.length).toBeGreaterThan(0)
     expect(p.orgSize).toBeGreaterThanOrEqual(p.directs.length)
+  })
+  it('counts the contractors and interns below a leader apart, so the card can say so', () => {
+    const top = [...ctx.org.byId.values()].find((e) => !e.managerId && !e.terminationDate)!
+    const p = personSummary(ctx, top.employeeId)!
+    const below = activeOrg(ctx, top.employeeId)
+    expect(p.orgSize).toBe(below.length)
+    expect(p.orgContingent).toBe(below.filter((e) => e.employmentType !== 'Employee').length)
+    expect(p.orgContingent).toBeGreaterThan(0)
+    expect(p.orgContingent).toBeLessThan(p.orgSize)
   })
   it('returns null for unknown people', () => {
     expect(personSummary(ctx, 'nobody')).toBeNull()

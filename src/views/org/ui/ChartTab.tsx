@@ -29,6 +29,7 @@ import {
   heldBackNotes,
   isWithin,
   layoutTree,
+  openRoleDrill,
   orgDrill,
   orgKeyFigures,
   orgKpis,
@@ -131,10 +132,14 @@ export function ChartTab() {
 
   const rootName = rootId === COMPANY_ROOT ? 'Whole company' : (tree.people.get(rootId)?.name ?? '')
   const scope: DrillScope = { label: scopeLabel(tree, rootId), asOf: ctx.asOf, filtered: model.dims }
-  /** Scope for one person's numbers (cards, rows, detail panel): the chart, not the filters. */
-  const chartScope: DrillScope = { label: 'Org chart', asOf: ctx.asOf }
+  /**
+   * Scope for one person's numbers (cards, rows, detail panel): the org the chart shows, without
+   * the dimming filters (a card counts everyone under the person).
+   */
+  const chartScope: DrillScope = { label: scope.label, asOf: ctx.asOf }
   const countDrill = (id: string, which: 'directs' | 'org') =>
     which === 'directs' ? directsDrill(tree, id, chartScope) : orgDrill(tree, id, chartScope)
+  const reqDrill = (reqId: string) => openRoleDrill(tree, model.reqRecords, reqId, chartScope)
 
   // On narrow screens the panel sits below the chart: bring it into view once it shows the card
   // the reader just picked on the chart.
@@ -293,7 +298,7 @@ export function ChartTab() {
               />
             )}
             <div hidden={showTable}>
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+              <div data-tour="org-controls" className="flex flex-wrap items-center gap-x-3 gap-y-2">
                 <PersonSearch
                   people={tree.people}
                   orgSize={(id) => tree.total.get(id) ?? 0}
@@ -352,6 +357,7 @@ export function ChartTab() {
                   centerRequest={centerReq}
                   placeKey={String(expanded.levelsPicked)}
                   countDrill={countDrill}
+                  reqDrill={reqDrill}
                   label={`Org chart for ${rootName}`}
                   className="h-[60vh] min-h-[360px] min-w-0 flex-1 lg:h-[min(74vh,780px)]"
                 />

@@ -10,7 +10,7 @@ import type { AnalyticsContext } from '@/data/context'
 import { formatDate } from '@/lib/dates'
 import { fmt } from '@/lib/format'
 import { onboardingBase } from './engine/base'
-import { employeesDrill, planDrill } from './engine/drills'
+import { employeesDrill, planDrill, planYtdSub } from './engine/drills'
 import { ACTUAL, PLAN, PLAN_REQ, union } from './engine/lineage'
 import { computePlan, type PlanStatus } from './engine/plan'
 import { M } from './metrics'
@@ -54,7 +54,7 @@ export function hiresVsPlan(ctx: AnalyticsContext): HiresVsPlan | null {
         note: `${fmt(p.actual.length, 'int')} of ${fmt(p.planYtd, 'int')} planned to date${p.status ? ` · ${p.status}` : ''}`,
         drill: () =>
           employeesDrill(b, p.actual, `Starts since ${formatDate(p.start)}`, {
-            subtitle: `${formatDate(p.start)} to ${formatDate(p.toDate)} · ${b.scopeLabel}`,
+            subtitle: planYtdSub(b, p),
             uses,
           }),
         noteDrill: () => planDrill(b, ytd, 'Planned starts to date', { uses: union(PLAN, PLAN_REQ) }),

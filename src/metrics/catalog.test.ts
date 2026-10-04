@@ -30,6 +30,10 @@ describe('the catalog', () => {
     expect(validateCatalog(FIXTURE_DEFS)).toEqual([])
   })
 
+  it('gives every metric, rule and setting a formula (the Settings formula index lists them all)', () => {
+    expect(METRICS.filter((d) => !d.formula?.trim()).map((d) => d.id)).toEqual([])
+  })
+
   it('reports what is wrong with an entry', () => {
     const [good] = FIXTURE_DEFS
     const problems = validateCatalog([

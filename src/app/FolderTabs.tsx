@@ -140,6 +140,7 @@ export function FolderTabs() {
       ref={strip}
       role="tablist"
       aria-label="Practices"
+      data-tour="folder-tabs"
       className="-mx-(--gutter) flex items-end gap-1 overflow-x-auto px-(--gutter) pt-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
     >
       {VIEWS.map((v, i) => (

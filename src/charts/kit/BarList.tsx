@@ -12,7 +12,15 @@ import type { TipContent } from '../core/tooltip'
 import { baseline, housePlot, type PlotBuildContext, PlotChart } from '../plot'
 import { clearOfRules } from './hit'
 import { type BarRow, barListRows, type FoldRule } from './prepare'
-import { barInset, type ChartBaseProps, HIDDEN_NOTE, type Key, type RefLine, type Tone } from './shared'
+import {
+  barInset,
+  type ChartBaseProps,
+  gateOf,
+  HIDDEN_NOTE,
+  type Key,
+  type RefLine,
+  type Tone,
+} from './shared'
 
 export interface BarListProps<T extends object> extends ChartBaseProps<T> {
   data: readonly T[]
@@ -69,6 +77,8 @@ export function BarList<T extends object>({
   nullNote = HIDDEN_NOTE,
   onSelect,
   onSelectOther,
+  selectable,
+  lockedNote,
   ariaLabel,
 }: BarListProps<T>) {
   const rows = barListRows(data, {
@@ -96,10 +106,20 @@ export function BarList<T extends object>({
     const labelMax = Math.max(64, width * 0.38)
     const shown = rows.map((r) => truncateText(r.label, labelMax, 12))
     const marginLeft = Math.ceil(maxTextWidth(shown, 12)) + 14
-    const tailWidth = (r: BarRow<T>) =>
-      textWidth(valueText(r), 12, 500) +
-      (r.secondary ? 5 + textWidth(r.secondary, 11) : 0) +
-      (glyphOf(r) ? 12 : 0)
+    const headWidth = (r: BarRow<T>) => textWidth(valueText(r), 12, 500) + (glyphOf(r) ? 12 : 0)
+    // The tail (value, glyph and secondary text) gets at most 40% of the width; on a narrow chart
+    // a long secondary text is shortened to fit (the tooltip keeps it whole), or dropped.
+    const tailMax = width * 0.4 - 10
+    const tails = rows.map((r) => {
+      if (!r.secondary) return null
+      const room = tailMax - headWidth(r) - 5
+      if (textWidth(r.secondary, 11) <= room) return r.secondary
+      return room >= 28 ? truncateText(r.secondary, room, 11) : null
+    })
+    const tailWidth = (r: BarRow<T>, i: number) => {
+      const tail = tails[i]
+      return headWidth(r) + (tail ? 5 + textWidth(tail, 11) : 0)
+    }
     const marginRight = Math.ceil(Math.min(Math.max(...rows.map(tailWidth)) + 10, width * 0.4))
     const vals = rows.map((r) => r.value).filter(isNum)
     const lo = domain?.[0] ?? Math.min(0, ...vals, refLine?.value ?? 0)
@@ -147,19 +167,20 @@ export function BarList<T extends object>({
           ),
           labelsMark(
             (scales) =>
-              rows.map((r) => {
+              rows.map((r, i) => {
                 const end = r.value != null && r.value > origin ? r.value : origin
                 const g = glyphOf(r)
+                const tail = tails[i]
                 // Start past the reference rule when it would run through the label.
                 const refPx = refLine ? [scalePos(scales, 'x', refLine.value)] : []
                 return {
-                  x: clearOfRules(scalePos(scales, 'x', end) + 6, tailWidth(r), refPx, 3),
+                  x: clearOfRules(scalePos(scales, 'x', end) + 6, tailWidth(r, i), refPx, 3),
                   y: scalePos(scales, 'y', r.key),
                   halo: t.sheet,
                   glyph: g ? { shape: glyphForTone(g), color: toneColor(t, g) } : undefined,
                   parts: [
                     { text: valueText(r), color: r.value == null ? t.muted : t.ink, size: 12, weight: 500 },
-                    ...(r.secondary ? [{ text: r.secondary, color: t.muted, size: 11 }] : []),
+                    ...(tail ? [{ text: tail, color: t.muted, size: 11 }] : []),
                   ],
                 }
               }),
@@ -170,8 +191,11 @@ export function BarList<T extends object>({
     )
   }
 
+  const open = gateOf<T>(() => true, selectable)
   const canDrill = (r: BarRow<T>) =>
-    r.datum ? !!onSelect : !!(onSelectOther && r.foldedRows && r.foldedRows.length > 0)
+    r.datum
+      ? !!onSelect && r.value != null && open(r.datum)
+      : !!(onSelectOther && r.foldedRows && r.foldedRows.length > 0)
   const tip = (r: BarRow<T>): TipContent => ({
     title: r.label,
     rows: [{ value: valueText(r), label: r.secondary || undefined }],
@@ -180,7 +204,9 @@ export function BarList<T extends object>({
         ? nullNote
         : r.folded
           ? `Combines ${r.folded} smaller groups${canDrill(r) ? '. Click to see the records' : ''}`
-          : undefined,
+          : r.datum && onSelect && !canDrill(r)
+            ? (lockedNote?.(r.datum) ?? undefined)
+            : undefined,
   })
 
   return (

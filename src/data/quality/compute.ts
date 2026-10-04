@@ -54,7 +54,7 @@ import type {
   QualityIndex,
   RuleResult,
 } from './types'
-import { isUnrecognized } from './vocab'
+import { isUnrecognized, type VocabOverlay } from './vocab'
 
 export type { QualityRules } from './rules'
 /** The default thresholds (the quality rules in force may differ; see `QualityRules`). */
@@ -87,6 +87,11 @@ export interface QualityOptions {
    * same object for the same values so the index is reused.
    */
   rules?: QualityRules
+  /**
+   * The official lists in force (Settings > Official lists): fields they name are checked against
+   * them. Pass the same object for the same lists so the index is reused.
+   */
+  vocab?: VocabOverlay | null
 }
 
 type Row = Record<string, unknown>
@@ -124,7 +129,9 @@ export function fieldShortfall(
   if (s.problemRate != null && s.problemRate > maxProblemShare)
     return {
       kind: 'values',
-      text: `${pctAgainst(s.problemRate, maxProblemShare, 'max')} of ${midSentence(s.label)} values are not recognized or defaulted; silver allows ${limitText(maxProblemShare)}.`,
+      // The field leads, as in the fill sentence: the limit is per field, so a silver dataset can
+      // list a field over it without reading as a contradiction.
+      text: `${s.label} has ${pctAgainst(s.problemRate, maxProblemShare, 'max')} of values not recognized or defaulted; a field needs ${limitText(maxProblemShare)} or less to count as silver.`,
     }
   return null
 }
@@ -179,6 +186,7 @@ interface MemoEntry {
   asOf: ISODate | undefined
   reference: ReferenceEffect | null | undefined
   rules: QualityRules | undefined
+  vocab: VocabOverlay | null | undefined
   index: QualityIndex
 }
 const memo = new WeakMap<Datasets, MemoEntry[]>()
@@ -201,7 +209,8 @@ export function computeQuality(
       e.issues === importIssues &&
       e.asOf === opts.asOf &&
       e.reference === opts.reference &&
-      e.rules === opts.rules,
+      e.rules === opts.rules &&
+      e.vocab === opts.vocab,
   )
   if (hit) return hit.index
   const index = buildIndex(datasets, versions, importIssues, opts)
@@ -211,6 +220,7 @@ export function computeQuality(
     asOf: opts.asOf,
     reference: opts.reference,
     rules: opts.rules,
+    vocab: opts.vocab,
     index,
   })
   if (list.length > MEMO_SIZE) list.length = MEMO_SIZE
@@ -503,7 +513,7 @@ function buildIndex(
         applicable++
         if (!ok) continue
         filled++
-        if (isUnrecognized(ref, val)) unrecognized++
+        if (isUnrecognized(ref, val, opts.vocab)) unrecognized++
       }
       const logged = v?.issues.invalidByField[f.key] ?? 0
       const invalid = unrecognized + logged
@@ -724,7 +734,8 @@ function buildIndex(
         issueRows(key, (i) => i.field === p.field && INVALID_CODES.has(i.code) && i.row > 0),
       )
       rows.forEach((r, i) => {
-        if (fromImport.has(i) || (isFilled(r[p.field]) && isUnrecognized(ref, r[p.field]))) out.push(i)
+        if (fromImport.has(i) || (isFilled(r[p.field]) && isUnrecognized(ref, r[p.field], opts.vocab)))
+          out.push(i)
       })
       return out
     }
@@ -742,6 +753,7 @@ function buildIndex(
 
   const index: QualityIndex = {
     rules: R,
+    vocab: opts.vocab ?? null,
     datasetTier: (key) => evalDataset(key).tier,
     fieldTier: (ref) => fieldStats(ref).tier,
     fieldStats,

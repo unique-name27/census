@@ -321,13 +321,13 @@ export function buildKpis(x: KpiInputs): Kpi[] {
     definition: text(M.csat),
     uses: L.csat,
     drill: drillWhen(s, cur.rows.resolved, () =>
-      csatDrill(s, cur.rows.resolved, `Cases rated for satisfaction, ${per}`),
+      csatDrill(s, cur.rows.resolved, `Cases behind the satisfaction score, ${per}`),
     ),
     deltaDrill: drillWhen(s, prev.rows.resolved, () =>
-      csatDrill(s, prev.rows.resolved, `Cases rated for satisfaction, ${priorPer}`, priorSub),
+      csatDrill(s, prev.rows.resolved, `Cases behind the satisfaction score, ${priorPer}`, priorSub),
     ),
     noteDrill: drillWhen(s, cur.rows.resolved, () =>
-      csatDrill(s, cur.rows.resolved, `Cases rated for satisfaction, ${per}`),
+      csatDrill(s, cur.rows.resolved, `Cases behind the satisfaction score, ${per}`),
     ),
   })
 

@@ -6,8 +6,8 @@
  */
 
 import { type Employee, type ISODate, LEVEL_LABELS, type Level, levelIndex } from '@/data/schema'
-import { isActiveAt, isEmployee, type OrgIndex } from '@/data/scope'
-import { formatMonthShort, isValidDate } from '@/lib/dates'
+import { employeeMatcher, type Filters, isActiveAt, isEmployee, type OrgIndex } from '@/data/scope'
+import { formatDate, formatMonthShort, isValidDate } from '@/lib/dates'
 
 export type DimensionKey = 'businessUnit' | 'department' | 'location' | 'level'
 export const DIMENSIONS: DimensionKey[] = ['businessUnit', 'department', 'location', 'level']
@@ -38,30 +38,46 @@ export function dimensionValueLabel(key: DimensionKey, value: string): string {
  * Distinct values of one org dimension with active-employee counts. Values that are selected but
  * no longer present (e.g. after an upload) are kept with a count of 0 so they can be cleared.
  * Levels follow the career ladder; everything else is alphabetical.
+ *
+ * `within` is the rest of the filter row (the leader and the other dimensions): counts are of the
+ * people it lets through, so a count says how many would be in scope after picking the value.
+ * Values with nobody left stay listed, with 0, after the others.
  */
 export function dimensionOptions(
   employees: readonly Employee[],
   asOf: ISODate,
   key: DimensionKey,
   selected: readonly string[] = [],
+  within?: (e: Employee) => boolean,
 ): DimensionOption[] {
   const counts = new Map<string, number>()
   for (const e of employees) {
     if (!counted(e, asOf)) continue
     const v = e[key]
     if (typeof v !== 'string' || !v) continue
-    counts.set(v, (counts.get(v) ?? 0) + 1)
+    counts.set(v, (counts.get(v) ?? 0) + (!within || within(e) ? 1 : 0))
   }
   for (const v of selected) if (!counts.has(v)) counts.set(v, 0)
   const out = [...counts].map(([value, count]) => ({ value, label: dimensionValueLabel(key, value), count }))
+  const empty = (o: DimensionOption) => (within && o.count === 0 ? 1 : 0)
   if (key === 'level') {
     const rank = (v: string) => {
       const i = levelIndex(v)
       return i < 0 ? Number.MAX_SAFE_INTEGER : i
     }
-    return out.sort((a, b) => rank(a.value) - rank(b.value) || a.label.localeCompare(b.label))
+    return out.sort(
+      (a, b) => empty(a) - empty(b) || rank(a.value) - rank(b.value) || a.label.localeCompare(b.label),
+    )
   }
-  return out.sort((a, b) => a.label.localeCompare(b.label))
+  return out.sort((a, b) => empty(a) - empty(b) || a.label.localeCompare(b.label))
+}
+
+/**
+ * For each dimension, who the rest of the filter row lets through: the leader's org and every
+ * other dimension's choice, leaving out the dimension's own (so its options can still widen it).
+ */
+export function otherFilters(filters: Filters, index: OrgIndex, key: DimensionKey): (e: Employee) => boolean {
+  return employeeMatcher({ ...filters, [key]: [] }, index)
 }
 
 /**
@@ -120,9 +136,15 @@ export function leaderChain(index: OrgIndex, leaderId: string): Employee[] {
 export const shortRange = (start: ISODate, end: ISODate): string =>
   `${formatMonthShort(start, true)} – ${formatMonthShort(end, true)}`
 
-/** Validation message for a custom range, or null when it can be applied. */
-export function customRangeError(start: string, end: string): string | null {
+/**
+ * Validation message for a custom range, or null when it can be applied. With `asOf`, the range
+ * may not end after the reporting date: there is no data past it, so a later end would report
+ * invented zeros and annualize real events over empty months.
+ */
+export function customRangeError(start: string, end: string, asOf?: ISODate): string | null {
   if (!isValidDate(start) || !isValidDate(end)) return 'Enter both dates.'
   if (start > end) return 'The start date must be on or before the end date.'
+  if (asOf && isValidDate(asOf) && end > asOf)
+    return `The end date must be on or before the reporting date, ${formatDate(asOf)}.`
   return null
 }

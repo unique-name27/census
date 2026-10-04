@@ -4,6 +4,10 @@
  * free-text fields that the views group by have a canonical list too (case categories, channels,
  * candidate sources, learning categories, exit reasons). Work sites are not checked: every
  * company has its own.
+ *
+ * Official lists (Settings > Official lists, `src/data/lists`) add to this: an official list hands
+ * the quality index a `VocabOverlay`, whose values replace a field's list here (and give a list to
+ * fields that have none, such as departments and work sites).
  */
 import {
   CASE_CATEGORIES,
@@ -40,6 +44,17 @@ function build(): Map<string, ReadonlySet<string>> {
 
 const VOCAB = build()
 
+/**
+ * The official lists in force, by field: a field named here is checked against these values
+ * instead of its built-in list. Built once per state of the lists, so the quality index can be
+ * reused while they stay the same.
+ */
+export interface VocabOverlay {
+  /** Changes whenever the lists do (for memo keys and debugging). */
+  readonly version: string
+  readonly refs: ReadonlyMap<string, ReadonlySet<string>>
+}
+
 /** The allowed values of a field, or undefined when any value is fine. */
 export const vocabOf = (ref: string): ReadonlySet<string> | undefined => VOCAB.get(ref)
 
@@ -49,9 +64,12 @@ export const vocabList = (ref: string): string[] | null => {
   return v ? [...v] : null
 }
 
-/** A filled value the field's vocabulary does not know. Booleans and numbers are never checked. */
-export function isUnrecognized(ref: string, value: unknown): boolean {
+/**
+ * A filled value the field's vocabulary does not know: the official list's when the overlay names
+ * the field, otherwise the built-in one. Booleans and numbers are never checked.
+ */
+export function isUnrecognized(ref: string, value: unknown, overlay?: VocabOverlay | null): boolean {
   if (typeof value !== 'string') return false
-  const v = VOCAB.get(ref)
+  const v = overlay?.refs.get(ref) ?? VOCAB.get(ref)
   return !!v && !v.has(value)
 }

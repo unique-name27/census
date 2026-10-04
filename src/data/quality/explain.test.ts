@@ -86,7 +86,7 @@ describe('explanations at the thresholds', () => {
     v.issues.defaultedByField.employmentType = 1
     const q = computeQuality(data, { employees: v }, undefined, { asOf: AS_OF })
     expect(q.fieldStats('employees.employmentType').capReason).toBe(
-      '2.5% of employment type values are not recognized or defaulted; silver allows 2%.',
+      'Employment type has 2.5% of values not recognized or defaulted; a field needs 2% or less to count as silver.',
     )
   })
 })

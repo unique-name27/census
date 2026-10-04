@@ -59,6 +59,26 @@ export interface AgentLink {
   label: string
 }
 
+const AREA_SEP = '+'
+
+/**
+ * The AI in HR route tab, filtered to HR areas when given: "agents", "agents:compliance",
+ * "agents:services+peopleops" (`#ai.agents:compliance`), so a header link's filter survives a
+ * reload, Back and Forward, and a shared link.
+ */
+export function agentsTab(areas: readonly AgentArea[] = []): string {
+  const known = AGENT_AREAS.filter((a) => areas.includes(a))
+  return known.length ? `agents:${known.join(AREA_SEP)}` : 'agents'
+}
+
+/** The HR areas a route tab names; empty for the plain tab and for names it does not know. */
+export function areasOfTab(tab: string | null | undefined): AgentArea[] {
+  const m = /^agents:(.+)$/.exec((tab ?? '').trim())
+  if (!m) return []
+  const names = m[1].split(AREA_SEP)
+  return AGENT_AREAS.filter((a) => names.includes(a))
+}
+
 /** The header link for a view; null when the view has no areas or its areas have no agents. */
 export function agentLinkFor(view: string, agents: readonly Agent[]): AgentLink | null {
   const areas = VIEW_AREAS[view as ViewKey]

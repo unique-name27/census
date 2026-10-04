@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { isTemplateHelpSheet } from '@/data/import/detect'
 import type { DatasetKey } from '@/data/schema'
 import {
   isNotCensus,
@@ -95,6 +96,16 @@ describe('which sheets to walk', () => {
     const { sheets, noRows } = usableSheets(wb, isHelp)
     expect(sheets.map((s) => s.name)).toEqual(['Employees'])
     expect(noRows).toEqual(['Job changes', 'Sheet3'])
+  })
+
+  it('skips a Lists sheet only beside the template’s Read me or Fields', () => {
+    const template = {
+      sheets: [book('Read me', 30), book('Employees', 3), book('Lists', 40)],
+      emptySheets: [],
+    }
+    expect(usableSheets(template, isTemplateHelpSheet).sheets.map((s) => s.name)).toEqual(['Employees'])
+    const yours = { sheets: [book('Employees', 3), book('Lists', 12)], emptySheets: [] }
+    expect(usableSheets(yours, isTemplateHelpSheet).sheets.map((s) => s.name)).toEqual(['Employees', 'Lists'])
   })
 
   it('finds nothing to walk in a blank template', () => {

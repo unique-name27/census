@@ -30,7 +30,7 @@ import { answersDrill } from './engine/drills'
 import * as L from './engine/lineage'
 import { headlineOf, inWave, marginOf, wavesUpTo } from './engine/measures'
 import { answersOf, prepare } from './engine/prepare'
-import { listeningSettings, type Status, statusOf } from './engine/settings'
+import { listeningSettingsFor, managerScoped, type Status, statusOf } from './engine/settings'
 import { scoreMetric } from './metrics'
 
 export interface SurveyHeadline {
@@ -71,14 +71,16 @@ export function surveyHeadline(ctx: AnalyticsContext, survey: SurveyType): Surve
   const p = prepare(ctx)
   const all = answersOf(p, survey)
   if (!all.length) return null
-  const s = listeningSettings(ctx.metrics)
+  // A survey about managers in a narrowed scope needs the manager-cut minimum and drops the change.
+  const s = listeningSettingsFor(ctx)
   const min = s.minOf[survey]
   const waves = wavesUpTo(all, survey, ctx.asOf)
   const latest = waves.at(-1) ?? null
   const prior = waves.at(-2) ?? null
   const rows = inWave(all, latest)
   const h = headlineOf(rows, program.headline, min)
-  const before = prior ? headlineOf(inWave(all, prior), program.headline, min) : null
+  const before =
+    prior && !managerScoped(ctx, survey) ? headlineOf(inWave(all, prior), program.headline, min) : null
   const target = s.targetOf[survey]
   const uses = [
     ...L.union(

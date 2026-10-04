@@ -29,6 +29,7 @@ import type { ViewKey } from '@/data/schema'
 import { useCensus } from '@/data/store'
 import { drill } from '@/drill'
 import type { DrillSpec } from '@/drill/types'
+import { AboutViewLink } from '@/help/ui/AboutViewLink'
 import { formatDate } from '@/lib/dates'
 import { downloadXlsx } from '@/lib/export/xlsx'
 import { fmt, plural } from '@/lib/format'
@@ -264,12 +265,15 @@ function WhereItemsWait({ open, status }: { open: readonly OpenAction[]; status:
       : bucket === 'critical'
         ? a.item.severity === 'critical'
         : dueBucket(a.item.due, ctx.asOf, dueSoonDays) === bucket
+  // "items overdue", "items due within 7 d", "items due later", "items with no due date".
   const bucketWords = (bucket: Bucket) =>
     bucket === 'all'
       ? 'items'
       : bucket === 'critical'
         ? 'critical items'
-        : `items ${dueBucketLabel(bucket, dueSoonDays).toLowerCase()}`
+        : bucket === 'none'
+          ? 'items with no due date'
+          : `items ${dueBucketLabel(bucket, dueSoonDays).toLowerCase()}`
   const groupSpec = (label: string, bucket: Bucket) =>
     specOf(
       `${label}: ${bucketWords(bucket)}`,
@@ -376,7 +380,7 @@ function ListControls({
   )
   const team = (t: WaitingOn) => items.filter((a) => t === 'all' || a.team === t).length
   return (
-    <div className="col-span-full flex flex-wrap items-center gap-2">
+    <div data-tour="actions-list-controls" className="col-span-full flex flex-wrap items-center gap-2">
       <MultiSelect
         label="Owner group"
         options={roleOptions}
@@ -548,8 +552,12 @@ export function ActionCenter() {
     <div>
       <div className="pt-5">
         <div className="flex flex-wrap items-start gap-x-6 gap-y-3">
-          <div className="min-w-0 flex-1 basis-[420px]">
-            <h1 className="cut-head text-[28px] leading-[1.1] font-[650] tracking-[-0.01em]">
+          <div data-tour="actions-header" className="min-w-0 flex-1 basis-[420px]">
+            <h1
+              data-actions-heading=""
+              tabIndex={-1}
+              className="cut-head text-[28px] leading-[1.1] font-[650] tracking-[-0.01em] outline-none"
+            >
               Action center
             </h1>
             <p className="mt-1.5 max-w-[72ch] text-[13px] text-ink-2">
@@ -572,8 +580,11 @@ export function ActionCenter() {
                 </>
               )}
             </div>
+            <p className="mt-1">
+              <AboutViewLink view="actions" label="About this page" />
+            </p>
           </div>
-          <div className="flex max-w-full min-w-0 flex-wrap items-center gap-2">
+          <div data-tour="actions-my-team" className="flex max-w-full min-w-0 flex-wrap items-center gap-2">
             <MyTeamPicker />
             <ExportListButton items={exportable} status={status} />
           </div>

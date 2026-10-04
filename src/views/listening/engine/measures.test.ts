@@ -167,11 +167,22 @@ describe('response rate', () => {
       'H3',
       'H4',
     ])
-    expect(rateOf(ctx, prepare(ctx), 'Hiring manager satisfaction', ctx.window)).toMatchObject({
+    // No minimum: the raw counts.
+    expect(rateOf(ctx, prepare(ctx), 'Hiring manager satisfaction', ctx.window, 1)).toMatchObject({
       invited: 4,
       responded: 2,
       rate: 0.5,
       unknown: false,
+      suppressed: false,
+    })
+    // Four invited is under the anonymity minimum: the invited people can be listed by name, so
+    // the rate and how many answered are hidden.
+    expect(rateOf(ctx, prepare(ctx), 'Hiring manager satisfaction', ctx.window, 5)).toMatchObject({
+      invited: 4,
+      responded: null,
+      rate: null,
+      unknown: false,
+      suppressed: true,
     })
   })
 
@@ -185,7 +196,7 @@ describe('response rate', () => {
       answer({ survey: 'Exit survey', respondentKey: 'L1', responseDate: '2025-09-25', wave: '2025 Q3' }),
     ]
     const ctx = fixtureContext({ employees: leavers, surveyResponses: rows })
-    expect(rateOf(ctx, prepare(ctx), 'Exit survey', ctx.window)).toMatchObject({
+    expect(rateOf(ctx, prepare(ctx), 'Exit survey', ctx.window, 1)).toMatchObject({
       invited: 2,
       responded: 1,
       rate: 0.5,
@@ -195,7 +206,7 @@ describe('response rate', () => {
   it('is unknown for programs without an invited population', () => {
     const ctx = fixtureContext({ surveyResponses: answers(6, [4], { survey: 'Stay interview' }) })
     expect(invitedOf(ctx, 'Stay interview', ctx.window)).toBeNull()
-    expect(rateOf(ctx, prepare(ctx), 'Stay interview', ctx.window)).toMatchObject({
+    expect(rateOf(ctx, prepare(ctx), 'Stay interview', ctx.window, 5)).toMatchObject({
       rate: null,
       unknown: true,
     })

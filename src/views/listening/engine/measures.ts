@@ -11,6 +11,7 @@ import { type ISODate, STAGES, type SurveyResponse, type SurveyType } from '@/da
 import { isActiveAt, type Window } from '@/data/scope'
 import { type DrillSpec, drillSpec } from '@/drill/types'
 import { addDays } from '@/lib/dates'
+import { plural } from '@/lib/format'
 import { TENURE_BANDS } from '@/lib/people'
 import {
   aggregate,
@@ -23,7 +24,7 @@ import {
 import type { MetricTarget } from '@/metrics/types'
 import { type HeadlineKind, type ProgramMeta, programOf } from './catalog'
 import { answersOf, type CutKey, cutOf, type Prepared } from './prepare'
-import { type ListeningSettings, type Status, statusOf } from './settings'
+import { type ListeningSettings, managerScoped, type Status, statusOf } from './settings'
 
 /* ───────────── headline ───────────── */
 
@@ -75,10 +76,16 @@ export const inWave = (rows: readonly SurveyResponse[], w: WaveInfo | null): Sur
 
 export interface RateResult {
   invited: number
-  responded: number
+  /** Invited people who answered; null while the rate is hidden. */
+  responded: number | null
   rate: number | null
   /** The invited population can't be worked out for this program. */
   unknown: boolean
+  /**
+   * Hidden to protect anonymity: fewer invited than the minimum, or only a handful who answered
+   * or didn't (`rateHidden` in `@/lib/surveys`), since the invited people can be listed by name.
+   */
+  suppressed: boolean
   /** The invited people (respondent keys), for the pooled rate. */
   keys: ReadonlySet<string>
 }
@@ -171,6 +178,9 @@ export function invitedDrill(
   const title = `Invited to the ${survey.toLowerCase()}`
   const subtitle = `${w.label} · ${ctx.scopeLabel}`
   const note = 'Everyone the survey was sent after in the period. Who answered is never listed.'
+  // The invited count is people; these lists are records, one or more per person.
+  const per = (people: string, records: number, one: string, many: string) =>
+    `${plural(keys.size, people)} invited, across ${plural(records, one, many)}.`
   const d = ctx.data
   switch (survey) {
     case 'Candidate experience':
@@ -182,38 +192,46 @@ export function invitedDrill(
         uses,
         rows: d.candidates.filter((c) => inside(candidateTrigger(c), win)),
       })
-    case 'Hiring manager satisfaction':
+    case 'Hiring manager satisfaction': {
+      const rows = d.requisitions.filter(
+        (r) => r.status === 'Filled' && !!r.hiringManagerId && inside(r.filledDate, win),
+      )
       return drillSpec({
         kind: 'requisitions',
         title: 'Filled reqs whose hiring manager was invited',
         subtitle,
-        note,
+        note: `${per('hiring manager', rows.length, 'filled req', 'filled reqs')} ${note}`,
         uses,
-        rows: d.requisitions.filter(
-          (r) => r.status === 'Filled' && !!r.hiringManagerId && inside(r.filledDate, win),
-        ),
+        rows,
       })
-    case 'HR service survey':
+    }
+    case 'HR service survey': {
+      const rows = d.cases.filter(
+        (c) =>
+          !!c.requesterId && c.category !== 'Employee relations' && inside(c.resolvedAt?.slice(0, 10), win),
+      )
       return drillSpec({
         kind: 'cases',
         title: 'Resolved cases whose requester was invited',
         subtitle,
-        note: `${note} Employee relations cases are never surveyed.`,
+        note: `${per('requester', rows.length, 'resolved case', 'resolved cases')} ${note} Employee relations cases are never surveyed.`,
         uses,
-        rows: d.cases.filter(
-          (c) =>
-            !!c.requesterId && c.category !== 'Employee relations' && inside(c.resolvedAt?.slice(0, 10), win),
-        ),
+        rows,
       })
-    case 'Return to work':
+    }
+    case 'Return to work': {
+      const rows = d.transactions.filter(
+        (t) => t.type === 'Return from leave' && inside(t.effectiveDate, win),
+      )
       return drillSpec({
         kind: 'transactions',
         title: 'Returns from leave invited',
         subtitle,
-        note,
+        note: `${per('returner', rows.length, 'return from leave', 'returns from leave')} ${note}`,
         uses,
-        rows: d.transactions.filter((t) => t.type === 'Return from leave' && inside(t.effectiveDate, win)),
+        rows,
       })
+    }
     default:
       return drillSpec({
         kind: 'employees',
@@ -232,15 +250,29 @@ const LEAD_DAYS = 120
 /**
  * The response rate over the period: invited people who answered the survey at least once (on
  * or before the as-of date, from a few months before the period so an exit survey at notice
- * counts) ÷ everyone invited.
+ * counts) ÷ everyone invited. Hidden (null, `suppressed`) under the survey's minimum `min`.
  */
-export function rateOf(ctx: AnalyticsContext, p: Prepared, survey: SurveyType, w: Window): RateResult {
+export function rateOf(
+  ctx: AnalyticsContext,
+  p: Prepared,
+  survey: SurveyType,
+  w: Window,
+  min: number,
+): RateResult {
   const invited = invitedOf(ctx, survey, w)
-  if (!invited) return { invited: 0, responded: 0, rate: null, unknown: true, keys: new Set() }
+  if (!invited)
+    return { invited: 0, responded: 0, rate: null, unknown: true, suppressed: false, keys: new Set() }
   const from = addDays(w.start, -LEAD_DAYS)
   const rows = answersOf(p, survey).filter((r) => r.responseDate >= from)
-  const r = responseRate(rows, invited)
-  return { invited: r.invited, responded: r.responded, rate: r.rate, unknown: false, keys: invited }
+  const r = responseRate(rows, invited, { min })
+  return {
+    invited: r.invited,
+    responded: r.responded,
+    rate: r.rate,
+    unknown: false,
+    suppressed: r.suppressed,
+    keys: invited,
+  }
 }
 
 /* ───────────── drivers ───────────── */
@@ -299,13 +331,17 @@ export function driverTarget(
   return { target: targets.reduce((a, b) => a + b, 0) / targets.length, from: 'items' }
 }
 
-/** Score by driver in the latest wave against target, with the change since the wave before. */
+/**
+ * Score by driver in the latest wave against target, with the change since the wave before
+ * (none when `compare` is false: a survey about managers in a narrowed scope).
+ */
 export function driverRows(
   p: Prepared,
   survey: SurveyType,
   latest: readonly SurveyResponse[],
   prior: readonly SurveyResponse[],
   s: ListeningSettings,
+  compare = true,
 ): DriverRow[] {
   const min = s.minOf[survey]
   const cur = latest.filter((r) => r.scale === '1-5')
@@ -324,7 +360,7 @@ export function driverRows(
       const b = before.get(driver)
       const { target, from } = driverTarget(p, survey, driver, s.defaultTarget)
       const t: MetricTarget = { value: target, comparator: '>=' }
-      const priorValue = b && !b.suppressed ? b.mean : null
+      const priorValue = compare && b && !b.suppressed ? b.mean : null
       const delta = g.mean != null && priorValue != null ? g.mean - priorValue : null
       return {
         survey,
@@ -465,6 +501,11 @@ export interface SurveyModel {
   priorHeadline: HeadlineValue | null
   /** Headline change since the last wave; null when either side is hidden or missing. */
   change: number | null
+  /**
+   * Whether waves are compared: false for a survey about managers in a narrowed scope, where the
+   * wave before could be a smaller cut of the same manager's team (`managerScoped`).
+   */
+  compare: boolean
   material: boolean
   target: MetricTarget | null
   status: Status
@@ -493,7 +534,8 @@ export function surveyModel(
   const latestRows = inWave(all, latest)
   const priorRows = inWave(all, prior)
   const headline = headlineOf(latestRows, kind, min)
-  const priorHeadline = prior ? headlineOf(priorRows, kind, min) : null
+  const compare = !managerScoped(ctx, survey)
+  const priorHeadline = prior && compare ? headlineOf(priorRows, kind, min) : null
   const change =
     headline.value != null && priorHeadline?.value != null ? headline.value - priorHeadline.value : null
   const target = s.targetOf[survey]
@@ -512,11 +554,12 @@ export function surveyModel(
     headline,
     priorHeadline,
     change,
+    compare,
     material: change != null && Math.abs(change) >= materialOf(kind, s) - 1e-9,
     target,
     status: statusOf(headline.value, target, marginOf(kind, s)),
-    rate: rateOf(ctx, p, survey, ctx.window),
-    drivers: driverRows(p, survey, latestRows, priorRows, s),
+    rate: rateOf(ctx, p, survey, ctx.window, min),
+    drivers: driverRows(p, survey, latestRows, priorRows, s, compare),
     heat,
     periodRespondents: new Set(period.map((r) => r.respondentKey)).size,
     min,

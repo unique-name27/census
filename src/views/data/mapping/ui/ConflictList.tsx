@@ -4,13 +4,17 @@
  */
 import { useState } from 'react'
 import { type Column, Figure, type FigureSpan } from '@/charts'
+import { toast } from '@/components/toast'
 import { Button, StatusPill } from '@/components/ui'
 import type { FieldRef } from '@/data/quality/fieldRef'
+import { describeMapping, type NewReferenceMapping } from '@/data/reference'
 import type { Datasets } from '@/data/schema'
+import { useCensus } from '@/data/store'
 import { Drill, type DrillSource } from '@/drill'
 import type { Conflict } from '../engine/conflicts'
 import { peopleSpec, requisitionSpec } from '../engine/drills'
 import { useDraft } from './draft'
+import { useYourName } from './hooks'
 
 /** Items shown before "Show all". */
 const FIRST = 6
@@ -73,6 +77,9 @@ export function ConflictList({
 }) {
   const [all, setAll] = useState(false)
   const start = useDraft((s) => s.start)
+  const add = useCensus((s) => s.addReferenceMapping)
+  const undo = useCensus((s) => s.undoReferenceChange)
+  const [name] = useYourName()
   const rows: ExportRow[] = conflicts.map((c) => ({
     status: c.pill,
     conflict: c.text,
@@ -86,6 +93,25 @@ export function ConflictList({
   const fix = (c: Conflict) => {
     const f = c.fix
     if (!f) return
+    // A fix from the official lists is certain: make the change now, with Undo in the toast.
+    if (c.direct && f.kind !== 'merge') {
+      const mapping: NewReferenceMapping =
+        f.kind === 'move-department'
+          ? { kind: f.kind, department: f.department, from: f.from, to: f.to }
+          : { kind: f.kind, jobFamily: f.jobFamily, from: f.from, to: f.to }
+      const r = add(mapping, name)
+      if (!r.ok) {
+        toast(r.error, { tone: 'critical' })
+        return
+      }
+      const auditId = r.state.audit[0]?.id
+      toast(describeMapping(r.mapping), {
+        tone: 'good',
+        description: `${countText(c)} now ${c.count === 1 ? 'sits' : 'sit'} under the official ${c.section === 'org' ? 'business unit' : 'job function'}.`,
+        action: auditId ? { label: 'Undo', onClick: () => undo(auditId, name) } : undefined,
+      })
+      return
+    }
     if (f.kind === 'move-department')
       start({ kind: f.kind, department: f.department, from: f.from ?? '', to: f.to }, true)
     else if (f.kind === 'move-family')

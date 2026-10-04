@@ -44,7 +44,11 @@ export const XL = {
 
 const INVALID_SHEET_CHARS = /[[\]:*?/\\]/g
 
-/** Excel sheet rules: at most 31 characters, none of []:*?/\, no leading or trailing apostrophe. */
+/**
+ * Excel sheet rules: at most 31 characters, none of []:*?/\, no leading or trailing apostrophe.
+ * A longer name is cut at a word boundary and ends in "…", so it never stops mid-word
+ * ("Overview · Hires and exits by…", not "Overview · Hires and exits by m").
+ */
 export function sanitizeSheetName(name: string): string {
   const cleaned = name
     .replace(INVALID_SHEET_CHARS, ' ')
@@ -54,7 +58,12 @@ export function sanitizeSheetName(name: string): string {
     .trim()
   const base = cleaned || 'Sheet'
   const safe = base.toLowerCase() === 'history' ? `${base} (1)` : base
-  return safe.slice(0, 31).trim()
+  if (safe.length <= 31) return safe
+  const cut = safe.slice(0, 30)
+  const space = cut.lastIndexOf(' ')
+  // Keep most of the name: a boundary too early would leave too little to tell sheets apart.
+  const head = (space >= 16 ? cut.slice(0, space) : cut).replace(/[\s·,;–-]+$/, '').replace(/'+$/, '')
+  return `${head}…`
 }
 
 /** Sanitize and de-duplicate (case-insensitively, as Excel does) a list of sheet names. */

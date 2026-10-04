@@ -31,8 +31,8 @@ export function ToolsMenu() {
       align="end"
       width={340}
       trigger={
-        <Button variant="ghost" icon={<IconApps />} caret>
-          Tools
+        <Button data-tour="masthead-tools" variant="ghost" icon={<IconApps />} caret aria-label="Tools">
+          <span className="hidden sm:inline">Tools</span>
         </Button>
       }
     >

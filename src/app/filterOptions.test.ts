@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import type { Employee } from '@/data/schema'
-import { buildOrgIndex } from '@/data/scope'
+import { buildOrgIndex, DEFAULT_FILTERS } from '@/data/scope'
 import {
   customRangeError,
   dimensionOptions,
   leaderChain,
   leaderOptions,
   orgSizes,
+  otherFilters,
   shortRange,
 } from './filterOptions'
 
@@ -78,6 +79,34 @@ describe('dimensionOptions', () => {
   it('returns nothing for an empty roster', () => {
     expect(dimensionOptions([], AS_OF, 'department')).toEqual([])
   })
+
+  it('counts within the rest of the filter row, and lists values with nobody left last', () => {
+    const filters = { ...DEFAULT_FILTERS, businessUnit: ['Networking'] }
+    // Locations within Networking: Hsinchu has vpB and b1; Austin and San Jose have nobody left.
+    const loc = dimensionOptions(roster, AS_OF, 'location', [], otherFilters(filters, index, 'location'))
+    expect(loc).toEqual([
+      { value: 'Hsinchu', label: 'Hsinchu', count: 2 },
+      { value: 'Austin', label: 'Austin', count: 0 },
+      { value: 'San Jose', label: 'San Jose', count: 0 },
+    ])
+    // A dimension's own choice does not narrow its own list, so it can still be widened.
+    const bu = dimensionOptions(
+      roster,
+      AS_OF,
+      'businessUnit',
+      ['Networking'],
+      otherFilters(filters, index, 'businessUnit'),
+    )
+    expect(bu.map((o) => [o.value, o.count])).toEqual([
+      ['Compute', 6],
+      ['Networking', 2],
+    ])
+    // A leader narrows every dimension to their org.
+    const underA = otherFilters({ ...DEFAULT_FILTERS, leaderId: 'vpA' }, index, 'level')
+    const lv = dimensionOptions(roster, AS_OF, 'level', [], underA)
+    expect(lv.filter((o) => o.count > 0).map((o) => o.value)).toEqual(['L1', 'L3', 'L5', 'M1', 'E1'])
+    expect(lv.at(-1)).toEqual({ value: 'E3', label: 'E3 Executive', count: 0 })
+  })
 })
 
 describe('orgSizes and leaderOptions', () => {
@@ -135,6 +164,16 @@ describe('period helpers', () => {
     expect(customRangeError('2026-06-30', '2026-06-30')).toBeNull()
     expect(customRangeError('2026-07-01', '2026-06-30')).toMatch(/on or before/)
     expect(customRangeError('', '2026-06-30')).toBe('Enter both dates.')
+  })
+
+  it('refuses a custom range that ends after the reporting date', () => {
+    expect(customRangeError('2026-01-01', '2026-09-30', '2026-09-30')).toBeNull()
+    expect(customRangeError('2027-01-01', '2027-06-30', '2026-09-30')).toBe(
+      'The end date must be on or before the reporting date, 30 Sep 2026.',
+    )
+    expect(customRangeError('2026-01-01', '2027-03-01', '2026-09-30')).toMatch(/reporting date/)
+    // the order check still comes first
+    expect(customRangeError('2027-07-01', '2027-06-30', '2026-09-30')).toMatch(/start date/)
   })
 
   it('prints a compact month range', () => {

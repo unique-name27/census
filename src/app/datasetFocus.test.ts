@@ -11,10 +11,12 @@ const { useCensus } = await import('@/data/store')
 describe('openDatasetQuality', () => {
   beforeEach(() => goTo.mockClear())
 
-  it('selects the dataset, opens Quality and goes to the Data room', () => {
+  it('selects the dataset, opens Quality and goes to its address in the Data room', () => {
     openDatasetQuality('candidates')
     expect(useDatasetFocus.getState()).toMatchObject({ key: 'candidates', panel: 'quality' })
-    expect(goTo).toHaveBeenCalledWith('data')
+    expect(goTo).toHaveBeenCalledWith('data', 'candidates-quality')
+    openDatasetQuality('employees', 'certify')
+    expect(goTo).toHaveBeenLastCalledWith('data', 'employees-certify')
   })
 
   it('changes the nonce on every request, even for the same dataset', () => {

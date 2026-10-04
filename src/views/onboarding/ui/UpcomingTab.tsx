@@ -8,7 +8,7 @@ import { useAnalytics } from '@/data/context'
 import { drill, openPerson } from '@/drill'
 import { formatDate } from '@/lib/dates'
 import { fmt, plural } from '@/lib/format'
-import { candidatesDrill, startsDrill, tasksDrill } from '../engine/drills'
+import { candidatesDrill, dayOneTasksDrill, startsDrill, tasksDrill } from '../engine/drills'
 import { ACCEPT_TO_START, RENEGE, TASK_OWNER, TASKS, UPCOMING, union } from '../engine/lineage'
 import type { Start } from '../engine/starts'
 import type { DaysRow, OwnerReadinessRow, RenegeRow, TaskReadinessRow, UpcomingRow } from '../engine/upcoming'
@@ -112,9 +112,10 @@ export function UpcomingTab() {
     {
       key: 'readiness',
       label: 'Day-one tasks',
+      // The tasks counted in "7 of 10 done": the day-one ones only (I-9 tasks for US sites).
       drill: (x) =>
-        drillIf(x.r.start.tasks.length, () =>
-          tasksDrill(b, x.r.start.tasks, `Onboarding tasks, ${x.name}`, { uses: taskUses }),
+        drillIf(x.r.readiness.tasks.length, () =>
+          dayOneTasksDrill(b, x.r.readiness, x.name, { uses: taskUses }),
         ),
     },
     { key: 'status', label: 'Readiness' },

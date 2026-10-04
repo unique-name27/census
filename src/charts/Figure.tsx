@@ -31,6 +31,7 @@ import { useTierGate } from '@/components/tier/useTierGate'
 import { cx, IconButton, Menu, type MenuItem, Popover } from '@/components/ui'
 import { useAnalytics } from '@/data/context'
 import type { FieldRef } from '@/data/quality/fieldRef'
+import { LearnMoreLink } from '@/help/ui/LearnMore'
 import { copyTable } from '@/lib/export/clipboard'
 import { downloadCsv } from '@/lib/export/csv'
 import { downloadPng, downloadSvg } from '@/lib/export/image'
@@ -156,6 +157,7 @@ export function Figure<T extends object>({
   const metric = metricId && metrics.def(metricId) ? metricId : null
   const metricDefinition = metric ? definitionOf(metrics, metric) : null
   const datasheet = definitions?.length ? definitions : metricDefinition ? [metricDefinition] : []
+  const learnMore = metric ?? datasheet.map((d) => metricIdOf(d)).find(Boolean) ?? null
 
   const gate = useTierGate(uses, gated)
   const held = gate && !gate.shown ? heldBack(gate, quality) : null
@@ -315,6 +317,7 @@ export function Figure<T extends object>({
   return (
     <figure
       aria-labelledby={titleId}
+      data-tour={`figure-${id}`}
       className={cx('m-0 flex flex-col rounded-sheet bg-sheet', spanClass(span), className)}
     >
       <div className="flex flex-wrap items-start gap-x-3 gap-y-2 px-4 pt-3.5">
@@ -326,6 +329,7 @@ export function Figure<T extends object>({
         </figcaption>
         <div
           data-figure-actions
+          data-tour="figure-actions"
           className="-mt-0.5 -mr-1.5 ml-auto flex max-w-full min-w-0 flex-wrap items-center justify-end gap-1"
         >
           <span
@@ -380,6 +384,12 @@ export function Figure<T extends object>({
               {metric && !datasheet.some((d) => metricIdOf(d) === metric) && (
                 <div className="mt-1 border-t border-rule pt-2">
                   <EditDefinitionLink metricId={metric} />
+                </div>
+              )}
+              {/* The help article that covers the figure's metric (or its first dictionary row). */}
+              {learnMore && (
+                <div className="mt-2 border-t border-rule pt-2">
+                  <LearnMoreLink metricId={learnMore} />
                 </div>
               )}
             </Popover>

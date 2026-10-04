@@ -16,6 +16,8 @@ export type ConflictKind =
   | 'family-no-function'
   | 'title-level-outlier'
   | 'people-no-family'
+  | 'department-official-unit'
+  | 'family-official-function'
 
 /** A change that would resolve the conflict, ready for the edit form. `to` may be '' (you choose). */
 export type Fix =
@@ -38,6 +40,11 @@ export interface Conflict {
   fix: Fix | null
   /** Button text for the fix: "Move to Silicon Engineering". */
   fixLabel: string | null
+  /**
+   * The fix is certain (it puts rows under their official parent from Settings > Official lists),
+   * so the button makes the change at once instead of filling in the edit form.
+   */
+  direct?: boolean
 }
 
 const intText = (n: number) => n.toLocaleString('en-US')
@@ -279,4 +286,86 @@ export function countByKind(conflicts: readonly Conflict[]): Partial<Record<Conf
   const out: Partial<Record<ConflictKind, number>> = {}
   for (const c of conflicts) out[c.kind] = (out[c.kind] ?? 0) + 1
   return out
+}
+
+/* ───────────── official parents (Settings > Official lists) ───────────── */
+
+/** The official parent of each department and job family, from lists that are official. */
+export interface OfficialParents {
+  department: ReadonlyMap<string, string>
+  jobFamily: ReadonlyMap<string, string>
+}
+
+/**
+ * Rows under a parent other than their official one: a department whose people sit under another
+ * business unit, a job family under another function. One conflict per place the rows sit, each
+ * fixed by moving them under the official parent. Active employees, as everywhere on the tab.
+ */
+export function officialConflicts(
+  r: StructureReport,
+  parents: OfficialParents,
+  employees: readonly Employee[],
+): Conflict[] {
+  const out: Conflict[] = []
+  for (const e of r.org) {
+    if (!e.department || !e.businessUnit || !e.headcount) continue
+    const official = parents.department.get(e.department)
+    if (!official || official === e.businessUnit) continue
+    const rows = employeesOnly(e.rows, employees)
+    out.push({
+      id: `dept-official:${e.department}:${e.businessUnit}`,
+      kind: 'department-official-unit',
+      section: 'org',
+      severity: 'warning',
+      pill: 'Not its official unit',
+      text: `${e.department} sits under ${e.businessUnit} for ${people(rows.length)}; its official business unit is ${official}.`,
+      count: rows.length,
+      dataset: 'employees',
+      rows,
+      fix: { kind: 'move-department', department: e.department, from: e.businessUnit, to: official },
+      fixLabel: `Move to ${official}`,
+      direct: true,
+    })
+  }
+  for (const f of r.functions) {
+    if (!f.jobFamily || !f.jobFunction || !f.headcount) continue
+    const official = parents.jobFamily.get(f.jobFamily)
+    if (!official || official === f.jobFunction) continue
+    const rows = employeesOnly(f.rows, employees)
+    out.push({
+      id: `family-official:${f.jobFamily}:${f.jobFunction}`,
+      kind: 'family-official-function',
+      section: 'job',
+      severity: 'warning',
+      pill: 'Not its official function',
+      text: `${f.jobFamily} sits under ${f.jobFunction} for ${people(rows.length)}; its official job function is ${official}.`,
+      count: rows.length,
+      dataset: 'employees',
+      rows,
+      fix: { kind: 'move-family', jobFamily: f.jobFamily, from: f.jobFunction, to: official },
+      fixLabel: `Move to ${official}`,
+      direct: true,
+    })
+  }
+  return out.sort((a, b) => b.count - a.count)
+}
+
+/**
+ * A section's conflicts with the official lists taken into account: where a department or job
+ * family has an official parent, "under several units" gives way to the precise conflicts above,
+ * which come first.
+ */
+export function withOfficialParents(
+  conflicts: readonly Conflict[],
+  official: readonly Conflict[],
+  parents: OfficialParents,
+  section: Conflict['section'],
+): Conflict[] {
+  const rest = conflicts.filter((c) => {
+    if (c.kind === 'department-several-units')
+      return !parents.department.has(c.id.slice('dept-units:'.length))
+    if (c.kind === 'family-several-functions') return !parents.jobFamily.has(c.id.slice('family-fns:'.length))
+    return true
+  })
+  return [...official.filter((c) => c.section === section), ...rest]
 }

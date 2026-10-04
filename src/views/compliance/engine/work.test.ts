@@ -143,6 +143,21 @@ describe('authorization mix', () => {
     expect(mix[0].share).toBeCloseTo(5 / 9)
     expect(mix[1].share).toBeNull()
   })
+
+  it('counts employees only, like every headcount', () => {
+    const X = emp({ name: 'X', employmentType: 'Contractor' })
+    const Y = emp({ name: 'Y', employmentType: 'Intern' })
+    const ctx = fixtureContext({
+      employees: [...employees, X, Y],
+      rightToWork: [...rows, rtw(X, { authorizationType: visa }), rtw(Y, { authorizationType: visa })],
+    })
+    const w = computeWork(buildBase(ctx), ctx.window)
+    expect(w.mix.map((r) => [r.type, r.people])).toEqual([
+      ['Employer-sponsored visa', 5],
+      ['Other (3)', null],
+    ])
+    expect(w.activeCount).toBe(9)
+  })
 })
 
 describe('missing data', () => {

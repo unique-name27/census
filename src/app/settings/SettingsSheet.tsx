@@ -12,6 +12,8 @@ import { CompSection } from './CompSection'
 import { DataSection } from './DataSection'
 import { DeviceSection } from './DeviceSection'
 import { DisplaySection } from './DisplaySection'
+import { FormulasSection } from './FormulasSection'
+import { ListsSection } from './lists/ListsSection'
 import { PrivacySection } from './PrivacySection'
 import { ToolsSection } from './ToolsSection'
 import { sectionId } from './ui'
@@ -106,15 +108,17 @@ export function SettingsSheet() {
             </BDialog.Close>
           </div>
           <BDialog.Description className="sr-only">
-            Display, data, privacy, compensation cycle (now in Metric definitions), related tools and this
-            device. Changes apply at once and are saved in this browser, except pay amounts, which last for
-            this session.
+            Display, data, an index of every formula, the official lists, privacy, compensation cycle (now in
+            Metric definitions), related tools and this device. Changes apply at once and are saved in this
+            browser, except pay amounts, which last for this session.
           </BDialog.Description>
           <SectionNav onGo={goToSection} />
           <div ref={bodyRef} className="min-h-0 flex-1 overflow-y-auto">
             <div className="m-3 rounded-sheet bg-sheet">
               <DisplaySection />
               <DataSection />
+              <FormulasSection />
+              <ListsSection />
               <PrivacySection />
               <CompSection />
               <ToolsSection />

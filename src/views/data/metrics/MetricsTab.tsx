@@ -65,10 +65,12 @@ export function MetricsTab() {
 
   // An address that names a view or a metric (a link from a KPI, Back) shows it: the view becomes
   // the filter, filters that would hide the metric are cleared, and the metric is brought into view.
+  // The address carries the view filter, so one that names no view (or one Census doesn't know)
+  // shows every view rather than keeping the filter of the address before it.
   const follow = useEffectEvent((tab: string) => {
     const r = parseMetricsTab(tab)
     setFilters((f) => {
-      const next = r.view ? { ...f, view: r.view } : f
+      const next: MetricFilters = { ...f, view: r.view ?? 'all' }
       return r.metric
         ? filtersShowing(
             next,

@@ -209,7 +209,7 @@ describe('findings cite exit reasons only when they meet the standard', () => {
   it('keeps a confirmed rate and leaves out reasons below the standard', () => {
     const m = computeHrbp(withQuality('gold', { 'employees.terminationReason': 'bronze' }))
     const f = bengaluru(m)
-    expect(f.title).toBe('Voluntary attrition in Bengaluru is 18.8%, 9.4 pts above the company')
+    expect(f.title).toBe('Voluntary attrition in Bengaluru is 18.8%, 9.4 pts above the company.')
     expect(f.detail).not.toContain('most often')
     // The next step does not send the reader to reasons the page no longer shows.
     expect(f.action).toBe('Hold stay conversations in the most affected Bengaluru teams.')

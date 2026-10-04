@@ -24,7 +24,13 @@ export function HeaderActions() {
     }
   }
   return (
-    <Button size="sm" icon={<IconCopy />} onClick={() => void copy()} disabled={!ctx.data.employees.length}>
+    <Button
+      size="sm"
+      data-tour="hrbp-talking-points"
+      icon={<IconCopy />}
+      onClick={() => void copy()}
+      disabled={!ctx.data.employees.length}
+    >
       Copy talking points
     </Button>
   )

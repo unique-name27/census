@@ -228,7 +228,7 @@ export function valueRows(
     list.push(from)
     byMapping.set(to, list)
   }
-  const hasList = !!cat.vocab
+  const hasList = !!(inv.vocab ?? cat.vocab)
   const rows: ValueRow[] = inv.values.map((v) => {
     const spelled = [...v.spellings]
     for (const s of byMapping.get(v.value) ?? []) if (!spelled.includes(s)) spelled.push(`${s} (your change)`)
@@ -359,7 +359,7 @@ export interface UnlistedValue {
 export function unlistedValues(inventories: readonly FieldInventory[]): UnlistedValue[] {
   const out: UnlistedValue[] = []
   for (const inv of inventories) {
-    const vocab = inv.category.vocab
+    const vocab = inv.vocab ?? inv.category.vocab
     if (!vocab) continue
     for (const v of inv.values) {
       if (v.recognized || v.count === 0) continue

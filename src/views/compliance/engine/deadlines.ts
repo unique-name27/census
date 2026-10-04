@@ -8,7 +8,7 @@
  * next month. Pure.
  */
 import type { Employee, ISODate } from '@/data/schema'
-import { isActiveAt } from '@/data/scope'
+import { isActiveAt, isEmployee } from '@/data/scope'
 import { addDays, formatDate, formatMonth, monthEnd } from '@/lib/dates'
 import {
   ATLAS_JURISDICTIONS,
@@ -109,8 +109,9 @@ export function computeDeadlines(
   const { asOf } = ctx
   const until = addDays(asOf, days)
   const people = new Map<string, Employee[]>()
+  // Employees only, like every headcount: contractors and interns are reported separately.
   for (const e of ctx.employees) {
-    if (!isActiveAt(e, asOf)) continue
+    if (!isEmployee(e) || !isActiveAt(e, asOf)) continue
     for (const j of jurisdictionsOf(e)) people.set(j, [...(people.get(j) ?? []), e])
   }
   const jurisdictions = ATLAS_JURISDICTIONS.filter((j) => people.has(j.id)).map((j) => ({

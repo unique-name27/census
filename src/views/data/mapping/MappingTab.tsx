@@ -6,6 +6,7 @@
  */
 import { StatusPill } from '@/components/ui'
 import { DATASETS } from '@/data/schema'
+import { openSettings } from '@/data/store'
 import { formatDate } from '@/lib/dates'
 import { unlistedValues } from './engine/lists'
 import { EditSection } from './ui/EditSection'
@@ -97,6 +98,18 @@ export function MappingTab() {
         How the categories in your data relate to each other, where they disagree, and the changes you have
         made. Org and job counts are active employees as of {formatDate(model.ctx.asOf)}, across the whole
         company; category lists count every row. Every count opens the people or records behind it.
+      </p>
+      <p className="mt-2 max-w-[75ch] text-[13px] text-ink-2">
+        The approved values your data is checked against, and each department’s official business unit, are
+        kept in{' '}
+        <button
+          type="button"
+          onClick={() => openSettings('lists')}
+          className="rounded-[2px] font-medium text-link underline-offset-2 hover:underline"
+        >
+          Settings, Official lists
+        </button>
+        .
       </p>
       <nav
         aria-label="On this tab"

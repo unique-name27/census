@@ -87,6 +87,8 @@ describe('onboarding task drills', () => {
           { employeeId: 'E2', task: 'Laptop shipped', dueDate: '2026-09-25', status: 'In progress' },
           { applicationId: 'A1', task: 'Badge ready', dueDate: '2026-10-31', completedDate: '2026-10-01' },
           { employeeId: 'E2', task: 'Probation decision', status: 'Not needed' },
+          // Open and not yet due: nothing to measure, so days late is blank, not 0.
+          { employeeId: 'E2', task: '30-day check-in', dueDate: '2026-11-11' },
         ],
       }),
       ctx(),
@@ -95,8 +97,9 @@ describe('onboarding task drills', () => {
       ['Person E2', '2026-10-12', 'Overdue', 5],
       ['Ines Duarte', '2026-11-02', 'Done', 0],
       ['Person E2', '2026-10-12', 'Not needed', null],
+      ['Person E2', '2026-10-12', 'Not started', null],
     ])
-    expect(t.rows.map((r) => r[PERSON_KEY])).toEqual(['E2', null, 'E2'])
+    expect(t.rows.map((r) => r[PERSON_KEY])).toEqual(['E2', null, 'E2', 'E2'])
     expect(t.rows[1].department).toBe('Design verification')
     expect(t.rows[1].location).toBe('Bengaluru')
   })

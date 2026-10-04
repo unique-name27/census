@@ -6,10 +6,16 @@ describe('one share format across the Data quality tab and its workbook', () => 
   it('writes whole percents away from the edges and thresholds', () => {
     expect(shareText(0.72)).toBe('72%')
     expect(shareText(0.975)).toBe('98%')
-    expect(shareText(0.0054)).toBe('1%')
     expect(shareText(1)).toBe('100%')
     expect(shareText(0)).toBe('0%')
     expect(shareText(null)).toBe('—')
+  })
+
+  it('keeps one decimal under 1%, as the Datasets tab writes an import error share', () => {
+    expect(shareText(0.0054)).toBe('0.5%')
+    expect(shareText(3 / 597)).toBe('0.5%')
+    expect(shareText(3 / 312)).toBe('1.0%')
+    expect(shareText(0.012)).toBe('1%')
   })
 
   it('never rounds a gap away', () => {

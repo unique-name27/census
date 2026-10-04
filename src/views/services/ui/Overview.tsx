@@ -19,6 +19,7 @@ import {
   caseDrill,
   drillWhen,
   isLateTx,
+  lockedReason,
   monthName,
   monthSub,
   onTimeDrill,
@@ -99,12 +100,9 @@ export function Overview({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext }
     caseDrill(s, d.records, { title: titled('Cases opened', d.category, per) })
   const backlogCell = (d: BacklogRow) => () =>
     openDrill(s, d.records, titled('Open cases', `aged ${d.age}`, d.status.toLowerCase()))
+  const backlogAgeRecords = (age: string) => m.backlog.filter((r) => r.age === age).flatMap((r) => r.records)
   const backlogAge = (age: string) => () =>
-    openDrill(
-      s,
-      m.backlog.filter((r) => r.age === age).flatMap((r) => r.records),
-      titled('Open cases', `aged ${age}`),
-    )
+    openDrill(s, backlogAgeRecords(age), titled('Open cases', `aged ${age}`))
 
   const txColumns: Column<TxMonthRow>[] = [
     { key: 'month', label: 'Due month' },
@@ -247,7 +245,9 @@ export function Overview({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext }
       drill: (r) =>
         r.slaRate == null
           ? null
-          : () => resolutionDrill(s, r.records, titled('Cases judged on resolution SLA', r.category, per)),
+          : drillWhen(s, r.records, () =>
+              resolutionDrill(s, r.records, titled('Cases judged on resolution SLA', r.category, per)),
+            ),
     },
     {
       key: 'open',
@@ -355,7 +355,9 @@ export function Overview({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext }
                 value="cases"
                 secondary={(d) => (d.slaRate == null ? null : `SLA ${fmt(d.slaRate, 'pct0')}`)}
                 glyphTone={(d) => rateTone(d.slaRate, slaTarget)}
-                onSelect={(d) => drill(categoryCases(d))}
+                onSelect={(d) => drill(drillWhen(s, d.records, categoryCases(d)))}
+                selectable={(d) => !!drillWhen(s, d.records, categoryCases(d))}
+                lockedNote={(d) => lockedReason(s, d.records)}
               />
             </Figure>
             <Figure
@@ -388,8 +390,12 @@ export function Overview({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext }
                 stack
                 xOrder={AGE_BUCKETS}
                 seriesOrder={BACKLOG_STATUSES}
-                onSelect={(d) => drill(backlogAge(d.age))}
-                onSelectSegment={(d) => drill(backlogCell(d))}
+                onSelect={(d) => drill(drillWhen(s, backlogAgeRecords(d.age), backlogAge(d.age)))}
+                onSelectSegment={(d) => drill(drillWhen(s, d.records, backlogCell(d)))}
+                selectable={(d, segment) =>
+                  !!drillWhen(s, segment ? d.records : backlogAgeRecords(d.age), backlogCell(d))
+                }
+                lockedNote={(d) => lockedReason(s, d.records)}
               />
             </Figure>
             {txFigure}

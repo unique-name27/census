@@ -48,7 +48,7 @@ export function validateMapping(m: ReferenceMapping | NewReferenceMapping): stri
 export function targetRefs(m: ReferenceMapping): FieldRef[] {
   switch (m.kind) {
     case 'move-department':
-      return ['employees.businessUnit', 'requisitions.businessUnit']
+      return ['employees.businessUnit', 'requisitions.businessUnit', 'hiringPlan.businessUnit']
     case 'move-family':
       return ['employees.jobFunction']
     default:
@@ -109,6 +109,8 @@ function applyOne(w: Working, m: ReferenceMapping): number {
       const test = (r: Row) => r.department === m.department && (m.from == null || r.businessUnit === m.from)
       write('employees', 'businessUnit', test, m.to)
       write('requisitions', 'businessUnit', test, m.to)
+      // The hiring plan names a department's business unit too, and the official lists check it.
+      write('hiringPlan', 'businessUnit', test, m.to)
       return count()
     }
     case 'move-family': {

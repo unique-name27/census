@@ -16,6 +16,7 @@ import {
   keyFigureDrills,
   layerDrill,
   leaversDrill,
+  openRoleDrill,
   orgDrill,
   peopleDrill,
   removedDrill,
@@ -138,6 +139,27 @@ describe('key figures and their drills (small company)', () => {
     }
     expect(countsText(9, 1557)).toBe('9 direct · 1,557 org')
     expect(countsText(0, 0)).toBe('')
+  })
+
+  it('card drills name the org on the chart and the as-of date like every view, and count every worker type', () => {
+    const own: DrillScope = { label: "Name VP-B's org", asOf: AS_OF }
+    const spec = orgDrill(tree, 'VP-B', own)!
+    expect(spec.subtitle).toBe("As of 30 Sep 2026 · Name VP-B's org")
+    expect(spec.note).toContain('contractors and interns included')
+    // The leader is the one left out, not the contractors and interns.
+    expect(spec.note).toContain('contractors and interns included. Name VP-B is not counted.')
+    expect(directsDrill(tree, 'VP-B', { ...own, filtered: true })!.subtitle).toBe(
+      "As of 30 Sep 2026 · Name VP-B's org · people matching the filters",
+    )
+  })
+
+  it('an open-role card opens its requisition, naming the hiring manager', () => {
+    const spec = openRoleDrill(tree, reqRecords, 'R1', scope)!
+    expect(spec.kind).toBe('requisitions')
+    expect(spec.rows.map((r) => r.reqId)).toEqual(['R1'])
+    expect(spec.title).toBe('Open role: Engineer')
+    expect(spec.note).toContain(tree.people.get('MGR-2')!.name)
+    expect(openRoleDrill(tree, reqRecords, 'R-missing', scope)).toBeNull()
   })
 
   it('the flags table opens everyone with a flag kind', () => {

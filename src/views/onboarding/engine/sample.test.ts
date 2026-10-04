@@ -5,8 +5,11 @@
  */
 import { describe, expect, it } from 'vitest'
 import type { Finding, Kpi } from '@/components/types'
+import type { Employee, HiringPlanLine, OnboardingTask } from '@/data/schema'
 import { resolveDrill } from '@/drill/Drill'
+import { formatRange } from '@/lib/dates'
 import { hiresVsPlan } from '../api'
+import { coverageDrills, dayOneTasksDrill, readinessDrill } from './drills'
 import { actions, computeOnboarding, computeOnboardingUncached, headline, summary } from './index'
 import { sampleContext } from './testkit'
 
@@ -52,6 +55,38 @@ describe('Onboarding on the sample company', () => {
   it('opens exactly the records each count shows', () => {
     for (const id of ['starts-30', 'day-minus-3', 'contingencies', 'probation', 'committed'])
       expect(rowsOf(kpi(id).drill), id).toBe(kpi(id).value)
+  })
+
+  it('words the day -3 drill subtitle like every snapshot drill', () => {
+    const spec = resolveDrill(kpi('day-minus-3').drill)!
+    expect(spec.subtitle).toMatch(
+      /^As of 30 Sep 2026 · Whole company · starts by \d{1,2} [A-Z][a-z]{2} \d{4}$/,
+    )
+  })
+
+  it('opens the records behind every note on the scorecard measures', () => {
+    const first = (text: string | undefined) => Number(/^([\d,]+) /.exec(text ?? '')![1].replace(/\D/g, ''))
+    // "223 of 269 starts ready": the ready ones.
+    expect(rowsOf(kpi('day-one').noteDrill)).toBe(first(kpi('day-one').note))
+    // "0 of 186 starts" still opens the starts; with leavers it opens the leavers.
+    const a = kpi('attrition-90')
+    const leavers = first(a.note)
+    const cohort = Number(/of ([\d,]+) start/.exec(a.note ?? '')![1].replace(/\D/g, ''))
+    expect(rowsOf(a.noteDrill)).toBe(leavers || cohort)
+    for (const k of summary(ctx).kpis) expect(resolveDrill(k.noteDrill), k.id).not.toBeNull()
+  })
+
+  it('drills plan year-to-date starts with the plan year as the window, and the gap to its open lines', () => {
+    const p = m.plan!
+    const vs = resolveDrill(kpi('vs-plan').drill)!
+    expect(vs.subtitle).toContain('1 Apr 2026')
+    expect(vs.subtitle).not.toContain('1 Oct 2025')
+    const gap = resolveDrill(kpi('gap').drill)!
+    expect(gap.rows.length).toBe(p.noReq.length)
+    expect(gap.note).toMatch(/^Gap = [\d,]+ planned − \(/)
+    // Plan lines carry their planned starts in the subtitle when the two differ.
+    const planned = resolveDrill(kpi('vs-plan').noteDrill)!
+    expect(planned.subtitle).toMatch(new RegExp(`^${p.planYtd} planned starts · `))
   })
 
   it('story 1: 59 people start in Q4 2026, 44 of them in October; Bengaluru notice periods run 60 d or more', () => {
@@ -207,6 +242,95 @@ describe('Onboarding on the sample company', () => {
       expect(x.uses?.length, x.id).toBeGreaterThan(0)
       expect(resolveDrill(x.drill), x.id).not.toBeNull()
       expect(`${x.what} ${x.note}`, x.id).not.toMatch(/\b(chase|push|nag|ping|hound)\b/i)
+    }
+  })
+})
+
+describe('Onboarding drills open what was clicked (sample)', () => {
+  const b = m.base
+  const p = m.plan!
+  const ytd = `${formatRange(p.start, p.toDate)} · Whole company`
+  const planned = (rows: readonly unknown[]) =>
+    (rows as HiringPlanLine[]).reduce((n, l) => n + l.plannedHires, 0)
+  const none = { plan: undefined, actual: undefined, gap: undefined }
+
+  it('plan coverage: every count opens its own records, starts to date over the plan year to date', () => {
+    expect(p.start).toBe('2026-04-01')
+    for (const r of [...p.byUnit, ...p.byDepartment]) {
+      const where = r.department ?? r.businessUnit
+      const d = coverageDrills(b, p, r, where, none)
+      if (r.actualYtd) {
+        const spec = resolveDrill(d.actualYtd)!
+        expect(spec.rows.length, where).toBe(r.actualYtd)
+        expect(spec.subtitle, where).toBe(ytd)
+        for (const e of spec.rows as Employee[])
+          expect(e.hireDate >= p.start && e.hireDate <= p.toDate).toBe(true)
+      } else expect(d.actualYtd, where).toBeNull()
+      // Planned starts open plan lines whose planned starts add up to the number clicked.
+      if (r.planYtd) {
+        const spec = resolveDrill(d.planYtd)!
+        expect(planned(spec.rows), where).toBe(r.planYtd)
+        if (r.planYtd !== spec.rows.length)
+          expect(spec.subtitle, where).toMatch(/^[\d,]+ planned starts · As of /)
+      } else expect(d.planYtd, where).toBeNull()
+      if (r.planFull) expect(planned(resolveDrill(d.planFull)!.rows), where).toBe(r.planFull)
+      // The gap opens the uncovered future lines of this row, with the sum in the note.
+      if (Math.round(r.gap) > 0) {
+        const spec = resolveDrill(d.gap)!
+        const open = p.noReq.filter((v) => r.lines.includes(v.line)).map((v) => v.line)
+        if (open.length) expect(spec.rows).toEqual(open)
+        expect(spec.note, where).toMatch(/^Gap = [\d,]+ planned − \(/)
+      } else expect(d.gap, where).toBeNull()
+    }
+  })
+
+  it('the "ahead of plan" finding opens the starts to date with the plan year to date as the window', () => {
+    const f = find('onboarding-plan-ytd-go-to-market')
+    const unit = p.byUnit.find((r) => r.businessUnit === 'Go-to-Market')!
+    const spec = resolveDrill(f.drill)!
+    expect(spec.subtitle).toBe(ytd)
+    expect(spec.rows.length).toBe(unit.actualYtd)
+    // The Hiring plan KPI and Recruiting's Hires vs plan tile say the same.
+    expect(resolveDrill(kpi('vs-plan').drill)!.subtitle).toBe(ytd)
+    expect(resolveDrill(hiresVsPlan(ctx)!.kpi.drill)!.subtitle).toBe(ytd)
+  })
+
+  it('a start’s "7 of 10 done" opens exactly those day-one tasks, not the later check-ins', () => {
+    let fewer = 0
+    for (const row of m.upcoming.rows) {
+      const r = row.readiness
+      const spec = dayOneTasksDrill(b, r, row.start.name)
+      if (!r.total) {
+        expect(spec).toBeNull()
+        continue
+      }
+      const tasks = spec!.rows as OnboardingTask[]
+      expect(tasks.length, row.start.name).toBe(r.total)
+      expect(
+        tasks.some((t) => /check-in|probation/i.test(t.task)),
+        row.start.name,
+      ).toBe(false)
+      expect(spec!.note?.startsWith(`${r.done} of ${r.total} done. `)).toBe(true)
+      if (row.start.tasks.length > r.total) fewer++
+    }
+    // The sample's starts have later tasks too (the check-ins), which stay out of the panel.
+    expect(fewer).toBeGreaterThan(0)
+  })
+
+  it('a day-one readiness bar opens the starts not ready, and everyone on a 100% bar', () => {
+    const ready = new Set(m.first90.dayOne.ready)
+    const groups = [...m.first90.dayOne.bySite, ...m.first90.dayOne.byRegion].filter((g) => g.rate != null)
+    expect(groups.some((g) => g.met === g.n)).toBe(true)
+    for (const g of groups) {
+      const spec = readinessDrill(b, g.rows, ready, g.group)!
+      expect(spec, g.group).not.toBeNull()
+      if (g.met === g.n) {
+        expect(spec.title).toBe(`Ready on day one, ${g.group}`)
+        expect(spec.rows.length).toBe(g.n)
+      } else {
+        expect(spec.title).toBe(`Not ready on day one, ${g.group}`)
+        expect(spec.rows.length, g.group).toBe(g.n - (g.met ?? 0))
+      }
     }
   })
 })

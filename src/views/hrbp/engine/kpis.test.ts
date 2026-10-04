@@ -45,6 +45,20 @@ describe('KPI tiles', () => {
     expect(hc).toMatchObject({ value: 21, delta: -1, deltaLabel: 'vs 12 months earlier' })
   })
 
+  it('says a window with nobody in it has no headcount on every rate, not that a column is missing', () => {
+    const m = computeHrbp(
+      ctxOf(
+        { employees: people, jobChanges },
+        { period: 'custom', customStart: '2010-01-01', customEnd: '2010-12-31' },
+      ),
+    )
+    for (const id of ['attrition', 'voluntary', 'regretted']) {
+      const tile = m.kpi.kpis.find((k) => k.id === id)!
+      expect(tile.value, id).toBeNull()
+      expect(tile.note, id).toBe('No headcount in this period')
+    }
+  })
+
   it('counts headcount without contractors and notes them separately', () => {
     const m = computeHrbp(ctxOf({ employees: people, jobChanges }))
     const hc = m.kpi.kpis.find((k) => k.id === 'headcount')!

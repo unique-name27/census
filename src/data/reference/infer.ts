@@ -141,6 +141,8 @@ export interface FieldInventory {
   values: CategoryValue[]
   /** Values that are not in the known list: in the rows now, or left blank at import. */
   unrecognized: { value: string; count: number; source: 'rows' | 'import' }[]
+  /** The list the values were checked against: an official list, the category's own, or none. */
+  vocab?: readonly string[] | null
 }
 
 export interface StructureReport {
@@ -174,6 +176,11 @@ export interface InferOptions {
   issues?: Partial<Record<string, readonly ImportIssue[]>>
   /** Which categories to inventory (default: all). */
   categories?: readonly string[]
+  /**
+   * Known values by category id, in place of the category's own list: the official lists
+   * (Settings > Official lists). A category not named keeps its own list.
+   */
+  vocab?: Readonly<Partial<Record<string, readonly string[]>>>
 }
 
 const str = (v: unknown): string | null => (typeof v === 'string' && v.trim() ? v : null)
@@ -479,7 +486,8 @@ export function inventory(datasets: Datasets, opts: InferOptions = {}): FieldInv
   const out: FieldInventory[] = []
   for (const category of CATEGORIES) {
     if (wanted && !wanted.has(category.id)) continue
-    const known = category.vocab ? new Set(category.vocab) : null
+    const list = opts.vocab?.[category.id] ?? category.vocab
+    const known = list ? new Set(list) : null
     for (const ref of category.refs) {
       const p = parseFieldRef(ref)
       if (!p) continue
@@ -521,6 +529,7 @@ export function inventory(datasets: Datasets, opts: InferOptions = {}): FieldInv
       out.push({
         ref,
         category,
+        vocab: list,
         total: rows.length,
         blank,
         values,

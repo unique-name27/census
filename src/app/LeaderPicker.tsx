@@ -3,7 +3,7 @@
  * scopes every view to them and everyone below them.
  */
 import { Combobox } from '@base-ui/react/combobox'
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { IconCheck, IconSearch } from '@/components/icons'
 import { PICKER_ITEM, POPUP_SURFACE, SEARCH_INPUT } from '@/components/styles'
 import { Button, cx } from '@/components/ui'
@@ -21,7 +21,7 @@ export function LeaderPicker({
   onChange,
   currentName,
   label = 'Leader',
-  emptyText = 'No people managers with 3 or more people in this data.',
+  emptyText = 'No people managers with 3 or more employees in this data.',
   clearLabel = 'Whole company',
   noun = 'leader',
 }: {
@@ -43,11 +43,24 @@ export function LeaderPicker({
     () => Combobox.createItems(options, { getValue: (o) => o.id, getLabel: (o) => o.name }),
     [options],
   )
+  // Controlled so the clear button can close the list as well (picking a leader closes it already).
+  const [open, setOpen] = useState(false)
   return (
-    <Combobox.Root items={items} value={value} onValueChange={(v) => onChange(v ?? null)} filter={matches}>
+    <Combobox.Root
+      items={items}
+      value={value}
+      onValueChange={(v) => onChange(v ?? null)}
+      filter={matches}
+      open={open}
+      onOpenChange={(o) => setOpen(o)}
+    >
       <Combobox.Trigger
         render={
-          <Button caret aria-label={value ? `${label}: ${currentName ?? value}` : label}>
+          <Button
+            caret
+            data-tour="filter-leader"
+            aria-label={value ? `${label}: ${currentName ?? value}` : label}
+          >
             {value ? (
               <span className="flex max-w-[200px] min-w-0 items-baseline gap-1">
                 <span className="font-normal text-muted">{label}</span>
@@ -85,15 +98,25 @@ export function LeaderPicker({
                     <span className="block truncate group-data-[selected]:font-semibold">{o.name}</span>
                     {o.title && <span className="block truncate text-[12px] text-muted">{o.title}</span>}
                   </span>
+                  {/* Headcount basis (employees only), like every other count in the filters; the Org
+                      chart's own counts include contractors and interns and say "people". */}
                   <span className="tnum mt-0.5 shrink-0 text-[12px] text-muted">
-                    {plural(o.size, 'person', 'people')}
+                    {plural(o.size, 'employee')}
                   </span>
                 </Combobox.Item>
               )}
             </Combobox.List>
             <div className="flex items-center justify-between border-t border-rule py-1.5 pr-1.5 pl-3">
               <span className="text-[12px] text-muted">{plural(options.length, noun)}</span>
-              <Button size="sm" variant="ghost" disabled={!value} onClick={() => onChange(null)}>
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={!value}
+                onClick={() => {
+                  onChange(null)
+                  setOpen(false)
+                }}
+              >
                 {clearLabel}
               </Button>
             </div>

@@ -5,12 +5,13 @@
  */
 import type { Kpi, Severity } from '@/components/types'
 import type { AnalyticsContext } from '@/data/context'
+import { type ActionOwnerRow, type DrillSpec, drillSpec } from '@/drill/types'
 import { formatDate } from '@/lib/dates'
 import { fmt, plural } from '@/lib/format'
 import { M } from '../metrics'
 import { type OpenAction, usesOf } from './collect'
 import { DUE_BUCKETS, type DueBucket, dueBucket, dueBucketLabel } from './due'
-import { groupByOwner, ownerCount } from './group'
+import { groupByOwner, type OwnerBlock, ownerCount } from './group'
 import { itemsDrill, SEVERITY_ORDER } from './rows'
 import { settingsOf } from './settings'
 
@@ -78,16 +79,68 @@ export function actionKpis(open: readonly OpenAction[], ctx: Ctx): Kpi[] {
       `Within ${dueSoonDays} d of ${formatDate(ctx.asOf)}`,
       `Items due within ${dueSoonDays} d`,
     ),
-    kpi(
-      'owners',
-      M.owners,
-      'Owners',
-      c.open,
-      `${plural(c.owners - teams, 'person', 'people')}, ${plural(teams, 'team')}`,
-      'Open items by owner',
-      c.owners,
-    ),
+    {
+      id: 'owners',
+      metricId: M.owners,
+      label: 'Owners',
+      value: c.owners,
+      format: 'int',
+      note: `${plural(c.owners - teams, 'person', 'people')}, ${plural(teams, 'team')}`,
+      // The owners themselves, one row each; each owner's count opens their items.
+      drill: c.owners ? () => ownersDrill(open, ctx) : undefined,
+      uses: usesOf(open),
+    },
   ]
+}
+
+/**
+ * One row per owner, a person in two owner groups once (as the Owners count counts them), the
+ * most pressing first: critical items, then overdue, then the most items.
+ */
+export function ownerRows(open: readonly OpenAction[], ctx: Ctx): ActionOwnerRow[] {
+  const byOwner = new Map<string, { blocks: OwnerBlock[]; groups: string[] }>()
+  for (const g of groupByOwner(open, ctx.asOf))
+    for (const b of g.owners) {
+      const seen = byOwner.get(b.ownerKey)
+      if (seen) {
+        seen.blocks.push(b)
+        seen.groups.push(g.label)
+      } else byOwner.set(b.ownerKey, { blocks: [b], groups: [g.label] })
+    }
+  return [...byOwner.values()]
+    .map(({ blocks, groups }) => {
+      const first = blocks[0]
+      const items = blocks.flatMap((b) => b.items)
+      return {
+        owner: first.name,
+        ownerGroup: groups.join(', '),
+        personId: first.isTeam ? null : first.ownerId,
+        items: items.length,
+        overdue: blocks.reduce((n, b) => n + b.overdue, 0),
+        critical: blocks.reduce((n, b) => n + b.critical, 0),
+        itemsDrill: () => itemsDrill(ctx, `Open items waiting on ${first.name}`, items),
+      }
+    })
+    .sort(
+      (a, b) =>
+        b.critical - a.critical ||
+        b.overdue - a.overdue ||
+        b.items - a.items ||
+        a.owner.localeCompare(b.owner),
+    )
+}
+
+/** The Owners count's records: the owners, each opening the items that wait on them. */
+export function ownersDrill(open: readonly OpenAction[], ctx: Ctx): DrillSpec<'actionOwners'> {
+  const uses = usesOf(open)
+  return drillSpec({
+    kind: 'actionOwners',
+    title: 'Owners of open items',
+    subtitle: `${ctx.scopeLabel} · as of ${formatDate(ctx.asOf)}`,
+    rows: ownerRows(open, ctx),
+    note: 'Everyone open items wait on, a person once even when they own items in two groups. Select a count of open items to see them.',
+    ...(uses.length ? { uses } : {}),
+  })
 }
 
 /* ───────── figure rows ───────── */

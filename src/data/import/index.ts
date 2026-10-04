@@ -58,7 +58,13 @@ export {
   readRelativeDay,
   resolveRelativeDay,
 } from './relative'
-export { buildTemplateWorkbook, exportDatasetWorkbook, type TemplateOptions } from './templates'
+export {
+  buildTemplateWorkbook,
+  exportDatasetWorkbook,
+  type TemplateList,
+  type TemplateLists,
+  type TemplateOptions,
+} from './templates'
 export { normalizeHeader, normText } from './text'
 export type * from './types'
 export { summarizeValues, type ValueSummary } from './values'

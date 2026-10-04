@@ -97,7 +97,7 @@ export function mixDrill(
   if (!s.showImmigration || !rows.length) return null
   return drillSpec({
     kind: 'rightToWork',
-    title: `Active people, ${type}`,
+    title: `Active employees, ${type}`,
     subtitle: asOfSub(s),
     rows: rows.map((p) => p.r),
     hide: [...I9_COLS, ...LICENSE_COLS],
@@ -236,7 +236,7 @@ export function jurisdictionPeopleDrill(
 ): DrillSpec<'employees'> {
   return drillSpec({
     kind: 'employees',
-    title: `Active people covered by ${jurisdiction}`,
+    title: `Active employees covered by ${jurisdiction}`,
     subtitle: asOfSub(s),
     rows: people,
     hide: ['terminationDate', 'terminationType', 'terminationReason', 'regrettable'],

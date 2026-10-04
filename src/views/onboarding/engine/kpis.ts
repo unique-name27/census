@@ -4,6 +4,7 @@
  */
 import type { Kpi } from '@/components/types'
 import type { Candidate, Employee } from '@/data/schema'
+import { asOfLine } from '@/drill/subtitle'
 import { addDays, daysBetween, formatDate } from '@/lib/dates'
 import { fmt, plural } from '@/lib/format'
 import { isMaterialChange } from '@/lib/stats'
@@ -12,8 +13,10 @@ import type { OnboardingBase } from './base'
 import {
   candidatesDrill,
   employeesDrill,
+  gapNote,
   learningDrill,
   planDrill,
+  planYtdSub,
   reqsDrill,
   startsDrill,
   tasksDrill,
@@ -105,7 +108,10 @@ export function upcomingKpis(b: OnboardingBase, u: UpcomingModel, hasStartData: 
         b,
         u.dayMinus3.map((x) => x.start),
         'Starts with day -3 tasks not done',
-        { subtitle: `Starts by ${formatDate(u.dayMinus3End)} · ${b.scopeLabel}`, uses: taskUses },
+        {
+          subtitle: asOfLine(b.asOf, b.scopeLabel, `starts by ${formatDate(u.dayMinus3End)}`),
+          uses: taskUses,
+        },
       ),
     noteDrill: () =>
       tasksDrill(
@@ -269,6 +275,9 @@ export function first90Kpis(b: OnboardingBase, f: First90Model): Kpi[] {
         subtitle: windowSub(b, b.prior),
         uses: dayOneUses,
       }),
+    noteDrill: d.ready.length
+      ? () => employeesDrill(b, people(d.ready), `Ready on day one, ${b.windowWords}`, { uses: dayOneUses })
+      : undefined,
     uses: dayOneUses,
   })
   const i9 = f.i9
@@ -416,9 +425,16 @@ export function first90Kpis(b: OnboardingBase, f: First90Model): Kpi[] {
         subtitle: windowSub(b, b.prior),
         uses: ATTRITION_90,
       }),
+    // "0 of 186 starts" still opens its records: the starts, none of whom resigned early.
     noteDrill: a.leavers.length
       ? () => employeesDrill(b, a.leavers, 'Resigned in the early exit window', { uses: ATTRITION_90 })
-      : undefined,
+      : a.cohort.length
+        ? () =>
+            employeesDrill(b, a.cohort, `Starts whose first ${fmt(s.attritionDays, 'days')} have passed`, {
+              note: 'None of them resigned in the early exit window.',
+              uses: ATTRITION_90,
+            })
+        : undefined,
     uses: ATTRITION_90,
   })
   return out
@@ -483,7 +499,7 @@ export function planKpis(b: OnboardingBase, p: PlanModel | null, fc: ForecastMod
       tab: 'plan',
       drill: () =>
         employeesDrill(b, p.actual, `Starts since ${formatDate(p.start)}`, {
-          subtitle: `${formatDate(p.start)} to ${formatDate(p.toDate)} · ${b.scopeLabel}`,
+          subtitle: planYtdSub(b, p),
           uses: planUses,
         }),
       noteDrill: () =>
@@ -530,7 +546,13 @@ export function planKpis(b: OnboardingBase, p: PlanModel | null, fc: ForecastMod
       goodDirection: 'down',
       note: `Of ${fmt(p.planFull, 'int')} planned for the year`,
       tab: 'plan',
-      drill: () => planDrill(b, p.views, `Plan lines, ${versionNote}`, { uses: union(PLAN, PLAN_REQ) }),
+      // The gap is what is left to find: the records behind it are the future plan lines with
+      // nothing behind them yet (no accepted offer, no open req), with the sum in the note.
+      drill: () =>
+        planDrill(b, p.noReq.length ? p.noReq : p.views, `Plan lines still to cover, ${versionNote}`, {
+          note: gapNote(p.planFull, p.actual.length, p.committed.length, forecast, p.noReq.length > 0),
+          uses: union(PLAN, PLAN_REQ, ACCEPTED),
+        }),
       uses: union(PLAN, ACTUAL, UPCOMING, FORECAST),
     },
     {

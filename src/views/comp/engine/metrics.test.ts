@@ -268,7 +268,7 @@ describe('settings are read through the dictionary', () => {
     expect(pick(base)).toEqual(pick(legacy))
     expect(kpi(base, 'merit-spend').value!).toBeCloseTo(0.03544, 5)
     expect(finding(base, 'comp-below-min')!.title).toBe(
-      '78 people are paid below range minimum, 5.4% of 1,450',
+      '78 people are paid below range minimum, 5.4% of 1,450.',
     )
   })
 })
@@ -288,7 +288,7 @@ describe('changing a setting changes the numbers', () => {
     expect(m.cycle.spend.delta!).toBeCloseTo(0.0054, 4)
     expect(kpi(m, 'merit-spend').deltaLabel).toBe('vs 3.00% budget')
     const total = finding(m, 'comp-over-budget-total')!
-    expect(total.title).toBe('Merit proposals cost 3.54% of eligible base, 0.54 pts over the 3.00% budget')
+    expect(total.title).toBe('Merit proposals cost 3.54% of eligible base, 0.54 pts over the 3.00% budget.')
     expect(total.metricId).toBe(M.overBudget)
   })
 

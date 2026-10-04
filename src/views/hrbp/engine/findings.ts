@@ -23,7 +23,17 @@ import {
   type GroupRateRow,
   groupOptions,
 } from './attrition'
-import { buildHistory, count, listJoin, nameList, type Prep, possessive, quoted, trailing } from './base'
+import {
+  buildHistory,
+  count,
+  listJoin,
+  nameList,
+  type Prep,
+  possessive,
+  quoted,
+  sentence,
+  trailing,
+} from './base'
 import {
   employeesOnSpec,
   firstYearSpec,
@@ -922,5 +932,5 @@ export function computeFindings(
   return all
     .filter((f): f is Ranked => f != null)
     .sort((a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity] || b.impact - a.impact)
-    .map(({ impact: _impact, ...f }) => f)
+    .map(({ impact: _impact, ...f }) => ({ ...f, title: sentence(f.title) }))
 }

@@ -27,6 +27,16 @@ export function MoveDialog({
 }) {
   const [target, setTarget] = useState<string | null>(null)
   const [mode, setMode] = useState<MoveMode>(initialMode)
+  // The dialog stays mounted between moves: each time it opens for a person, start from the
+  // toolbar's "What moves when you drag" setting and no picked manager.
+  const [openedFor, setOpenedFor] = useState<string | null>(personId)
+  if (openedFor !== personId) {
+    setOpenedFor(personId)
+    if (personId) {
+      setMode(initialMode)
+      setTarget(null)
+    }
+  }
   const rules = useOrgRules()
   const e = personId ? tree.people.get(personId) : undefined
   const ripple =

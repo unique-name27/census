@@ -36,7 +36,7 @@ import {
   textAt,
 } from './shared'
 
-export interface HBarsProps<T extends object> extends ChartBaseProps<T> {
+export interface HBarsProps<T extends object> extends Omit<ChartBaseProps<T>, 'selectable'> {
   data: readonly T[]
   /** Category property (rows). */
   y: Key<T>
@@ -64,6 +64,13 @@ export interface HBarsProps<T extends object> extends ChartBaseProps<T> {
    * category); clicks elsewhere in a row call `onSelect` with the category's first row.
    */
   onSelectSegment?: (d: T) => void
+  /**
+   * Whether a click opens records (pass the view's drill gate). `segment` is true for a click on
+   * one series' bar or segment (it calls `onSelectSegment`, or `onSelect` with that row) and false
+   * for a click elsewhere in the category (`onSelect` with the category's first row). A bar
+   * without a value never opens.
+   */
+  selectable?: (d: T, segment: boolean) => boolean
 }
 
 export function HBars<T extends object>({
@@ -83,6 +90,8 @@ export function HBars<T extends object>({
   xDomain,
   onSelect,
   onSelectSegment,
+  selectable,
+  lockedNote,
   ariaLabel,
 }: HBarsProps<T>) {
   const order = series
@@ -270,16 +279,39 @@ export function HBars<T extends object>({
   /** The row behind the hovered series, when it has a value. */
   const cellOf = (c: Category<T>, part: string | null) =>
     part == null ? undefined : c.cells.find((cell) => cell.series === part && cell.value != null)
+  /** Whether the click under the pointer opens records: a bar with a value that the view's gate lets open. */
+  const canOpen = (c: Category<T>, part: string | null): boolean => {
+    const cell = cellOf(c, part)
+    if (cell) return !!(onSelectSegment ?? onSelect) && (selectable?.(cell.datum, true) ?? true)
+    const first = c.cells[0]
+    return (
+      !!onSelect &&
+      !!first &&
+      c.cells.some((x) => x.value != null) &&
+      (selectable?.(first.datum, false) ?? true)
+    )
+  }
+  /** Why a bar with a value doesn't open, for the tooltip. */
+  const lockedOf = (c: Category<T>, part: string | null): string | undefined => {
+    if (!lockedNote || !(onSelect || onSelectSegment) || canOpen(c, part)) return undefined
+    const d = (cellOf(c, part) ?? c.cells.find((x) => x.value != null))?.datum
+    return d ? (lockedNote(d) ?? undefined) : undefined
+  }
 
   const tip = (c: Category<T>, part: string | null): TipContent => {
     if (!multi) {
       const v = c.cells[0]?.value ?? null
-      return { title: c.label, rows: [{ value: fmt(v, format) }], note: v == null ? HIDDEN_NOTE : undefined }
+      return {
+        title: c.label,
+        rows: [{ value: fmt(v, format) }],
+        note: v == null ? HIDDEN_NOTE : lockedOf(c, part),
+      }
     }
     const total = c.total ?? 0
     const rows: TipRow[] = model.series.map((s, i) => {
       const cell = c.cells.find((cell) => cell.series === s)
-      const v = cell?.value ?? null
+      // In a stack a series with no row in this category adds nothing: show 0, not "—" (missing).
+      const v = cell ? cell.value : stacked ? 0 : null
       const share = normalize && v != null && total > 0 ? ` (${fmt(v / total, 'pct')})` : ''
       return {
         value: v == null ? DASH : `${fmt(v, format)}${share}`,
@@ -290,7 +322,7 @@ export function HBars<T extends object>({
       }
     })
     if (stacked) rows.push({ value: fmt(c.total, format), label: 'Total' })
-    return { title: c.label, rows, note: stacked && c.total == null ? HIDDEN_NOTE : undefined }
+    return { title: c.label, rows, note: stacked && c.total == null ? HIDDEN_NOTE : lockedOf(c, part) }
   }
 
   return (
@@ -300,9 +332,7 @@ export function HBars<T extends object>({
       legend={legend}
       tip={tip}
       pick={multi ? pick : undefined}
-      selectable={(c, part) =>
-        cellOf(c, part) ? !!(onSelectSegment ?? onSelect) : !!onSelect && c.cells.length > 0
-      }
+      selectable={canOpen}
       onSelect={
         onSelect || onSelectSegment
           ? (c, part) => {

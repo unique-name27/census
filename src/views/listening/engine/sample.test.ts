@@ -7,6 +7,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Finding } from '@/components/types'
 import { invalidRefs } from '@/data/quality'
+import { resolveDrill } from '@/drill/Drill'
 import { CATALOG } from '@/metrics/catalog'
 import { compute, headline, summary } from './index'
 import { sampleContext } from './testkit'
@@ -56,6 +57,30 @@ describe('Listening on the sample company', () => {
       expect(k.uses?.length, k.id).toBeGreaterThan(0)
       expect(invalidRefs(k.uses ?? []), k.id).toEqual([])
     }
+  })
+
+  it('the response rate note opens the programs, grouped, never the answers', () => {
+    const k = m.kpis.find((x) => x.id === 'response-rate')!
+    expect(k.note).toMatch(/invited/)
+    const d = resolveDrill(k.noteDrill)
+    expect(d?.kind).toBe('surveyGroups')
+    expect(d?.rows.length).toBeGreaterThan(0)
+    // "2,068 of 4,636 invited · 7 programs" opens those 7 programs, each with its invited count.
+    const programs = num(/· (\d+) programs?/, k.note)
+    expect(programs).toBe(m.pooledRate.programs)
+    for (const drill of [k.noteDrill, k.drill]) {
+      const spec = resolveDrill(drill)!
+      expect(spec.rows).toHaveLength(programs)
+      expect(spec.note).toContain(`The ${programs} programs whose invited population`)
+    }
+    const pooled = new Set(m.programs.filter((r) => r.rateKnown && !r.rateSuppressed).map((r) => r.survey))
+    for (const row of resolveDrill(k.noteDrill)!.rows) {
+      const survey = (row as { survey?: string }).survey ?? ''
+      expect(pooled.has(survey as never), survey).toBe(true)
+    }
+    // The programs tile still opens every program with answers.
+    const all = m.kpis.find((x) => x.id === 'programs')!
+    expect(resolveDrill(all.drill)!.rows).toHaveLength(m.surveys.size)
   })
 
   it('story 1: candidate NPS at the Design Verification onsite is far below other onsites', () => {

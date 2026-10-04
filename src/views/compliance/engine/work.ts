@@ -15,7 +15,7 @@
  */
 import { AUTHORIZATION_TYPES, type ISODate } from '@/data/schema'
 import type { Window } from '@/data/scope'
-import { isActiveAt } from '@/data/scope'
+import { isActiveAt, isEmployee } from '@/data/scope'
 import { addDays, daysBetween, monthKey, monthsBetween, quarterKey } from '@/lib/dates'
 import { type ComplianceBase, type Person, rateOf } from './base'
 
@@ -69,7 +69,7 @@ export interface MixRow {
 }
 
 export interface WorkModel {
-  /** Active people with a right to work row. */
+  /** Active employees with a right to work row (the authorization mix is over them). */
   activeCount: number
   /** Expiring within the headline window, soonest first. */
   expiringHeadline: ExpiryRow[]
@@ -199,7 +199,7 @@ export function computeWork(base: ComplianceBase, window: Window): WorkModel {
     })
 
   return {
-    activeCount: base.active.length,
+    activeCount: base.active.filter((p) => isEmployee(p.e)).length,
     expiringHeadline,
     expiringHorizon,
     expired,
@@ -216,17 +216,19 @@ export function computeWork(base: ComplianceBase, window: Window): WorkModel {
 }
 
 /**
- * Active people by authorization category. Categories with fewer people than the anonymity
- * minimum fold into "Other (k)"; Other itself is hidden while it is still too small.
+ * Active employees by authorization category (employees only, like every headcount; contractors
+ * and interns are reported separately). Categories with fewer people than the anonymity minimum
+ * fold into "Other (k)"; Other itself is hidden while it is still too small.
  */
 export function computeMix(base: ComplianceBase): MixRow[] {
   const min = base.settings.minGroup
   const groups = new Map<string, Person[]>()
-  for (const p of base.active) {
+  const employees = base.active.filter((p) => isEmployee(p.e))
+  for (const p of employees) {
     const t = p.r.authorizationType ?? 'Not recorded'
     groups.set(t, [...(groups.get(t) ?? []), p])
   }
-  const total = base.active.length
+  const total = employees.length
   const order = [...AUTHORIZATION_TYPES, 'Not recorded'] as readonly string[]
   const big: MixRow[] = []
   const small: Person[][] = []

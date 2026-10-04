@@ -46,14 +46,14 @@ export type DrillCompSpec = DrillSpec<'comp'>
 
 /* ───────── building blocks ───────── */
 
-/** "Whole company · as of 30 Sep 2026" */
+/** "As of 30 Sep 2026 · Whole company", in the order every other view's drills use. */
 export function scopeLine(m: Pick<DrillScope, 'scopeLabel' | 'asOf'>): string {
-  return `${m.scopeLabel} · as of ${formatDate(m.asOf)}`
+  return `As of ${formatDate(m.asOf)} · ${m.scopeLabel}`
 }
 
-/** "Whole company · merit proposals this cycle · as of 30 Sep 2026" */
+/** "As of 30 Sep 2026 · Whole company · merit proposals this cycle" */
 export function cycleLine(m: Pick<DrillScope, 'scopeLabel' | 'asOf'>): string {
-  return `${m.scopeLabel} · merit proposals this cycle · as of ${formatDate(m.asOf)}`
+  return `${scopeLine(m)} · merit proposals this cycle`
 }
 
 /**

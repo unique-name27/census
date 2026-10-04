@@ -65,6 +65,8 @@ export function finalPayKpi(m: ServicesModel, ctx: Pick<AnalyticsContext, 'prior
     definition: ctx.metrics.def(metricId)?.definition,
     uses: union(L.onTime, L.txType),
     drill: drillWhen(s, cur, () => onTimeDrill(s, cur, `Final pay due, ${s.per}`, { exitType: true })),
+    // "181 exits due" names the same records as the value: every exit due in the period.
+    noteDrill: drillWhen(s, cur, () => onTimeDrill(s, cur, `Final pay due, ${s.per}`, { exitType: true })),
     deltaDrill: drillWhen(s, prev, () =>
       onTimeDrill(s, prev, 'Final pay due, prior period', {
         subtitle: `${ctx.prior.label} · ${s.scope}`,

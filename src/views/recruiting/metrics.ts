@@ -338,6 +338,8 @@ export const metrics: MetricDef[] = defineMetrics('recruiting', [
     name: 'Active candidates',
     definition:
       'Applications still open on the as-of date, by the stage they wait in and their next-step state: scheduled, needs decision, offer extended or no step booked.',
+    formula:
+      'applications received by the as-of date and not hired, rejected, withdrawn or declined by then, by stage and next-step state',
     population: 'Applications received by the as-of date and not yet hired, rejected, withdrawn or declined.',
     window: SNAPSHOT,
     unit: 'int',
@@ -350,6 +352,8 @@ export const metrics: MetricDef[] = defineMetrics('recruiting', [
     name: 'Days waiting',
     definition:
       'Days since the interview for decisions, since the offer for offers out, otherwise days in the current stage.',
+    formula:
+      'as-of date − the date the wait started: the interview (needs decision), the offer (offer extended), else the date the current stage was entered',
     population: 'Active candidates on the as-of date.',
     window: SNAPSHOT,
     unit: 'days',
@@ -364,6 +368,8 @@ export const metrics: MetricDef[] = defineMetrics('recruiting', [
     name: 'Applications by furthest stage',
     definition:
       'Applications received in the period, by the furthest stage reached and where they stand on the as-of date: advanced, still active, rejected, withdrawn or declined. A stage counts as reached with its date or a later one, so skipped stages count as passed.',
+    formula:
+      'applications received in the period with furthest stage ≥ the stage, by advanced, active, rejected, withdrawn or declined',
     population: 'Applications with an applied date in the period (the cohort).',
     window: PERIOD,
     unit: 'int',
@@ -523,6 +529,7 @@ export const metrics: MetricDef[] = defineMetrics('recruiting', [
     name: 'Why candidates left',
     definition:
       'Rejections and withdrawals dated in the period, by the recorded reason and the furthest stage reached before leaving.',
+    formula: 'rejections and withdrawals dated in the period, by recorded reason and furthest stage reached',
     population: 'Applications rejected or withdrawn in the period.',
     window: PERIOD,
     unit: 'int',
@@ -589,6 +596,9 @@ export const metrics: MetricDef[] = defineMetrics('recruiting', [
     name: 'Reqs opened and filled',
     definition:
       'Reqs by the month they opened, and by the month their (last) offer was accepted. Cancelled reqs are not counted as filled.',
+    formula: 'reqs by month opened; reqs by month filled, cancelled reqs left out',
+    population:
+      'Requisitions in scope: every req with an opened date counts as opened, cancelled ones included; reqs with a filled date count as filled unless cancelled.',
     window: 'The 12 months to the end of the period.',
     unit: 'int',
     goodDirection: null,
@@ -638,6 +648,8 @@ export const metrics: MetricDef[] = defineMetrics('recruiting', [
     name: 'Recruiter load',
     definition:
       'Open reqs and active candidates per recruiter on the as-of date, offers accepted on their reqs in the period, and the median days their active candidates have waited in stage. A recruiter is flagged for a heavy load or long waits above the flag factor times the team median.',
+    formula:
+      'per recruiter: open reqs, active candidates, offers accepted and median days in stage; flagged above flag factor × team median',
     population: 'Team medians are over named recruiters; unassigned work is listed but never flagged.',
     window: `${SNAPSHOT} Offers accepted use the period picker.`,
     unit: 'int',
@@ -678,6 +690,8 @@ export const metrics: MetricDef[] = defineMetrics('recruiting', [
     name: 'Applications by source',
     definition:
       'Applications by the month they were received, by source. The highlighted source is the one whose change in volume differs most from the change in all applications.',
+    formula:
+      'applications by source and month applied; highlighted: max |source change − overall change|, sources with ≥ prior applications to highlight',
     population: 'Applications received in the 24 months to the end of the period.',
     window: 'The 24 months to the end of the period; the change compares the period with the prior one.',
     unit: 'int',
@@ -864,6 +878,7 @@ export const metrics: MetricDef[] = defineMetrics('recruiting', [
     name: 'Offers waiting on an answer',
     definition:
       'Offers out longer than the offer wait with no answer on the as-of date. The offer wait and the overdue point are settings of Candidates lacking a next step.',
+    formula: 'offers out with as-of date − offer date > offer wait; listed from offers to flag',
     population: 'Active candidates at the offer stage whose offer date is on or before the as-of date.',
     window: SNAPSHOT,
     unit: 'int',
@@ -887,6 +902,7 @@ export const metrics: MetricDef[] = defineMetrics('recruiting', [
     name: 'Offer decline reasons',
     definition:
       'The rejection reason recorded on applications with status Declined, for offers declined in the period.',
+    formula: 'declined offers in the period by recorded reason; share = reason ÷ declined offers',
     population: 'Offers declined in the period.',
     window: PERIOD,
     unit: 'int',
@@ -903,6 +919,7 @@ export const metrics: MetricDef[] = defineMetrics('recruiting', [
       'The share of candidate rows whose req ID exists in Requisitions. Below the matching share, req health and candidate breakdowns by department, location and level are not read.',
     formula: 'candidate rows with a known req ID ÷ candidate rows',
     population: 'Every loaded candidate row, whatever the filters.',
+    window: 'Every loaded row, whatever the period or as-of date.',
     unit: 'pct',
     goodDirection: 'up',
     uses: REQ_JOIN,

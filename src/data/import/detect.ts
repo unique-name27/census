@@ -8,10 +8,22 @@ import { autoMapProfiled, profileColumns } from './automap'
 import { headerTokens, normalizeHeader } from './text'
 import type { DatasetGuess, Mapping, ParsedSheet } from './types'
 
-/** Sheets the template adds for people, not data. */
-export const TEMPLATE_HELP_SHEETS = ['Read me', 'Fields']
-export const isTemplateHelpSheet = (name: string): boolean =>
-  TEMPLATE_HELP_SHEETS.some((s) => normalizeHeader(s) === normalizeHeader(name))
+/** Sheets the template adds for people, not data (Lists holds the official lists' dropdown values). */
+export const TEMPLATE_HELP_SHEETS = ['Read me', 'Fields', 'Lists']
+/** The help sheets every template has. */
+const CORE_HELP = new Set(['Read me', 'Fields'].map(normalizeHeader))
+
+/**
+ * A sheet the template adds for people, not data. Read me and Fields always are. Lists is the
+ * template's only beside one of them in `sheetNames` (the workbook's sheets), so a sheet of your
+ * own named Lists is read like any other; without `sheetNames`, Lists counts as the template's.
+ */
+export const isTemplateHelpSheet = (name: string, sheetNames?: readonly string[]): boolean => {
+  const n = normalizeHeader(name)
+  if (CORE_HELP.has(n)) return true
+  if (n !== normalizeHeader('Lists')) return false
+  return !sheetNames || sheetNames.some((s) => CORE_HELP.has(normalizeHeader(s)))
+}
 
 /** Common sheet names for each dataset, beyond its own sheet name and label. */
 const SHEET_ALIASES: Record<DatasetKey, string[]> = {
@@ -129,7 +141,8 @@ export function guessDataset(
   sheet: ParsedSheet,
   learned?: Partial<Record<DatasetKey, Record<string, string>>>,
 ): DatasetGuess[] {
-  if (isTemplateHelpSheet(sheet.name))
+  // Only Read me and Fields: a Lists sheet that reaches here is one of your own.
+  if (CORE_HELP.has(normalizeHeader(sheet.name)))
     return DATASETS.map((d) => ({
       key: d.key,
       confidence: 0,

@@ -35,7 +35,7 @@ describe('compensation findings', () => {
     const data = dataset({ ...merge(sj, blr), employees: [...sj.employees, ...blr.employees, ...leavers] })
     const m = computeComp(context(data), DEFAULT_SETTINGS)
     const f = m.findings.find((x) => x.id === 'comp-low-compa-location-Bengaluru')!
-    expect(f.title).toBe('Median compa-ratio in Bengaluru is 0.85 vs 1.00 for the rest of the company')
+    expect(f.title).toBe('Median compa-ratio in Bengaluru is 0.85 vs 1.00 for the rest of the company.')
     expect(f.detail).toMatch(
       /^Voluntary attrition there is \d+\.\d% vs \d+\.\d% for the company over the last 12 months, and 3 of 3 leavers named pay as the reason\./,
     )
@@ -72,7 +72,7 @@ describe('compensation findings', () => {
     expect(text(hidden.findings)).not.toMatch(/\$/)
     expect(text(shown.findings)).toMatch(/Bringing them to minimum costs \$30K a year/)
     const below = shown.findings.find((f) => f.id === 'comp-below-min')!
-    expect(below.title).toBe('3 people are paid below range minimum, 15.0% of 20')
+    expect(below.title).toBe('3 people are paid below range minimum, 15.0% of 20.')
   })
 
   it('flags business units over the merit budget with the gap in points', () => {
@@ -81,7 +81,7 @@ describe('compensation findings', () => {
     const m = computeComp(context(dataset(merge(over, ok))), DEFAULT_SETTINGS)
     const f = m.findings.find((x) => x.id === 'comp-over-budget-Go-to-Market')!
     expect(f.title).toBe(
-      'Go-to-Market merit proposals cost 4.50% of eligible base, 1.00 pts over the 3.50% budget',
+      'Go-to-Market merit proposals cost 4.50% of eligible base, 1.00 pts over the 3.50% budget.',
     )
     expect(f.severity).toBe('critical')
     expect(f.filter).toEqual({ businessUnit: ['Go-to-Market'] })
@@ -98,7 +98,7 @@ describe('compensation findings', () => {
     const scope = computeComp(context(dataset(merge(e1))), DEFAULT_SETTINGS)
     const total = scope.findings.find((x) => x.id === 'comp-over-budget-total')!
     expect(total.severity).toBe('warning')
-    expect(total.title).toBe('Merit proposals cost 3.96% of eligible base, 0.46 pts over the 3.50% budget')
+    expect(total.title).toBe('Merit proposals cost 3.96% of eligible base, 0.46 pts over the 3.50% budget.')
   })
 
   it('needs 10 people on each side before compression reaches the readout', () => {
@@ -109,14 +109,14 @@ describe('compensation findings', () => {
     expect(m.findings.some((f) => f.id.startsWith('comp-compression'))).toBe(false)
   })
 
-  it('keeps the copy rules: no em dashes, no exclamation marks, sentence-length titles', () => {
+  it('keeps the copy rules: no em dashes, no exclamation marks, titles that end as sentences', () => {
     const t = team(20, {}, (_, i) => ({ compa: i < 3 ? 0.7 : i > 16 ? 1.3 : 1, meritPct: 0.05 }))
     const m = computeComp(context(dataset(merge(t)), { showPay: true }), DEFAULT_SETTINGS)
     expect(m.findings.length).toBeGreaterThan(0)
     for (const f of m.findings) {
       const all = [f.title, f.detail ?? '', f.action ?? ''].join(' ')
       expect(all).not.toMatch(/—|!/)
-      expect(f.title).not.toMatch(/\.$/)
+      expect(f.title).toMatch(/[^.]\.$/)
       expect(f.action).toMatch(/\.$/)
     }
   })
@@ -222,7 +222,7 @@ describe('the anonymity floor in small scopes', () => {
   it('gives a count without a share when fewer than 5 people are placed in a range', () => {
     const m = one()
     const f = m.findings.find((x) => x.id === 'comp-below-min')!
-    expect(f.title).toBe('1 person is paid below range minimum')
+    expect(f.title).toBe('1 person is paid below range minimum.')
     expect(f.severity).toBe('info')
     expect(m.findings.some((x) => x.id === 'comp-over-budget-total')).toBe(false)
     const text = m.findings.map((x) => `${x.title} ${x.detail ?? ''}`).join(' ')

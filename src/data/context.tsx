@@ -18,11 +18,14 @@ import { createContext, type ReactNode, use, useMemo } from 'react'
 import { defaultMetrics, metricsApi } from '@/metrics/api'
 import { qualityRulesOf } from '@/metrics/quality'
 import type { MetricsApi } from '@/metrics/types'
+import { validationVocab } from './lists/effective'
+import { useLists } from './lists/store'
 import { computeQuality, type ReferenceEffect } from './quality/compute'
 import type { FieldRef } from './quality/fieldRef'
 import { DEFAULT_QUALITY_RULES, type QualityRules } from './quality/rules'
 import { type DataStandard, DEFAULT_STANDARD } from './quality/tier'
 import type { DatasetVersion, QualityIndex } from './quality/types'
+import type { VocabOverlay } from './quality/vocab'
 import { applyReferenceMappings, targetRefs } from './reference/apply'
 import type { AppliedReference, ReferenceMapping } from './reference/types'
 import { type DatasetKey, type Datasets, type ISODate, withAllDatasets } from './schema'
@@ -104,11 +107,14 @@ export function qualityFor(
   versions: Partial<Record<DatasetKey, DatasetVersion | null>>,
   asOf: ISODate,
   rules?: QualityRules,
+  /** The official lists in force (`validationVocab`); the built-in vocabularies when not given. */
+  vocab?: VocabOverlay | null,
 ): QualityIndex {
   return computeQuality(applied.datasets, versions, undefined, {
     asOf,
     reference: effectOf(applied),
     ...(rules && rules !== DEFAULT_QUALITY_RULES ? { rules } : {}),
+    ...(vocab ? { vocab } : {}),
   })
 }
 
@@ -234,7 +240,13 @@ export function AnalyticsProvider({ children }: { children: ReactNode }) {
   // One dictionary object per dictionary state; the rules object only changes with a rule's value.
   const metrics = useMemo(() => metricsApi(metricsState), [metricsState])
   const rules = qualityRulesOf(metrics)
-  const quality = useMemo(() => qualityFor(applied, versions, asOf, rules), [applied, versions, asOf, rules])
+  // Official lists (Settings > Official lists) decide which values count as not recognized.
+  const savedLists = useLists((s) => s.state)
+  const vocab = validationVocab(savedLists, sources)
+  const quality = useMemo(
+    () => qualityFor(applied, versions, asOf, rules, vocab),
+    [applied, versions, asOf, rules, vocab],
+  )
   const value = useMemo(
     () =>
       buildContext({

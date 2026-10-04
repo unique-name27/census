@@ -415,7 +415,10 @@ function List({
         {items.length > 0 && (
           <>
             {severity && <SeverityIcon severity={severity} className="size-3.5" />}
-            <Drill spec={() => drillOf(ids)} label={`Show the ${items.length} people: ${title}`}>
+            <Drill
+              spec={() => drillOf(ids)}
+              label={`Show the ${plural(items.length, 'person', 'people')}: ${title}`}
+            >
               {fmt(items.length, 'int')}
             </Drill>
           </>

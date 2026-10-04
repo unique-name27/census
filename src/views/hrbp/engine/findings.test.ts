@@ -41,7 +41,7 @@ describe('regretted exits clustered under a manager', () => {
     const f = byId(three, 'hrbp-regretted-cluster')!
     expect(f.severity).toBe('critical')
     expect(f.title).toBe(
-      "Alex Boss's team (Design Verification, San Jose) had 3 regretted exits in the last 12 months",
+      "Alex Boss's team (Design Verification, San Jose) had 3 regretted exits in the last 12 months.",
     )
     expect(f.people).toHaveLength(3)
     expect(f.action).toBe("Hold stay conversations with the rest of Alex Boss's team this month.")
@@ -187,7 +187,7 @@ describe('voluntary attrition above the company', () => {
 
   it('names the location 3 pts or more above the company and focuses on it', () => {
     const f = byId(run(company), 'hrbp-voluntary-location')!
-    expect(f.title).toMatch(/^Voluntary attrition in Bengaluru is \d+\.\d%, \d+\.\d pts above the company$/)
+    expect(f.title).toMatch(/^Voluntary attrition in Bengaluru is \d+\.\d%, \d+\.\d pts above the company\.$/)
     expect(f.filter).toEqual({ location: ['Bengaluru'] })
     expect(f.tab).toBe('attrition')
   })
@@ -230,7 +230,7 @@ describe('first-year attrition', () => {
 
   it('fires above 20% with a cohort of 5 or more', () => {
     const m = run([...many(20), ...hire(5, 2, {})])
-    expect(byId(m, 'hrbp-first-year')?.title).toBe('First-year attrition is 40.0% (2 of 5 hires)')
+    expect(byId(m, 'hrbp-first-year')?.title).toBe('First-year attrition is 40.0% (2 of 5 hires).')
   })
 
   it('stays silent below a cohort of 5', () => {
@@ -247,7 +247,7 @@ describe('first-year attrition', () => {
     ])
     const f = byId(m, 'hrbp-first-year')!
     expect(f.title).toBe(
-      'First-year attrition in Go-to-Market is 33.3% (4 of 12 hires), against 3.3% elsewhere',
+      'First-year attrition in Go-to-Market is 33.3% (4 of 12 hires), against 3.3% elsewhere.',
     )
     expect(f.filter).toEqual({ businessUnit: ['Go-to-Market'] })
   })
@@ -262,7 +262,7 @@ describe('org design rules', () => {
       emp({ managerId: 'N' }),
     ])
     const f = byId(m, 'hrbp-span-outliers')!
-    expect(f.title).toBe('1 manager has 12 or more direct reports and 1 has only one')
+    expect(f.title).toBe('1 manager has 12 or more direct reports and 1 has only one.')
     expect(f.severity).toBe('info')
   })
 
@@ -275,7 +275,7 @@ describe('org design rules', () => {
     ])
     const f = byId(m, 'hrbp-new-managers')!
     expect(f.severity).toBe('warning')
-    expect(f.title).toBe('New Lead has managed for 7 months and leads 9 direct reports')
+    expect(f.title).toBe('New Lead has managed for 7 months and leads 9 direct reports.')
   })
 
   it('flags new-hire concentration at half the team (warning at 65%)', () => {
@@ -286,7 +286,7 @@ describe('org design rules', () => {
     ]
     const half = byId(run(team('H', 3, 6)), 'hrbp-new-hire-concentration')!
     expect(half.severity).toBe('info')
-    expect(half.title).toBe("3 of H's 6 direct reports were hired in the last 6 months")
+    expect(half.title).toBe("3 of H's 6 direct reports were hired in the last 6 months.")
     const two = byId(run([...team('H', 3, 6), ...team('J', 4, 5)]), 'hrbp-new-hire-concentration')!
     expect(two.detail).toBe("New hires since 1 Apr 2026: J's team 4 of 5 and H's team 3 of 6.")
     const most = byId(run(team('H', 4, 6)), 'hrbp-new-hire-concentration')!
@@ -371,7 +371,7 @@ describe('rapid growth uses true headcount at both dates', () => {
     const g = departmentGrowth(prepOf({ employees: people, jobChanges })).find((x) => x.dept === 'Firmware')!
     expect(g).toMatchObject({ before: 6, now: 9 })
     expect(byId(run(people, {}, jobChanges), 'hrbp-rapid-growth')?.title).toBe(
-      'Firmware grew 50% in 6 months, from 6 to 9 people',
+      'Firmware grew 50% in 6 months, from 6 to 9 people.',
     )
   })
 })

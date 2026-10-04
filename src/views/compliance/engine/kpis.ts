@@ -47,6 +47,16 @@ export function coreKpis(m: ComplianceCore, s: DrillScope): { reverification: Kp
               uses: USES.reverification,
             })
         : null,
+    // "10 of 15 started 90 days ahead": the 10 that did.
+    noteDrill:
+      rev.rate != null && rev.onTime.length
+        ? () =>
+            expiryDrill(s, rev.onTime, {
+              title: `Reverification started ${daysText(cfg.leadDays)} ahead`,
+              note: `Started at least ${daysText(cfg.leadDays)} before the expiry date.`,
+              uses: USES.reverification,
+            })
+        : null,
     uses: USES.reverification,
   }
 
@@ -89,6 +99,15 @@ export function coreKpis(m: ComplianceCore, s: DrillScope): { reverification: Kp
             i9Drill(s, prior.judged, {
               title: 'US starts judged on I-9 Section 2, prior period',
               subtitle: `${s.prior} · ${s.scope}`,
+              uses: USES.i9,
+            })
+        : null,
+    // "112 of 120 US starts": the ones completed in time.
+    noteDrill:
+      cur.rate != null && cur.onTime.length
+        ? () =>
+            i9Drill(s, cur.onTime, {
+              title: `I-9 Section 2 completed within ${businessDaysText(cfg.i9Days)}`,
               uses: USES.i9,
             })
         : null,
@@ -215,6 +234,8 @@ export function buildKpis(ctx: AnalyticsContext, m: ComplianceModel, s: DrillSco
       : req.loaded
         ? 'Due date is missing'
         : 'Upload Learning to see this',
+    // Talent > Learning has the detail; this tile is a summary of it.
+    link: { view: 'talent', tab: 'learning', label: 'Talent, Learning' },
     drill:
       req.rate != null
         ? () =>

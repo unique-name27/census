@@ -4,7 +4,7 @@
  */
 import type { AnalyticsContext } from '@/data/context'
 import { type Employee, type JobChange, LEVEL_LABELS, type Review } from '@/data/schema'
-import { isActiveAt } from '@/data/scope'
+import { isActiveAt, isEmployee } from '@/data/scope'
 import { tenureYears } from '@/lib/people'
 import { activeDirects, activeOrg, openCases, overdueRequired } from './related'
 
@@ -16,8 +16,10 @@ export interface PersonSummary {
   /** Manager chain from the direct manager up to the top. */
   chain: Employee[]
   directs: Employee[]
-  /** Everyone below them who is active at asOf (not counting themselves). */
+  /** Everyone below them who is active at asOf (not counting themselves), contractors and interns included. */
   orgSize: number
+  /** The contractors and interns among them (headcount elsewhere counts employees only). */
+  orgContingent: number
   reviews: Review[]
   jobChanges: JobChange[]
   compaRatio: number | null
@@ -42,7 +44,9 @@ export function personSummary(
     m = m.managerId ? ctx.org.byId.get(m.managerId) : undefined
   }
   const directs = activeDirects(ctx, e.employeeId)
-  const orgSize = activeOrg(ctx, e.employeeId).length
+  const org = activeOrg(ctx, e.employeeId)
+  const orgSize = org.length
+  const orgContingent = org.filter((p) => !isEmployee(p)).length
   const reviews = ctx.all.reviews
     .filter((r) => r.employeeId === employeeId)
     .sort((a, b) => (a.cycleDate < b.cycleDate ? 1 : -1))
@@ -59,6 +63,7 @@ export function personSummary(
     chain,
     directs,
     orgSize,
+    orgContingent,
     reviews,
     jobChanges,
     compaRatio: comp && comp.rangeMid > 0 ? comp.baseSalary / comp.rangeMid : null,

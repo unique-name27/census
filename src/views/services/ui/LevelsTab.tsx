@@ -13,6 +13,7 @@ import {
   isLateTx,
   type LevelPart,
   levelDrill,
+  lockedReason,
   resolutionDrill,
   responseDrill,
   txDrill,
@@ -93,7 +94,9 @@ export function LevelsTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext 
   const responseCategory = (d: CategoryRow) =>
     d.responseRate == null
       ? null
-      : () => responseDrill(s, d.records, titled('Cases judged on first response SLA', d.category, per))
+      : drillWhen(s, d.records, () =>
+          responseDrill(s, d.records, titled('Cases judged on first response SLA', d.category, per)),
+        )
   const missesLabel = (r: LevelRow) =>
     `Show the ${r.misses.length.toLocaleString('en-US')} ${r.misses.length === 1 ? 'miss' : 'misses'}`
 
@@ -294,6 +297,8 @@ export function LevelsTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext 
             sort="asc"
             tone={(d) => (d.status ? STATUS_TONE[d.status] : 'deemph')}
             onSelect={(d) => drill(level(d, 'actual'))}
+            selectable={(d) => !!level(d, 'actual')}
+            lockedNote={(d) => lockedReason(s, d.records?.rows)}
           />
         </Figure>
         <Figure
@@ -339,6 +344,8 @@ export function LevelsTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext 
             domain={[0, 1]}
             secondary={(d) => count(d.cases, 'case')}
             onSelect={(d) => drill(responseCategory(d))}
+            selectable={(d) => !!responseCategory(d)}
+            lockedNote={(d) => lockedReason(s, d.records)}
           />
         </Figure>
       </Section>

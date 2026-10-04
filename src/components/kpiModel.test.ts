@@ -226,6 +226,13 @@ describe('tileTarget', () => {
     expect(tileTarget(kpi({}), view)).toBeNull()
   })
 
+  it('opens nothing when the tile sits on the tab it would open', () => {
+    expect(tileTarget(kpi({ tab: 'pipeline' }), { ...view, tab: 'pipeline' })).toBeNull()
+    expect(tileTarget(kpi({ tab: 'pipeline' }), { ...view, tab: 'overview' })?.tab).toBe('pipeline')
+    const link = { view: 'recruiting' as const, tab: 'pipeline', label: 'Recruiting, Pipeline' }
+    expect(tileTarget(kpi({ link }), { ...view, tab: 'pipeline' })).toBeNull()
+  })
+
   it('opens a tab of another view when the tile carries a link, outside a view too', () => {
     const link = { view: 'onboarding' as const, tab: 'plan', label: 'Onboarding, Hiring plan' }
     expect(tileTarget(kpi({ tab: 'pipeline', link }), view)).toEqual(link)

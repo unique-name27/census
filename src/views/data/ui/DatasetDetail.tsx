@@ -49,7 +49,10 @@ export function DatasetDetail({ row, data, id }: { row: ManifestRow; data: Datas
   const issues = useMemo(() => (raw ? { [row.key]: raw.issues } : undefined), [raw, row.key])
   // The same index as everywhere, plus this version's import log so import problems open their rows.
   const index: QualityIndex = useMemo(
-    () => (issues ? computeQuality(ctx.all, versions, issues, { asOf: ctx.asOf }) : ctx.quality),
+    () =>
+      issues
+        ? computeQuality(ctx.all, versions, issues, { asOf: ctx.asOf, vocab: ctx.quality.vocab })
+        : ctx.quality,
     [issues, ctx.all, versions, ctx.asOf, ctx.quality],
   )
   // A request to show this dataset (a tier badge, a link) moves focus to its open panel tab.
@@ -76,12 +79,13 @@ export function DatasetDetail({ row, data, id }: { row: ManifestRow; data: Datas
   }
   const tabId = (p: DatasetPanel) => `${id}-tab-${p}`
   return (
-    <div id={id} className="border-t border-rule bg-sheet">
+    <div id={id} data-tour="dataset-detail" className="border-t border-rule bg-sheet">
       <div className="px-4 pt-3">
         <p className="max-w-[80ch] text-[13px] text-ink-2">{row.description}</p>
         <div
           role="tablist"
           aria-label={`${row.label} panels`}
+          data-tour="dataset-panels"
           className="mt-2 flex gap-4 overflow-x-auto border-b border-rule sm:gap-5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         >
           {DATASET_PANELS.map((p, i) => {

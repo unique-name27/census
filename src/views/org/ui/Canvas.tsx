@@ -10,7 +10,7 @@ import { type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState }
 import { flushSync } from 'react-dom'
 import { IconButton } from '@/components'
 import { cx } from '@/components/ui'
-import type { DrillSource } from '@/drill/Drill'
+import { type DrillSource, drill } from '@/drill/Drill'
 import type { ColorScheme, Flag, Layout, OrgTree, ReqStub } from '../engine'
 import { COMPANY_ROOT, swatchCss } from '../engine'
 import { Card, type DropState } from './Card'
@@ -50,6 +50,8 @@ export interface CanvasProps {
   overlay?: ReactNode
   /** The records behind a card's "6 direct · 41 org" counts; the counts become drill buttons. */
   countDrill?: (id: string, which: 'directs' | 'org') => DrillSource
+  /** The requisition behind an open-role placeholder card; the card opens it on click. */
+  reqDrill?: (reqId: string) => DrillSource
   className?: string
 }
 
@@ -470,6 +472,11 @@ export function Canvas(p: CanvasProps) {
       if (!card || card.kind === 'req') return
       props.current.onSelect(id)
     },
+    openReq: (id: string) => {
+      if (suppressClick.current) return
+      const stub = props.current.reqByCardId.get(id)
+      if (stub) drill(props.current.reqDrill?.(stub.reqId))
+    },
   }))
 
   // Treeview keys: Up and Down move between people on the same team, Right opens a closed card
@@ -558,6 +565,7 @@ export function Canvas(p: CanvasProps) {
   // One tab stop for the whole tree: the selected card, else the root.
   const tabStop = p.selectedId && p.layout.byId.has(p.selectedId) ? p.selectedId : p.rootId
   const { reqByCardId, flags, showFlags, scheme, matches, canOpen, expanded, changed, drag, countDrill } = p
+  const canOpenReq = !!p.reqDrill
   const selectedId = p.selectedId
   const cards = useMemo(
     () =>
@@ -590,6 +598,7 @@ export function Canvas(p: CanvasProps) {
               posInSet={sibs.indexOf(c.id) + 1}
               onToggle={cardActions.toggle}
               onSelect={cardActions.select}
+              onOpenReq={canOpenReq ? cardActions.openReq : undefined}
               countDrill={countDrill}
             />
           )
@@ -615,6 +624,7 @@ export function Canvas(p: CanvasProps) {
       dragId,
       drag,
       cardActions,
+      canOpenReq,
       countDrill,
     ],
   )

@@ -97,4 +97,4 @@ export {
   toVersionMapping,
   type VersionInput,
 } from './versions'
-export { isUnrecognized, vocabList, vocabOf } from './vocab'
+export { isUnrecognized, type VocabOverlay, vocabList, vocabOf } from './vocab'

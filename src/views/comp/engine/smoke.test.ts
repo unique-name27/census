@@ -63,7 +63,7 @@ describe('compensation on the sample company', () => {
 
   it('story 1: Bengaluru pay position, linked to its voluntary attrition', () => {
     const f = finding('comp-low-compa-location-Bengaluru')
-    expect(f.title).toBe('Median compa-ratio in Bengaluru is 0.88 vs 1.00 for the rest of the company')
+    expect(f.title).toBe('Median compa-ratio in Bengaluru is 0.88 vs 1.00 for the rest of the company.')
     expect(f.detail).toContain(
       'Voluntary attrition there is 18.8% vs 9.4% for the company over the last 12 months',
     )
@@ -78,7 +78,7 @@ describe('compensation on the sample company', () => {
     expect(m.ranges.below).toHaveLength(78)
     expect(kpi('below-min').value).toBeCloseTo(78 / 1450, 4)
     const below = finding('comp-below-min')
-    expect(below.title).toBe('78 people are paid below range minimum, 5.4% of 1,450')
+    expect(below.title).toBe('78 people are paid below range minimum, 5.4% of 1,450.')
     // Exclusive counts that add up to 76 of 78: the planted split between Bengaluru ranges and
     // promotions elsewhere that missed the new minimum.
     expect(below.detail).toBe(
@@ -90,7 +90,7 @@ describe('compensation on the sample company', () => {
 
     expect(m.ranges.above).toHaveLength(44)
     const above = finding('comp-above-max')
-    expect(above.title).toMatch(/^44 people are paid above range maximum, 4[23] of them at L4$/)
+    expect(above.title).toMatch(/^44 people are paid above range maximum, 4[23] of them at L4\.$/)
     expect(above.detail).toMatch(/^42 of those L4s have 5\.5 or more years of tenure/)
     expect(above.filter).toEqual({ level: ['L4'] })
   })
@@ -98,7 +98,7 @@ describe('compensation on the sample company', () => {
   it('story 3: pay compression in Design Verification L3-L4', () => {
     const f = finding('comp-compression-Design Verification')
     expect(f.title).toBe(
-      'New hires in Design Verification L3-L4 are paid at a median compa-ratio of 1.04 vs 0.95 for incumbents',
+      'New hires in Design Verification L3-L4 are paid at a median compa-ratio of 1.04 vs 0.95 for incumbents.',
     )
     expect(f.detail).toBe(
       '33 people hired in the last 12 months against 33 already in those roles, 32 of whom are paid below the new-hire median.',
@@ -117,7 +117,7 @@ describe('compensation on the sample company', () => {
       expect(r.spendPct!).toBeLessThan(0.036)
     const f = finding('comp-over-budget-Go-to-Market')
     expect(f.title).toBe(
-      'Go-to-Market merit proposals cost 4.31% of eligible base, 0.81 pts over the 3.50% budget',
+      'Go-to-Market merit proposals cost 4.31% of eligible base, 0.81 pts over the 3.50% budget.',
     )
     expect(f.severity).toBe('warning')
     expect(kpi('merit-spend').format).toBe('pct2')
@@ -129,7 +129,7 @@ describe('compensation on the sample company', () => {
     expect(rules.filter((e) => e.kind === 'low-high')).toHaveLength(6)
     const ex = finding('comp-exceptions')
     expect(ex.title).toBe(
-      '11 merit proposals break the guideline rules: 5 rated 5 below 2% and 6 rated 1-2 above 3%',
+      '11 merit proposals break the guideline rules: 5 rated 5 below 2% and 6 rated 1-2 above 3%.',
     )
     // The Firmware outliers are counted in the Firmware differentiation finding, not named twice.
     expect(ex.detail).toBe('Another 25 proposals are unusual for the rating.')
@@ -138,7 +138,7 @@ describe('compensation on the sample company', () => {
 
   it('story 5: Analog & Mixed-Signal below market because its ranges trail the market', () => {
     const f = finding('comp-below-market-Analog & Mixed-Signal')
-    expect(f.title).toBe('Analog & Mixed-Signal base pay is 8% below market, a median market ratio of 0.92')
+    expect(f.title).toBe('Analog & Mixed-Signal base pay is 8% below market, a median market ratio of 0.92.')
     expect(f.severity).toBe('warning')
     expect(f.detail).toContain('10% above the range midpoints')
     expect(f.filter).toEqual({ department: ['Analog & Mixed-Signal'] })
@@ -156,7 +156,7 @@ describe('compensation on the sample company', () => {
     expect(fw.ratio!).toBeLessThan(1.1)
     const f = finding('comp-no-differentiation-Firmware')
     expect(f.title).toBe(
-      'Firmware merit barely follows ratings: people rated 4-5 get 1.00× the merit of people rated 3',
+      'Firmware merit barely follows ratings: people rated 4-5 get 1.00× the merit of people rated 3.',
     )
     expect(f.detail).toBe(
       'Mean merit is 2.85% for ratings 4-5 and 2.85% for rating 3, against 1.58× across the company. 21 of its proposals are unusual for the rating.',

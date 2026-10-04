@@ -15,7 +15,7 @@ import { axisX, housePlot, type PlotBuildContext, PlotChart } from '../plot'
 import type { ChartTheme } from '../theme'
 import { useChartTheme } from '../theme'
 import { extent } from './scale'
-import { type ChartBaseProps, HIDDEN_NOTE, type Key, numAt, orderedKeys, textAt } from './shared'
+import { type ChartBaseProps, gateOf, HIDDEN_NOTE, type Key, numAt, orderedKeys, textAt } from './shared'
 
 export interface HeatmapProps<T extends object> extends ChartBaseProps<T> {
   data: readonly T[]
@@ -72,6 +72,8 @@ export function Heatmap<T extends object>({
   n,
   rowHeight = 30,
   onSelect,
+  selectable,
+  lockedNote,
   ariaLabel,
 }: HeatmapProps<T>) {
   const cells: Cell<T>[] = data.map((d) => ({
@@ -211,10 +213,13 @@ export function Heatmap<T extends object>({
     )
   }
 
+  // A hidden cell never opens; the view's gate decides the rest.
+  const open = gateOf<Cell<T>>((c) => c.value != null, selectable ? (c) => selectable(c.datum) : undefined)
   const tip = (c: Cell<T>): TipContent => ({
     title: `${c.y} · ${c.x}`,
     rows: [{ value: fmt(c.value, format), label: c.n != null ? `n = ${fmt(c.n, 'int')}` : undefined }],
-    note: c.value == null ? HIDDEN_NOTE : undefined,
+    note:
+      c.value == null ? HIDDEN_NOTE : onSelect && !open(c) ? (lockedNote?.(c.datum) ?? undefined) : undefined,
   })
 
   return (
@@ -223,6 +228,7 @@ export function Heatmap<T extends object>({
       height={marginTopFlat + ys.length * rowHeight + 2}
       legend={legend}
       tip={tip}
+      selectable={open}
       onSelect={onSelect ? (c) => onSelect(c.datum) : undefined}
       ariaLabel={ariaLabel}
     />

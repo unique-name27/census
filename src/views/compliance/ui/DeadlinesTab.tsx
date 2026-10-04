@@ -40,7 +40,8 @@ const toRow = (d: DeadlineRow): CalendarRow => ({
   detail: d.entry.detail,
   recurrence: d.recurrence,
   people: d.people.length,
-  source: `Atlas, ${d.jurisdiction.shortName} (${d.jurisdiction.file})`,
+  // The link opens the jurisdiction's Atlas page; the research file's path is not for readers.
+  source: `Atlas, ${d.jurisdiction.shortName}`,
   verified: d.jurisdiction.lastVerified,
   row: d,
 })
@@ -61,7 +62,7 @@ export function DeadlinesFigure({
   const rows = d.upcoming.map(toRow)
   const peopleCol: Column<CalendarRow> = {
     key: 'people',
-    label: 'People covered',
+    label: 'Employees covered',
     format: 'int',
     drill: (r) => () => deadlinePeopleDrill(s, r.row, USES.deadlines),
   }
@@ -173,11 +174,11 @@ export function DeadlinesTab({ m, ctx }: { m: ComplianceView; ctx: AnalyticsCont
           metric={M.deadlines}
           span={12}
           title="Jurisdictions with people"
-          subtitle="Active people by the jurisdiction their site falls under, with the calendar entries coming up"
+          subtitle="Active employees by the jurisdiction their site falls under, with the calendar entries coming up"
           data={jurisdictionRows}
           columns={[
             { key: 'jurisdiction', label: 'Jurisdiction', href: (r) => atlasHref(r.id) },
-            { key: 'people', label: 'People covered', format: 'int', drill: peopleDrill },
+            { key: 'people', label: 'Employees covered', format: 'int', drill: peopleDrill },
             {
               key: 'upcoming',
               label: `Entries in the next ${daysText(m.settings.deadlineDays)}`,

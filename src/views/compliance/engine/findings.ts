@@ -10,7 +10,7 @@
 import type { Finding, FindingPerson } from '@/components/types'
 import type { AnalyticsContext } from '@/data/context'
 import { formatMonth } from '@/lib/dates'
-import { fmt } from '@/lib/format'
+import { fmt, plural } from '@/lib/format'
 import { M } from '../metrics'
 import { topGroup } from './base'
 import { type DrillScope, expiryDrill, i9Drill, jurisdictionPeopleDrill, licenseDrill } from './drills'
@@ -256,7 +256,7 @@ function deadlineFindings(m: ComplianceModel, s: DrillScope, out: Finding[]): Fi
     id: 'compliance-deadlines',
     metricId: M.deadlines,
     severity: 'info',
-    title: `${fmt(d.upcoming.length, 'int')} statutory calendar entries fall in the next ${daysText(m.settings.deadlineDays)} across ${fmt(juris, 'int')} jurisdictions.`,
+    title: `${plural(d.upcoming.length, 'statutory calendar entry', 'statutory calendar entries')} ${d.upcoming.length === 1 ? 'falls' : 'fall'} in the next ${daysText(m.settings.deadlineDays)} across ${plural(juris, 'jurisdiction')}.`,
     detail: first
       ? `${fmt(dated.length, 'int')} have a fixed date; the first is ${first.entry.title} (${first.jurisdiction.shortName}, ${day(first.start)}).`
       : undefined,

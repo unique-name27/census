@@ -83,15 +83,13 @@ export function WorkTab({ m, ctx }: { m: ComplianceView; ctx: AnalyticsContext }
   ]
 
   const mixUses = USES.mix
+  // The people behind a count open only while immigration details are on; until then it is a count.
+  const mixOpen = (r: MixRow) =>
+    showType && r.people != null && r.rows.length ? () => mixDrill(s, r.rows, r.type, mixUses) : null
   const mixColumns: Column<MixRow>[] = [
     { key: 'type', label: 'Authorization category' },
-    {
-      key: 'people',
-      label: 'People',
-      format: 'int',
-      drill: (r) => () => mixDrill(s, r.rows, r.type, mixUses),
-    },
-    { key: 'share', label: 'Share of active people', format: 'pct' },
+    { key: 'people', label: 'Employees', format: 'int', drill: mixOpen },
+    { key: 'share', label: 'Share of active employees', format: 'pct' },
   ]
 
   const target = cfg.targets.i9
@@ -164,7 +162,7 @@ export function WorkTab({ m, ctx }: { m: ComplianceView; ctx: AnalyticsContext }
           metric={M.mix}
           span={6}
           title="Authorization mix"
-          subtitle={`Active people by broad authorization category, as of the as-of date`}
+          subtitle={`Active employees by broad authorization category, as of the as-of date`}
           data={w.mix}
           columns={mixColumns}
           definitions={defs(ctx.metrics, [M.mix])}
@@ -190,7 +188,9 @@ export function WorkTab({ m, ctx }: { m: ComplianceView; ctx: AnalyticsContext }
             sort="none"
             secondary={(d) => (d.share == null ? null : fmt(d.share, 'pct'))}
             nullNote={`Hidden to protect anonymity (n < ${cfg.minGroup})`}
-            onSelect={(d) => drill(() => mixDrill(s, d.rows, d.type, mixUses))}
+            onSelect={(d) => drill(mixOpen(d))}
+            selectable={(d) => !!mixOpen(d)}
+            lockedNote={() => (showType ? null : 'Counts only while "Show immigration details" is off')}
           />
         </Figure>
         <Figure

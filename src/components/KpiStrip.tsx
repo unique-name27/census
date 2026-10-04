@@ -12,6 +12,7 @@ import { Sparkline } from '@/charts/Sparkline'
 import { useAnalytics } from '@/data/context'
 import { datasetDef } from '@/data/schema'
 import { Drill } from '@/drill/Drill'
+import { LearnMoreLink } from '@/help/ui/LearnMore'
 import { DASH } from '@/lib/format'
 import { kpiTarget } from '@/metrics/api'
 import { targetText } from '@/metrics/overrides'
@@ -169,6 +170,7 @@ function Tile({ kpi, gate }: { kpi: Kpi; gate: TierGate | null }) {
             trigger={
               <button
                 type="button"
+                data-tour="kpi-info"
                 aria-label={`About ${kpi.label}`}
                 className="relative z-10 -my-0.5 inline-flex size-5 shrink-0 items-center justify-center rounded-control text-muted hover:bg-hover hover:text-ink"
               >
@@ -178,8 +180,14 @@ function Tile({ kpi, gate }: { kpi: Kpi; gate: TierGate | null }) {
           >
             {definition && <p className="text-ink-2">{definition}</p>}
             {metric && (
-              <div className={definition ? 'mt-2 border-t border-rule pt-2' : undefined}>
+              <div
+                className={cx(
+                  'flex flex-wrap items-center gap-x-4 gap-y-1',
+                  definition && 'mt-2 border-t border-rule pt-2',
+                )}
+              >
                 <EditDefinitionLink metricId={metric} />
+                <LearnMoreLink metricId={metric} />
               </div>
             )}
           </Popover>
@@ -189,7 +197,10 @@ function Tile({ kpi, gate }: { kpi: Kpi; gate: TierGate | null }) {
         )}
       </div>
       <div className="mt-1.5 flex items-end justify-between gap-3">
-        <span className="cut-head text-[26px] leading-none font-semibold tracking-[-0.01em] whitespace-nowrap sm:text-[30px]">
+        <span
+          data-tour="kpi-value"
+          className="cut-head text-[26px] leading-none font-semibold tracking-[-0.01em] whitespace-nowrap sm:text-[30px]"
+        >
           {hidden ? (
             <span className="text-muted">{DASH}</span>
           ) : kpi.drill && !kpi.suppressed && kpi.value != null ? (
@@ -217,7 +228,7 @@ function Tile({ kpi, gate }: { kpi: Kpi; gate: TierGate | null }) {
       ) : kpi.suppressed ? (
         <div className="mt-1 flex items-center gap-1 text-[12px] leading-snug text-muted">
           <IconLock className="size-3 shrink-0" />
-          {SUPPRESSED_NOTE}
+          {kpi.suppressedNote ?? SUPPRESSED_NOTE}
         </div>
       ) : (
         kpi.note && (
@@ -238,7 +249,7 @@ function Tile({ kpi, gate }: { kpi: Kpi; gate: TierGate | null }) {
       )}
       {(gate || changed) && (
         // Its own row at the foot of the tile, so the label keeps the full width and badges line up.
-        <div className="mt-auto flex flex-wrap items-center gap-x-1 pt-2">
+        <div data-tour="kpi-tier" className="mt-auto flex flex-wrap items-center gap-x-1 pt-2">
           {gate && (
             <TierBadge
               compact
@@ -300,6 +311,7 @@ export function KpiStrip({
   return (
     <section
       aria-label={title}
+      data-tour="kpi-strip"
       className={cx(
         'col-span-full grid min-w-0 grid-cols-[repeat(auto-fit,minmax(150px,1fr))] overflow-hidden rounded-sheet bg-sheet max-sm:grid-cols-2',
         className,

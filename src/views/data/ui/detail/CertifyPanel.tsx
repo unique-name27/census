@@ -33,6 +33,8 @@ import {
   controlChoices,
   controlValueText,
   draftsOff,
+  draftsUnusable,
+  expectedError,
   historyRows,
   newControlDraft,
   parseAmount,
@@ -103,6 +105,8 @@ function DraftRow({
   const id = useId()
   const actual = computeControlTotal(draft.metric, data, dataKey, asOf)
   const tolerance = parseTolerance(draft.tolerance)
+  // Text that is not a number says so as it is typed; the submit check adds a blank one.
+  const message = expectedError(draft.expected) ?? error
   return (
     <li className="rounded-control bg-sheet-2 px-3 py-2.5">
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] md:grid-cols-[minmax(0,1.1fr)_minmax(0,1.2fr)_120px_80px_auto]">
@@ -138,9 +142,9 @@ function DraftRow({
             value={draft.expected}
             inputMode="decimal"
             onChange={(e) => onChange({ ...draft, expected: e.target.value })}
-            placeholder="1,452"
-            aria-invalid={!!error || undefined}
-            aria-describedby={error ? `${id}-e` : undefined}
+            placeholder="From your report"
+            aria-invalid={!!message || undefined}
+            aria-describedby={message ? `${id}-e` : undefined}
             className={cx(INPUT, 'tnum mt-1 w-full')}
           />
         </label>
@@ -174,9 +178,9 @@ function DraftRow({
           showPay={showPay}
         />
       </div>
-      {error && (
+      {message && (
         <p id={`${id}-e`} className="mt-1 text-[12px] text-bad-text">
-          {error}
+          {message}
         </p>
       )}
     </li>
@@ -207,7 +211,7 @@ function CertifyForm({
   const choices = controlChoices(row.key, showPay)
   // What certifying would do with the totals typed so far: a total off by more than allowed keeps it silver.
   const off = draftsOff(drafts, (metric) => computeControlTotal(metric, data, row.key, asOf))
-  const outcome = certifyOutcomeText(row.label, ready, off)
+  const outcome = certifyOutcomeText(row.label, ready, off, draftsUnusable(drafts))
   const add = () => {
     const used = new Set(drafts.map((d) => d.metric))
     const metric =
