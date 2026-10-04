@@ -65,13 +65,18 @@ function ViewPage({ view, requestedTab }: { view: ViewDef; requestedTab: string 
 
 function Footer() {
   const { isSample } = useAnalytics()
+  // The Data room header already says where files are kept; don't repeat it under the page.
+  const onDataRoom = useCensus((s) => s.route.view === 'data')
+  if (onDataRoom && !isSample) return null
   return (
     <footer className="border-t border-rule">
       <div className={`${PAGE} flex flex-wrap items-center gap-x-6 gap-y-1 py-4 text-[12px] text-muted`}>
-        <span className="flex items-center gap-1.5">
-          <IconLock className="size-3.5 shrink-0" />
-          Everything stays in this browser. Uploaded files are stored on this device only.
-        </span>
+        {!onDataRoom && (
+          <span className="flex items-center gap-1.5">
+            <IconLock className="size-3.5 shrink-0" />
+            Everything stays in this browser. Uploaded files are stored on this device only.
+          </span>
+        )}
         {isSample && (
           <span className="sm:ml-auto">
             {SAMPLE_COMPANY} is a fictional company. Its people and numbers are generated.
@@ -136,12 +141,13 @@ export function App() {
         {ready ? (
           <AnalyticsProvider>
             <Shell />
+            {/* Inside the provider: the panel reads the analytics context (names, as-of, pay setting). */}
+            <DrillPanel />
           </AnalyticsProvider>
         ) : (
           <LoadingShell />
         )}
         <Toaster />
-        <DrillPanel />
       </TooltipProvider>
     </MotionConfig>
   )
