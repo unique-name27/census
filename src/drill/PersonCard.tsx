@@ -1,6 +1,7 @@
 /**
  * One person, on one sheet: role, place in the org, history, ratings and open items. Names in the
- * manager chain and the direct reports open their own cards. Pay amounts are never shown here;
+ * manager chain and the direct reports open their own cards; the counts (direct reports, org,
+ * open cases, overdue courses) open the records behind them. Pay amounts are never shown here;
  * compa-ratio is.
  */
 import { Dialog as BDialog } from '@base-ui/react/dialog'
@@ -13,7 +14,9 @@ import { useCensus } from '@/data/store'
 import { formatDate } from '@/lib/dates'
 import { fmt } from '@/lib/format'
 import { openInOrgChart } from '@/views/org/link'
+import { Drill } from './Drill'
 import { personSummary } from './person'
+import { directsSpec, openCasesSpec, orgSpec, overdueSpec } from './related'
 import { useDrillStore } from './store'
 
 const LINK =
@@ -23,10 +26,22 @@ export function PersonCard({ employeeId }: { employeeId: string }) {
   const ctx = useAnalytics()
   const openPerson = useDrillStore((s) => s.openPerson)
   const p = useMemo(() => personSummary(ctx, employeeId), [ctx, employeeId])
+  // Built up front so a count with nothing to list (0) is plain text.
+  const lists = useMemo(
+    () => ({
+      directs: directsSpec(ctx, employeeId),
+      org: orgSpec(ctx, employeeId),
+      cases: openCasesSpec(ctx, employeeId),
+      courses: overdueSpec(ctx, employeeId),
+    }),
+    [ctx, employeeId],
+  )
   if (!p) {
     return (
       <div className="flex flex-col gap-2">
-        <BDialog.Title className="cut-head text-[22px] font-semibold">Not in the roster</BDialog.Title>
+        <BDialog.Title tabIndex={-1} className="cut-head text-[22px] font-semibold">
+          Not in the roster
+        </BDialog.Title>
         <BDialog.Description className="text-[13px] text-ink-2">
           No employee with ID {employeeId} is in the Employees dataset.
         </BDialog.Description>
@@ -35,11 +50,16 @@ export function PersonCard({ employeeId }: { employeeId: string }) {
   }
   const e = p.employee
   const latest = p.reviews[0]
+  const count = (n: number, one: string, many: string) => `${fmt(n, 'int')} ${n === 1 ? one : many}`
+  const casesText = count(p.openCases, 'open HR case', 'open HR cases')
+  const coursesText = count(p.overdueTraining, 'overdue required course', 'overdue required courses')
   return (
     <article className="flex flex-col gap-5">
       <header className="flex flex-col gap-2">
         <div className="flex flex-wrap items-center gap-2">
-          <BDialog.Title className="cut-head text-[26px] leading-tight font-semibold">{e.name}</BDialog.Title>
+          <BDialog.Title tabIndex={-1} className="cut-head text-[26px] leading-tight font-semibold">
+            {e.name}
+          </BDialog.Title>
           {p.status === 'Left' ? (
             <StatusPill severity="warning" label={`Left ${formatDate(e.terminationDate)}`} />
           ) : p.status === 'Not started' ? (
@@ -81,9 +101,22 @@ export function PersonCard({ employeeId }: { employeeId: string }) {
             {formatDate(e.hireDate)} · {fmt(p.tenureYears, 'years')}
           </Fact>
           <Fact label="Team">
-            {p.directs.length
-              ? `${fmt(p.directs.length, 'int')} direct ${p.directs.length === 1 ? 'report' : 'reports'} · ${fmt(p.orgSize, 'int')} in their org`
-              : 'No direct reports'}
+            {p.directs.length ? (
+              <>
+                <Drill
+                  spec={lists.directs}
+                  label={`Show ${e.name}'s ${count(p.directs.length, 'direct report', 'direct reports')}`}
+                >
+                  {count(p.directs.length, 'direct report', 'direct reports')}
+                </Drill>
+                {' · '}
+                <Drill spec={lists.org} label={`Show the ${fmt(p.orgSize, 'int')} people in ${e.name}'s org`}>
+                  {`${fmt(p.orgSize, 'int')} in their org`}
+                </Drill>
+              </>
+            ) : (
+              'No direct reports'
+            )}
           </Fact>
           <Fact label="Latest rating">
             {latest
@@ -92,7 +125,14 @@ export function PersonCard({ employeeId }: { employeeId: string }) {
           </Fact>
           <Fact label="Compa-ratio">{p.compaRatio == null ? '—' : fmt(p.compaRatio, 'num2')}</Fact>
           <Fact label="Open items">
-            {`${fmt(p.openCases, 'int')} open HR ${p.openCases === 1 ? 'case' : 'cases'} · ${fmt(p.overdueTraining, 'int')} overdue required ${p.overdueTraining === 1 ? 'course' : 'courses'}`}
+            {/* Employee relations cases are left out of this count: ER is never tied to a named person. */}
+            <Drill spec={lists.cases} label={`Show ${e.name}'s ${casesText}`}>
+              {casesText}
+            </Drill>
+            {' · '}
+            <Drill spec={lists.courses} label={`Show ${e.name}'s ${coursesText}`}>
+              {coursesText}
+            </Drill>
           </Fact>
           {p.successorFor.length > 0 && <Fact label="Named successor for">{p.successorFor.join(', ')}</Fact>}
           {p.status === 'Left' && (

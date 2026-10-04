@@ -40,15 +40,43 @@ export function slug(s: string): string {
     .replace(/-+$/g, '')
 }
 
-/** `census-<view>-<name>-<as-of>`, e.g. "census-recruiting-rec-time-to-fill-2026-09-30". */
-export function fileStem(meta: Pick<ExportMeta, 'view' | 'asOf'>, name = ''): string {
+/**
+ * `census-<view>-<name>-<as-of>`, e.g. "census-recruiting-time-to-fill-2026-09-30". The view is
+ * named once: a name that starts with the view (its label or its key, as figure ids do, e.g.
+ * "recruiting-time-to-fill" or "hrbp-attrition") drops that prefix.
+ */
+export function fileStem(meta: Pick<ExportMeta, 'view' | 'viewKey' | 'asOf'>, name = ''): string {
   const stamp = asOfIso(meta.asOf) ?? slug(meta.asOf)
-  return ['census', slug(meta.view), slug(name), stamp].filter(Boolean).join('-')
+  const view = slug(meta.view)
+  let part = slug(name)
+  for (const prefix of [view, meta.viewKey ? slug(meta.viewKey) : ''])
+    if (prefix && (part === prefix || part.startsWith(`${prefix}-`))) {
+      part = part.slice(prefix.length + 1)
+      break
+    }
+  return ['census', view, part, stamp].filter(Boolean).join('-')
 }
 
-/** "Whole company · 1 Oct 2025 – 30 Sep 2026 · As of 30 Sep 2026" */
+/**
+ * Export context for a view that reads no people data (AI in HR lists agents): no scope, window,
+ * as-of date, data standard, company or "Sample data" stamp, since none of them describe what is
+ * exported. Every line built from the meta then leaves those parts out.
+ */
+export function withoutDataContext(meta: ExportMeta): ExportMeta {
+  const { standard: _standard, ...rest } = meta
+  return { ...rest, scope: '', window: '', asOf: '', isSample: false, company: '' }
+}
+
+/** False for the meta of a view that reads no people data (see `withoutDataContext`). */
+export const hasDataContext = (meta: Pick<ExportMeta, 'scope' | 'window' | 'asOf'>): boolean =>
+  !!(meta.scope || meta.window || meta.asOf)
+
+/** "As of 30 Sep 2026", or '' when there is no as-of date. */
+const asOfPart = (asOf: string) => (asOf ? `As of ${asOfLabel(asOf)}` : '')
+
+/** "Whole company · 1 Oct 2025 – 30 Sep 2026 · As of 30 Sep 2026" ('' for a view with no data). */
 export function metaLine(meta: Pick<ExportMeta, 'scope' | 'window' | 'asOf'>): string {
-  return [meta.scope, meta.window, `As of ${asOfLabel(meta.asOf)}`].filter(Boolean).join(' · ')
+  return [meta.scope, meta.window, asOfPart(meta.asOf)].filter(Boolean).join(' · ')
 }
 
 /** "Company confidential · Sample data" */
@@ -72,7 +100,7 @@ export function imageFooter(
 ): string {
   return [
     meta.scope,
-    `As of ${asOfLabel(meta.asOf)}`,
+    asOfPart(meta.asOf),
     meta.standard ? `${STANDARD_LABEL[meta.standard]} standard` : '',
     tier ? `Tier: ${TIER_LABEL[tier]}` : '',
     'Census',

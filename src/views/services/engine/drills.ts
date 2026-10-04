@@ -123,7 +123,7 @@ export interface CaseDrillOptions {
   order?: (a: CaseFact, b: CaseFact) => number
   /** Add "Within response target". */
   response?: boolean
-  /** Add "Age (d)" and "Days past target" (open cases). */
+  /** Add "Age", "Resolution target" and "Days past target" (open cases). */
   age?: boolean
   /** Add "Days to resolve" and "Share of target". */
   timing?: boolean
@@ -175,7 +175,13 @@ function caseExtras(s: DrillScope, o: CaseDrillOptions): Extra<CaseFact>[] {
   if (o.response && s.caseCols.firstResponseAt)
     add('svResponseWithin', 'Within response target', (f) => within(f.responseMet, f, f.responseTarget))
   if (o.age) {
-    add('svAgeDays', 'Age (d)', (f) => f.ageDays, 'int')
+    add('svAgeDays', 'Age', (f) => f.ageDays, 'days')
+    add(
+      'svTargetDays',
+      'Resolution target',
+      (f) => (f.resolutionTarget == null ? null : f.resolutionTarget / 24),
+      'days',
+    )
     add(
       'svDaysPastTarget',
       'Days past target',
@@ -183,7 +189,7 @@ function caseExtras(s: DrillScope, o: CaseDrillOptions): Extra<CaseFact>[] {
         f.ageDays == null || f.resolutionTarget == null
           ? null
           : Math.max(0, Math.round(f.ageDays - f.resolutionTarget / 24)),
-      'int',
+      'days',
     )
   }
   for (const flag of o.flags ?? []) {

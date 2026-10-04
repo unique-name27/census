@@ -201,7 +201,7 @@ function Tier({ row }: { row: ManifestRow }) {
   )
 }
 
-/** The row count opens the rows themselves (the first 2,000 when there are more). */
+/** The row count opens every row it counts; the panel pages through them. */
 function RowCount({ row, data }: { row: ManifestRow; data: Datasets }) {
   const n = fmt(row.rows, 'int')
   if (!row.rows) return <span className="tnum text-[13px]">{n}</span>

@@ -721,7 +721,7 @@ function bestSource(b: RecruitingBase): Scored | null {
     id: 'rec-best-source',
     severity: 'good',
     title: `${best.source} applicants are hired at ${fmt(best.hireRate, 'pct')}, the best of any source and ${fmt(best.hireRate / overall, 'num1')}× the ${fmt(overall, 'pct')} overall.`,
-    detail: `${plural(best.hires, 'hire')} from ${plural(best.applications, 'application')} in the ${b.windowWords}${best.offerAcceptance != null ? `, with ${pct0(best.offerAcceptance)} of offers accepted` : ''}.`,
+    detail: `${fmt(best.hires, 'int')} hired from ${plural(best.applications, 'application')} received in the ${b.windowWords}${best.offerAcceptance != null ? `, with ${pct0(best.offerAcceptance)} of offers accepted` : ''}.`,
     action: `Share these results with hiring teams and keep ${lower(best.source)} in the sourcing plan.`,
     tab: 'sources',
     drill: () => sourceDrill(b, best, 'hireRate'),

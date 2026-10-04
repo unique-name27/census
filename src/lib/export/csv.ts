@@ -65,13 +65,17 @@ export function csvPreamble(table: ExportTable, meta: ExportMeta): string[] {
   ].filter(Boolean)
 }
 
-/** Download one table as CSV. With `preamble: true`, title and context lines precede the header. */
+/**
+ * Download one table as CSV. Title and context lines (scope, window, as-of, data standard and
+ * tier, "Sample data") precede the header, as every export carries them; `preamble: false` writes
+ * the bare table for machines.
+ */
 export function downloadCsv(
   table: ExportTable,
   meta: ExportMeta,
   opts: ExportOptions & { preamble?: boolean },
 ): void {
-  const preamble = opts.preamble ? csvPreamble(table, meta) : undefined
+  const preamble = opts.preamble === false ? undefined : csvPreamble(table, meta)
   const csv = toCsv(table, { showPay: opts.showPay, preamble })
   downloadBlob(new Blob([csv], { type: MIME.csv }), `${opts.fileName ?? fileStem(meta, table.name)}.csv`)
 }

@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Column, ExportMeta } from '@/charts/types'
+import { kpiColumns, kpiRows } from '@/components/kpiModel'
+import type { Kpi } from '@/components/types'
 import {
   buildWorkbook,
   columnWidth,
@@ -159,6 +161,45 @@ describe('buildWorkbook', () => {
     expect(ws.getRow(first + 1).getCell(2).value).toBe(41)
     expect(ws.getRow(5).getCell(2).alignment?.horizontal).toBe('right')
     expect(columnWidth('Value', [0.854, 41], ['pct', 'days'])).toBe(8)
+  })
+
+  it('writes the key figures as numbers with their units and trend, never the slide text', async () => {
+    const kpis: Kpi[] = [
+      { id: 'a', label: 'Attrition', value: 0.12, format: 'pct', delta: 0.008, spark: [0.1, 0.11, 0.12] },
+      { id: 'b', label: 'Time to fill', value: 41, format: 'days', delta: -3 },
+    ]
+    const wb = await buildWorkbook(
+      [{ name: 'Key figures', columns: kpiColumns(kpis), rows: kpiRows(kpis) }],
+      meta,
+      { showPay: false },
+    )
+    const ws = wb.worksheets[0]
+    const header = ws.getRow(5).values as unknown[]
+    expect(header.slice(1)).toEqual([
+      'Measure',
+      'Value',
+      'Unit',
+      'Change',
+      'Change unit',
+      'Compared with',
+      'Note',
+      'Trend, 2 periods back',
+      'Trend, 1 period back',
+      'Trend, latest',
+    ])
+    const att = ws.getRow(6)
+    expect(att.getCell(2).value).toBe(0.12)
+    expect(att.getCell(2).numFmt).toBe('0.0%')
+    expect(att.getCell(3).value).toBe('%')
+    expect(att.getCell(4).value).toBe(0.8)
+    expect(att.getCell(5).value).toBe('pts')
+    expect([8, 9, 10].map((c) => att.getCell(c).value)).toEqual([0.1, 0.11, 0.12])
+    expect(att.getCell(10).numFmt).toBe('0.0%')
+    const ttf = ws.getRow(7)
+    expect(ttf.getCell(2).value).toBe(41)
+    expect(ttf.getCell(3).value).toBe('d')
+    expect(ttf.getCell(4).value).toBe(-3)
+    expect(ttf.getCell(10).value).toBeNull()
   })
 
   it('keeps pay columns when pay amounts are on', async () => {

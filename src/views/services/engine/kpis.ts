@@ -21,6 +21,7 @@ import {
   resolveTimeDrill,
   responseDrill,
 } from './drills'
+import { tagKpis } from './drillUses'
 import { type CaseColumns, type CaseFact, dueIn, onTimeRate, type TxColumns, type TxFact } from './facts'
 import type { Lineage } from './lineage'
 import { duration, type Share } from './util'
@@ -92,8 +93,12 @@ export function buildKpis(x: KpiInputs): Kpi[] {
   const prev = caseSummary(x.facts, x.prior)
   const backlog = openAt(x.facts, x.asOf)
   const backlogPrev = openAt(x.facts, x.prior.end)
-  const over14 = backlog.filter((f) => f.ageDays != null && f.ageDays > 14).length
+  const older = backlog.filter((f) => f.ageDays != null && f.ageDays > 14)
+  const over14 = older.length
   const vs = 'vs prior period'
+  // The comparison drills: the same measure over the prior window, in this scope.
+  const priorSub = `${x.prior.label} · ${x.scope.scope}`
+  const priorPer = 'prior period'
   const noCases = 'Upload HR cases to see this'
   const kpis: Kpi[] = []
   const s = x.scope
@@ -119,6 +124,21 @@ export function buildKpis(x: KpiInputs): Kpi[] {
         order: (a, b) => (a.openedAt < b.openedAt ? 1 : -1),
       }),
     ),
+    deltaDrill: drillWhen(s, prev.rows.opened, () =>
+      caseDrill(s, prev.rows.opened, {
+        title: `Cases opened, ${priorPer}`,
+        subtitle: priorSub,
+        order: (a, b) => (a.openedAt < b.openedAt ? 1 : -1),
+      }),
+    ),
+    // "About 553 a month": the cases opened, spread over the months of the period.
+    noteDrill: drillWhen(s, cur.rows.opened, () =>
+      caseDrill(s, cur.rows.opened, {
+        title: `Cases opened, ${per}`,
+        order: (a, b) => (a.openedAt < b.openedAt ? 1 : -1),
+        note: `${fmt(cur.opened, 'int')} cases over ${fmt(x.window.months, 'int')} months.`,
+      }),
+    ),
   })
 
   kpis.push({
@@ -140,6 +160,24 @@ export function buildKpis(x: KpiInputs): Kpi[] {
       'Cases still open at the end of the as-of date, in any open status. Age runs from the opened date.',
     uses: L.open,
     drill: drillWhen(s, backlog, () => openDrill(s, backlog, `Open cases at ${formatDate(x.asOf)}`)),
+    deltaDrill: drillWhen(s, backlogPrev, () =>
+      caseDrill(s, backlogPrev, {
+        title: `Open cases at ${formatDate(x.prior.end)}`,
+        subtitle: `As of ${formatDate(x.prior.end)} · ${s.scope}`,
+        note: 'Cases open at the end of that day, shown with their current status.',
+      }),
+    ),
+    // "46% older than 14 d": the open cases past 14 days.
+    noteDrill: drillWhen(s, older, () =>
+      caseDrill(s, older, {
+        title: `Open cases older than 14 days at ${formatDate(x.asOf)}`,
+        subtitle: `As of ${formatDate(x.asOf)} · ${s.scope}`,
+        age: true,
+        order: (a, b) => (b.ageDays ?? 0) - (a.ageDays ?? 0),
+        gate: backlog,
+        note: `Share = ${fmt(over14, 'int')} ÷ ${fmt(backlog.length, 'int')} open cases.`,
+      }),
+    ),
   })
 
   const resolutionOk = x.hasCases && x.cols.resolvedAt
@@ -166,6 +204,12 @@ export function buildKpis(x: KpiInputs): Kpi[] {
     drill: drillWhen(s, cur.rows.opened, () =>
       resolutionDrill(s, cur.rows.opened, `Cases judged on resolution SLA, ${per}`),
     ),
+    deltaDrill: drillWhen(s, prev.rows.opened, () =>
+      resolutionDrill(s, prev.rows.opened, `Cases judged on resolution SLA, ${priorPer}`, priorSub),
+    ),
+    noteDrill: drillWhen(s, cur.rows.opened, () =>
+      resolutionDrill(s, cur.rows.opened, `Cases judged on resolution SLA, ${per}`),
+    ),
   })
 
   const responseOk = x.hasCases && x.cols.firstResponseAt
@@ -190,6 +234,12 @@ export function buildKpis(x: KpiInputs): Kpi[] {
       "Share of cases opened in the period with a first reply within their category's response target (calendar hours).",
     uses: L.responseSla,
     drill: drillWhen(s, cur.rows.opened, () =>
+      responseDrill(s, cur.rows.opened, `Cases judged on first response SLA, ${per}`),
+    ),
+    deltaDrill: drillWhen(s, prev.rows.opened, () =>
+      responseDrill(s, prev.rows.opened, `Cases judged on first response SLA, ${priorPer}`, priorSub),
+    ),
+    noteDrill: drillWhen(s, cur.rows.opened, () =>
       responseDrill(s, cur.rows.opened, `Cases judged on first response SLA, ${per}`),
     ),
   })
@@ -222,6 +272,12 @@ export function buildKpis(x: KpiInputs): Kpi[] {
     drill: drillWhen(s, cur.rows.resolved, () =>
       resolveTimeDrill(s, cur.rows.resolved, `Cases resolved, ${per}`),
     ),
+    deltaDrill: drillWhen(s, prev.rows.resolved, () =>
+      resolveTimeDrill(s, prev.rows.resolved, `Cases resolved, ${priorPer}`, priorSub),
+    ),
+    noteDrill: drillWhen(s, cur.rows.resolved, () =>
+      resolveTimeDrill(s, cur.rows.resolved, `Cases resolved, ${per}`),
+    ),
   })
 
   kpis.push({
@@ -248,6 +304,12 @@ export function buildKpis(x: KpiInputs): Kpi[] {
     definition: 'Mean satisfaction score (1 to 5) on cases resolved in the period. Hidden below 5 responses.',
     uses: L.csat,
     drill: drillWhen(s, cur.rows.resolved, () =>
+      csatDrill(s, cur.rows.resolved, `Cases rated for satisfaction, ${per}`),
+    ),
+    deltaDrill: drillWhen(s, prev.rows.resolved, () =>
+      csatDrill(s, prev.rows.resolved, `Cases rated for satisfaction, ${priorPer}`, priorSub),
+    ),
+    noteDrill: drillWhen(s, cur.rows.resolved, () =>
       csatDrill(s, cur.rows.resolved, `Cases rated for satisfaction, ${per}`),
     ),
   })
@@ -278,7 +340,11 @@ export function buildKpis(x: KpiInputs): Kpi[] {
       'Share of HR transactions due in the period that were completed on or before their due date. Open transactions past due count as late.',
     uses: L.onTime,
     drill: drillWhen(s, due, () => onTimeDrill(s, due, `Transactions due, ${per}`)),
+    deltaDrill: drillWhen(s, dueP, () =>
+      onTimeDrill(s, dueP, `Transactions due, ${priorPer}`, { subtitle: priorSub }),
+    ),
+    noteDrill: drillWhen(s, due, () => onTimeDrill(s, due, `Transactions due, ${per}`)),
   })
 
-  return kpis
+  return tagKpis(kpis)
 }

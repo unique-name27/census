@@ -4,7 +4,7 @@
 import type { Column } from '@/charts/types'
 import { TIER_LABEL } from '@/data/quality/tier'
 import { MIN_GROUP } from '@/data/schema'
-import { DASH, fmt, fmtDelta, isNum } from '@/lib/format'
+import { DASH, type Format, fmt, fmtDelta, isNum, plural } from '@/lib/format'
 import type { TierGate } from './tier/tierModel'
 import type { Kpi } from './types'
 
@@ -40,25 +40,129 @@ export function kpiDeltaText(k: Pick<Kpi, 'delta' | 'format' | 'suppressed'>): s
   return fmtDelta(k.delta, k.format)
 }
 
-export const KPI_COLUMNS: Column[] = [
-  { key: 'measure', label: 'Measure', format: 'text' },
-  { key: 'value', label: 'Value', format: 'text', align: 'right' },
-  { key: 'change', label: 'Change', format: 'text', align: 'right' },
-  { key: 'comparedWith', label: 'Compared with', format: 'text' },
-  { key: 'note', label: 'Note', format: 'text' },
-]
+/** The unit a number in `format` is counted in, for the unit columns of exports. */
+export function unitOf(format: Format): string {
+  switch (format) {
+    case 'pct':
+    case 'pct0':
+    case 'pct2':
+    case 'deltaPct':
+      return '%'
+    case 'pts':
+    case 'pts2':
+      return 'pts'
+    case 'days':
+    case 'deltaDays':
+      return 'd'
+    case 'hours':
+      return 'h'
+    case 'years':
+      return 'yrs'
+    case 'money':
+    case 'moneyFull':
+      return 'USD'
+    case 'times':
+      return '×'
+    case 'int':
+    case 'compact':
+      return 'count'
+    case 'ratio':
+      return 'ratio'
+    default:
+      return ''
+  }
+}
 
-/** The key figures table with each number's tier after its value. */
-export const KPI_COLUMNS_WITH_TIER: Column[] = [
-  ...KPI_COLUMNS.slice(0, 2),
-  { key: 'tier', label: 'Tier', format: 'text' },
-  ...KPI_COLUMNS.slice(2),
-]
+/** A number as the key figures export stores it: in its unit, with the format that shows it. */
+interface ExportCell {
+  value: number | null
+  format: Format
+  unit: string
+}
+
+const POINTS = new Set<Format>(['pts', 'pts2'])
+/** Formats whose change is a difference in percentage points. */
+const RATE_CHANGE = new Set<Format>(['pct', 'pct0', 'pct2', 'pts', 'pts2', 'deltaPct'])
+const FINE = new Set<Format>(['pct2', 'pts2'])
+
+const num = (v: number | null | undefined): number | null => (isNum(v) ? v : null)
+/** Points are fractions in the engines; exports store them as a number of points (2.1, not 0.021). */
+const toPoints = (v: number | null): number | null => (v == null ? null : v * 100)
+
+/** A value or trend point: rates stay fractions (Excel shows them as %), points become points. */
+export function valueCell(v: number | null | undefined, format: Format): ExportCell {
+  const n = num(v)
+  if (POINTS.has(format))
+    return { value: toPoints(n), format: FINE.has(format) ? 'num2' : 'num1', unit: 'pts' }
+  return { value: n, format, unit: unitOf(format) }
+}
+
+/** The change, in the unit the tile shows it in: points for a rate, else the value's own unit. */
+export function changeCell(delta: number | null | undefined, format: Format): ExportCell {
+  const n = num(delta)
+  if (RATE_CHANGE.has(format))
+    return { value: toPoints(n), format: FINE.has(format) ? 'num2' : 'num1', unit: 'pts' }
+  return { value: n, format, unit: unitOf(format) }
+}
+
+/** Hidden row keys holding each row's own number formats (units differ by row). */
+const VALUE_FORMAT = '__valueFormat'
+const CHANGE_FORMAT = '__changeFormat'
+const TREND_FORMAT = '__trendFormat'
+const formatAt =
+  (key: string) =>
+  (row: Record<string, unknown>): Format =>
+    (row[key] as Format | undefined) ?? 'num2'
+
+const trendKey = (back: number) => `trend${back}`
+/** "Trend, 3 periods back" … "Trend, latest": the latest point lines up across tiles. */
+const trendLabel = (back: number) => (back === 0 ? 'Trend, latest' : `Trend, ${plural(back, 'period')} back`)
+
+/** Trend points a tile shows (none when its number is hidden or suppressed). */
+function shownSpark(k: Kpi, gate: TierGate | null | undefined): readonly (number | null)[] {
+  if (k.suppressed || (gate && !gate.shown) || !k.spark || k.spark.length < 2) return []
+  return k.spark
+}
 
 /**
- * Formatted rows for the "Key figures" table in view exports (values are text: units differ by
- * row). With `gates` (one per KPI), each row carries its tier, and a number the data standard
- * hides exports as "—" with the reason, exactly as the tile shows it.
+ * Columns of the "Key figures" table. Sheets (Excel, CSV, copy) get numbers: each value with its
+ * unit, the change with its unit, and one column per trend point (the tile's sparkline), oldest
+ * first. Slides get the tile's own text ("42 d", "+4 d") and no trend: a dozen points would not fit.
+ */
+export function kpiColumns(
+  kpis: readonly Kpi[],
+  opts: { tiered?: boolean; gates?: readonly (TierGate | null)[] } = {},
+): Column[] {
+  const points = Math.max(0, ...kpis.map((k, i) => shownSpark(k, opts.gates?.[i]).length))
+  const trend: Column[] = []
+  for (let back = points - 1; back >= 0; back--)
+    trend.push({
+      key: trendKey(back),
+      label: trendLabel(back),
+      format: formatAt(TREND_FORMAT),
+      only: 'sheets',
+    })
+  return [
+    { key: 'measure', label: 'Measure', format: 'text' },
+    { key: 'value', label: 'Value', format: formatAt(VALUE_FORMAT), align: 'right', only: 'sheets' },
+    { key: 'valueText', label: 'Value', format: 'text', align: 'right', only: 'slides' },
+    { key: 'unit', label: 'Unit', format: 'text', only: 'sheets' },
+    ...(opts.tiered ? [{ key: 'tier', label: 'Tier', format: 'text' } satisfies Column] : []),
+    { key: 'change', label: 'Change', format: formatAt(CHANGE_FORMAT), align: 'right', only: 'sheets' },
+    { key: 'changeText', label: 'Change', format: 'text', align: 'right', only: 'slides' },
+    { key: 'changeUnit', label: 'Change unit', format: 'text', only: 'sheets' },
+    { key: 'comparedWith', label: 'Compared with', format: 'text' },
+    { key: 'note', label: 'Note', format: 'text' },
+    ...trend,
+  ]
+}
+
+/**
+ * Rows for the "Key figures" table in view exports: numbers (not text), each with its own format
+ * and unit, so a workbook can sum and chart them, plus the tile's text for slides. With `gates`
+ * (one per KPI), each row carries its tier, and a number the data standard hides exports blank
+ * (a dash on slides) with the reason, as the tile shows it. A suppressed number is blank with the
+ * anonymity note.
  */
 export function kpiRows(
   kpis: readonly Kpi[],
@@ -67,14 +171,28 @@ export function kpiRows(
   return kpis.map((k, i) => {
     const gate = gates?.[i] ?? null
     const hidden = !!gate && !gate.shown
-    const change = hidden ? null : kpiDeltaText(k)
+    const blank = hidden || !!k.suppressed
+    const value = valueCell(blank ? null : k.value, k.format)
+    const change = changeCell(blank ? null : k.delta, k.format)
+    const changeText = blank ? null : kpiDeltaText(k)
     const row: Record<string, unknown> = {
       measure: k.label,
-      value: hidden ? DASH : kpiValueText(k),
-      change: change ?? '',
-      comparedWith: change ? (k.deltaLabel ?? '') : '',
+      value: value.value,
+      valueText: hidden ? DASH : kpiValueText(k),
+      unit: value.unit,
+      change: change.value,
+      changeText: changeText ?? '',
+      changeUnit: change.value == null ? '' : change.unit,
+      comparedWith: change.value == null ? '' : (k.deltaLabel ?? ''),
       note: hidden ? (gate.reason ?? '') : k.suppressed ? SUPPRESSED_NOTE : (k.note ?? ''),
+      [VALUE_FORMAT]: value.format,
+      [CHANGE_FORMAT]: change.format,
+      [TREND_FORMAT]: value.format,
     }
+    const spark = shownSpark(k, gate)
+    spark.forEach((v, j) => {
+      row[trendKey(spark.length - 1 - j)] = valueCell(v, k.format).value
+    })
     if (gates) row.tier = gate ? TIER_LABEL[gate.tier] : ''
     return row
   })

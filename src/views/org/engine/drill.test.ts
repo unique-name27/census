@@ -212,7 +212,12 @@ describe('sandbox drills', () => {
   it('every diff number opens the people it affects', () => {
     const changes = reportingChangesDrill(after, d.reportingChanges, sc)!
     expect(changes.rows).toHaveLength(d.reportingChanges.length)
-    expect(spanChangesDrill(base, after, d.spanChanges, sc)!.rows).toHaveLength(d.spanChanges.length)
+    const spans = spanChangesDrill(base, after, d.spanChanges, sc)!
+    expect(spans.rows).toHaveLength(d.spanChanges.length)
+    for (const e of spans.rows) {
+      const s = d.spanChanges.find((x) => x.id === e.employeeId)!
+      expect(spans.extra!.values(e).spanDelta).toBe(s.delta > 0 ? `+${s.delta}` : `−${-s.delta}`)
+    }
     expect(removedDrill(base, d.removed, sc)!.rows.map((e) => e.employeeId)).toEqual(['MGR-2'])
     for (const l of d.layers.byDepth) {
       expect(peopleAtLayer(base, base.rootId, l.layer)).toHaveLength(l.before)

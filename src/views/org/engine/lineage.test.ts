@@ -11,6 +11,7 @@ import { generateSample } from '@/data/sample'
 import { DATASET_KEYS, type DatasetKey, type Datasets } from '@/data/schema'
 import { DEFAULT_FILTERS, type Filters } from '@/data/scope'
 import type { SourceMeta } from '@/data/store'
+import { resolveDrill } from '@/drill/Drill'
 import { COLOR_BY_OPTIONS } from './colorBy'
 import { orgKeyFigures } from './figures'
 import { AS_OF, ctxFor, sampleCtx, smallCompany } from './fixtures'
@@ -50,7 +51,7 @@ function* lineages(): Generator<OrgLineage> {
       for (const filters of [NO_DIMS, SOME_DIMS]) yield { subOrg, jobChanges, filters }
 }
 
-function kpisFor(ctx: ReturnType<typeof sampleCtx>, rootOverride?: string) {
+function kpisFor(ctx: ReturnType<typeof sampleCtx>, rootOverride?: string, openRoles = true) {
   const m = buildOrgModel(ctx)
   const rootId = rootOverride ?? m.rootId
   const key = orgKeyFigures(m, rootId, m.dims ? m.matches : null)
@@ -63,6 +64,7 @@ function kpisFor(ctx: ReturnType<typeof sampleCtx>, rootOverride?: string) {
     reqRecords: m.reqRecords,
     lineage: orgLineage(m, rootId, ctx.filters),
     dims: m.dims,
+    openRoles,
   })
 }
 
@@ -142,6 +144,19 @@ describe('org lineage on the sample company', () => {
         expect(invalidRefs(k.uses ?? []), k.id).toEqual([])
         expect(k.value === null || Number.isFinite(k.value), k.id).toBe(true)
       }
+    }
+  })
+
+  it('shows the open roles tile only with the Open roles overlay on (off by default)', () => {
+    const off = kpisFor(sampleCtx(), undefined, false).map((k) => k.id)
+    expect(off).not.toContain('org-open-roles')
+    expect(off).toEqual(['org-people', 'org-managers', 'org-span', 'org-layers', 'org-flags'])
+  })
+
+  it('opens each tile drill with the tile fields, so the panel shows its tier', () => {
+    for (const k of kpisFor(sampleCtx())) {
+      const spec = resolveDrill(k.drill)
+      if (spec) expect(spec.uses, k.id).toEqual(k.uses)
     }
   })
 

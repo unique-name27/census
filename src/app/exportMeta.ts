@@ -7,6 +7,7 @@ import type { DataStandard } from '@/data/quality/tier'
 import { DATASET_KEYS, type DatasetKey, datasetDef } from '@/data/schema'
 import type { Window } from '@/data/scope'
 import type { SourceMeta } from '@/data/store'
+import { withoutDataContext } from '@/lib/export/names'
 
 /** The company line in the masthead: the sample company, or the user's own data. */
 export function companyLine(isSample: boolean, sampleCompany: string): string {
@@ -75,8 +76,10 @@ export function buildExportMeta(args: {
   sampleCompany: string
   /** The data standard in force, stated on every sheet and slide. */
   standard?: DataStandard
+  /** False for a view that reads no datasets (AI in HR): no scope, window, as-of or standard lines. */
+  readsData?: boolean
 }): ExportMeta {
-  return {
+  const meta: ExportMeta = {
     view: args.viewLabel,
     tab: args.tabLabel,
     scope: args.scopeLabel,
@@ -87,4 +90,5 @@ export function buildExportMeta(args: {
     company: args.isSample ? args.sampleCompany : 'Company data',
     ...(args.standard && { standard: args.standard }),
   }
+  return args.readsData === false ? withoutDataContext(meta) : meta
 }

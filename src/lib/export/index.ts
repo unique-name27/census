@@ -28,12 +28,14 @@ export {
   asOfLabel,
   dataLine,
   fileStem,
+  hasDataContext,
   imageFooter,
   metaLine,
   slug,
   stampLine,
   standardLine,
   viewLine,
+  withoutDataContext,
 } from './names'
 export type { ExportOptions, ExportTable } from './types'
 export {

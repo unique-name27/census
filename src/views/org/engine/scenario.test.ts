@@ -9,6 +9,7 @@ import {
   movingIds,
   rippleOf,
   rippleTeams,
+  signedCount,
 } from './scenario'
 import { buildOrgTree, layersBelow } from './tree'
 
@@ -178,5 +179,15 @@ describe('diffTrees', () => {
     expect(d.removed).toEqual([{ id: 'MGR-2', name: 'Name MGR-2' }])
     expect(d.reportingChanges.map((r) => r.id)).toEqual(['IC-6'])
     expect(d.managers).toEqual({ before: 7, after: 6 })
+  })
+})
+
+describe('signedCount', () => {
+  it('signs a gain and a loss the way every delta reads', () => {
+    expect(signedCount(1)).toBe('+1')
+    expect(signedCount(12)).toBe('+12')
+    expect(signedCount(-1)).toBe('−1')
+    expect(signedCount(-1200)).toBe('−1,200')
+    expect(signedCount(0)).toBe('0')
   })
 })

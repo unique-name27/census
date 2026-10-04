@@ -94,6 +94,50 @@ describe('drill-down on the sample company', () => {
     expect(rowsOf(kpi('guideline-spend').drill)).toBe(m.cycle.spend.rated)
   })
 
+  it('each count in a tile note opens those records', () => {
+    const first = (text: string | undefined) => Number(text!.match(/\d[\d,]*/)![0].replace(/\D/g, ''))
+    for (const id of ['median-compa', 'below-min', 'above-max', 'merit-spend', 'market', 'eligible']) {
+      const k = kpi(id)
+      expect(rowsOf(k.noteDrill), id).toBe(first(k.note))
+    }
+    expect(rowsOf(kpi('eligible').noteDrill)).toBe(m.pop.people.length)
+    const ex = kpi('exceptions')
+    expect(ex.note).toMatch(/^\d[\d,]* more unusual for their rating$/)
+    expect(rowsOf(ex.noteDrill)).toBe(first(ex.note))
+    expect(
+      resolve(ex.noteDrill)!.rows.length + rowsOf(ex.drill),
+      'rule breaks and unusual proposals add up to the exceptions table',
+    ).toBe(m.cycle.exceptions.length)
+    // The budget and the guideline are settings, not records: nothing to open behind those changes.
+    expect(kpi('merit-spend').deltaDrill).toBeUndefined()
+  })
+
+  it('under an org filter each "vs company" change opens the company records', () => {
+    const scoped = computeComp(
+      buildContext({
+        data,
+        sources: Object.fromEntries(
+          DATASET_KEYS.map((k) => [k, { kind: 'sample', rowCount: data[k].length }]),
+        ) as Record<(typeof DATASET_KEYS)[number], SourceMeta>,
+        filters: { ...DEFAULT_FILTERS, location: ['Bengaluru'] },
+        asOfOverride: null,
+        showPay: false,
+      }),
+      DEFAULT_SETTINGS,
+    )
+    const k = (id: string) => scoped.kpis.find((x) => x.id === id)!
+    expect(rowsOf(k('median-compa').deltaDrill)).toBe(1450)
+    expect(resolve(k('median-compa').deltaDrill)!.subtitle).toContain('Whole company')
+    expect(rowsOf(k('below-min').deltaDrill)).toBe(78)
+    expect(rowsOf(k('above-max').deltaDrill)).toBe(44)
+    expect(rowsOf(k('market').deltaDrill)).toBe(m.market.total.n)
+    for (const t of scoped.kpis)
+      for (const src of [t.drill, t.deltaDrill, t.noteDrill]) {
+        const spec = resolve(src)
+        if (spec) expect(spec.uses, t.id).toEqual(t.uses)
+      }
+  })
+
   it('compa-ratio breakdowns: people, band share and out-of-range counts match the table', () => {
     for (const r of [...m.overview.byLocation, ...m.overview.byLevel, ...m.overview.byDepartment]) {
       expect(compaGroupDrill(m, r, 'measured', false)?.rows.length ?? 0, r.group).toBe(r.n)

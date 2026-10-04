@@ -12,6 +12,7 @@ import { resolveDrill } from '@/drill/Drill'
 import { buildDrillTable, PERSON_KEY } from '@/drill/records'
 import { PERF_BANDS } from './base'
 import { specOf, type TalentDrill } from './drills'
+import { drillsWithUses } from './drillUses'
 import { computeTalent, type TalentModel } from './index'
 import { RATINGS } from './performance'
 import { RISK_BANDS } from './risk'
@@ -166,6 +167,35 @@ function expectConsistent(model: TalentModel) {
     expect(count(d.backTest(row.band, 'shareOfLeavers'))).toBe(row.leavers || null)
   }
 
+  // Flight-risk evidence: person-months open the people counted (their month-ends add up to the
+  // cell), a rate opens who of them left (their exit month-ends add up to the numerator).
+  const sumOf = (dr: TalentDrill, key: string) => {
+    const spec = specOf(dr)
+    return spec ? spec.rows.reduce((a, r) => a + Number(spec.extra!.values(r)[key] ?? 0), 0) : null
+  }
+  for (const e of model.risk.evidence) {
+    for (const side of ['with', 'without'] as const) {
+      const months = side === 'with' ? e.withFactor : e.without
+      const left = side === 'with' ? e.withLeft : e.withoutLeft
+      const rate = side === 'with' ? e.withRate : e.withoutRate
+      expect(count(d.evidence(e.key, side, 'counted')), `${e.key} ${side}`).toBe(
+        months ? e.people[side].size : null,
+      )
+      expect(sumOf(d.evidence(e.key, side, 'counted'), 'evidenceMonths')).toBe(months || null)
+      if (rate == null || !left) expect(d.evidence(e.key, side, 'left')).toBeNull()
+      else expect(sumOf(d.evidence(e.key, side, 'left'), 'evidenceLeft'), `${e.key} ${side} left`).toBe(left)
+    }
+    if (e.lift == null) expect(d.evidenceLift(e.key)).toBeNull()
+    else {
+      const spec = specOf(d.evidenceLift(e.key))!
+      const total = spec.rows.reduce((a, r) => {
+        const v = spec.extra!.values(r)
+        return a + Number(v.leftWith) + Number(v.leftWithout)
+      }, 0)
+      expect(total, e.key).toBe(e.withLeft + e.withoutLeft)
+    }
+  }
+
   // Learning: assignments per course and outcome, completions, overdue cells, hours.
   const l = model.learning
   for (const row of l.byCourse) {
@@ -292,6 +322,60 @@ describe('Talent drill-down on the sample company', () => {
     expect(count(m.drill.highShare('department', other, 'high', rest))).toBe(
       rest.reduce((s, r) => s + (r.high ?? 0), 0),
     )
+  })
+})
+
+describe('Talent KPI changes and notes', () => {
+  const rows = (src: Kpi['drill']) => resolveDrill(src)?.rows.length ?? null
+  const first = (text: string | undefined, re = /\d[\d,]*/) => Number(text!.match(re)![0].replace(/\D/g, ''))
+
+  it('each number in a note opens the records it counts', () => {
+    const rated = kpi(m, 'talent-rated')
+    expect(rows(rated.noteDrill)).toBe(first(rated.note))
+    const high = kpi(m, 'talent-high-performers')
+    expect(rows(high.noteDrill)).toBe(first(high.note))
+    const hipo = kpi(m, 'talent-high-potentials')
+    expect(rows(hipo.noteDrill)).toBe(first(hipo.note))
+    const covered = kpi(m, 'talent-succession-coverage')
+    expect(rows(covered.noteDrill)).toBe(first(covered.note))
+    const training = kpi(m, 'talent-training-on-time')
+    expect(rows(training.noteDrill)).toBe(first(training.note))
+    const key = kpi(m, 'talent-key-talent-risk')
+    expect(rows(key.noteDrill)).toBe(first(key.note, /of [\d,]+ active/))
+  })
+
+  it('each change opens its comparison: the prior period, never the guideline', () => {
+    const regret = kpi(m, 'talent-regretted-high')
+    expect(rows(regret.deltaDrill) ?? 0).toBe(regret.value! - regret.delta!)
+    const training = kpi(m, 'talent-training-on-time')
+    const prior = resolveDrill(training.deltaDrill)!
+    const ok = prior.rows.filter((r) => prior.extra!.values(r).onTimeOutcome === 'Yes').length
+    expect(ok / prior.rows.length).toBeCloseTo(training.value! - training.delta!, 10)
+    // "vs guideline" compares with a policy number: no records behind it.
+    expect(kpi(m, 'talent-high-performers').deltaDrill).toBeUndefined()
+  })
+
+  it('tags a figure drills with the figure fields', () => {
+    const uses = m.uses['talent-risk-factors']
+    const tagged = drillsWithUses(m.drill, uses)
+    const e = m.risk.evidence.find((x) => x.withFactor > 0)!
+    expect(resolveDrill(tagged.evidence(e.key, 'with', 'counted'))!.uses).toEqual(uses)
+    expect(resolveDrill(tagged.evidence(e.key, 'with', 'counted'))!.rows.length).toBe(
+      specOf(m.drill.evidence(e.key, 'with', 'counted'))!.rows.length,
+    )
+    expect(drillsWithUses(m.drill, undefined)).toBe(m.drill)
+  })
+
+  it('every drill on a tile and finding carries its fields', () => {
+    for (const k of m.kpis)
+      for (const src of [k.drill, k.deltaDrill, k.noteDrill]) {
+        const spec = resolveDrill(src)
+        if (spec) expect(spec.uses, k.id).toEqual(k.uses)
+      }
+    for (const f of m.findings) {
+      const spec = resolveDrill(f.drill)
+      if (spec && f.uses?.length) expect(spec.uses, f.id).toEqual(f.uses)
+    }
   })
 })
 

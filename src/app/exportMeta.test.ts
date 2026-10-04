@@ -104,4 +104,27 @@ describe('buildExportMeta', () => {
     expect(buildExportMeta({ ...base, standard: 'gold' }).standard).toBe('gold')
     expect('standard' in buildExportMeta(base)).toBe(false)
   })
+
+  it('stamps no scope, window, as-of, standard or sample data for a view that reads no datasets', () => {
+    const meta = buildExportMeta({
+      viewLabel: 'AI in HR',
+      tabLabel: 'Agents',
+      scopeLabel: 'Whole company',
+      window,
+      asOf: '2026-09-30',
+      isSample: true,
+      sampleCompany: 'Northgate Semiconductor',
+      standard: 'bronze',
+      readsData: false,
+    })
+    expect(meta).toEqual({
+      view: 'AI in HR',
+      tab: 'Agents',
+      scope: '',
+      window: '',
+      asOf: '',
+      isSample: false,
+      company: '',
+    })
+  })
 })

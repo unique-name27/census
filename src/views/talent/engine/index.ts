@@ -10,6 +10,7 @@ import { fmt } from '@/lib/format'
 import type { Headline } from '../../types'
 import { buildBase, type FieldCoverage, type TalentBase } from './base'
 import { buildDrills, type TalentDrills } from './drills'
+import { tagFindings } from './drillUses'
 import { buildFindings } from './findings'
 import { buildKpis } from './kpis'
 import { computeLearning, type LearningResult } from './learning'
@@ -123,7 +124,7 @@ export function computeTalent(ctx: AnalyticsContext): TalentModel {
     overdue,
     learning,
     kpis: buildKpis(inputs),
-    findings: buildFindings(inputs),
+    findings: tagFindings(buildFindings(inputs)),
     drill,
     uses: lineage.figure,
     riskOverlay,

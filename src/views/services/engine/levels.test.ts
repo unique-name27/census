@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { SERVICE_LEVELS, type ServiceLevelId } from './catalog'
+import { CASE_CATEGORIES, caseCategoryByName, TRANSACTION_PROCESS } from '@/data/schema'
+import { ATLAS_PROCESSES, processLabel, SERVICE_LEVELS, type ServiceLevelId } from './catalog'
 import { caseColumns, caseFacts, txFacts } from './facts'
 import { levelGap, levelStatus, processCoverage, scorecard } from './levels'
 import { emp, kase, tx, win } from './testkit'
@@ -42,6 +43,27 @@ describe('catalog', () => {
       'MV-06',
     ])
       expect(SERVICE_LEVELS.some((d) => d.processId === id)).toBe(true)
+  })
+
+  it('names and owns every Atlas process a case category or transaction type maps to', () => {
+    const ids = [...CASE_CATEGORIES.map((c) => c.processId), ...Object.values(TRANSACTION_PROCESS)]
+    for (const id of ids) {
+      const p = ATLAS_PROCESSES.get(id)
+      expect(p, id).toBeDefined()
+      expect(processLabel(id)).toBe(`${id} ${p!.name}`)
+      expect(p!.owner.length, id).toBeGreaterThan(2)
+    }
+    // Policy questions go to policy lifecycle governance; pay and equity questions to the annual review.
+    expect(ATLAS_PROCESSES.get(caseCategoryByName.get('Policy question')!.processId)).toMatchObject({
+      id: 'DS-08',
+      name: 'Policy lifecycle governance',
+      owner: 'People Ops (HR Policy & Governance)',
+    })
+    expect(ATLAS_PROCESSES.get(caseCategoryByName.get('Compensation & equity')!.processId)).toMatchObject({
+      id: 'CO-02',
+      name: 'Annual compensation review',
+      owner: 'Total Rewards',
+    })
   })
 })
 

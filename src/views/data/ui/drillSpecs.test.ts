@@ -7,7 +7,7 @@ import { DEFAULT_FILTERS } from '@/data/scope'
 import type { SourceMeta } from '@/data/store'
 import { buildDrillTable } from '@/drill/records'
 import { buildManifest } from '../engine/manifest'
-import { DRILL_LIMIT, issueGroupKey, issueRecordsByGroup } from '../engine/records'
+import { issueGroupKey, issueRecordsByGroup } from '../engine/records'
 import {
   checkDrillLabel,
   checkSpec,
@@ -39,16 +39,16 @@ describe('midSentence', () => {
 describe('dataset rows', () => {
   const manifest = buildManifest({ data: sample, sources, asOf: SAMPLE_AS_OF })
 
-  it('opens every row up to 2,000 and says when there are more', () => {
+  it('opens every row the count counts, with no cap (the panel pages through them)', () => {
     for (const row of manifest) {
       const spec = rowsSpec(row, sample)
       expect(spec.kind).toBe(row.key)
-      expect(spec.rows.length, row.key).toBe(Math.min(row.rows, DRILL_LIMIT))
-      if (row.rows > DRILL_LIMIT) expect(spec.note, row.key).toMatch(/^Showing the first 2,000 of /)
-      else expect(spec.note, row.key).toBeUndefined()
+      expect(spec.rows.length, row.key).toBe(row.rows)
+      expect(spec.note, row.key).toBeUndefined()
       expect(spec.subtitle).toBe(`${row.label} · Sample data`)
     }
-    expect(manifest.some((r) => r.rows > DRILL_LIMIT)).toBe(true)
+    // Several datasets hold more than the old 2,000-row cap; all of their rows open.
+    expect(manifest.filter((r) => r.rows > 2000).length).toBeGreaterThan(1)
   })
 
   it('shows the panel exactly the rows the number counts', () => {
@@ -69,7 +69,7 @@ describe('field coverage', () => {
     expect(f.blank).toBeGreaterThan(0)
     const spec = fieldSpec(row, f, data, 'blank')!
     expect(spec.title).toBe('Employees with no manager ID')
-    expect(spec.rows.length).toBe(Math.min(f.blank, DRILL_LIMIT))
+    expect(spec.rows.length).toBe(f.blank)
     expect(spec.rows.every((e) => !('managerId' in e) || e.managerId == null)).toBe(true)
     expect(spec.note).toMatch(/^Filled = [\d,]+ ÷ [\d,]+ people below the top of the organization/)
     expect(panelRows(data, spec)).toHaveLength(spec.rows.length)
@@ -79,7 +79,7 @@ describe('field coverage', () => {
     const f = field('terminationDate')
     const spec = fieldSpec(row, f, data, 'filled')!
     expect(spec.title).toBe('Employees with a termination date')
-    expect(spec.rows.length).toBe(Math.min(f.filled, DRILL_LIMIT))
+    expect(spec.rows.length).toBe(f.filled)
   })
 
   it('opens nothing when nothing is missing', () => {
@@ -96,7 +96,7 @@ describe('checks', () => {
     const check = row.checks.find((c) => c.kind === 'unlinked')!
     const spec = checkSpec(row, check.records, data)!
     expect(spec.title).toBe('Rows in Performance reviews that refer to people who are not in Employees')
-    expect(spec.rows.length).toBe(Math.min(check.records!.count, DRILL_LIMIT))
+    expect(spec.rows.length).toBe(check.records!.count)
     const values = spec.extra!.values
     for (const r of spec.rows) expect(gone.has(String(values(r).notFound))).toBe(true)
     expect(checkSpec(row, undefined, data)).toBeNull()
@@ -168,7 +168,7 @@ describe('indexSpec', () => {
     expect(indexSpec(ds, sample, [], 'Nothing')).toBeNull()
     const many = sample.employees.map((_, i) => i)
     const spec = indexSpec(ds, sample, many, 'Everyone', { note: 'All of them.' })
-    expect(spec?.rows).toHaveLength(Math.min(many.length, DRILL_LIMIT))
+    expect(spec?.rows).toHaveLength(many.length)
     expect(spec?.note?.startsWith('All of them.')).toBe(true)
   })
 })

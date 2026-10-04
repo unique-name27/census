@@ -3,9 +3,10 @@
  * Pure; reads the unscoped datasets so the card is complete whatever the filters are.
  */
 import type { AnalyticsContext } from '@/data/context'
-import { CASE_OPEN_STATUSES, type Employee, type JobChange, LEVEL_LABELS, type Review } from '@/data/schema'
-import { isActiveAt, subtreeIds } from '@/data/scope'
+import { type Employee, type JobChange, LEVEL_LABELS, type Review } from '@/data/schema'
+import { isActiveAt } from '@/data/scope'
 import { tenureYears } from '@/lib/people'
+import { activeDirects, activeOrg, openCases, overdueRequired } from './related'
 
 export interface PersonSummary {
   employee: Employee
@@ -20,6 +21,7 @@ export interface PersonSummary {
   reviews: Review[]
   jobChanges: JobChange[]
   compaRatio: number | null
+  /** Open HR cases they raised, employee relations left out (never tied to a named person). */
   openCases: number
   overdueTraining: number
   successorFor: string[]
@@ -39,12 +41,8 @@ export function personSummary(
     seen.add(m.employeeId)
     m = m.managerId ? ctx.org.byId.get(m.managerId) : undefined
   }
-  const directs = (ctx.org.children.get(e.employeeId) ?? []).filter((d) => isActiveAt(d, ctx.asOf))
-  let orgSize = 0
-  for (const id of subtreeIds(ctx.org, e.employeeId)) {
-    const p = ctx.org.byId.get(id)
-    if (id !== e.employeeId && p && isActiveAt(p, ctx.asOf)) orgSize++
-  }
+  const directs = activeDirects(ctx, e.employeeId)
+  const orgSize = activeOrg(ctx, e.employeeId).length
   const reviews = ctx.all.reviews
     .filter((r) => r.employeeId === employeeId)
     .sort((a, b) => (a.cycleDate < b.cycleDate ? 1 : -1))
@@ -64,13 +62,8 @@ export function personSummary(
     reviews,
     jobChanges,
     compaRatio: comp && comp.rangeMid > 0 ? comp.baseSalary / comp.rangeMid : null,
-    openCases: ctx.all.cases.filter(
-      (c) => c.requesterId === employeeId && CASE_OPEN_STATUSES.includes(c.status),
-    ).length,
-    overdueTraining: ctx.all.learning.filter(
-      (l) =>
-        l.employeeId === employeeId && l.required && !l.completedDate && !!l.dueDate && l.dueDate < ctx.asOf,
-    ).length,
+    openCases: openCases(ctx, employeeId).length,
+    overdueTraining: overdueRequired(ctx, employeeId).length,
     successorFor: [
       ...new Set(ctx.all.succession.filter((s) => s.successorId === employeeId).map((s) => s.roleTitle)),
     ],

@@ -107,7 +107,7 @@ export function SourcesTab() {
                 format: 'pct',
                 drill: src('applications', (r) => r.applications),
               },
-              { key: 'hires', label: 'Hires', format: 'int', drill: src('hires', (r) => r.hires) },
+              { key: 'hires', label: 'Hired', format: 'int', drill: src('hires', (r) => r.hires) },
               {
                 key: 'hireRate',
                 label: 'Hire rate',
@@ -144,6 +144,10 @@ export function SourcesTab() {
           empty={noCands ? NEED_CANDIDATES : m.sources.length ? null : 'No applications in this period.'}
           definitions={[
             {
+              term: 'Hired',
+              text: 'Applications received in the period that ended in an accepted offer, whenever it was accepted. Offers accepted on the Overview counts by the accept date instead, so the two can differ.',
+            },
+            {
               term: 'Hire rate',
               text: 'Applications from the source that ended in a hire. Candidates still in process count as not hired yet, so short or recent periods read low. Blank under 5 applications.',
               formula: 'hired ÷ applications',
@@ -153,13 +157,16 @@ export function SourcesTab() {
               text: 'Offers accepted ÷ offers accepted or declined, for these applications. Blank below 5 offers.',
               formula: 'hired ÷ (hired + declined)',
             },
-            { term: 'Median time to hire', text: 'Days from application to offer accepted, for the hires.' },
+            {
+              term: 'Median time to hire',
+              text: 'Days from application to offer accepted, for the applications hired.',
+            },
             {
               term: 'Change in applications',
               text: `Applications vs ${windowText(b.prior)}, as a share of the prior count (negative = fewer).`,
             },
           ]}
-          note={`${plural(b.cohort.length, 'application')} · ${plural(cohortHired, 'hire')} · overall ${fmt(overallRate, 'pct')} · ${asOfNote(b.asOf)}`}
+          note={`${plural(b.cohort.length, 'application')} · ${fmt(cohortHired, 'int')} hired · overall ${fmt(overallRate, 'pct')} · ${asOfNote(b.asOf)}`}
         >
           <BarList
             data={m.sources}

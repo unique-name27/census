@@ -21,7 +21,7 @@ import type { NineBoxPerson, NineBoxResult } from './ninebox'
 import { cycleKey, type HighShareRow, type PerformanceResult, ratingLabel } from './performance'
 import type { OverdueResult } from './promotion'
 import { type RetentionResult, reasonsFor } from './retention'
-import { type FactorKey, factorDef, type RiskBand, type RiskModel } from './risk'
+import { type EvidencePerson, type FactorKey, factorDef, type RiskBand, type RiskModel } from './risk'
 import type { BenchScope, Coverage, HipoGroupRow, RoleRow, SuccessionResult } from './succession'
 
 /** The records behind a number, gathered on click; null when there is nothing to open. */
@@ -31,6 +31,7 @@ export type HighShareDim = 'department' | 'businessUnit' | 'level'
 export type HipoDim = 'level' | 'businessUnit'
 export type OnTimePart = 'due' | 'onTime' | 'late' | 'open'
 export type ExitPart = 'rated' | 'Voluntary' | 'Involuntary' | 'left'
+export type EvidenceSide = 'with' | 'without'
 
 export interface DrillInputs {
   base: TalentBase
@@ -49,6 +50,10 @@ export interface TalentDrills {
   ratedActive(): TalentDrill
   /** Everyone rated 4 or 5 in the latest cycle. */
   highPerformers(): TalentDrill
+  /** Everyone rated in the latest cycle, including people who have left since. */
+  rated(): TalentDrill
+  /** Active people whose latest rating is 4 or 5, with their flight risk (key talent's denominator). */
+  activeHighPerformers(): TalentDrill
   /** Everyone at one rating (1-5) in the latest cycle. */
   rating(rating: number): TalentDrill
   /**
@@ -95,12 +100,20 @@ export interface TalentDrills {
   driver(key: FactorKey, part: 'any' | 'main'): TalentDrill
   /** The back-test: everyone scored in a band a year ago, or who of them left (noted as a rate or a share of leavers). */
   backTest(band: RiskBand, part: 'scored' | 'left' | 'shareOfLeavers'): TalentDrill
+  /**
+   * A factor's evidence: the people counted with it or without it (the person-months), or those of
+   * them who left within 12 months (the rate's numerator). `lift` opens the leavers on both sides.
+   */
+  evidence(key: FactorKey, side: EvidenceSide, part: 'counted' | 'left'): TalentDrill
+  evidenceLift(key: FactorKey): TalentDrill
   regrettedHigh(period: 'current' | 'prior'): TalentDrill
   hipoExits(): TalentDrill
   promotionOverdue(): TalentDrill
   /* Learning */
   /** Required assignments due in the period (one course or all), by outcome. */
   onTime(course: string | null, part: OnTimePart): TalentDrill
+  /** Required assignments due in the prior period, with how each turned out (the comparison). */
+  onTimePrior(): TalentDrill
   completions(month: string, kind: 'Required' | 'Optional' | null): TalentDrill
   overdueCell(dim: 'department' | 'location', cell: OverdueCell, part: 'pastDue' | 'overdue'): TalentDrill
   /** The overdue assignments where the overdue finding concentrates. */
@@ -175,6 +188,32 @@ export function buildDrills(x: DrillInputs): TalentDrills {
   const sr = succ.records
   const lr = learning.records
   const common = new Set(ret.commonFactors)
+
+  /* The flight-risk evidence: month-ends 12 to 23 months back, whole company. */
+  const learned = risk.learnedFrom
+  const evidenceSub = join(
+    learned.length ? `Month-ends ${formatDate(learned[0])} to ${formatDate(learned.at(-1))}` : null,
+    'Whole company',
+  )
+  const leftWord = risk.exitKind === 'voluntary' ? 'left voluntarily' : 'left'
+  const exitWords = risk.exitKind === 'voluntary' ? 'a voluntary exit' : 'an exit'
+  const evidenceExtra = (
+    of: (id: string) => EvidencePerson | undefined,
+    side: EvidenceSide,
+  ): DrillExtra<Employee> => ({
+    columns: [
+      {
+        key: 'evidenceMonths',
+        label: side === 'with' ? 'Month-ends with it' : 'Month-ends without it',
+        format: 'int',
+      },
+      { key: 'evidenceLeft', label: 'Followed by an exit within 12 months', format: 'int' },
+    ],
+    values: (e) => {
+      const p = of(e.employeeId)
+      return { evidenceMonths: p?.months ?? null, evidenceLeft: p?.left ?? null }
+    },
+  })
 
   const people = (ids: Iterable<string>): Employee[] => {
     const out: Employee[] = []
@@ -332,6 +371,32 @@ export function buildDrills(x: DrillInputs): TalentDrills {
           subtitle: cycleSub,
           rows,
           note: `Share = ${n(rows.length)} rated 4 or 5 ÷ ${n(perf.rated)} rated, including people who have left since.`,
+        }),
+      )
+    },
+
+    rated: () =>
+      when(perf.rated > 0 && pr.rated.length > 0, () =>
+        drillSpec({
+          kind: 'reviews',
+          title: `Rated in ${cycleName}`,
+          subtitle: cycleSub,
+          rows: pr.rated,
+          note: `${n(pr.rated.length)} ratings, including people who have left since the cycle closed.`,
+        }),
+      ),
+
+    activeHighPerformers: () => {
+      const rows = ret.highPerformerPeople
+      return when(rows.length >= MIN_GROUP, () =>
+        drillSpec({
+          kind: 'employees',
+          title: 'Active people rated 4 or 5',
+          subtitle: asOfSub,
+          rows,
+          hide: SAME_HIDE,
+          extra: riskExtra,
+          note: `Key talent at risk = ${n(ret.keyTalent.length)} of these ${n(rows.length)} in the high flight-risk band.`,
         }),
       )
     },
@@ -733,6 +798,61 @@ export function buildDrills(x: DrillInputs): TalentDrills {
       })
     },
 
+    evidence: (key, side, part) => {
+      const e = risk.evidence.find((x) => x.key === key)
+      const months = side === 'with' ? e?.withFactor : e?.without
+      const leftMonths = side === 'with' ? e?.withLeft : e?.withoutLeft
+      const rate = side === 'with' ? e?.withRate : e?.withoutRate
+      const count = part === 'counted' ? months : leftMonths
+      return when(!!e && !!count && (part === 'counted' || rate != null), () => {
+        const all = e!.people[side]
+        const ids = [...all].filter(([, p]) => part === 'counted' || p.left > 0).map(([id]) => id)
+        const label = e!.label
+        const it = side === 'with' ? 'with it' : 'without it'
+        return drillSpec({
+          kind: 'employees',
+          title:
+            part === 'counted'
+              ? `${label}: people counted ${it}`
+              : `${label}: ${leftWord} within 12 months, ${it}`,
+          subtitle: evidenceSub,
+          rows: people(ids),
+          extra: evidenceExtra((id) => all.get(id), side),
+          note:
+            part === 'counted'
+              ? `${n(months!)} person-months from ${plural(all.size, 'person', 'people')}: a person counts once at each month-end they were active ${it}.`
+              : `Rate = ${n(leftMonths!)} person-months followed by ${exitWords} within 12 months ÷ ${n(months!)} person-months ${it}, ${fmt(rate, 'pct')}. ${cap(plural(ids.length, 'person', 'people'))} behind them.`,
+        })
+      })
+    },
+
+    evidenceLift: (key) => {
+      const e = risk.evidence.find((x) => x.key === key)
+      return when(e?.lift != null && e.withLeft + e.withoutLeft > 0, () => {
+        const ev = e!
+        const ids = new Set<string>()
+        for (const side of ['with', 'without'] as const)
+          for (const [id, p] of ev.people[side]) if (p.left > 0) ids.add(id)
+        return drillSpec({
+          kind: 'employees',
+          title: `${ev.label}: everyone who ${leftWord} within 12 months`,
+          subtitle: evidenceSub,
+          rows: people(ids),
+          extra: {
+            columns: [
+              { key: 'leftWith', label: 'Month-ends with it, then left', format: 'int' },
+              { key: 'leftWithout', label: 'Month-ends without it, then left', format: 'int' },
+            ],
+            values: (x) => ({
+              leftWith: ev.people.with.get(x.employeeId)?.left ?? 0,
+              leftWithout: ev.people.without.get(x.employeeId)?.left ?? 0,
+            }),
+          },
+          note: `Lift = ${fmt(ev.withRate, 'pct')} with it ÷ ${fmt(ev.withoutRate, 'pct')} without it = ${fmt(ev.lift, 'times')}. Someone who had the factor at some month-ends and not at others counts on both sides.`,
+        })
+      })
+    },
+
     regrettedHigh: (period) => {
       const r = ret.regrettedHigh
       const list = period === 'current' ? r.current : r.prior
@@ -809,6 +929,24 @@ export function buildDrills(x: DrillInputs): TalentDrills {
             part === 'onTime'
               ? `Rate = ${n(rows.length)} on time ÷ ${n(list.length)} due. Employees employed on the due date only.`
               : 'Required assignments due in the period, for employees employed on the due date.',
+        }),
+      )
+    },
+
+    onTimePrior: () => {
+      const list = lr.duePrior
+      const onTime = list.filter(isOnTime).length
+      return when(learning.prior.rate != null && list.length > 0, () =>
+        drillSpec({
+          kind: 'learning',
+          title: 'Required training due in the prior period',
+          subtitle: join(ctx.prior.label, scope),
+          rows: list,
+          extra: {
+            columns: [{ key: 'onTimeOutcome', label: 'On time' }],
+            values: (l) => ({ onTimeOutcome: isOnTime(l) ? 'Yes' : 'No' }),
+          },
+          note: `Rate = ${n(onTime)} on time ÷ ${n(list.length)} due. Employees employed on the due date only.`,
         }),
       )
     },

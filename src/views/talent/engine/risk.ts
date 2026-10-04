@@ -566,6 +566,20 @@ export type Points = Record<FactorKey, number>
 /** How a factor's points were set. */
 export type PointSource = 'learned' | 'default' | 'fixed' | 'off'
 
+/** One person behind a factor's evidence: the month-ends they counted, and how many an exit followed. */
+export interface EvidencePerson {
+  months: number
+  left: number
+}
+
+/** The people behind each side of a factor's evidence, by employee ID. */
+export interface FactorPeople {
+  with: ReadonlyMap<string, EvidencePerson>
+  without: ReadonlyMap<string, EvidencePerson>
+}
+
+const NO_PEOPLE: FactorPeople = { with: new Map(), without: new Map() }
+
 export interface FactorEvidence {
   key: FactorKey
   label: string
@@ -583,6 +597,8 @@ export interface FactorEvidence {
   /** Whether the factor could be tested against outcomes at all. */
   tested: boolean
   source: PointSource
+  /** Who the person-months are, for the drill (sums match withFactor, withLeft, without, withoutLeft). */
+  people: FactorPeople
 }
 
 /** One month-end used to learn points: everyone active then, and who left in the next 12 months. */
@@ -642,7 +658,25 @@ export function learnPoints(
   opts: { compaOn: boolean },
 ): LearnedPoints {
   const testable = FACTORS.filter((f) => f.key !== 'lowCompa' && !offNow.has(f.key))
-  const acc = new Map(testable.map((f) => [f.key, { n: 0, k: 0, with: 0, withLeft: 0 }]))
+  const acc = new Map(
+    testable.map((f) => [
+      f.key,
+      {
+        n: 0,
+        k: 0,
+        with: 0,
+        withLeft: 0,
+        people: { with: new Map<string, EvidencePerson>(), without: new Map<string, EvidencePerson>() },
+      },
+    ]),
+  )
+  const count = (side: Map<string, EvidencePerson>, id: string, left: boolean) => {
+    const p = side.get(id)
+    if (p) {
+      p.months++
+      if (left) p.left++
+    } else side.set(id, { months: 1, left: left ? 1 : 0 })
+  }
   const peopleIds = new Set<string>()
   const leaverIds = new Set<string>()
   let personMonths = 0
@@ -658,10 +692,12 @@ export function learnPoints(
         const a = acc.get(f.key)!
         a.n++
         if (left) a.k++
-        if (p.signals.some((x) => x.key === f.key)) {
+        const has = p.signals.some((x) => x.key === f.key)
+        if (has) {
           a.with++
           if (left) a.withLeft++
         }
+        count(has ? a.people.with : a.people.without, p.employeeId, left)
       }
     }
   }
@@ -686,6 +722,7 @@ export function learnPoints(
       points: 0,
       tested: a.n > 0,
       source: a.n > 0 ? 'learned' : 'default',
+      people: a.people,
     }
   })
 
@@ -748,6 +785,7 @@ export function learnPoints(
       points: points.lowCompa,
       tested: false,
       source: 'fixed',
+      people: NO_PEOPLE,
     })
   }
   return {

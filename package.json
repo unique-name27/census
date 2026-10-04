@@ -11,7 +11,8 @@
     "typecheck": "tsc --noEmit -p .",
     "test": "vitest run",
     "lint": "biome check src",
-    "verify": "node scripts/verify.mjs"
+    "verify": "node scripts/verify.mjs",
+    "build:artifact": "vite build --mode single && node scripts/build-artifact.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",

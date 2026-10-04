@@ -367,3 +367,88 @@ describe('suppressed values have no records', () => {
     }
   })
 })
+
+describe('KPI changes and notes open the records they state', () => {
+  /** The first count in a note: 108 in "Plus 108 contractors and interns". */
+  const first = (text: string | undefined, re = /\d[\d,]*/) => Number(text!.match(re)![0].replace(/\D/g, ''))
+  const all = [...m.kpi.kpis, ...m.movementKpis, ...m.orgKpis]
+
+  it('headcount: the change opens the employees 12 months earlier, the note the contractors and interns', () => {
+    const k = kpi('headcount')
+    expect(k.value! - rowsOf(k.deltaDrill)).toBe(k.delta)
+    expect(rowsOf(k.noteDrill)).toBe(first(k.note))
+    expect(
+      resolve(k.noteDrill)!.rows.every(
+        (e) => (e as { employmentType: string }).employmentType !== 'Employee',
+      ),
+    ).toBe(true)
+  })
+
+  it('hires: the change opens the prior period hires', () => {
+    const k = kpi('hires')
+    expect(k.value! - rowsOf(k.deltaDrill)).toBe(k.delta)
+    expect(k.noteDrill).toBeUndefined()
+  })
+
+  it('rates: the change opens the comparison leavers, the note the leavers it counts', () => {
+    for (const id of ['attrition', 'voluntary', 'regretted']) {
+      const k = kpi(id)
+      expect(rowsOf(k.noteDrill), id).toBe(first(k.note))
+      const cmp = resolve(k.deltaDrill)!
+      // The panel note spells out the comparison rate; its event count matches the rows.
+      expect(cmp.rows.length, id).toBe(first(cmp.note, /= [\d,]+/))
+    }
+  })
+
+  it('first-year: the change opens the comparison cohort leavers, the note the whole cohort', () => {
+    const k = kpi('first-year')
+    const cmp = resolve(k.deltaDrill)!
+    expect(cmp.note).toMatch(/^Rate = [\d,]+ leavers? ÷/)
+    expect(cmp.rows.length).toBe(first(cmp.note, /= [\d,]+/))
+    expect(rowsOf(k.noteDrill)).toBe(first(k.note, /n = [\d,]+/))
+  })
+
+  it('promotion rate and movement tiles', () => {
+    const rate = kpi('promotion-rate')
+    const cmp = resolve(rate.deltaDrill)!
+    expect(cmp.rows.length).toBe(first(cmp.note, /= [\d,]+/))
+    expect(rowsOf(rate.noteDrill)).toBe(first(rate.note))
+    const tile = (id: string) => m.movementKpis.find((k) => k.id === id)!
+    const promos = tile('promotions')
+    expect(promos.value! - rowsOf(promos.deltaDrill)).toBe(promos.delta)
+    const moves = tile('moves')
+    const [transfers, lateral] = moves.note!.match(/\d[\d,]*/g)!.map((x) => Number(x.replace(/\D/g, '')))
+    expect(rowsOf(moves.noteDrill)).toBe(transfers + lateral)
+    const mobility = tile('mobility')
+    expect(rowsOf(mobility.noteDrill)).toBe(first(mobility.note))
+  })
+
+  it('org design: the note counts open their people', () => {
+    const tile = (id: string) => m.orgKpis.find((k) => k.id === id)!
+    const managers = tile('managers')
+    expect(rowsOf(managers.noteDrill)).toBe(first(managers.note))
+    const median = tile('median-span')
+    const half = first(median.note)
+    const list = resolve(median.noteDrill)!
+    expect(list.rows.length).toBe(m.org.managers.filter((x) => x.directs >= half).length)
+    expect(list.rows.length).toBeGreaterThanOrEqual(m.org.managers.length / 2)
+  })
+
+  it('every drill on a tile carries the tile fields, so the panel shows its tier', () => {
+    for (const k of all)
+      for (const src of [k.drill, k.deltaDrill, k.noteDrill]) {
+        const spec = resolve(src)
+        if (spec) expect(spec.uses, k.id).toEqual(k.uses)
+      }
+  })
+
+  it('compares with the company under an org filter', () => {
+    const scoped = computeHrbp(sampleCtx({ location: ['Bengaluru'] }))
+    const vol = scoped.kpi.kpis.find((k) => k.id === 'voluntary')!
+    expect(vol.deltaLabel).toBe('vs company')
+    const cmp = resolve(vol.deltaDrill)!
+    expect(cmp.subtitle).toMatch(/· Whole company$/)
+    expect(cmp.rows.length).toBe(first(cmp.note, /= [\d,]+/))
+    expect(cmp.rows.length).toBeGreaterThan(rowsOf(vol.noteDrill))
+  })
+})

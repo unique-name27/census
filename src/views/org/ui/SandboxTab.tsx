@@ -76,6 +76,8 @@ interface SpanRow {
   before: number
   after: number
   delta: number
+  /** The delta with its sign ("+1", "−1"), as the table shows it. */
+  change: string
 }
 
 const SPAN_COLUMNS: Column<SpanRow>[] = [
@@ -83,8 +85,13 @@ const SPAN_COLUMNS: Column<SpanRow>[] = [
   { key: 'id', label: 'Employee ID' },
   { key: 'before', label: 'Direct reports today', format: 'int' },
   { key: 'after', label: 'In the scenario', format: 'int' },
-  { key: 'delta', label: 'Change', format: 'int' },
+  { key: 'change', label: 'Change', format: 'text', align: 'right' },
 ]
+
+/** The scenario workbook keeps the change as a number, so it sums and sorts in Excel. */
+const SPAN_EXPORT_COLUMNS: Column<SpanRow>[] = SPAN_COLUMNS.map((c) =>
+  c.key === 'change' ? { key: 'delta', label: 'Change', format: 'int' } : c,
+)
 
 const isPerson = (e: Employee | undefined): e is Employee => !!e
 const panelBelow = () => typeof window !== 'undefined' && !window.matchMedia('(min-width: 1024px)').matches
@@ -189,7 +196,7 @@ export function SandboxTab() {
                 ? () => teamDrill(tree, r.id, `${r.name}'s direct reports in the scenario`, scope)
                 : null,
           }
-        : c.key === 'delta'
+        : c.key === 'change'
           ? { ...c, drill: (r: SpanRow) => () => teamChangeDrill(base, tree, r.id, scope) }
           : c,
   )
@@ -291,7 +298,7 @@ export function SandboxTab() {
           {
             name: 'Span changes',
             title: 'Reorg scenario: span changes',
-            columns: SPAN_COLUMNS,
+            columns: SPAN_EXPORT_COLUMNS,
             rows: spanRows as unknown as Record<string, unknown>[],
           },
         ],

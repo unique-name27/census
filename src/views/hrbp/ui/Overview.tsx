@@ -193,7 +193,10 @@ export function Overview({ m }: { m: HrbpModel }) {
               },
             ]}
             definitions={[
-              { term: 'Hire', text: 'An employee whose hire date falls in the month.' },
+              {
+                term: 'Hire',
+                text: 'An employee who started in the month (hire date in the Employees data). Recruiting counts offers accepted by the accept date instead.',
+              },
               { term: 'Exit', text: 'An employee whose termination date falls in the month.' },
             ]}
             note={`${hires.toLocaleString('en-US')} hires, ${exits.toLocaleString('en-US')} exits, net ${signed(hires - exits)} · as of ${asOf}`}

@@ -1,7 +1,14 @@
-import { describe, expect, it } from 'vitest'
-import type { Column } from '@/charts/types'
+import { describe, expect, it, vi } from 'vitest'
+import type { Column, ExportMeta } from '@/charts/types'
 import { toTsv } from './clipboard'
-import { csvField, csvPreamble, guardFormula, toCsv } from './csv'
+import { csvField, csvPreamble, downloadCsv, guardFormula, toCsv } from './csv'
+import { fileStem, withoutDataContext } from './names'
+
+const saved = vi.hoisted(() => [] as { blob: Blob; name: string }[])
+vi.mock('./download', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./download')>()),
+  downloadBlob: (blob: Blob, name: string) => saved.push({ blob, name }),
+}))
 
 const columns: Column[] = [
   { key: 'name', label: 'Name' },
@@ -63,6 +70,47 @@ describe('toCsv', () => {
   })
 })
 
+const CRLF = '\r\n'
+const stripBom = (t: string) => (t.charCodeAt(0) === 0xfeff ? t.slice(1) : t)
+
+describe('downloadCsv', () => {
+  const meta: ExportMeta = {
+    view: 'Recruiting',
+    viewKey: 'recruiting',
+    scope: 'Whole company',
+    window: '1 Oct 2025 – 30 Sep 2026',
+    asOf: '2026-09-30',
+    isSample: true,
+    company: 'Northgate Semiconductor',
+    standard: 'bronze',
+  }
+  const table = { name: 'Stage conversion', columns, rows: [{ name: 'Screen', rate: 0.5, n: 10 }] }
+
+  it('carries the context lines by default and names the view once', async () => {
+    saved.length = 0
+    downloadCsv({ ...table, tier: 'silver' }, meta, { showPay: false, fileName: 'census-recruiting-x' })
+    const text = await saved[0].blob.text()
+    const lines = stripBom(text).split(CRLF)
+    expect(lines.slice(0, 5)).toEqual([
+      'Stage conversion',
+      'Whole company · 1 Oct 2025 – 30 Sep 2026 · As of 30 Sep 2026',
+      'Data standard: Everything (bronze and up) · Tier: Silver',
+      'Company confidential · Sample data',
+      '',
+    ])
+    expect(lines[5]).toBe('Name,Attrition,People')
+    expect(saved[0].name).toBe('census-recruiting-x.csv')
+  })
+
+  it('writes the bare table when asked', async () => {
+    saved.length = 0
+    downloadCsv(table, meta, { showPay: false, preamble: false })
+    const text = await saved[0].blob.text()
+    expect(stripBom(text).split(CRLF)[0]).toBe('Name,Attrition,People')
+    expect(saved[0].name).toBe('census-recruiting-stage-conversion-2026-09-30.csv')
+  })
+})
+
 describe('toTsv', () => {
   it('flattens tabs and newlines and guards formulas', () => {
     const tsv = toTsv(
@@ -102,5 +150,24 @@ describe('csvPreamble', () => {
       'Data standard: Validated (silver and up) · Tier: Gold',
       'Company confidential',
     ])
+  })
+
+  it('leaves out scope, as-of, data standard and sample lines for a view that reads no data', () => {
+    const meta = withoutDataContext({
+      view: 'AI in HR',
+      viewKey: 'ai',
+      scope: 'Whole company',
+      window: 'Last 12 months',
+      asOf: '2026-09-30',
+      isSample: true,
+      company: 'Northgate Semiconductor',
+      standard: 'bronze',
+    })
+    const lines = csvPreamble(
+      { name: 'ai-agent-catalog', title: 'Agent catalog', subtitle: 'Every agent', columns, rows: [] },
+      meta,
+    )
+    expect(lines).toEqual(['Agent catalog', 'Every agent', 'Company confidential'])
+    expect(fileStem(meta, 'ai-agent-catalog')).toBe('census-ai-in-hr-agent-catalog')
   })
 })

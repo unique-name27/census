@@ -1,7 +1,7 @@
 /**
  * The datasheet table used for every figure's table view and for table-only figures: sortable
  * columns (aria-sort), right-aligned tabular numbers, a sticky header, hairline rows, optional
- * search, "Show all N rows", clickable rows and a status cell (icon + hidden word) per row.
+ * search, paging ("Show all N rows"), clickable rows and a status cell (icon + hidden word) per row.
  * Cells open the records behind them (`Column.drill`) or a link in a new tab (`Column.href`).
  * Pay-amount columns are dropped unless pay amounts are switched on.
  */
@@ -35,9 +35,14 @@ export interface DataTableProps<T extends object> {
   /** Click a header to sort (default true). */
   sortable?: boolean
   defaultSort?: SortState
-  /** Show the first N rows with a "Show all" button. */
+  /** Show the first N rows with a "Show all" button (and "Show 1,000 more" when many are left). */
   maxRows?: number
   onRowClick?: (row: T) => void
+  /**
+   * Which rows `onRowClick` applies to (default: every row). Only those get the pointer, the
+   * focus stop and the click, so a row that opens nothing never looks like it does.
+   */
+  rowClickable?: (row: T) => boolean
   /** Status shown as an icon cell at the left of the row. */
   rowTone?: (row: T) => Severity | null | undefined
   /** A search box over the visible columns; a string sets its placeholder. */
@@ -69,6 +74,9 @@ function compareValues(a: unknown, b: unknown): number {
 
 const isIdColumn = (key: string) => /(^id$|Id$|_id$)/.test(key)
 
+/** Rows added per "Show more" when a long list is paged. */
+export const PAGE_STEP = 1000
+
 export function DataTable<T extends object>({
   columns,
   rows,
@@ -76,6 +84,7 @@ export function DataTable<T extends object>({
   defaultSort,
   maxRows,
   onRowClick,
+  rowClickable,
   rowTone,
   search,
   caption,
@@ -86,7 +95,8 @@ export function DataTable<T extends object>({
 }: DataTableProps<T>) {
   const { showPay } = useAnalytics()
   const [sort, setSort] = useState<SortState | null>(defaultSort ?? null)
-  const [showAll, setShowAll] = useState(false)
+  // Extra rows revealed past maxRows; Infinity once "Show all" is chosen.
+  const [extra, setExtra] = useState(0)
   const [query, setQuery] = useState('')
 
   const cols = visibleColumns(columns, showPay)
@@ -114,7 +124,7 @@ export function DataTable<T extends object>({
       return compareValues(av, bv) * dir || a.index - b.index
     })
   }
-  const limit = maxRows !== undefined && !showAll ? maxRows : list.length
+  const limit = maxRows !== undefined ? maxRows + extra : list.length
   const shown = list.slice(0, limit)
   const hidden = list.length - shown.length
   const scrollHeight = maxHeight ?? (shown.length > 20 ? 520 : undefined)
@@ -151,7 +161,7 @@ export function DataTable<T extends object>({
               value={query}
               onChange={(e) => {
                 setQuery(e.target.value)
-                setShowAll(false)
+                setExtra(0)
               }}
               placeholder={typeof search === 'string' ? search : 'Search rows'}
               aria-label={typeof search === 'string' ? search : 'Search rows'}
@@ -229,13 +239,14 @@ export function DataTable<T extends object>({
           <tbody>
             {shown.map(({ row, index }) => {
               const tone = rowTone?.(row)
+              const clickable = !!onRowClick && (!rowClickable || rowClickable(row))
               return (
                 <tr
                   key={rowKey ? rowKey(row, index) : index}
-                  onClick={onRowClick ? () => onRowClick(row) : undefined}
-                  onKeyDown={onRowClick ? (e) => onRowKey(e, row) : undefined}
-                  tabIndex={onRowClick ? 0 : undefined}
-                  className={cx(onRowClick && 'cursor-pointer hover:bg-hover focus-visible:bg-hover')}
+                  onClick={clickable ? () => onRowClick?.(row) : undefined}
+                  onKeyDown={clickable ? (e) => onRowKey(e, row) : undefined}
+                  tabIndex={clickable ? 0 : undefined}
+                  className={cx(clickable && 'cursor-pointer hover:bg-hover focus-visible:bg-hover')}
                 >
                   {rowTone && (
                     <td className={td}>
@@ -281,13 +292,29 @@ export function DataTable<T extends object>({
         </table>
       </div>
       {hidden > 0 && (
-        <button
-          type="button"
-          onClick={() => setShowAll(true)}
-          className="mt-2 rounded-[2px] text-[13px] font-medium text-link hover:underline"
-        >
-          Show all {list.length.toLocaleString('en-US')} rows
-        </button>
+        <div className="mt-2 flex flex-wrap items-baseline gap-x-4 gap-y-1">
+          {hidden > PAGE_STEP && (
+            <button
+              type="button"
+              onClick={() => setExtra((n) => n + PAGE_STEP)}
+              className="rounded-[2px] text-[13px] font-medium text-link hover:underline"
+            >
+              Show {PAGE_STEP.toLocaleString('en-US')} more
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => setExtra(Number.POSITIVE_INFINITY)}
+            className="rounded-[2px] text-[13px] font-medium text-link hover:underline"
+          >
+            Show all {list.length.toLocaleString('en-US')} rows
+          </button>
+          {hidden > PAGE_STEP && (
+            <span className="tnum text-[12px] text-muted">
+              Showing {shown.length.toLocaleString('en-US')} of {list.length.toLocaleString('en-US')}
+            </span>
+          )}
+        </div>
       )}
     </div>
   )

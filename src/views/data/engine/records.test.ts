@@ -11,31 +11,12 @@ import { fmt } from '@/lib/format'
 import { checkRecords, unlinkedRows } from './checks'
 import { fieldCoverage, fieldRecords } from './coverage'
 import { buildManifest } from './manifest'
-import {
-  DRILL_LIMIT,
-  firstRecords,
-  issueDetail,
-  issueGroupKey,
-  issueRecordsByGroup,
-  recordKey,
-  splitFigure,
-} from './records'
+import { issueDetail, issueGroupKey, issueRecordsByGroup, recordKey, splitFigure } from './records'
 
 const sample = generateSample()
 const sampleSources = Object.fromEntries(
   DATASET_KEYS.map((k) => [k, { kind: 'sample', rowCount: sample[k].length }]),
 ) as Record<DatasetKey, SourceMeta>
-
-describe('firstRecords', () => {
-  it('keeps every row up to the limit and says when it stops', () => {
-    expect(firstRecords([1, 2, 3], 5)).toEqual({ rows: [1, 2, 3], total: 3, capped: false })
-    const many = Array.from({ length: DRILL_LIMIT + 7 }, (_, i) => i)
-    const first = firstRecords(many)
-    expect(first.rows).toHaveLength(DRILL_LIMIT)
-    expect(first.rows[0]).toBe(0)
-    expect(first).toMatchObject({ total: DRILL_LIMIT + 7, capped: true })
-  })
-})
 
 describe('splitFigure', () => {
   it('finds the number as a whole number only', () => {

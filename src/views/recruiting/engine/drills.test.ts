@@ -98,6 +98,57 @@ describe('KPI tiles drill to the records they count', () => {
     expect(spec.note).toMatch(/accepted ÷ .* offers resolved/)
   })
 
+  it('each change opens the comparison records it is measured against', () => {
+    const open = kpi('open-reqs')
+    expect(open.value! - resolve(open.deltaDrill)!.rows.length).toBe(open.delta)
+    const hires = kpi('hires')
+    expect(hires.value! - resolve(hires.deltaDrill)!.rows.length).toBe(hires.delta)
+    const ttf = kpi('time-to-fill')
+    const ttfPrior = median(nums(extras(resolve(ttf.deltaDrill)), 'daysToFill'))!
+    expect(ttf.value! - ttfPrior).toBeCloseTo(ttf.delta!, 10)
+    const tth = kpi('time-to-hire')
+    const tthPrior = median(nums(extras(resolve(tth.deltaDrill)), 'daysToHire'))!
+    expect(tth.value! - tthPrior).toBeCloseTo(tth.delta!, 10)
+    const acc = kpi('offer-acceptance')
+    const out = extras(resolve(acc.deltaDrill)).map((x) => x.offerOutcome)
+    expect(acc.value! - out.filter((o) => o === 'Accepted').length / out.length).toBeCloseTo(acc.delta!, 10)
+    // A tile with no change states nothing to compare, so nothing opens.
+    expect(kpi('lacking-next-step').deltaDrill).toBeUndefined()
+  })
+
+  it('each number in a note opens the records it counts', () => {
+    const first = (k: Kpi, re = /\d[\d,]*/) => Number(k.note!.match(re)![0].replace(/\D/g, ''))
+    const open = kpi('open-reqs')
+    expect(open.note).toMatch(/^\d[\d,]* on hold, not counted$/)
+    const hold = resolve(open.noteDrill)!
+    expect(hold.rows.length).toBe(first(open))
+    expect(hold.rows.every((r) => (r as Requisition).status === 'On hold')).toBe(true)
+    for (const id of ['time-to-fill', 'time-to-hire', 'offer-acceptance']) {
+      const k = kpi(id)
+      expect(resolve(k.noteDrill)!.rows.length, id).toBe(first(k))
+    }
+    const lacking = kpi('lacking-next-step')
+    expect(resolve(lacking.noteDrill)!.rows.length).toBe(first(lacking, /of [\d,]+ active/))
+    expect(resolve(lacking.noteDrill)!.rows.length).toBe(m.base.actives.length)
+    // Notes without a count of records ("Counted on the accept date") open nothing.
+    expect(kpi('hires').noteDrill).toBeUndefined()
+    // Recruiting's hire count is offers accepted; People stats keeps "Hires" for people who started.
+    expect(kpi('hires').label).toBe('Offers accepted')
+    expect(kpi('hires').definition).toMatch(/People stats counts hires by start date/)
+  })
+
+  it('every drill on a tile shows the tile tier (it carries the tile fields)', () => {
+    for (const k of m.kpis)
+      for (const src of [k.drill, k.deltaDrill, k.noteDrill]) {
+        const spec = resolve(src)
+        if (spec) expect(spec.uses, k.id).toEqual(k.uses)
+      }
+    for (const f of m.findings) {
+      const spec = resolve(f.drill)
+      if (spec && f.uses?.length) expect(spec.uses?.length, f.id).toBeGreaterThan(0)
+    }
+  })
+
   it('a hidden KPI has no drill', () => {
     const vancouver = computeRecruitingUncached(
       buildContext({

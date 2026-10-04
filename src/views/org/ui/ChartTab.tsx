@@ -238,6 +238,7 @@ export function ChartTab() {
     reqRecords: model.reqRecords,
     lineage,
     dims: model.dims,
+    openRoles: prefs.showReqs,
   })
   const { gates } = model
   const heldBack = heldBackNotes(gates, {

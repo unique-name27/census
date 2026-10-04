@@ -7,6 +7,7 @@ import type { AnalyticsContext } from '@/data/context'
 import { LEVELS } from '@/data/schema'
 import { addDays, addMonths, monthKey, monthStart, monthsBetween } from '@/lib/dates'
 import { computeBase, type RecruitingBase } from './base'
+import { tagFindings } from './drillUses'
 import { acceptanceDrop, recruitingFindings } from './findings'
 import { type SpeedCell, speedByMonth } from './flow'
 import { recruitingKpis } from './kpis'
@@ -121,7 +122,7 @@ export function computeRecruitingUncached(ctx: AnalyticsContext): RecruitingMode
   return {
     base: b,
     kpis: recruitingKpis(b),
-    findings: recruitingFindings(b),
+    findings: tagFindings(recruitingFindings(b)),
     pipeline: pipelineToday(b.actives),
     queue: queueGroups(b.actives),
     waiting: waitingDots(b.actives),

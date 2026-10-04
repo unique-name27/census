@@ -200,7 +200,7 @@ export const SPEND_COLUMNS: Column<SpendRow>[] = [
   { key: 'n', label: 'Proposals', format: 'int' },
   { key: 'spendPct', label: 'Merit spend', format: 'pct2' },
   { key: 'budgetPct', label: 'Budget', format: 'pct2' },
-  { key: 'delta', label: 'Spend vs budget', format: 'pts' },
+  { key: 'delta', label: 'Spend vs budget', format: 'pts2' },
   { key: 'eligibleBaseUsd', label: 'Eligible base (USD)', format: 'moneyFull', pay: true },
   { key: 'spendUsd', label: 'Merit spend (USD)', format: 'moneyFull', pay: true },
   { key: 'overUsd', label: 'Spend vs budget (USD)', format: 'moneyFull', pay: true },

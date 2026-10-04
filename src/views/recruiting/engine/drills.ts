@@ -30,6 +30,7 @@ import {
   type TransitionEvent,
 } from './flow'
 import { TIER_WORD } from './pipeline'
+import { isOpenAt } from './prepare'
 import { type OpenReqRow, reqAge, ttfDays } from './reqs'
 import { acceptance, daysToHire } from './sources'
 import { type ActiveItem, type App, HIRED, LAST_OPEN_STAGE, type Outcome } from './types'
@@ -439,12 +440,12 @@ export function openReqsKpiDrill(b: RecruitingBase): DrillSpec<'requisitions'> |
 }
 
 export function hiresKpiDrill(b: RecruitingBase): DrillSpec<'candidates'> | null {
-  return hiresDrill(b, b.hires, `Hires, ${b.windowWords}`)
+  return hiresDrill(b, b.hires, `Offers accepted, ${b.windowWords}`)
 }
 
 export function timeToHireKpiDrill(b: RecruitingBase): DrillSpec<'candidates'> | null {
-  return hiresDrill(b, b.hires, `Hires, ${b.windowWords}`, {
-    note: `Median ${days(median(b.hires.map(daysToHire)))} from application to offer accepted over ${plural(b.hires.length, 'hire')}.`,
+  return hiresDrill(b, b.hires, `Offers accepted, ${b.windowWords}`, {
+    note: `Median ${days(median(b.hires.map(daysToHire)))} from application to offer accepted over ${plural(b.hires.length, 'offer accepted', 'offers accepted')}.`,
   })
 }
 
@@ -461,6 +462,71 @@ export function lackingKpiDrill(b: RecruitingBase): DrillSpec<'candidates'> | nu
       note: `Of ${plural(b.actives.length, 'active candidate')}: no step booked past 1.5× the usual days for the stage, a decision pending more than 2 days, or an offer out more than 5 days.`,
     },
   )
+}
+
+/* ───────── KPI comparisons and notes ───────── */
+
+/** The prior period in a title: "in the prior period" (its dates go in the subtitle). */
+const PRIOR = 'in the prior period'
+
+/** Reqs open on the comparison date of the open reqs tile, with how long each had been open then. */
+export function priorOpenReqsKpiDrill(b: RecruitingBase): DrillSpec<'requisitions'> | null {
+  const on = b.prior.end
+  const list = b.reqs.filter((r) => isOpenAt(r, on)).sort(byAge(on))
+  const change = b.req.open.length - list.length
+  return reqDrill(list, {
+    title: `Reqs open on ${formatDate(on)}`,
+    subtitle: `On ${formatDate(on)} · ${b.scopeLabel}`,
+    note: `The comparison for the ${plural(b.req.open.length, 'req')} open on ${formatDate(b.asOf)}: ${change > 0 ? `${fmt(change, 'int')} more` : change < 0 ? `${fmt(-change, 'int')} fewer` : 'the same number'} now.`,
+    extras: [
+      {
+        columns: [{ key: 'daysOpenThen', label: `Days open on ${formatDate(on)}`, format: 'days' }],
+        values: (r) => ({ daysOpenThen: reqAge(r, on) }),
+      },
+    ],
+    hide: ['daysOpen'],
+  })
+}
+
+/** Reqs on hold on the as-of date (the open reqs tile's note: not counted as open). */
+export function onHoldKpiDrill(b: RecruitingBase): DrillSpec<'requisitions'> | null {
+  return openReqsDrill(b, b.req.onHold, 'Reqs on hold', 'On hold: not counted as open reqs.')
+}
+
+export function priorHiresKpiDrill(b: RecruitingBase): DrillSpec<'candidates'> | null {
+  return hiresDrill(b, b.hiresPrior, `Offers accepted ${PRIOR}`, {
+    subtitle: windowSub(b, b.prior),
+    note: `The comparison for the ${plural(b.hires.length, 'offer accepted', 'offers accepted')} ${b.windowWords}.`,
+  })
+}
+
+export function priorFilledKpiDrill(b: RecruitingBase): DrillSpec<'requisitions'> | null {
+  return filledReqsDrill(b, b.filledPrior, `Reqs filled ${PRIOR}`, b.prior)
+}
+
+export function priorTimeToHireKpiDrill(b: RecruitingBase): DrillSpec<'candidates'> | null {
+  return hiresDrill(b, b.hiresPrior, `Offers accepted ${PRIOR}`, {
+    subtitle: windowSub(b, b.prior),
+    note: `Median ${days(median(b.hiresPrior.map(daysToHire)))} from application to offer accepted over ${plural(b.hiresPrior.length, 'offer accepted', 'offers accepted')}.`,
+  })
+}
+
+export function priorOffersKpiDrill(b: RecruitingBase): DrillSpec<'candidates'> | null {
+  return offersDrill(b, b.offersPrior, `Offers resolved ${PRIOR}`, windowSub(b, b.prior))
+}
+
+/** The accepted offers in the offer acceptance note ("264 of 329 offers accepted"). */
+export function acceptedOffersKpiDrill(b: RecruitingBase): DrillSpec<'candidates'> | null {
+  return offersDrill(b, b.offers, `Offers accepted, ${b.windowWords}`, windowSub(b), 'Hired')
+}
+
+/** Every active candidate (the denominator in the lacking-a-next-step note). */
+export function activeKpiDrill(b: RecruitingBase): DrillSpec<'candidates'> | null {
+  const lacking = b.actives.filter((x) => x.tier).length
+  return activeDrill(b, b.actives, {
+    title: 'Active candidates',
+    note: `${fmt(lacking, 'int')} of the ${plural(b.actives.length, 'active candidate')} lack a next step. Longest wait first.`,
+  })
 }
 
 /** Candidate rows whose req ID matches no requisition (the data-join finding). */
@@ -632,18 +698,18 @@ export function sourceDrill(
     case 'hires':
     case 'hireRate':
       if (measure === 'hireRate' && row.hireRate == null) return null
-      return hiresDrill(b, hired, `${s} hires, applications received ${b.windowWords}`, {
+      return hiresDrill(b, hired, `${s}: hired, applications received ${b.windowWords}`, {
         subtitle: cohortSub(b),
         note:
           measure === 'hireRate'
-            ? `Hire rate = ${plural(row.hires, 'hire')} ÷ ${plural(row.applications, 'application')} from ${s}, ${fmt(row.hireRate, 'pct')}.`
-            : undefined,
+            ? `Hire rate = ${fmt(row.hires, 'int')} hired ÷ ${plural(row.applications, 'application')} from ${s}, ${fmt(row.hireRate, 'pct')}.`
+            : 'Applications received in the period that ended in an accepted offer, whenever it was accepted.',
       })
     case 'medianTimeToHire':
       if (row.medianTimeToHire == null) return null
-      return hiresDrill(b, hired, `${s} hires, applications received ${b.windowWords}`, {
+      return hiresDrill(b, hired, `${s}: hired, applications received ${b.windowWords}`, {
         subtitle: cohortSub(b),
-        note: `Median ${days(row.medianTimeToHire)} from application to offer accepted over ${plural(hired.length, 'hire')}.`,
+        note: `Median ${days(row.medianTimeToHire)} from application to offer accepted over ${fmt(hired.length, 'int')} hired.`,
       })
     case 'offerAcceptance': {
       if (row.offerAcceptance == null) return null
@@ -713,7 +779,9 @@ export function hiresMonthDrill(
   b: RecruitingBase,
   row: { month: string; apps: readonly App[] },
 ): DrillSpec<'candidates'> | null {
-  return hiresDrill(b, row.apps, `Hires, ${formatMonth(`${row.month}-01`)}`, { subtitle: b.scopeLabel })
+  return hiresDrill(b, row.apps, `Offers accepted, ${formatMonth(`${row.month}-01`)}`, {
+    subtitle: b.scopeLabel,
+  })
 }
 
 /* ───────── requisitions ───────── */
@@ -842,7 +910,7 @@ export function recruiterDrill(
         { title: `Candidates lacking a next step, ${who}` },
       )
     case 'hires':
-      return hiresDrill(b, row.hireList, `Hires, ${who}, ${b.windowWords}`)
+      return hiresDrill(b, row.hireList, `Offers accepted, ${who}, ${b.windowWords}`)
   }
 }
 

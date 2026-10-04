@@ -30,6 +30,7 @@ import {
   resolveTimeDrill,
   responseDrill,
 } from '../engine/drills'
+import { withUses } from '../engine/drillUses'
 import type { CaseFact } from '../engine/facts'
 import { duration, isOther, WEEKDAYS } from '../engine/util'
 import {
@@ -252,7 +253,7 @@ export function CasesTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext }
   const resolveColumns: Column<ResolveRow>[] = [
     { key: 'category', label: 'Category' },
     { key: 'n', label: 'Cases resolved', format: 'int', drill: resolveDrill },
-    { key: 'targetDays', label: 'Target (d)', format: 'num1' },
+    { key: 'targetDays', label: 'Target', format: 'days' },
     { key: 'p10', label: '10th percentile (d)', format: 'num1', drill: resolveDrill },
     { key: 'q1', label: '25th percentile (d)', format: 'num1', drill: resolveDrill },
     { key: 'median', label: 'Median (d)', format: 'num1', drill: resolveDrill },
@@ -309,17 +310,30 @@ export function CasesTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext }
     { key: 'escalated', label: 'Escalated', format: 'int', drill: escalated },
     { key: 'escalateRate', label: 'Escalation rate', format: 'pct', drill: escalated },
   ]
+  // Every number in a row is about its one case: each opens it, and so does the row.
+  const agedCase = (r: AgedCaseRow) =>
+    s.on ? withUses(() => oneCaseDrill(s, r.fact), m.uses['services-aged-cases']) : null
   const agedColumns: Column<AgedCaseRow>[] = [
-    { key: 'caseId', label: 'Case ID', drill: (r) => (s.on ? () => oneCaseDrill(s, r.fact) : null) },
+    { key: 'caseId', label: 'Case ID', drill: agedCase },
     { key: 'category', label: 'Category' },
     { key: 'processId', label: 'Atlas process', href: (r) => processHref(r.processId) },
     { key: 'status', label: 'Case status' },
     { key: 'team', label: 'Team' },
     { key: 'assignee', label: 'Assignee' },
     { key: 'opened', label: 'Opened', format: 'date' },
-    { key: 'ageDays', label: 'Age (d)', format: 'int' },
-    { key: 'targetDays', label: 'Target (d)', format: 'num1' },
-    { key: 'daysPastTarget', label: 'Days past target', format: 'int' },
+    { key: 'ageDays', label: 'Age', format: 'days', drill: agedCase },
+    {
+      key: 'targetDays',
+      label: 'Target',
+      format: 'days',
+      drill: (r) => (r.targetDays == null ? null : agedCase(r)),
+    },
+    {
+      key: 'daysPastTarget',
+      label: 'Days past target',
+      format: 'days',
+      drill: (r) => (r.daysPastTarget == null ? null : agedCase(r)),
+    },
   ]
   // Employee relations cases this old are given as a count only (and not at all in a small scope).
   const erAged = m.small ? 0 : m.agedPrivate.reduce((a, r) => a + r.cases, 0)
@@ -562,6 +576,7 @@ export function CasesTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext }
             rowTone: (r) => (r.ageDays > 30 ? 'critical' : 'warning'),
             search: 'Search cases',
             maxRows: 20,
+            onRowClick: (r) => drill(agedCase(r)),
           }}
           empty={
             m.small

@@ -4,11 +4,14 @@
  */
 import type { Kpi } from '@/components/types'
 import { MIN_GROUP } from '@/data/schema'
-import { count, isMaterialGap, type Prep } from './base'
+import { activeWorkers, count, isMaterialGap, type Prep } from './base'
 import { movementTileSpec, orgTileSpec } from './buckets'
 import { DEF } from './defs'
+import { changesSpec, managersSpec, scopePart, titled, workersSpec } from './drill'
+import { tagKpis } from './drillUses'
+import { promotionsComparisonSpec } from './kpis'
 import { MOVES, ORG, PROMOTION_RATE } from './lineage'
-import type { MovementModel } from './movement'
+import { type MovementModel, promotionComparison } from './movement'
 import type { OrgModel } from './org'
 
 type MovementTile = Parameters<typeof movementTileSpec>[2]
@@ -37,6 +40,20 @@ export function movementKpis(p: Prep, mv: MovementModel): Kpi[] {
       note: window,
       definition: 'Promotion events in the period. A person promoted twice counts twice.',
       drill: tile('promotions', mv.records.promotions.length > 0),
+      // The comparison window's promotions in this scope (always the scope's own history).
+      deltaDrill: mv.priorPromotions.promotions
+        ? () => {
+            const w = promotionComparison(p).window
+            return changesSpec(
+              p,
+              titled('Promotions', scopePart(p), 'comparison period'),
+              p.changes.filter(
+                (c) => c.changeType === 'Promotion' && c.effectiveDate >= w.start && c.effectiveDate <= w.end,
+              ),
+              { when: w.label },
+            )
+          }
+        : undefined,
       uses: moves,
     },
     {
@@ -52,6 +69,7 @@ export function movementKpis(p: Prep, mv: MovementModel): Kpi[] {
       suppressed: promoSuppressed,
       definition: DEF.promotionRate.text,
       drill: tile('promotionRate', !promoSuppressed && mv.promotions.rate != null),
+      deltaDrill: promoSuppressed || delta == null ? undefined : () => promotionsComparisonSpec(p, mv),
       uses: rate,
     },
     {
@@ -62,6 +80,8 @@ export function movementKpis(p: Prep, mv: MovementModel): Kpi[] {
       note: `${count(mv.transfers, 'transfer', 'transfers')}, ${count(mv.lateral, 'lateral move', 'lateral moves')}`,
       definition: 'Transfer and Lateral move events in the period.',
       drill: tile('moves', mv.transfers + mv.lateral > 0),
+      // "90 transfers, 32 lateral moves": the same events, split in the panel's note.
+      noteDrill: tile('moves', mv.transfers + mv.lateral > 0),
       uses: moves,
     },
     {
@@ -73,6 +93,8 @@ export function movementKpis(p: Prep, mv: MovementModel): Kpi[] {
       suppressed: mobilitySuppressed,
       definition: DEF.mobility.text,
       drill: tile('mobility', !mobilitySuppressed && mv.mobility.rate != null),
+      // "256 people moved at least once": those people.
+      noteDrill: tile('mobility', !mobilitySuppressed && mv.mobility.rate != null),
       uses: rate,
     },
   ]
@@ -88,14 +110,15 @@ export function movementKpis(p: Prep, mv: MovementModel): Kpi[] {
       uses: moves,
     })
   }
-  return kpis
+  return tagKpis(kpis)
 }
 
 export function orgKpis(p: Prep, org: OrgModel): Kpi[] {
   const hasManagers = org.managers.length > 0
   const tile = (t: OrgTile, has: boolean) => (has ? () => orgTileSpec(p, org, t) : undefined)
   const uses = p.uses(ORG)
-  return [
+  const half = org.medianSpan == null ? null : Math.ceil(org.medianSpan)
+  return tagKpis([
     {
       id: 'managers',
       label: 'Managers',
@@ -104,6 +127,16 @@ export function orgKpis(p: Prep, org: OrgModel): Kpi[] {
       note: `${org.activeWorkers.toLocaleString('en-US')} active workers`,
       definition: 'Active people in scope with at least one active direct report.',
       drill: tile('managers', hasManagers),
+      // "1,560 active workers": everyone active in scope, every worker type.
+      noteDrill: org.activeWorkers
+        ? () =>
+            workersSpec(
+              p,
+              titled('Active workers', scopePart(p)),
+              activeWorkers(p.people, p.asOf),
+              'Everyone active on the as-of date, every worker type.',
+            )
+        : undefined,
       uses,
     },
     {
@@ -127,6 +160,19 @@ export function orgKpis(p: Prep, org: OrgModel): Kpi[] {
           : 'Direct reports per manager',
       definition: DEF.span.text,
       drill: tile('medianSpan', hasManagers),
+      // "Half of managers have 6 or more direct reports": those managers.
+      noteDrill:
+        half == null
+          ? undefined
+          : () =>
+              managersSpec(
+                p,
+                titled(`Managers with ${half} or more direct reports`, scopePart(p)),
+                org.managers.filter((m) => m.directs >= half),
+                {
+                  note: `${count(org.managers.filter((m) => m.directs >= half).length, 'manager', 'managers')} of ${count(org.managers.length, 'manager', 'managers')}.`,
+                },
+              ),
       uses,
     },
     {
@@ -149,5 +195,5 @@ export function orgKpis(p: Prep, org: OrgModel): Kpi[] {
       drill: tile('layers', org.layers != null),
       uses,
     },
-  ]
+  ])
 }

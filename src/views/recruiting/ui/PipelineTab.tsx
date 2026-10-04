@@ -246,7 +246,7 @@ export function PipelineTab() {
               text: 'Everyone who left the process, building up from left to right. Drawn on its own, smaller scale.',
             },
           ]}
-          note={`${plural(flow.total, 'application')} · ${plural(flow.hired, 'hire')} · the bottom band uses a smaller scale than the river · ${asOfNote(b.asOf)}`}
+          note={`${plural(flow.total, 'application')} · ${fmt(flow.hired, 'int')} hired · the bottom band uses a smaller scale than the river · ${asOfNote(b.asOf)}`}
         >
           <RiverChart base={b} />
         </Figure>
@@ -269,7 +269,7 @@ export function PipelineTab() {
           id="recruiting-stage-conversion"
           uses={FIGURE_USES['recruiting-stage-conversion']}
           title="Stage conversion"
-          subtitle={`Applications received ${windowText(b.window)}, by stage, with the median days to the next stage and the change vs the prior period`}
+          subtitle={`Applications received ${windowText(b.window)}, by stage, with the median days to the next stage and the change vs the prior period. Hired counts the ones that ended in an accepted offer, whenever it was accepted.`}
           data={conversion}
           columns={conversionColumns}
           tableOnly
@@ -277,6 +277,10 @@ export function PipelineTab() {
           table={{ maxRows: 10 }}
           empty={b.apps.length ? (flow.total ? null : 'No applications in this period.') : NEED_CANDIDATES}
           definitions={[
+            {
+              term: 'Hired',
+              text: 'Applications received in the period that ended in an accepted offer, whenever it was accepted. Not the same as Offers accepted on the Overview, which counts offers by the date they were accepted.',
+            },
             {
               term: 'Pass rate',
               text: 'Advanced ÷ (advanced + left at this stage). Candidates still active at the stage are shown separately (Active).',

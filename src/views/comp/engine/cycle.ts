@@ -10,6 +10,7 @@ import { median, sum } from '@/lib/stats'
 import { groupRows, safeMedian, safeShare, values } from './groups'
 import type { CompPerson } from './population'
 import { type CycleSettings, guidelineFor, type RatingKey, ratingKey } from './settings'
+import { shownGap } from './text'
 
 /** Guideline rules from the spec: a top rating should get at least 2%, a low rating at most 3%. */
 export const TOP_RATING_FLOOR = 0.02
@@ -75,7 +76,8 @@ export function meritSpend(people: readonly CompPerson[], s: CycleSettings): Spe
     spendUsd: spend,
     budgetPct: s.meritBudget,
     budgetUsd: base * s.meritBudget,
-    delta: spendPct == null ? null : spendPct - s.meritBudget,
+    // From the shown values (two decimals), so "3.54% vs the 3.50% budget" reads "+0.04 pts".
+    delta: spendPct == null ? null : shownGap(spendPct, s.meritBudget),
     overUsd: base > 0 ? spend - base * s.meritBudget : null,
     rated: rated.length,
     guidelinePct: ratedBase > 0 && rated.length >= MIN_GROUP ? guided / ratedBase : null,

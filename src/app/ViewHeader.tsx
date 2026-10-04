@@ -1,6 +1,6 @@
 /**
- * The head of a view: name, the scope / window / as-of line with where the data came from,
- * the view's own controls, Export, and underline sub-tabs.
+ * The head of a view: name, the scope / window / as-of line with where the data came from (left
+ * out for a view that reads no datasets), the view's own controls, Export, and underline sub-tabs.
  */
 import { type KeyboardEvent, useRef } from 'react'
 import { goTo } from '@/components/navigation'
@@ -8,6 +8,7 @@ import { cx, Tag, Tip } from '@/components/ui'
 import { useAnalytics } from '@/data/context'
 import { formatDate } from '@/lib/dates'
 import { fmt } from '@/lib/format'
+import { AI_AGENTS_HASH, openAgents, useAgentLink } from '@/views/ai/link'
 import type { ViewDef } from '@/views/types'
 import { ExportMenu } from './ExportMenu'
 import { datasetNote } from './exportMeta'
@@ -38,6 +39,29 @@ function Provenance({ view }: { view: ViewDef }) {
         <Tag tone={note.allSample ? 'neutral' : 'outline'}>{note.text}</Tag>
       </button>
     </Tip>
+  )
+}
+
+/** One quiet line, "AI agents for Recruiting (4)", opening AI in HR filtered to the view's areas. */
+function AgentsLink({ view }: { view: ViewDef }) {
+  const link = useAgentLink(view.key)
+  if (!link) return null
+  return (
+    <p className="mt-1 text-[12px] leading-snug">
+      <a
+        href={AI_AGENTS_HASH}
+        aria-label={link.label}
+        onClick={(e) => {
+          // A modified click opens the catalog in a new tab as usual (unfiltered).
+          if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
+          e.preventDefault()
+          openAgents(link.areas)
+        }}
+        className="rounded-[2px] text-ink-2 underline decoration-rule-strong underline-offset-2 hover:text-ink hover:decoration-ink"
+      >
+        {link.text}
+      </a>
+    </p>
   )
 }
 
@@ -95,20 +119,24 @@ export function ViewHeader({ view, tab }: { view: ViewDef; tab: string }) {
       <div className="flex flex-wrap items-start gap-x-6 gap-y-3">
         <div className="min-w-0 flex-1 basis-[420px]">
           <h1 className="cut-head text-[28px] leading-[1.1] font-[650] tracking-[-0.01em]">{view.label}</h1>
-          <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[13px] text-ink-2">
-            <span>{ctx.scopeLabel}</span>
-            <span aria-hidden="true" className="text-muted">
-              ·
-            </span>
-            <span>{ctx.window.label}</span>
-            <span aria-hidden="true" className="text-muted">
-              ·
-            </span>
-            <span>as of {formatDate(ctx.asOf)}</span>
-            <span className="ml-1.5">
-              <Provenance view={view} />
-            </span>
-          </div>
+          {/* A view that reads no datasets (AI in HR) has no scope, window, as-of date or data source. */}
+          {view.datasets.length > 0 && (
+            <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[13px] text-ink-2">
+              <span>{ctx.scopeLabel}</span>
+              <span aria-hidden="true" className="text-muted">
+                ·
+              </span>
+              <span>{ctx.window.label}</span>
+              <span aria-hidden="true" className="text-muted">
+                ·
+              </span>
+              <span>as of {formatDate(ctx.asOf)}</span>
+              <span className="ml-1.5">
+                <Provenance view={view} />
+              </span>
+            </div>
+          )}
+          <AgentsLink view={view} />
         </div>
         <div className="flex max-w-full min-w-0 flex-wrap items-center gap-2">
           {Actions && <Actions />}

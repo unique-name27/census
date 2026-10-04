@@ -294,15 +294,38 @@ export const driverColumns = (d: TalentDrills): Column<DriverTableRow>[] => [
   { key: 'topReason', label: 'Main reason for', format: 'int', drill: (r) => d.driver(r.key, 'main') },
 ]
 
-export const EVIDENCE_COLUMNS: Column<FactorEvidence & { definition: string; how: string }>[] = [
+type EvidenceRow = FactorEvidence & { definition: string; how: string }
+
+/** Person-months open the people counted; the rates open who of them left; lift opens both sides' leavers. */
+export const evidenceColumns = (d: TalentDrills): Column<EvidenceRow>[] => [
   { key: 'label', label: 'Factor' },
   { key: 'points', label: 'Points now', format: 'int' },
   { key: 'how', label: 'Points set by' },
-  { key: 'withFactor', label: 'With it (person-months)', format: 'int' },
-  { key: 'withRate', label: 'Left within 12 months, with it', format: 'pct' },
-  { key: 'without', label: 'Without it (person-months)', format: 'int' },
-  { key: 'withoutRate', label: 'Left within 12 months, without it', format: 'pct' },
-  { key: 'lift', label: 'Lift', format: 'times' },
+  {
+    key: 'withFactor',
+    label: 'With it (person-months)',
+    format: 'int',
+    drill: (r) => d.evidence(r.key, 'with', 'counted'),
+  },
+  {
+    key: 'withRate',
+    label: 'Left within 12 months, with it',
+    format: 'pct',
+    drill: (r) => d.evidence(r.key, 'with', 'left'),
+  },
+  {
+    key: 'without',
+    label: 'Without it (person-months)',
+    format: 'int',
+    drill: (r) => d.evidence(r.key, 'without', 'counted'),
+  },
+  {
+    key: 'withoutRate',
+    label: 'Left within 12 months, without it',
+    format: 'pct',
+    drill: (r) => d.evidence(r.key, 'without', 'left'),
+  },
+  { key: 'lift', label: 'Lift', format: 'times', drill: (r) => d.evidenceLift(r.key) },
   { key: 'definition', label: 'Definition' },
 ]
 

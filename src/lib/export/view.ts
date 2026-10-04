@@ -21,7 +21,7 @@ import { fmt } from '@/lib/format'
 import { cellFormat, columnAlign, columnFormat, sampleRow, sampleValue, visibleColumns } from './columns'
 import { downloadBlob, MIME } from './download'
 import { pngDataUrl, type RasterImage, svgToPng, withLightTheme } from './image'
-import { asOfLabel, fileStem, metaLine, stampLine, standardLine, viewLine } from './names'
+import { asOfLabel, fileStem, hasDataContext, metaLine, stampLine, standardLine, viewLine } from './names'
 import { exportNote } from './withheld'
 import { addTableSheet, newWorkbook, saveWorkbook, uniqueSheetNames, XL } from './xlsx'
 
@@ -138,10 +138,15 @@ function writeSummary(
   const tabs = [...new Set(entries.flatMap((e) => (e.group ? [e.group.label] : [])))]
   const facts: [string, string][] = [
     ...(tabs.length ? ([['Tabs', tabs.join(', ')]] as [string, string][]) : []),
-    ['Scope', meta.scope],
-    ['Window', meta.window],
-    ['As of', asOfLabel(meta.asOf)],
-    ['Data', meta.isSample ? 'Sample data (fictional company)' : 'Uploaded data'],
+    // A view that reads no people data (AI in HR) has no scope, window, as-of date or data source.
+    ...(hasDataContext(meta)
+      ? ([
+          ['Scope', meta.scope],
+          ['Window', meta.window],
+          ['As of', asOfLabel(meta.asOf)],
+          ['Data', meta.isSample ? 'Sample data (fictional company)' : 'Uploaded data'],
+        ] as [string, string][])
+      : []),
     ...(meta.standard
       ? ([['Data standard', standardLine(meta.standard).replace(/^Data standard: /, '')]] as [
           string,
@@ -370,26 +375,28 @@ function titleSlide(pptx: PptxGenJS, meta: ExportMeta) {
       color: C.ink2,
       margin: 0,
     })
-  s.addText(
-    [
-      { text: meta.scope, options: { breakLine: true } },
-      { text: meta.window, options: { breakLine: true } },
-      { text: `As of ${asOfLabel(meta.asOf)}`, options: { breakLine: !!meta.standard } },
-      ...(meta.standard ? [{ text: standardLine(meta.standard) }] : []),
-    ],
-    {
-      x: M,
-      y: 4.0,
-      w: W - 2 * M,
-      h: 1.45,
-      fontFace: FONT,
-      fontSize: 14,
-      color: C.ink2,
-      margin: 0,
-      valign: 'top',
-      paraSpaceAfter: 4,
-    },
-  )
+  const context = [
+    meta.scope,
+    meta.window,
+    meta.asOf ? `As of ${asOfLabel(meta.asOf)}` : '',
+    meta.standard ? standardLine(meta.standard) : '',
+  ].filter(Boolean)
+  if (context.length)
+    s.addText(
+      context.map((text, i) => ({ text, options: { breakLine: i < context.length - 1 } })),
+      {
+        x: M,
+        y: 4.0,
+        w: W - 2 * M,
+        h: 1.45,
+        fontFace: FONT,
+        fontSize: 14,
+        color: C.ink2,
+        margin: 0,
+        valign: 'top',
+        paraSpaceAfter: 4,
+      },
+    )
   if (meta.company)
     s.addText(meta.company, {
       x: M,
@@ -518,7 +525,7 @@ function tableRows(
   f: RegisteredFigure,
   showPay: boolean,
 ): { rows: PptxGenJS.TableRow[]; widths: number[]; more: number } {
-  const cols = visibleColumns(f.columns, showPay)
+  const cols = visibleColumns(f.columns, showPay, 'slides')
   const samples = cols.map((c) => sampleValue(f.rows, c.key))
   const firsts = cols.map((c) => sampleRow(f.rows, c.key))
   const formats = cols.map((c, i) => columnFormat(c, samples[i], firsts[i]))
@@ -633,7 +640,9 @@ export async function exportViewDeck(
 
   titleSlide(pptx, meta)
   const right = (m: ExportMeta, n: number) =>
-    `${viewLine(m)}  ·  ${m.scope}  ·  As of ${asOfLabel(m.asOf)}  ·  ${n}`
+    [viewLine(m), m.scope, m.asOf ? `As of ${asOfLabel(m.asOf)}` : '', String(n)]
+      .filter(Boolean)
+      .join('  ·  ')
 
   let slideNo = 1
   for (const [i, e] of entries.entries()) {

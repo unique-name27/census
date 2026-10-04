@@ -24,6 +24,7 @@ import {
   type SpendSummary,
   spendBy,
 } from './cycle'
+import { tagFindings } from './drillUses'
 import { buildFindings } from './findings'
 import { safeMedian, values } from './groups'
 import { buildCycleKpis, buildKpis } from './kpis'
@@ -289,7 +290,7 @@ export function computeComp(ctx: AnalyticsContext, settings: CycleSettings): Com
   return {
     ...core,
     kpis: buildKpis(core, spend),
-    findings: buildFindings(ctx, core),
+    findings: tagFindings(buildFindings(ctx, core)),
     uses: figureUses(core),
   }
 }

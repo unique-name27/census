@@ -81,6 +81,8 @@ export interface RetentionResult {
   keyTalent: RiskPersonRow[]
   /** Active people in scope whose latest rating is 4-5, for the share at risk. */
   highPerformers: number
+  /** Those people (the share's denominator). */
+  highPerformerPeople: Employee[]
   watchList: RiskPersonRow[]
   drivers: DriverRow[]
   /** Factors most of the company's high band shares. */
@@ -255,6 +257,7 @@ export function computeRetention(base: TalentBase, model: RiskModel): RetentionR
     scored,
     keyTalent,
     highPerformers: highPerformers.length,
+    highPerformerPeople: highPerformers.map((s) => s.e),
     watchList: rows,
     drivers,
     commonFactors,

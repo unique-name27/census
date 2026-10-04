@@ -304,7 +304,7 @@ export function RequisitionsTab() {
           id="recruiting-recruiter-load"
           uses={FIGURE_USES['recruiting-recruiter-load']}
           title="Recruiter load"
-          subtitle={`Open reqs and active candidates on ${formatDate(b.asOf)}, hires ${windowText(b.window)}`}
+          subtitle={`Open reqs and active candidates on ${formatDate(b.asOf)}, offers accepted ${windowText(b.window)}`}
           data={m.recruiters}
           columns={
             [
@@ -316,7 +316,12 @@ export function RequisitionsTab() {
                 drill: recDrill('openReqs', (r) => r.openReqs),
               },
               { key: 'active', label: 'Active', format: 'int', drill: recDrill('active', (r) => r.active) },
-              { key: 'hires', label: 'Hires', format: 'int', drill: recDrill('hires', (r) => r.hires) },
+              {
+                key: 'hires',
+                label: 'Offers accepted',
+                format: 'int',
+                drill: recDrill('hires', (r) => r.hires),
+              },
               {
                 key: 'medianWait',
                 label: 'Median wait',
@@ -344,6 +349,10 @@ export function RequisitionsTab() {
           }
           definitions={[
             { term: 'Active', text: 'Active candidates on the as-of date.' },
+            {
+              term: 'Offers accepted',
+              text: 'Candidates hired on the recruiter’s reqs, counted on the date the offer was accepted in the period.',
+            },
             {
               term: 'Median wait',
               text: 'Median days in the current stage across the recruiter’s active candidates.',

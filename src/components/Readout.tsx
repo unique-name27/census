@@ -104,19 +104,23 @@ function FindingItem({ finding, gate }: { finding: Finding; gate: TierGate | nul
     <li className="flex gap-2.5 border-t border-rule px-4 py-3.5 first:border-t-0">
       <SeverityIcon severity={finding.severity} className="mt-[3px] size-3.5 shrink-0" />
       <div className="min-w-0 flex-1">
-        <div className="flex items-start gap-2">
-          <h3 className="min-w-0 flex-1 text-[14px] leading-snug font-semibold [font-stretch:100%]">
+        {/* The badge follows the title's last word, so a narrow column never squeezes the title. */}
+        <div className="text-[14px] leading-snug">
+          <h3 className="inline font-semibold [font-stretch:100%]">
             <span className="sr-only">{SEVERITY_WORD[finding.severity]}: </span>
             {finding.title}
           </h3>
           {gate && (
-            <TierBadge
-              compact
-              tier={gate.tier}
-              explain={gate.explain}
-              dataset={gate.limiting.dataset}
-              className="-mt-px -mr-1"
-            />
+            <>
+              {' '}
+              <TierBadge
+                compact
+                tier={gate.tier}
+                explain={gate.explain}
+                dataset={gate.limiting.dataset}
+                className="ml-0.5 align-[-4px]"
+              />
+            </>
           )}
         </div>
         {gate && !gate.shown && <p className="mt-0.5 text-[12px] leading-snug text-muted">{gate.reason}</p>}

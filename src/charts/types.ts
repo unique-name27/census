@@ -25,6 +25,12 @@ export interface Column<T = any> {
   /** Optional width hint for tables, in ch. */
   width?: number
   /**
+   * Limit the column to one kind of output. 'sheets': tables on screen, Excel, CSV and copy, not
+   * slides (units and long series that a slide shows inside the value or has no room for).
+   * 'slides': slide tables only (a readable "+4 d" beside the numbers sheets carry).
+   */
+  only?: 'sheets' | 'slides'
+  /**
    * The records behind a cell (usually a count or a rate): the cell becomes a button that opens
    * the drill panel. Return null for cells with nothing behind them. Not used by exports.
    */
@@ -67,7 +73,10 @@ export interface RegisteredFigure {
 
 /** Context stamped on every export (header rows, file names, slide footers). */
 export interface ExportMeta {
+  /** The view's label, e.g. "People stats". */
   view: string
+  /** The view's key ('hrbp'); file names drop it where a figure id repeats it. */
+  viewKey?: string
   tab?: string
   scope: string
   window: string

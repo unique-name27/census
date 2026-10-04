@@ -8,8 +8,10 @@ import { DATASET_KEYS, type DatasetKey } from '@/data/schema'
 import { DEFAULT_FILTERS } from '@/data/scope'
 import type { SourceMeta } from '@/data/store'
 import { DASH } from '@/lib/format'
+import { SAMPLE_AGENTS } from '@/views/ai/catalog/sample'
+import type { Agent } from '@/views/ai/catalog/types'
 import { VIEWS } from '@/views/registry'
-import { gateHeadline } from './headlineGate'
+import { folderHeadlines, gateHeadline } from './headlineGate'
 
 /** Just enough of a quality index: every number gets this tier. */
 const fixed = (tier: Limiting['tier'], dataset: DatasetKey = 'requisitions') => ({
@@ -70,8 +72,33 @@ describe('folder-tab headlines on the messy sample', () => {
       ]),
     )
 
-  it('every headline declares the fields it is computed from', () => {
-    for (const v of VIEWS) expect(v.headline(ctx('bronze')).uses?.length, v.key).toBeGreaterThan(0)
+  it('every headline over people data declares the fields it is computed from', () => {
+    // A view that reads no datasets (AI in HR counts its agent catalog) has no fields to declare.
+    for (const v of VIEWS.filter((x) => x.datasets.length > 0))
+      expect(v.headline(ctx('bronze')).uses?.length, v.key).toBeGreaterThan(0)
+  })
+
+  it('never gates a headline that reads no people data', () => {
+    const noData = VIEWS.filter((v) => v.datasets.length === 0)
+    expect(noData.map((v) => v.key)).toEqual(['ai'])
+    for (const standard of ['gold', 'silver', 'bronze'] as const)
+      for (const v of noData) expect(shown(ctx(standard))[v.key], `${v.key} ${standard}`).toBe(true)
+  })
+
+  it('counts the AI agent catalog it is given, so the tab follows edits, removals and imports', () => {
+    const c = ctx('bronze')
+    const ai = (agents: readonly Agent[]) =>
+      folderHeadlines(VIEWS, c, agents).find((_, i) => VIEWS[i].key === 'ai')
+    expect(ai(SAMPLE_AGENTS)).toMatchObject({ value: '20', label: 'sample agents', hidden: null })
+    expect(ai(SAMPLE_AGENTS.slice(1))).toMatchObject({ value: '19', label: 'sample agents' })
+    expect(ai([{ ...SAMPLE_AGENTS[0], status: 'Pilot' }, ...SAMPLE_AGENTS.slice(1)])?.label).toBe('agents')
+    // The other tabs are the views' own headlines.
+    const other = folderHeadlines(VIEWS, c, [])
+    for (const [i, v] of VIEWS.entries())
+      if (v.key !== 'ai')
+        expect(other[i].value, v.key).toBe(
+          gateHeadline(v.headline(c), c.quality, c.standard, v.datasets).value,
+        )
   })
 
   it('under Production shows only the gold headlines, as the tiles on each page do', () => {
@@ -82,6 +109,7 @@ describe('folder-tab headlines on the messy sample', () => {
       services: false, // HR cases is bronze
       talent: false, // Succession is bronze
       comp: true,
+      ai: true, // The agent catalog reads no datasets
     })
   })
 

@@ -8,6 +8,7 @@ import { fmt } from '@/lib/format'
 import { isMaterialChange } from '@/lib/stats'
 import type { TalentBase } from './base'
 import type { TalentDrills } from './drills'
+import { tagKpis } from './drillUses'
 import type { LearningResult } from './learning'
 import type { TalentLineage } from './lineage'
 import { HIGH_GUIDELINE, type PerformanceResult } from './performance'
@@ -48,7 +49,7 @@ export function buildKpis(x: {
   const prior = learning.prior
   const left = perf.ratedLeft
 
-  return [
+  return tagKpis([
     {
       id: 'talent-rated',
       label: 'Rated in latest cycle',
@@ -66,6 +67,8 @@ export function buildKpis(x: {
       definition:
         'Share of employees active at the as-of date who have a rating in the latest review cycle. People need about 90 days in role to be rated, so recent hires lower this.',
       drill: drill.ratedActive(),
+      // "1,280 of 1,450 active employees": the 1,280 rated.
+      noteDrill: hasReviews && cycle && !small(perf.activeCount) ? drill.ratedActive() : null,
       uses: uses['talent-rated'],
     },
     {
@@ -84,6 +87,8 @@ export function buildKpis(x: {
       tab: 'performance',
       definition: `Share of people rated in ${cycle ?? 'the latest cycle'} who received a 4 or 5, including people who have left since the cycle closed. The guideline is ${fmt(HIGH_GUIDELINE, 'pct0')} (25% rated 4, 10% rated 5).`,
       drill: drill.highPerformers(),
+      // "1,300 rated, incl. 20 who have left": everyone rated in the cycle.
+      noteDrill: hasReviews && !small(perf.rated) ? drill.rated() : null,
       uses: uses['talent-high-performers'],
     },
     {
@@ -101,6 +106,7 @@ export function buildKpis(x: {
       definition:
         'Share of active employees assessed for potential in the latest annual cycle who were rated High potential.',
       drill: drill.hipo(null, null, 'high'),
+      noteDrill: succ.potentialCycle && !small(succ.hipoAssessed) ? drill.hipo(null, null, 'high') : null,
       uses: uses['talent-high-potentials'],
     },
     {
@@ -118,6 +124,7 @@ export function buildKpis(x: {
       definition:
         'Share of roles marked Critical with at least one named successor who is Ready now and still employed.',
       drill: drill.coverage(),
+      noteDrill: base.has.succession && succ.critical ? drill.coverage() : null,
       uses: uses['talent-succession-coverage'],
     },
     {
@@ -142,6 +149,7 @@ export function buildKpis(x: {
       definition:
         'Voluntary exits in the period marked regrettable whose last rating before leaving was 4 or 5. Needs termination type, the regrettable flag and reviews. The trend shows the last 8 quarters.',
       drill: drill.regrettedHigh('current'),
+      deltaDrill: canRegret ? drill.regrettedHigh('prior') : null,
       uses: uses['talent-regretted-high'],
     },
     {
@@ -164,6 +172,10 @@ export function buildKpis(x: {
       definition:
         'Required assignments due in the period that were completed on or before the due date, for employees still employed on the due date (contractors and interns are not counted). When the courses due in the two periods differ a lot, the change is shown in gray.',
       drill: cur.rate != null ? drill.onTime(null, 'onTime') : null,
+      deltaDrill: cur.rate != null && prior.rate != null ? drill.onTimePrior() : null,
+      // "1,200 assignments due": all of them, with how each turned out.
+      noteDrill:
+        base.has.learning && learning.hasDueDates && !small(cur.due) ? drill.onTime(null, 'due') : null,
       uses: uses['talent-training-on-time'],
     },
     {
@@ -180,7 +192,9 @@ export function buildKpis(x: {
       tab: 'retention',
       definition: `Active employees whose latest rating is 4 or 5 and whose flight-risk score is in the high band: ${highBandText(risk)}. People with the same score share a band, so the band is not exactly 10%.`,
       drill: drill.keyTalent(),
+      // "12.0% of 300 active people rated 4-5": those 300 people.
+      noteDrill: hasReviews && ret.highPerformers >= MIN_GROUP ? drill.activeHighPerformers() : null,
       uses: uses['talent-key-talent-risk'],
     },
-  ]
+  ])
 }

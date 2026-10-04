@@ -33,6 +33,7 @@ import {
   timeToResolve,
 } from './cases'
 import { type DrillScope, drillScope } from './drills'
+import { tagFindings } from './drillUses'
 import {
   type CaseColumns,
   type CaseFact,
@@ -163,22 +164,24 @@ export function compute(ctx: AnalyticsContext): ServicesModel {
     lineage: L,
   })
 
-  const findings = buildFindings({
-    facts: cases,
-    tx,
-    window,
-    asOf,
-    people: ctx.org.byId,
-    categories,
-    channels,
-    reopen,
-    finalPay,
-    newHireSites,
-    newHireRegions,
-    small,
-    scope,
-    lineage: L,
-  })
+  const findings = tagFindings(
+    buildFindings({
+      facts: cases,
+      tx,
+      window,
+      asOf,
+      people: ctx.org.byId,
+      categories,
+      channels,
+      reopen,
+      finalPay,
+      newHireSites,
+      newHireRegions,
+      small,
+      scope,
+      lineage: L,
+    }),
+  )
 
   const aged = small ? [] : agedCases(cases, 14)
   const levels = scorecard({

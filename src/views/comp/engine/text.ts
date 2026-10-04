@@ -15,6 +15,18 @@ export function pts2(v: number | null | undefined): string {
   return `${sign}${s} pts`
 }
 
+/** A share as `fmt(v, 'pct2')` shows it, in percent at two decimals: 3.54 for 0.035449. */
+const shownPct2 = (v: number): number => Number((v * 100).toFixed(2))
+
+/**
+ * a − b between two shares, worked out from the values a reader sees (both at two decimals, as
+ * pct2 shows them), so "3.54%, 0.10 pts above the 3.44%" always adds up. A fraction, for pts2.
+ */
+export function shownGap(a: number | null | undefined, b: number | null | undefined): number | null {
+  if (!isNum(a) || !isNum(b)) return null
+  return Math.round((shownPct2(a) - shownPct2(b)) * 100) / 10_000
+}
+
 /** "a", "a and b", "a, b and c" */
 export function joinAnd(xs: readonly string[]): string {
   if (xs.length <= 1) return xs[0] ?? ''

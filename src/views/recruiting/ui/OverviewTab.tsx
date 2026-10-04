@@ -178,14 +178,14 @@ export function OverviewTab() {
           <Figure
             id="recruiting-hires-by-month"
             uses={FIGURE_USES['recruiting-hires-by-month']}
-            title="Hires by month"
-            subtitle="Offers accepted per month, last 24 months"
+            title="Offers accepted by month"
+            subtitle="Candidates hired, by the month the offer was accepted, last 24 months"
             data={m.hiresByMonth}
             columns={[
               { key: 'month', label: 'Month' },
               {
                 key: 'hires',
-                label: 'Hires',
+                label: 'Offers accepted',
                 format: 'int',
                 drill: (r) => drillIf(r.hires, () => hiresMonthDrill(b, r)),
               },
@@ -194,11 +194,11 @@ export function OverviewTab() {
             empty={b.apps.length ? null : NEED_CANDIDATES}
             definitions={[
               {
-                term: 'Hire',
-                text: 'A candidate with status Hired, counted in the month the offer was accepted.',
+                term: 'Offers accepted',
+                text: 'Candidates with status Hired, counted in the month the offer was accepted. People stats counts hires by start date in the Employees data, so its monthly hires can differ.',
               },
             ]}
-            note={`${plural(hiresTotal, 'hire')} in 24 months · ${asOfNote(b.asOf)}`}
+            note={`${plural(hiresTotal, 'offer accepted', 'offers accepted')} in 24 months · ${asOfNote(b.asOf)}`}
           >
             <Columns
               data={m.hiresByMonth}
@@ -208,7 +208,7 @@ export function OverviewTab() {
               format="int"
               labels={false}
               onSelect={(d) => drill(() => hiresMonthDrill(b, d))}
-              ariaLabel="Hires by month"
+              ariaLabel="Offers accepted by month"
             />
           </Figure>
           <Figure

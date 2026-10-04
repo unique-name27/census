@@ -7,14 +7,15 @@ import { formatDate } from '@/lib/dates'
 import { fmt, plural } from '@/lib/format'
 import type { TalentModel } from '../engine'
 import { listText } from '../engine/base'
+import { drillsWithUses } from '../engine/drillUses'
 import { backTestSummary, factorDef, RISK_BANDS } from '../engine/risk'
 import { scopeColors } from './colors'
 import {
   backTestColumns,
   bandColumns,
   driverColumns,
-  EVIDENCE_COLUMNS,
   EXIT_PERSON_COLUMNS,
+  evidenceColumns,
   PROMOTION_OVERDUE_COLUMNS,
   riskPersonColumns,
 } from './columns'
@@ -79,6 +80,11 @@ export function RetentionTab({ m }: { m: TalentModel }) {
     { band: b.band, series: 'Company', share: b.companyShare },
   ])
   const byPerson = { onRowClick: (r: { employeeId: string }) => openPerson(r.employeeId) }
+  // Each figure's drills carry its fields, so the panel shows that figure's tier.
+  const bandsDrill = drillsWithUses(m.drill, m.uses['talent-risk-bands'])
+  const backTestDrill = drillsWithUses(m.drill, m.uses['talent-risk-back-test'])
+  const driversDrill = drillsWithUses(m.drill, m.uses['talent-risk-drivers'])
+  const factorsDrill = drillsWithUses(m.drill, m.uses['talent-risk-factors'])
 
   // One people table, three views.
   const peopleRows =
@@ -113,7 +119,7 @@ export function RetentionTab({ m }: { m: TalentModel }) {
               : `Share of active employees in each band, ${ctx.scopeLabel} against the company, as of ${asOf}`
           }
           data={ret.bands}
-          columns={bandColumns(m.drill)}
+          columns={bandColumns(bandsDrill)}
           definitions={[DEF.flightRisk, DEF.bands]}
           note={`${plural(ret.scored, 'person', 'people')} scored · company-wide the high band is the top ${highShare} (score ${fmt(risk.cutHigh)} and up) and the medium band the next ${mediumShare}`}
           span={4}
@@ -128,7 +134,7 @@ export function RetentionTab({ m }: { m: TalentModel }) {
               tone={(d) => (d.band === 'High' ? 'default' : 'deemph')}
               labels
               height={220}
-              onSelect={(d) => drill(m.drill.band(d.band, 'scope'))}
+              onSelect={(d) => drill(bandsDrill.band(d.band, 'scope'))}
               ariaLabel="People by flight-risk band"
             />
           ) : (
@@ -142,9 +148,9 @@ export function RetentionTab({ m }: { m: TalentModel }) {
               xOrder={RISK_BANDS}
               format="pct0"
               height={220}
-              onSelect={(d) => drill(m.drill.band(d.band, 'scope'))}
+              onSelect={(d) => drill(bandsDrill.band(d.band, 'scope'))}
               onSelectSegment={(d) =>
-                drill(m.drill.band(d.band, d.series === 'Company' ? 'company' : 'scope'))
+                drill(bandsDrill.band(d.band, d.series === 'Company' ? 'company' : 'scope'))
               }
               ariaLabel="Share of people in each flight-risk band, this scope against the company"
             />
@@ -156,7 +162,7 @@ export function RetentionTab({ m }: { m: TalentModel }) {
           title="Exit rate by risk band, back-tested"
           subtitle={`Scored as of ${formatDate(bt.scoredOn)} with points learned only from exits known by then; ${who} ${bt.outcome.label}, whole company`}
           data={bt.bands}
-          columns={backTestColumns(m.drill)}
+          columns={backTestColumns(backTestDrill)}
           definitions={[DEF.backTest, DEF.bands]}
           note={`${backTestSummary(bt)} ${plural(bt.population, 'person', 'people')} scored, ${fmt(bt.leavers)} left.${
             bt.learned
@@ -184,7 +190,7 @@ export function RetentionTab({ m }: { m: TalentModel }) {
             }
             labels
             height={220}
-            onSelect={(d) => drill(m.drill.backTest(d.band, 'left'))}
+            onSelect={(d) => drill(backTestDrill.backTest(d.band, 'left'))}
             ariaLabel="Exit rate within 12 months by flight-risk band a year earlier"
           />
         </Figure>
@@ -194,7 +200,7 @@ export function RetentionTab({ m }: { m: TalentModel }) {
           title="What drives risk"
           subtitle="Share of people in the high band with each factor"
           data={drivers}
-          columns={driverColumns(m.drill)}
+          columns={driverColumns(driversDrill)}
           definitions={[DEF.flightRisk, DEF.mainReason]}
           note={`${plural(highCount, 'person', 'people')} in the high band · the number after each bar counts people for whom it is the main reason`}
           span={4}
@@ -207,7 +213,7 @@ export function RetentionTab({ m }: { m: TalentModel }) {
             format="pct0"
             domain={[0, 1]}
             secondary={(d) => (d.topReason ? `main for ${fmt(d.topReason)}` : null)}
-            onSelect={(d) => drill(m.drill.driver(d.key, 'any'))}
+            onSelect={(d) => drill(driversDrill.driver(d.key, 'any'))}
             ariaLabel="Share of high-band people with each factor"
           />
         </Figure>
@@ -227,7 +233,7 @@ export function RetentionTab({ m }: { m: TalentModel }) {
               : 'Not enough exit history to learn from: every factor keeps its default points'
           }
           data={evidence}
-          columns={EVIDENCE_COLUMNS}
+          columns={evidenceColumns(factorsDrill)}
           definitions={[DEF.flightRisk, DEF.lift, DEF.backTest]}
           note={`${pointsNote}. A person counts once at each month-end they were active.${offNote}`}
           tableOnly

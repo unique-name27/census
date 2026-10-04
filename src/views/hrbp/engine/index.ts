@@ -8,6 +8,7 @@ import type { FieldRef } from '@/data/quality/fieldRef'
 import { headcountAt } from '@/lib/people'
 import { type AttritionModel, computeAttrition } from './attrition'
 import { type Prep, prepare, quarterBlocks } from './base'
+import { tagFindings } from './drillUses'
 import { computeFindings } from './findings'
 import { computeKpis, type KpiModel } from './kpis'
 import { all, HEADCOUNT, ifPresent, PAST_HEADCOUNT, resolveLineage, scopeLineage } from './lineage'
@@ -40,7 +41,7 @@ export function computeHrbp(ctx: AnalyticsContext): HrbpModel {
   const attrition = computeAttrition(prep)
   const org = computeOrg(prep)
   const scorecard = computeScorecard(prep)
-  const findings = computeFindings(prep, { kpi, attrition, org, workforce })
+  const findings = tagFindings(computeFindings(prep, { kpi, attrition, org, workforce }))
   return {
     prep,
     kpi,

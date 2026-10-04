@@ -7,24 +7,16 @@ import { type KeyboardEvent, useEffect, useMemo, useRef } from 'react'
 import { Sparkline } from '@/charts/Sparkline'
 import { goTo } from '@/components/navigation'
 import { cx, Tip } from '@/components/ui'
-import { type AnalyticsContext, useAnalytics } from '@/data/context'
+import { useAnalytics } from '@/data/context'
 import { useCensus } from '@/data/store'
 import { DASH } from '@/lib/format'
+import { useAiAgents } from '@/views/ai/state'
 import { VIEWS } from '@/views/registry'
-import type { Headline, ViewDef } from '@/views/types'
-import { type GatedHeadline, gateHeadline } from './headlineGate'
+import type { ViewDef } from '@/views/types'
+import { folderHeadlines, type GatedHeadline } from './headlineGate'
 import { revealInStrip, rovingIndex } from './keyboard'
 
 export const VIEW_PANEL_ID = 'census-view'
-
-function safeHeadline(view: ViewDef, ctx: AnalyticsContext): Headline {
-  try {
-    return view.headline(ctx)
-  } catch (err) {
-    console.error(`Headline for ${view.key} failed`, err)
-    return { value: DASH, label: '' }
-  }
-}
 
 /** Concave corners where the open tab meets the desk, so the tab reads as part of the page. */
 function Flares() {
@@ -99,10 +91,10 @@ const capLabel = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 export function FolderTabs() {
   const ctx = useAnalytics()
   const current = useCensus((s) => s.route.view)
-  const headlines = useMemo(
-    () => VIEWS.map((v) => gateHeadline(safeHeadline(v, ctx), ctx.quality, ctx.standard, v.datasets)),
-    [ctx],
-  )
+  // The AI in HR tab counts the agent catalog kept in this browser, not part of ctx: subscribe to
+  // it and pass it in, so an edit, removal or import updates the tab at once.
+  const agents = useAiAgents((s) => s.agents)
+  const headlines = useMemo(() => folderHeadlines(VIEWS, ctx, agents), [ctx, agents])
   const strip = useRef<HTMLDivElement>(null)
   const tabs = useRef<(HTMLButtonElement | null)[]>([])
   const activeIndex = VIEWS.findIndex((v) => v.key === current)

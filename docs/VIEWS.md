@@ -455,7 +455,7 @@ Placement: the last folder tab, "AI in HR". Folder-tab headline: number of agent
 plus "sample" while the catalog is the sample.
 
 Each agent has:
-- name, HR area (Recruiting, Onboarding, HR business partners, HR ops, Talent,
+- name, HR area (Recruiting, Onboarding, People stats, HR ops, Talent,
   Compensation, Compliance, People ops), audience (HR team, managers, employees) and status
   (Sample, Pilot, Live)
 - a one-sentence description, "Use it for" (2-4 bullets) and "Don't use it for" (guardrails, e.g.
@@ -463,21 +463,28 @@ Each agent has:
 - example prompts, each with a Copy button
 - the data it draws on (e.g. Greenhouse, the HRIS, the Hire-to-Retire Atlas, policy pages)
 - owner team, and an "Open in Glean" link (opens in a new tab). Sample links are labeled "Sample
-  link".
+  link" whatever the agent's status, so a Pilot or Live agent that still has its sample link says so.
 
 Layout:
 - A short responsible-use note at the top, one or two plain sentences: agents assist and people
   decide, and only use agents approved for the data you share with them.
-- Filters: HR area, audience, status, and a search over names, descriptions and use cases.
+- Filters: HR area, audience, status, and a search over names, descriptions and use cases. The
+  search matches words where they start ("verif" finds "verification"), and single characters only
+  as whole words, so "1:1" finds Leader 1:1 prep and not every agent with a 1 in it.
 - Agents grouped by HR area, as sheets in a responsive grid. This is the one place in Census where
   cards are the right form, because each agent is an object people pick from.
 - A compact "Agents by area" summary. Its counts filter the list.
-- The catalog as a table-only Figure, so it exports to CSV or Excel like every other table.
+- The catalog as a table-only Figure, so it exports to CSV or Excel like every other table. A slide
+  shows only name, HR area, audience, status, description and owner; the long-text columns stay in
+  Excel and CSV.
+- It reads no datasets, so the view shows no filter row, no scope, window or as-of line and no tier
+  badges, and its exports carry no scope, data-standard or "Sample data" lines.
 
 Editing (the catalog is a sample to be replaced):
 - Edit in place: add, edit and remove agents, and reset to the sample.
 - Import from and export to an Excel sheet named "AI agents", with the same columns as the
-  catalog.
+  catalog. A row with no status (or an unknown one) is imported as Pilot, as the Add dialog
+  defaults, and the import says so; it is never marked Sample.
 - Kept in this browser like the Tools links, with the same safe-link rule (http/https only).
 
 Light links from the other views: each view's header area shows one quiet line, "AI agents for
@@ -487,7 +494,7 @@ Sample catalog (about 20 agents):
 - Recruiting: Job description writer, Interview kit builder, Candidate scorecard summary,
   Offer justification prep
 - Onboarding: New hire guide (first-week questions), Start readiness checker
-- HR business partners: Leader 1:1 prep, Reorg impact brief, Policy answers by country
+- People stats: Leader 1:1 prep, Reorg impact brief, Policy answers by country
 - HR ops: HR help desk triage, Leave and benefits navigator, Employment verification
   drafter
 - Talent: Review writing coach, Calibration brief, Career path explorer, Learning recommender
@@ -495,6 +502,6 @@ Sample catalog (about 20 agents):
 - Compliance: Export control screening guide (process steps only, never nationality decisions)
 - People ops: Process finder for the Hire-to-Retire Atlas
 
-View-to-area mapping for those links: Recruiting → Recruiting; People stats → HR business partners;
-Org chart → HR business partners; HR ops → HR ops and People ops; Talent → Talent; Compensation →
+View-to-area mapping for those links: Recruiting → Recruiting; People stats → People stats;
+Org chart → People stats; HR ops → HR ops and People ops; Talent → Talent; Compensation →
 Compensation. (Onboarding and Compliance link from their own views when those exist.)

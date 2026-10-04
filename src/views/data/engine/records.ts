@@ -1,22 +1,10 @@
 /**
- * The loaded rows behind the Data room's numbers, for the drill panel: a dataset's rows (the
- * first ones, when there are many), the rows an import-log entry is about, and where a number
- * sits in a sentence so it can be underlined in place. Pure (no React); the UI builds the specs.
+ * The loaded rows behind the Data room's numbers, for the drill panel: the rows an import-log
+ * entry is about, and where a number sits in a sentence so it can be underlined in place. Pure
+ * (no React); the UI builds the specs.
  */
 import type { ImportIssue, IssueAction, IssueCode } from '@/data/import'
 import type { DatasetDef } from '@/data/schema'
-
-/** Rows a Data room drill lists at most; the note says when there are more. */
-export const DRILL_LIMIT = 2000
-
-/** The first `limit` rows, in file order, and how many there are in all. */
-export function firstRecords<R>(
-  rows: readonly R[],
-  limit = DRILL_LIMIT,
-): { rows: readonly R[]; total: number; capped: boolean } {
-  const capped = rows.length > limit
-  return { rows: capped ? rows.slice(0, limit) : rows, total: rows.length, capped }
-}
 
 /**
  * A row's identity as the importer writes it into the log (`ImportIssue.id`): the dataset's row

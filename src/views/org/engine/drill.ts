@@ -352,7 +352,7 @@ export function removedDrill(
 export function spanChangesDrill(
   before: OrgTree,
   after: OrgTree,
-  spans: readonly { id: string; before: number; after: number; delta: number }[],
+  spans: readonly { id: string; before: number; after: number; change: string }[],
   scope: DrillScope,
 ): DrillSpec<'employees'> | null {
   const byId = new Map(spans.map((s) => [s.id, s]))
@@ -366,11 +366,11 @@ export function spanChangesDrill(
         columns: [
           { key: 'spanBefore', label: 'Direct reports today', format: 'int' },
           { key: 'spanAfter', label: 'In the scenario', format: 'int' },
-          { key: 'spanDelta', label: 'Change', format: 'int' },
+          { key: 'spanDelta', label: 'Change', format: 'text' },
         ],
         values: (e) => {
           const s = byId.get(e.employeeId)
-          return { spanBefore: s?.before, spanAfter: s?.after, spanDelta: s?.delta }
+          return { spanBefore: s?.before, spanAfter: s?.after, spanDelta: s?.change }
         },
       },
     },

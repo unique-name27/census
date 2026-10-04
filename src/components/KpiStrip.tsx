@@ -1,9 +1,11 @@
 /**
  * The row of headline numbers at the top of a view: one sheet, tiles separated by hairlines (not
  * cards). Each tile carries its tier, comparison, a trend and a definition; a tile with `tab`
- * opens that tab, and a tile with `drill` lets the reader click the value to see the records
- * behind it. A number below the data standard shows "—" with the reason and a link to its
- * dataset. The strip also registers as a "Key figures" table so view exports include it.
+ * opens that tab. Every number on a tile can open the records behind it: the value (`drill`),
+ * the change (`deltaDrill`, the comparison's records) and the note (`noteDrill`, its subset).
+ * A number below the data standard shows "—" with the reason and a link to its dataset. The
+ * strip also registers as a "Key figures" table (numbers, units and trend points) so view
+ * exports include it.
  */
 import { openDatasetQuality } from '@/app/datasetFocus'
 import { Sparkline } from '@/charts/Sparkline'
@@ -16,8 +18,7 @@ import {
   type DeltaTone,
   deltaDirection,
   deltaTone,
-  KPI_COLUMNS,
-  KPI_COLUMNS_WITH_TIER,
+  kpiColumns,
   kpiDeltaText,
   kpiRows,
   kpiValueText,
@@ -48,7 +49,17 @@ function Delta({ kpi }: { kpi: Kpi }) {
         className={cx('inline-flex shrink-0 items-center gap-0.5 font-medium', TONE_TEXT[deltaTone(kpi)])}
       >
         {Arrow && <Arrow className="size-3" strokeWidth={2} />}
-        {text}
+        {kpi.deltaDrill ? (
+          <Drill
+            spec={kpi.deltaDrill}
+            className="relative z-10"
+            label={`${kpi.label}: show the comparison records behind ${text}${kpi.deltaLabel ? ` ${kpi.deltaLabel}` : ''}`}
+          >
+            {text}
+          </Drill>
+        ) : (
+          text
+        )}
       </span>
       {kpi.deltaLabel && <span className="truncate text-muted">{kpi.deltaLabel}</span>}
     </div>
@@ -158,7 +169,21 @@ function Tile({ kpi, gate }: { kpi: Kpi; gate: TierGate | null }) {
           {SUPPRESSED_NOTE}
         </div>
       ) : (
-        kpi.note && <div className="mt-1 text-[12px] leading-snug text-muted">{kpi.note}</div>
+        kpi.note && (
+          <div className="mt-1 text-[12px] leading-snug text-muted">
+            {kpi.noteDrill ? (
+              <Drill
+                spec={kpi.noteDrill}
+                className="relative z-10 text-left"
+                label={`${kpi.label}: show the records behind "${kpi.note}"`}
+              >
+                {kpi.note}
+              </Drill>
+            ) : (
+              kpi.note
+            )}
+          </div>
+        )
       )}
       {gate && (
         // Its own row at the foot of the tile, so the label keeps the full width and badges line up.
@@ -194,7 +219,7 @@ export function KpiStrip({
   useTableFigure({
     id,
     title,
-    columns: tiered ? KPI_COLUMNS_WITH_TIER : KPI_COLUMNS,
+    columns: kpiColumns(kpis, { tiered, gates }),
     rows: kpiRows(kpis, tiered ? gates : undefined),
   })
   if (!kpis.length) return null

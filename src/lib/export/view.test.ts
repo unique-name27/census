@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ExportMeta, RegisteredFigure } from '@/charts/types'
+import { withoutDataContext } from './names'
 import {
   buildViewWorkbook,
   entrySheetName,
@@ -104,6 +105,23 @@ describe('buildViewWorkbook', () => {
       { text: 'Pipeline' },
       { text: 'Readout', link: "#'Pipeline · Readout'!A1" },
     ])
+  })
+
+  it('leaves scope, window, as-of and data rows off the Summary for a view that reads no data', async () => {
+    const wb = await buildViewWorkbook([fig('ai-agent-catalog', 'Agent catalog')], withoutDataContext(meta), {
+      showPay: false,
+      images: false,
+    })
+    const ws = wb.getWorksheet('Summary')!
+    const keys: string[] = []
+    ws.eachRow((row) => {
+      keys.push(String(row.getCell(1).value ?? ''))
+    })
+    for (const k of ['Scope', 'Window', 'As of', 'Data', 'Data standard']) expect(keys).not.toContain(k)
+    expect(keys).toContain('Exported')
+    const sheet = wb.getWorksheet('Agent catalog')!
+    expect(String(sheet.getCell(3, 1).value)).toBe('Recruiting · All tabs')
+    expect(String(sheet.getCell(4, 1).value)).toBe('Company confidential')
   })
 
   it('keeps a single tab export as before', async () => {

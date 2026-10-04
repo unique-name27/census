@@ -92,6 +92,13 @@ const processes: AtlasProcess[] = [
     sla: 'Third-party verifications 2 business days; employee letters 3 business days; statutory certificates by local deadline (Karnataka 7 days from request; China at termination)',
   },
   {
+    id: 'DS-08',
+    short: 'policy governance',
+    name: 'Policy lifecycle governance',
+    owner: 'People Ops (HR Policy & Governance)',
+    sla: 'Standard change 45 business days intake-to-publication; legally mandated change live before the statutory effective date; every policy reviewed at least annually',
+  },
+  {
     id: 'EQ-01',
     short: 'equity administration',
     name: 'Equity grant administration',
@@ -100,7 +107,7 @@ const processes: AtlasProcess[] = [
   },
   {
     id: 'CO-02',
-    short: 'compensation change',
+    short: 'compensation review',
     name: 'Annual compensation review',
     owner: 'Total Rewards',
     sla: "About 12 weeks from budget approval to letters; pay changes reconciled on the first payroll after each country's effective date",

@@ -26,6 +26,7 @@ import {
 } from './drills'
 import { type CaseFact, caseColumns, caseFacts } from './facts'
 import { compute } from './index'
+import { openAt } from './kpis'
 import { fixtureContext, kase, sampleContext, win } from './testkit'
 
 const ctx = sampleContext()
@@ -191,6 +192,13 @@ describe('drills on the sample company', () => {
     const d = spec(oneCaseDrill(s, row.fact))
     expect(d.rows).toHaveLength(1)
     expect(d.title).toBe(`Case ${row.caseId}`)
+    // The aging table's age, target and days past target cells open this case, and it shows them.
+    const t = buildDrillTable(d, ctx)
+    expect(t.rows[0]).toMatchObject({
+      svAgeDays: row.ageDays,
+      svTargetDays: row.targetDays,
+      svDaysPastTarget: row.daysPastTarget,
+    })
   })
 })
 
@@ -257,5 +265,62 @@ describe('privacy', () => {
       for (const g of groups)
         expect(resolutionDrill(model.scope, g.rows, g.id) != null, g.id).toBe(g.rate != null)
     }
+  })
+})
+
+describe('KPI changes and notes open the records they state', () => {
+  const num = (text: string | null | undefined, re: RegExp) => Number(text!.match(re)![1].replace(/\D/g, ''))
+  const prior = ctx.prior
+  const prevOpened = m.cases.filter((f) => f.opened >= prior.start && f.opened <= prior.end)
+
+  it('counts: the change opens the prior period, the note its subset', () => {
+    const opened = kpi('cases-opened')
+    expect(shown(spec(opened.deltaDrill), prevOpened)).toBe(opened.value! - opened.delta!)
+    expect(spec(opened.deltaDrill).subtitle).toBe(`${prior.label} · ${s.scope}`)
+
+    const backlog = kpi('open-backlog')
+    const before = openAt(m.cases, prior.end)
+    expect(shown(spec(backlog.deltaDrill), before)).toBe(backlog.value! - backlog.delta!)
+    const open = m.cases.filter((f) => f.open)
+    const older = open.filter((f) => (f.ageDays ?? 0) > 14)
+    const note = spec(backlog.noteDrill)
+    expect(shown(note, older)).toBe(older.length)
+    expect(backlog.note).toBe(`${Math.round((100 * older.length) / open.length)}% older than 14 d`)
+    expect(note.note).toContain(`Share = ${older.length} ÷ ${open.length} open cases.`)
+  })
+
+  it('rates: the change opens the prior cases with the prior rate in the note, the note the cases judged', () => {
+    for (const id of ['resolution-sla', 'response-sla']) {
+      const k = kpi(id)
+      const d = spec(k.deltaDrill)
+      const [met, judged] = d.note!.match(/\d[\d,]*/g)!.map((x) => Number(x.replace(/\D/g, '')))
+      expect(met / judged, id).toBeCloseTo(k.value! - k.delta!, 10)
+      const n = num(k.note, /([\d,]+) cases/)
+      const opened = m.summary.rows.opened.filter(
+        (f) => (id === 'resolution-sla' ? f.resolutionMet : f.responseMet) != null,
+      )
+      expect(shown(spec(k.noteDrill), opened), id).toBe(n)
+    }
+    const ttr = kpi('time-to-resolve')
+    expect(spec(ttr.deltaDrill).subtitle).toBe(`${prior.label} · ${s.scope}`)
+    const resolved = m.summary.rows.resolved.filter((f) => f.resolutionHours != null)
+    expect(shown(spec(ttr.noteDrill), resolved)).toBe(num(ttr.note, /([\d,]+) cases resolved/))
+    const csat = kpi('csat')
+    const rated = m.summary.rows.resolved.filter((f) => f.csat != null)
+    expect(shown(spec(csat.noteDrill), rated)).toBe(num(csat.note, /([\d,]+) responses/))
+    const tx = kpi('tx-on-time')
+    expect(spec(tx.noteDrill).rows.length).toBe(num(tx.note, /([\d,]+) due/))
+    const [ok, due] = spec(tx.deltaDrill)
+      .note!.match(/\d[\d,]*/g)!
+      .map((x) => Number(x.replace(/\D/g, '')))
+    expect(ok / due).toBeCloseTo(tx.value! - tx.delta!, 10)
+  })
+
+  it('every drill on a tile carries the tile fields', () => {
+    for (const k of m.kpis)
+      for (const src of [k.drill, k.deltaDrill, k.noteDrill]) {
+        const d = resolveDrill(src)
+        if (d) expect(d.uses, k.id).toEqual(k.uses)
+      }
   })
 })

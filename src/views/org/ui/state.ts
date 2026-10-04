@@ -30,8 +30,9 @@ export interface ChartPrefs {
   showFlags: boolean
 }
 // Business unit by default: six units fit the eight color slots, where most departments would
-// fold into "Other" at the executive levels.
-const DEFAULT_PREFS: ChartPrefs = { colorBy: 'businessUnit', showReqs: false, showFlags: true }
+// fold into "Other" at the executive levels. Open roles stay off unless switched on: the team
+// chose to keep open requisitions out of the org chart by default.
+export const DEFAULT_PREFS: ChartPrefs = { colorBy: 'businessUnit', showReqs: false, showFlags: true }
 
 export function useChartPrefs(): [ChartPrefs, (patch: Partial<ChartPrefs>) => void] {
   const [prefs, setPrefs] = useState<ChartPrefs>(() => {

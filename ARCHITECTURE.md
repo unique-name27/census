@@ -1,16 +1,21 @@
 # Census — architecture and build contract
 
-Census is a people-analytics workbench for an HR team at a semiconductor company. It has five
-views (folder tabs) and a Data room:
+Census is a people-analytics workbench for an HR team at a semiconductor company. It has seven
+views (folder tabs, in this order) and a Data room:
 
 | View key | Tab label | Who uses it | Reads |
 |---|---|---|---|
 | `recruiting` | Recruiting | Talent acquisition leads, recruiters, hiring leaders | requisitions, candidates |
 | `hrbp` | People stats | HRBPs preparing for leader 1:1s and org reviews | employees, jobChanges, reviews |
+| `org` | Org chart | HRBPs and leaders: reporting lines, team shape, reorg scenarios | employees, requisitions, reviews, jobChanges |
 | `services` | HR ops | People operations, payroll, benefits, HRIS | cases, transactions, employees |
 | `talent` | Talent | Talent management, calibration owners | reviews, succession, learning, employees, jobChanges |
 | `comp` | Compensation | Total rewards / comp partners | comp, employees, reviews |
+| `ai` | AI in HR | The whole HR team: which Glean agents to use, and when not to | no datasets (an agent catalog kept in this browser) |
 | `data` | Data room | Whoever loads the data | all ten datasets |
+
+A view that reads no datasets (AI in HR) shows no filter row, no scope, window or as-of line and no
+data tiers, and its exports carry no scope or data-standard lines.
 
 The primary use: specialists review numbers during the week, then walk leaders through them in
 meetings. So every view leads with a readout of findings, every chart exports its data, and a
@@ -114,7 +119,8 @@ Copy (the user's writing rules):
   `pay: true` and the Figure/table/export layer drops them automatically. Ratios (compa-ratio, range
   penetration, merit %) are always fine.
 - Employee relations cases: show counts and timeliness only, never subcategory text below the
-  category level.
+  category level. Never tie one to a named person: a person card's open case count leaves ER cases
+  out, so neither the count nor a note can reveal that someone has an open ER case.
 
 ## Data model
 

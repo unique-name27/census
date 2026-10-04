@@ -1,8 +1,16 @@
+/**
+ * AI in HR: the catalog of Glean agents the HR team can use, organized by HR area, with what
+ * each one is for and when not to use it (docs/VIEWS.md, AI in HR). It reads no datasets, so
+ * nothing here is gated by the data standard. The catalog is kept in this browser.
+ */
 import type { ViewDef } from '../types'
+import { catalogHeadline } from './catalog'
+import { useAiAgents } from './state'
+import { AgentsTab } from './ui/AgentsTab'
+import { HeaderActions } from './ui/HeaderActions'
 
-/** STUB: replaced by the AI in HR builder. */
-function View({ tab }: { tab: string }) {
-  return <div className="p-8 text-ink-2">AI in HR — {tab || 'agents'}</div>
+function View(_: { tab: string }) {
+  return <AgentsTab />
 }
 
 export const view: ViewDef = {
@@ -10,6 +18,7 @@ export const view: ViewDef = {
   label: 'AI in HR',
   tabs: [{ key: 'agents', label: 'Agents' }],
   View,
-  headline: () => ({ value: '—', label: 'coming soon' }),
+  headline: () => catalogHeadline(useAiAgents.getState().agents),
   datasets: [],
+  HeaderActions,
 }

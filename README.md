@@ -1,6 +1,6 @@
 # Census
 
-People analytics for an HR team: recruiting, people stats, the org chart, HR ops, talent and compensation in one place. It runs entirely in your browser. Files you add
+People analytics for an HR team: recruiting, people stats, the org chart, HR ops, talent and compensation in one place, plus a catalog of the team's AI agents. It runs entirely in your browser. Files you add
 stay on your machine.
 
 ## Open it
@@ -22,6 +22,7 @@ locations, as of 30 Sep 2026), so every view works before you load anything.
 | HR ops | Are employees getting fast, correct answers, and are HR transactions on time? | Overview · Cases · HR transactions · Service levels |
 | Talent | Is performance assessed fairly, are critical roles covered, who might we lose, is required training done? | Overview · Performance · Potential & succession · Retention risk · Learning |
 | Compensation | Is pay where policy says, fair against performance and the market, and is the merit cycle on budget? | Overview · Range position · Pay for performance · Market · Merit cycle |
+| AI in HR | Which AI agents does the HR team have, what is each one for, and when should you not use it? | Agents |
 
 Every view opens with headline numbers and a **readout**: findings in plain sentences, each with
 the number, where it concentrates, and a suggested next step.

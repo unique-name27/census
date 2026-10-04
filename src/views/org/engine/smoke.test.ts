@@ -115,8 +115,9 @@ describe('Org chart engine on the sample company', () => {
     const after = applyScenario(t, [{ kind: 'move', personId: kid, toManagerId: peer, mode: 'person' }])
     expect(after.skipped).toEqual([])
     const d = diffTrees(t, after.tree)
-    expect(d.spanChanges.find((s) => s.id === wide)).toMatchObject({ delta: -1 })
-    expect(d.spanChanges.find((s) => s.id === peer)).toMatchObject({ delta: 1 })
+    // The change reads with its sign either way: "+1" for a gain, "−1" (true minus) for a loss.
+    expect(d.spanChanges.find((s) => s.id === wide)).toMatchObject({ delta: -1, change: '−1' })
+    expect(d.spanChanges.find((s) => s.id === peer)).toMatchObject({ delta: 1, change: '+1' })
     expect(d.layers.after).toBe(d.layers.before)
   })
 

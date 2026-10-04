@@ -5,9 +5,17 @@
 import type { Column } from '@/charts/types'
 import { type Format, isNum } from '@/lib/format'
 
-/** Drop pay-amount columns unless pay amounts are switched on. Ratios are never marked `pay`. */
-export function visibleColumns<C extends Pick<Column, 'pay'>>(columns: readonly C[], showPay: boolean): C[] {
-  return showPay ? columns.slice() : columns.filter((c) => !c.pay)
+/**
+ * The columns an output shows: pay-amount columns only when pay amounts are switched on (ratios
+ * are never marked `pay`), and the columns meant for that output (`only`). Tables on screen,
+ * Excel, CSV and copy are 'sheets'; slide tables are 'slides'.
+ */
+export function visibleColumns<C extends Pick<Column, 'pay' | 'only'>>(
+  columns: readonly C[],
+  showPay: boolean,
+  output: 'sheets' | 'slides' = 'sheets',
+): C[] {
+  return columns.filter((c) => (showPay || !c.pay) && (!c.only || c.only === output))
 }
 
 const TEXT_FORMATS = new Set<Format>(['text', 'date'])

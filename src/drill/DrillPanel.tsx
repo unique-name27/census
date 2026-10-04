@@ -1,12 +1,14 @@
 /**
  * The drill panel: a sheet that slides in from the right with the records behind a number
- * (sortable, searchable, exportable) and, one click further, a person's card. The header shows
- * the tier of the drilled number when the spec names its fields, otherwise the tier of the
- * records' dataset, labeled as such. Mounted once by the app shell; opened with openDrill(spec) /
- * openPerson(id) from anywhere.
+ * (sortable, searchable, exportable) and, one click further, a person's card. Counts inside it
+ * (a manager's org, a req's applications, a person's open cases) open their records on top, and
+ * Back walks out again. Only rows that lead somewhere are clickable. The header shows the tier of
+ * the drilled number when the spec names its fields, otherwise the tier of the records' dataset,
+ * labeled as such. Mounted once by the app shell; opened with openDrill(spec) / openPerson(id)
+ * from anywhere.
  */
 import { Dialog as BDialog } from '@base-ui/react/dialog'
-import { useMemo } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { DataTable } from '@/charts/DataTable'
 import { useExportMeta } from '@/charts/useExportMeta'
 import { IconChevronRight, IconClose, IconCopy, IconDownload, IconFile } from '@/components/icons'
@@ -16,8 +18,9 @@ import { Button, Menu } from '@/components/ui'
 import { useAnalytics } from '@/data/context'
 import { datasetDef } from '@/data/schema'
 import { fmt } from '@/lib/format'
+import { DrillNesting } from './Drill'
 import { PersonCard } from './PersonCard'
-import { buildDrillTable, drillNoun, PERSON_KEY, ROW_KEY } from './records'
+import { buildDrillTable, DRILLS_KEY, drillNoun, drillTableHint, ROW_KEY, rowPerson } from './records'
 import { useDrillStore } from './store'
 import { drillTier } from './tier'
 import type { DrillSpec } from './types'
@@ -42,6 +45,16 @@ export function DrillPanel() {
   const close = useDrillStore((s) => s.close)
   const back = useDrillStore((s) => s.back)
   const top = stack[stack.length - 1]
+  const below = stack.at(-2)
+  // When a list or card opens on top (or Back is used), focus its title so keyboard and screen
+  // reader users land on what just opened instead of losing focus with the control they used.
+  const depth = useRef(0)
+  const body = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const was = depth.current
+    depth.current = stack.length
+    if (was && stack.length) body.current?.querySelector<HTMLElement>('h2')?.focus({ preventScroll: true })
+  }, [stack.length])
   return (
     <BDialog.Root open={stack.length > 0} onOpenChange={(o) => !o && close()}>
       <BDialog.Portal>
@@ -67,9 +80,14 @@ export function DrillPanel() {
               <IconClose />
             </BDialog.Close>
           </div>
-          <div className="min-h-0 flex-1 overflow-y-auto px-5 pt-4 pb-6">
-            {top?.type === 'records' && <RecordsView spec={top.spec} />}
-            {top?.type === 'person' && <PersonCard employeeId={top.employeeId} />}
+          {/* Keyed by depth: what opens on top starts at the top, with its own sort and search. */}
+          <div ref={body} key={stack.length} className="min-h-0 flex-1 overflow-y-auto px-5 pt-4 pb-6">
+            <DrillNesting>
+              {top?.type === 'records' && (
+                <RecordsView spec={top.spec} from={below?.type === 'person' ? below.employeeId : null} />
+              )}
+              {top?.type === 'person' && <PersonCard employeeId={top.employeeId} />}
+            </DrillNesting>
           </div>
         </BDialog.Popup>
       </BDialog.Portal>
@@ -77,12 +95,24 @@ export function DrillPanel() {
   )
 }
 
-function RecordsView({ spec }: { spec: DrillSpec }) {
+/**
+ * One list of records. `from` is the person whose card opened it: their own rows don't reopen
+ * them.
+ */
+function RecordsView({ spec, from }: { spec: DrillSpec; from: string | null }) {
   const ctx = useAnalytics()
   const meta = useExportMeta()
   const openPerson = useDrillStore((s) => s.openPerson)
   const table = useMemo(() => buildDrillTable(spec, ctx), [spec, ctx])
-  const personRows = table.rows.some((r) => r[PERSON_KEY])
+  const target = (r: Record<string, unknown>) => {
+    const id = rowPerson(ctx, r)
+    return id && id !== from ? id : null
+  }
+  const rowsOpen = table.rows.some((r) => target(r))
+  const hint = drillTableHint(spec.kind, {
+    rowsOpen,
+    cellsOpen: table.rows.some((r) => r[DRILLS_KEY]) || table.columns.some((c) => c.drill),
+  })
   const exportTable = {
     name: spec.title,
     title: spec.title,
@@ -120,7 +150,7 @@ function RecordsView({ spec }: { spec: DrillSpec }) {
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-start gap-3">
         <div className="min-w-0 flex-1">
-          <BDialog.Title className="cut-head text-[22px] leading-tight font-semibold">
+          <BDialog.Title tabIndex={-1} className="cut-head text-[22px] leading-tight font-semibold">
             {spec.title}
           </BDialog.Title>
           <BDialog.Description className="mt-1 text-[13px] text-ink-2">
@@ -155,11 +185,19 @@ function RecordsView({ spec }: { spec: DrillSpec }) {
         maxRows={200}
         maxHeight={9999}
         rowKey={(r, i) => String(r[ROW_KEY] ?? i)}
-        onRowClick={personRows ? (r) => r[PERSON_KEY] && openPerson(String(r[PERSON_KEY])) : undefined}
+        onRowClick={
+          rowsOpen
+            ? (r) => {
+                const id = target(r)
+                if (id) openPerson(id)
+              }
+            : undefined
+        }
+        rowClickable={(r) => !!target(r)}
         emptyText="No records behind this number."
         caption={spec.title}
       />
-      {personRows && <p className="text-[12px] text-muted">Select a row to open the person.</p>}
+      {hint && <p className="text-[12px] text-muted">{hint}</p>}
     </div>
   )
 }

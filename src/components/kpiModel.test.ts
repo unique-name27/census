@@ -1,5 +1,16 @@
 import { describe, expect, it } from 'vitest'
-import { deltaDirection, deltaTone, kpiDeltaText, kpiRows, kpiValueText, SUPPRESSED_NOTE } from './kpiModel'
+import { visibleColumns } from '@/lib/export/columns'
+import type { Format } from '@/lib/format'
+import {
+  deltaDirection,
+  deltaTone,
+  kpiColumns,
+  kpiDeltaText,
+  kpiRows,
+  kpiValueText,
+  SUPPRESSED_NOTE,
+  unitOf,
+} from './kpiModel'
 import type { TierGate } from './tier/tierModel'
 import type { Kpi } from './types'
 
@@ -53,22 +64,99 @@ describe('tile text', () => {
 })
 
 describe('kpiRows', () => {
-  it('exports formatted values with the comparison and notes', () => {
+  it('exports numbers with their unit and the change in its unit', () => {
     const rows = kpiRows([
       kpi({ delta: 4, deltaLabel: 'vs prior 12 months', note: '62 reqs filled' }),
       kpi({ id: 'r', label: 'Regretted attrition', value: null, format: 'pct', suppressed: true }),
     ])
-    expect(rows).toEqual([
-      {
-        measure: 'Time to fill',
-        value: '42 d',
-        change: '+4 d',
-        comparedWith: 'vs prior 12 months',
-        note: '62 reqs filled',
-      },
-      { measure: 'Regretted attrition', value: '—', change: '', comparedWith: '', note: SUPPRESSED_NOTE },
-    ])
+    expect(rows[0]).toMatchObject({
+      measure: 'Time to fill',
+      value: 42,
+      valueText: '42 d',
+      unit: 'd',
+      change: 4,
+      changeText: '+4 d',
+      changeUnit: 'd',
+      comparedWith: 'vs prior 12 months',
+      note: '62 reqs filled',
+    })
+    expect(rows[1]).toMatchObject({
+      measure: 'Regretted attrition',
+      value: null,
+      valueText: '—',
+      unit: '%',
+      change: null,
+      changeText: '',
+      changeUnit: '',
+      comparedWith: '',
+      note: SUPPRESSED_NOTE,
+    })
     expect(SUPPRESSED_NOTE).toBe('Hidden to protect anonymity (n < 5)')
+  })
+
+  it('keeps rates as fractions with a percent format and states their change in points', () => {
+    const [row] = kpiRows([kpi({ value: 0.142, format: 'pct', delta: -0.012, deltaLabel: 'vs prior' })])
+    const cols = kpiColumns([kpi({ value: 0.142, format: 'pct' })])
+    const fmtOf = (key: string) => cols.find((c) => c.key === key)?.format as (r: object) => Format
+    expect(row).toMatchObject({ value: 0.142, unit: '%', changeUnit: 'pts', changeText: '−1.2 pts' })
+    expect(row.change).toBeCloseTo(-1.2, 10)
+    expect(fmtOf('value')(row)).toBe('pct')
+    expect(fmtOf('change')(row)).toBe('num1')
+    // Points as a value are stored as a number of points.
+    const [gap] = kpiRows([kpi({ value: 0.021, format: 'pts' })])
+    expect(gap.value).toBeCloseTo(2.1, 10)
+    expect(gap.unit).toBe('pts')
+  })
+
+  it('writes the trend points as numbers, the latest lined up across tiles', () => {
+    const kpis = [
+      kpi({ spark: [40, 41, 42] }),
+      kpi({ id: 'b', label: 'Open reqs', format: 'int', value: 58, spark: [32, 58] }),
+      kpi({ id: 'c', label: 'Hidden', spark: [1, 2, 3], suppressed: true }),
+    ]
+    const cols = kpiColumns(kpis)
+    const trend = cols.filter((c) => c.key.startsWith('trend'))
+    expect(trend.map((c) => c.label)).toEqual([
+      'Trend, 2 periods back',
+      'Trend, 1 period back',
+      'Trend, latest',
+    ])
+    expect(trend.every((c) => c.only === 'sheets')).toBe(true)
+    const rows = kpiRows(kpis)
+    expect(trend.map((c) => rows[0][c.key])).toEqual([40, 41, 42])
+    expect(trend.map((c) => rows[1][c.key] ?? null)).toEqual([null, 32, 58])
+    expect(trend.map((c) => rows[2][c.key] ?? null)).toEqual([null, null, null])
+  })
+
+  it('sends numbers and units to sheets and the tile text to slides', () => {
+    const cols = kpiColumns([kpi({})], { tiered: true })
+    expect(visibleColumns(cols, false, 'sheets').map((c) => c.key)).toEqual([
+      'measure',
+      'value',
+      'unit',
+      'tier',
+      'change',
+      'changeUnit',
+      'comparedWith',
+      'note',
+    ])
+    expect(visibleColumns(cols, false, 'slides').map((c) => c.key)).toEqual([
+      'measure',
+      'valueText',
+      'tier',
+      'changeText',
+      'comparedWith',
+      'note',
+    ])
+  })
+
+  it('names the unit of every format', () => {
+    expect(unitOf('pct')).toBe('%')
+    expect(unitOf('pts2')).toBe('pts')
+    expect(unitOf('days')).toBe('d')
+    expect(unitOf('years')).toBe('yrs')
+    expect(unitOf('int')).toBe('count')
+    expect(unitOf('num1')).toBe('')
   })
 })
 
@@ -82,11 +170,11 @@ describe('kpiRows with tiers', () => {
     reason,
   })
 
-  it('adds each tier and exports a hidden number as a dash with its reason', () => {
+  it('adds each tier and exports a hidden number blank with its reason', () => {
     const rows = kpiRows(
       [
-        kpi({ delta: 4, deltaLabel: 'vs prior 12 months', note: '62 reqs filled' }),
-        kpi({ id: 'b', label: 'Offer acceptance', delta: 0.1 }),
+        kpi({ delta: 4, deltaLabel: 'vs prior 12 months', note: '62 reqs filled', spark: [40, 42] }),
+        kpi({ id: 'b', label: 'Offer acceptance', delta: 0.1, spark: [40, 42] }),
         kpi({ id: 'c', label: 'Open reqs' }),
         kpi({ id: 'd', label: 'Exit reasons' }),
       ],
@@ -97,18 +185,21 @@ describe('kpiRows with tiers', () => {
         gate('none', false, 'No data: Employees termination reason is missing'),
       ],
     )
-    expect(rows[0]).toMatchObject({ value: '42 d', change: '+4 d', tier: 'Gold', note: '62 reqs filled' })
-    expect(rows[1]).toEqual({
+    expect(rows[0]).toMatchObject({ value: 42, change: 4, tier: 'Gold', note: '62 reqs filled', trend0: 42 })
+    expect(rows[1]).toMatchObject({
       measure: 'Offer acceptance',
-      value: '—',
-      change: '',
+      value: null,
+      valueText: '—',
+      change: null,
+      changeText: '',
       comparedWith: '',
       note: 'Not yet confirmed for production',
       tier: 'Silver',
     })
-    expect(rows[2]).toMatchObject({ value: '42 d', tier: '' })
+    expect(rows[1].trend0).toBeUndefined()
+    expect(rows[2]).toMatchObject({ value: 42, valueText: '42 d', tier: '' })
     expect(rows[3]).toMatchObject({
-      value: '—',
+      value: null,
       tier: 'No data',
       note: 'No data: Employees termination reason is missing',
     })

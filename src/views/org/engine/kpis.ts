@@ -1,12 +1,13 @@
 /**
- * The key figure tiles for the org on screen: people, managers, median span, layers, open roles and
- * structure flags. Each tile carries the records behind it (built only when opened) and the fields
+ * The key figure tiles for the org on screen: people, managers, median span, layers, open roles
+ * (only with the Open roles overlay on) and structure flags. Each tile carries the records behind it (built only when opened) and the fields
  * it is computed from, for its tier.
  */
 import type { Kpi } from '@/components/types'
 import type { Requisition } from '@/data/schema'
 import type { DrillSource } from '@/drill/Drill'
 import { type DrillScope, type KeyFigureDrills, keyFigureDrills } from './drill'
+import { tagKpis } from './drillUses'
 import type { OrgKeyFigures } from './figures'
 import type { Flag } from './flags'
 import { keyFigureUses, type OrgLineage } from './lineage'
@@ -22,6 +23,11 @@ export interface OrgKpiInput {
   lineage: OrgLineage
   /** The business unit, department, location or level filters are set (they count only matches). */
   dims: boolean
+  /**
+   * The Open roles overlay is on. Open requisitions are not part of the org chart by default (the
+   * team chose to leave them off), so their tile shows only with the overlay.
+   */
+  openRoles: boolean
 }
 
 export function orgKpis(p: OrgKpiInput): Kpi[] {
@@ -35,7 +41,7 @@ export function orgKpis(p: OrgKpiInput): Kpi[] {
   /** A zero has nothing behind it: no drill, so no underline that opens nothing. */
   const when = (n: number, which: keyof KeyFigureDrills): DrillSource | undefined =>
     n > 0 ? () => kd()[which] : undefined
-  return [
+  const tiles: Kpi[] = [
     {
       id: 'org-people',
       label: p.dims ? 'People matching' : 'People in this org',
@@ -94,4 +100,5 @@ export function orgKpis(p: OrgKpiInput): Kpi[] {
       uses: uses.flagged,
     },
   ]
+  return tagKpis(p.openRoles ? tiles : tiles.filter((k) => k.id !== 'org-open-roles'))
 }

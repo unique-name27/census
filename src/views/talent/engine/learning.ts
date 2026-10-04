@@ -104,6 +104,8 @@ export const completionKey = (month: string, kind: CompletionKind): string => `$
 export interface LearningRecords {
   /** Required assignments due in the period to employees employed on the due date (on-time base). */
   due: LearningRecord[]
+  /** The same for the prior period (the on-time rate's comparison). */
+  duePrior: LearningRecord[]
   /** Required assignments past due today, for employees active today (the overdue grid's base). */
   pastDue: PastDue[]
   /** Assignments completed in the period, per month and kind (completionKey). */
@@ -372,6 +374,7 @@ export function computeLearning(base: TalentBase): LearningResult {
     trend,
     records: {
       due: dueNow,
+      duePrior,
       pastDue,
       completions: completed,
       // Only units whose hours per employee are shown.

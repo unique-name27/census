@@ -26,6 +26,21 @@ describe('fileStem', () => {
   it('skips an empty name', () => {
     expect(fileStem({ view: 'Compensation', asOf: '2026-09-30' })).toBe('census-compensation-2026-09-30')
   })
+  it('names the view once when the name repeats its label or key', () => {
+    expect(fileStem({ view: 'Recruiting', asOf: '2026-09-30' }, 'recruiting-stage-conversion')).toBe(
+      'census-recruiting-stage-conversion-2026-09-30',
+    )
+    expect(fileStem({ view: 'People stats', viewKey: 'hrbp', asOf: '2026-09-30' }, 'hrbp-attrition')).toBe(
+      'census-people-stats-attrition-2026-09-30',
+    )
+    expect(fileStem({ view: 'HR ops', viewKey: 'services', asOf: '2026-09-30' }, 'HR ops')).toBe(
+      'census-hr-ops-2026-09-30',
+    )
+    // Only a whole leading word counts: "comp" is not the start of "compa-ratio".
+    expect(fileStem({ view: 'Compensation', viewKey: 'comp', asOf: '2026-09-30' }, 'compa-ratio')).toBe(
+      'census-compensation-compa-ratio-2026-09-30',
+    )
+  })
 })
 
 describe('slug', () => {
@@ -67,6 +82,17 @@ describe('visibleColumns', () => {
   })
   it('returns a copy', () => {
     expect(visibleColumns(cols, true)).not.toBe(cols)
+  })
+  it('keeps columns limited to one output out of the other', () => {
+    const mixed = [
+      { key: 'a', label: 'A' },
+      { key: 'n', label: 'Value', only: 'sheets' as const },
+      { key: 't', label: 'Value', only: 'slides' as const },
+      { key: 'p', label: 'Salary', pay: true, only: 'sheets' as const },
+    ]
+    expect(visibleColumns(mixed, false).map((c) => c.key)).toEqual(['a', 'n'])
+    expect(visibleColumns(mixed, true, 'sheets').map((c) => c.key)).toEqual(['a', 'n', 'p'])
+    expect(visibleColumns(mixed, true, 'slides').map((c) => c.key)).toEqual(['a', 't'])
   })
 })
 

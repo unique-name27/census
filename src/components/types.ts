@@ -33,6 +33,13 @@ export interface Kpi {
   /** The records behind the value; clicking the value opens them (down to each person). */
   drill?: DrillSource
   /**
+   * The records behind the comparison, e.g. the prior period's leavers for an attrition delta.
+   * Clicking the change opens them.
+   */
+  deltaDrill?: DrillSource
+  /** The records behind the number in the note, e.g. the 15 reqs on hold in "15 on hold, not counted". */
+  noteDrill?: DrillSource
+  /**
    * The fields the number is computed from ('employees.terminationDate'). Its tier is the lowest
    * of theirs; without it, the tier of the view's datasets is used.
    */

@@ -13,7 +13,7 @@
 import type { Employee } from '@/data/schema'
 import { levelIndex } from '@/data/schema'
 import { isEmployee } from '@/data/scope'
-import { plural } from '@/lib/format'
+import { fmt, plural } from '@/lib/format'
 import { WIDE_SPAN } from './flags'
 import { type OrgTree, treeFromParents } from './tree'
 
@@ -345,7 +345,8 @@ export interface ScenarioDiff {
     to: string
   }[]
   removed: { id: string; name: string }[]
-  spanChanges: { id: string; name: string; before: number; after: number; delta: number }[]
+  /** `change` is the delta as people read it: "+1" for a gain, "−1" for a loss. */
+  spanChanges: { id: string; name: string; before: number; after: number; delta: number; change: string }[]
   managersCreated: { id: string; name: string; directs: number }[]
   managersEmptied: { id: string; name: string; before: number }[]
   newWideSpans: { id: string; name: string; directs: number }[]
@@ -376,6 +377,11 @@ function spanStats(t: OrgTree) {
     }
   }
   return { managers, avg: managers ? reports / managers : null }
+}
+
+/** A change in a count with its sign, the way every delta reads: "+1", "−2", "0". */
+export function signedCount(n: number): string {
+  return n > 0 ? `+${fmt(n, 'int')}` : fmt(n, 'int')
 }
 
 /** What changes between the as-of tree and the scenario tree. */
@@ -412,7 +418,8 @@ export function diffTrees(before: OrgTree, after: OrgTree): ScenarioDiff {
     const a = after.people.has(id) ? (after.directs.get(id) ?? 0) : 0
     if (a === b) continue
     const name = nameOf(id)
-    if (after.people.has(id)) spanChanges.push({ id, name, before: b, after: a, delta: a - b })
+    if (after.people.has(id))
+      spanChanges.push({ id, name, before: b, after: a, delta: a - b, change: signedCount(a - b) })
     if (b === 0 && a > 0) managersCreated.push({ id, name, directs: a })
     if (b > 0 && a === 0 && after.people.has(id)) managersEmptied.push({ id, name, before: b })
     if (a >= WIDE_SPAN && b < WIDE_SPAN) newWideSpans.push({ id, name, directs: a })

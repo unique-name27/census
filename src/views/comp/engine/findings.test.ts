@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import type { CompRecord, Employee } from '@/data/schema'
 import { exclusivePhrase, isLowCompa, tenureFloor } from './findings'
+import { againstGuideline } from './kpis'
 import { computeComp } from './model'
 import { buildPopulation } from './population'
 import { DEFAULT_SETTINGS } from './settings'
 import { AS_OF, context, dataset, emp, promotion, review, team } from './test-fixtures'
-import { joinAnd, levelSpan, pts2 } from './text'
+import { joinAnd, levelSpan, pts2, shownGap } from './text'
 
 function merge(...ts: { employees: Employee[]; comp: CompRecord[] }[]) {
   return { employees: ts.flatMap((t) => t.employees), comp: ts.flatMap((t) => t.comp) }
@@ -126,6 +127,18 @@ describe('compensation findings', () => {
     const below = m.findings.find((f) => f.id === 'comp-below-min')!
     expect(below.title).toMatch(/^60 people are paid below range minimum/)
     expect(below.people).toHaveLength(60)
+  })
+
+  it('states a spend gap that matches the two values shown', () => {
+    // 3.5449% shows as 3.54% and 3.4351% as 3.44%: the gap a reader can check is 0.10 pts, not 0.11.
+    expect(shownGap(0.035449, 0.034351)).toBeCloseTo(0.001, 10)
+    expect(pts2(shownGap(0.035449, 0.034351))).toBe('+0.10 pts')
+    expect(againstGuideline(0.035449, 0.034351)).toBe('Actual spend is 0.10 pts above it')
+    expect(againstGuideline(0.034351, 0.035449)).toBe('Actual spend is 0.10 pts below it')
+    // 3.4449% and 3.4351% both show as 3.44%.
+    expect(againstGuideline(0.034449, 0.034351)).toBe('Actual spend is level with it')
+    expect(againstGuideline(null, 0.0344)).toBe('Needs 5 or more rated proposals')
+    expect(shownGap(0.0354, null)).toBeNull()
   })
 
   it('formats the helpers used in findings', () => {

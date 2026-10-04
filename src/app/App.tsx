@@ -35,7 +35,8 @@ function ViewPage({ view, requestedTab }: { view: ViewDef; requestedTab: string 
   const hasSubTabs = view.tabs.length > 1
   return (
     <div id={VIEW_PANEL_ID} role="tabpanel" aria-labelledby={`tab-${view.key}`}>
-      <FilterBar />
+      {/* The org, period and data-standard filters change nothing on a view that reads no datasets. */}
+      {view.datasets.length > 0 && <FilterBar />}
       <FigureRegistryProvider key={view.key}>
         <CurrentViewProvider
           value={{ key: view.key, label: view.label, tabs: view.tabs, tab, datasets: view.datasets }}

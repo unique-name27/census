@@ -7,14 +7,13 @@
 import type { Column } from '@/charts/types'
 import type { IssueCode, IssueSummary } from '@/data/import'
 import { type DatasetKey, type Datasets, datasetDef } from '@/data/schema'
-import { drillNoun } from '@/drill/records'
 import type { DrillKind, DrillRecordMap, DrillSpec } from '@/drill/types'
 import { formatDate } from '@/lib/dates'
 import { fmt } from '@/lib/format'
 import { type CheckRecords, checkRecords, LINKS, missingRefs, TARGET_NOUN } from '../engine/checks'
 import { coverageText, type FieldCoverage, fieldRecords } from '../engine/coverage'
 import type { ManifestRow } from '../engine/manifest'
-import { DRILL_LIMIT, firstRecords, type IssueRecords, issueDetail } from '../engine/records'
+import { type IssueRecords, issueDetail } from '../engine/records'
 import type { ImportLog } from '../state/importLog'
 
 type Rec = DrillRecordMap[DrillKind]
@@ -34,29 +33,19 @@ const recordsOf = (data: Datasets, key: DatasetKey): readonly Rec[] => data[key]
 const subtitleOf = (ds: DrillDataset, scope?: string | null): string =>
   [scope, ds.label, ds.source.kind === 'sample' ? 'Sample data' : ds.source.label].filter(Boolean).join(' · ')
 
-/** The first DRILL_LIMIT rows, with a sentence saying so when there are more. */
-function capped(kind: DatasetKey, rows: readonly Rec[]): { rows: readonly Rec[]; note: string | null } {
-  const first = firstRecords(rows)
-  return {
-    rows: first.rows,
-    note: first.capped
-      ? `Showing the first ${fmt(DRILL_LIMIT, 'int')} of ${drillNoun(kind, first.total)}, in file order. Download the dataset for all of them.`
-      : null,
-  }
-}
-
 const joinNotes = (...notes: (string | null | undefined)[]): string | undefined =>
   notes.filter(Boolean).join(' ') || undefined
 
-/** Every loaded row of a dataset (the first 2,000 when there are more). */
+/**
+ * Every loaded row of a dataset, however many: the panel shows the first ones and pages to the
+ * rest, so the list always matches the count that opened it.
+ */
 export function rowsSpec(ds: DrillDataset, data: Datasets): DrillSpec {
-  const { rows, note } = capped(ds.key, recordsOf(data, ds.key))
   return {
     kind: ds.key,
     title: `Rows loaded in ${ds.label}`,
     subtitle: subtitleOf(ds),
-    rows,
-    note: note ?? undefined,
+    rows: recordsOf(data, ds.key),
   }
 }
 
@@ -71,9 +60,8 @@ export function fieldSpec(
   data: Datasets,
   which: 'blank' | 'filled',
 ): DrillSpec | null {
-  const found = fieldRecords(datasetDef(ds.key), recordsOf(data, ds.key), f.key)[which]
-  if (!found.length) return null
-  const { rows, note } = capped(ds.key, found)
+  const rows = fieldRecords(datasetDef(ds.key), recordsOf(data, ds.key), f.key)[which]
+  if (!rows.length) return null
   const label = midSentence(f.label)
   if (which === 'filled')
     return {
@@ -81,10 +69,7 @@ export function fieldSpec(
       title: `${ds.label} with a ${label}`,
       subtitle: subtitleOf(ds, f.scope),
       rows,
-      note: joinNotes(
-        `${capFirst(f.event ?? 'rows with a value')}: ${fmt(found.length, 'int')} of ${fmt(f.expected, 'int')} ${f.rowsNoun}. ${f.label} stays blank until it happens.`,
-        note,
-      ),
+      note: `${capFirst(f.event ?? 'rows with a value')}: ${fmt(rows.length, 'int')} of ${fmt(f.expected, 'int')} ${f.rowsNoun}. ${f.label} stays blank until it happens.`,
     }
   const defaulted =
     f.defaulted > 0
@@ -96,9 +81,8 @@ export function fieldSpec(
     subtitle: subtitleOf(ds, f.scope),
     rows,
     note: joinNotes(
-      `Filled = ${fmt(f.filled, 'int')} ÷ ${fmt(f.expected, 'int')} ${f.rowsNoun} (${coverageText(f.share)}). Listed: the ${fmt(found.length, 'int')} with no value, blank or Unknown.`,
+      `Filled = ${fmt(f.filled, 'int')} ÷ ${fmt(f.expected, 'int')} ${f.rowsNoun} (${coverageText(f.share)}). Listed: the ${fmt(rows.length, 'int')} with no value, blank or Unknown.`,
       defaulted,
-      note,
     ),
   }
 }
@@ -127,9 +111,8 @@ export function checkSpec(
     const f = ds.coverage.fields.find((x) => x.key === sel.field)
     return f ? fieldSpec(ds, f, data, 'blank') : null
   }
-  const found = checkRecords(ds.key, data, sel)
-  if (!found.length) return null
-  const { rows, note } = capped(ds.key, found)
+  const rows = checkRecords(ds.key, data, sel)
+  if (!rows.length) return null
   const def = datasetDef(ds.key)
   if (sel.by === 'defaulted') {
     const label = def.fields.find((x) => x.key === sel.field)?.label ?? sel.field
@@ -138,10 +121,7 @@ export function checkSpec(
       title: `${ds.label} with ${midSentence(label)} set by default`,
       subtitle: subtitleOf(ds),
       rows,
-      note: joinNotes(
-        `${label} was not in the file, so the importer filled every row with its default.`,
-        note,
-      ),
+      note: `${label} was not in the file, so the importer filled every row with its default.`,
     }
   }
   const link = LINKS[ds.key]
@@ -156,10 +136,7 @@ export function checkSpec(
     subtitle: subtitleOf(ds),
     rows,
     extra: { columns: extra, values: (r) => ({ notFound: missing(r).join(', ') }) },
-    note: joinNotes(
-      `${refLabels} checked against the ${fmt(data[link.target].length, 'int')} rows loaded in ${target.label}.`,
-      note,
-    ),
+    note: `${refLabels} checked against the ${fmt(data[link.target].length, 'int')} rows loaded in ${target.label}.`,
   }
 }
 
@@ -195,7 +172,7 @@ export function issueSpec(
 ): DrillSpec | null {
   if (!found?.records.length) return null
   const def = datasetDef(ds.key)
-  const { rows, note } = capped(ds.key, found.records)
+  const rows = found.records
   const title = ISSUE_TITLE[summary.code]?.(summary.label || 'Value') ?? summary.message
   const missing = found.logged - found.records.length
   const file = [log.fileName, log.sheetName && log.sheetName !== log.fileName ? log.sheetName : null]
@@ -221,7 +198,6 @@ export function issueSpec(
           ? '1 logged row is no longer in the loaded data, so it is not listed.'
           : `${fmt(missing, 'int')} logged rows are no longer in the loaded data, so they are not listed.`
         : null,
-      note,
     ),
   }
 }
@@ -229,8 +205,8 @@ export function issueSpec(
 /* ───────────── rows by index (the quality index's drills) ───────────── */
 
 /**
- * The rows at `indexes` of a dataset (the quality index hands out row indexes), the first
- * 2,000 when there are more. Null when there is nothing to list.
+ * The rows at `indexes` of a dataset (the quality index hands out row indexes), all of them.
+ * Null when there is nothing to list.
  */
 export function indexSpec(
   ds: DrillDataset,
@@ -240,14 +216,13 @@ export function indexSpec(
   opts: { scope?: string | null; note?: string | null } = {},
 ): DrillSpec | null {
   const all = recordsOf(data, ds.key)
-  const found = indexes.flatMap((i) => (all[i] ? [all[i]] : []))
-  if (!found.length) return null
-  const { rows, note } = capped(ds.key, found)
+  const rows = indexes.flatMap((i) => (all[i] ? [all[i]] : []))
+  if (!rows.length) return null
   return {
     kind: ds.key,
     title,
     subtitle: subtitleOf(ds, opts.scope),
     rows,
-    note: joinNotes(opts.note, note),
+    note: opts.note ?? undefined,
   }
 }
