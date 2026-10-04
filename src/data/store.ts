@@ -83,7 +83,7 @@ export interface Route {
   view: RouteView
   tab: string
 }
-export const ROUTE_VIEWS: RouteView[] = ['recruiting', 'hrbp', 'org', 'services', 'talent', 'comp', 'data']
+export const ROUTE_VIEWS: RouteView[] = ['recruiting', 'hrbp', 'org', 'services', 'talent', 'comp', 'ai', 'data']
 
 export interface SourceMeta {
   kind: 'sample' | 'upload'

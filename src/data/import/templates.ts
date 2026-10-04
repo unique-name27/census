@@ -35,6 +35,7 @@ const VIEW_LABELS: Record<ViewKey, string> = {
   services: 'HR ops',
   talent: 'Talent',
   comp: 'Compensation',
+  ai: 'AI in HR',
 }
 
 const TYPE_LABELS: Record<FieldDef['type'], string> = {

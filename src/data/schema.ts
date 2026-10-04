@@ -552,7 +552,7 @@ export interface DatasetDef {
   fields: FieldDef[]
 }
 
-export type ViewKey = 'recruiting' | 'hrbp' | 'org' | 'services' | 'talent' | 'comp'
+export type ViewKey = 'recruiting' | 'hrbp' | 'org' | 'services' | 'talent' | 'comp' | 'ai'
 
 const f = (
   key: string,
