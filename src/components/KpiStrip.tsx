@@ -1,11 +1,15 @@
 /**
  * The row of headline numbers at the top of a view: one sheet, tiles separated by hairlines (not
- * cards). Each tile carries its comparison, a trend and a definition; a tile with `tab` opens that
- * tab, and a tile with `drill` lets the reader click the value to see the records behind it. The
- * strip also registers as a "Key figures" table so view exports include it.
+ * cards). Each tile carries its tier, comparison, a trend and a definition; a tile with `tab`
+ * opens that tab, and a tile with `drill` lets the reader click the value to see the records
+ * behind it. A number below the data standard shows "—" with the reason and a link to its
+ * dataset. The strip also registers as a "Key figures" table so view exports include it.
  */
+import { openDatasetQuality } from '@/app/datasetFocus'
 import { Sparkline } from '@/charts/Sparkline'
+import { datasetDef } from '@/data/schema'
 import { Drill } from '@/drill/Drill'
+import { DASH } from '@/lib/format'
 import { tabLabel, useCurrentView } from './currentView'
 import { IconArrowDown, IconArrowUp, IconChevronRight, IconInfo, IconLock } from './icons'
 import {
@@ -13,12 +17,16 @@ import {
   deltaDirection,
   deltaTone,
   KPI_COLUMNS,
+  KPI_COLUMNS_WITH_TIER,
   kpiDeltaText,
   kpiRows,
   kpiValueText,
   SUPPRESSED_NOTE,
 } from './kpiModel'
 import { goTo } from './navigation'
+import { TierBadge } from './tier/TierBadge'
+import type { TierGate } from './tier/tierModel'
+import { useGateFn } from './tier/useTierGate'
 import type { Kpi } from './types'
 import { cx, Popover } from './ui'
 import { useTableFigure } from './useTableFigure'
@@ -47,9 +55,35 @@ function Delta({ kpi }: { kpi: Kpi }) {
   )
 }
 
-function Tile({ kpi }: { kpi: Kpi }) {
+/** In place of a number the data standard hides: why, and where to raise it. */
+function GateNote({ gate }: { gate: TierGate }) {
+  const key = gate.limiting.dataset
+  return (
+    <div className="mt-1 text-[12px] leading-snug text-muted">
+      {gate.reason}
+      {key && (
+        <>
+          {' '}
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation()
+              openDatasetQuality(key)
+            }}
+            className="relative z-10 rounded-[2px] font-medium whitespace-nowrap text-link underline-offset-2 hover:underline"
+          >
+            Open {datasetDef(key).label}
+          </button>
+        </>
+      )}
+    </div>
+  )
+}
+
+function Tile({ kpi, gate }: { kpi: Kpi; gate: TierGate | null }) {
   const view = useCurrentView()
   const target = kpi.tab && view ? kpi.tab : null
+  const hidden = !!gate && !gate.shown
   return (
     <div
       className={cx(
@@ -65,12 +99,12 @@ function Tile({ kpi }: { kpi: Kpi }) {
             type="button"
             onClick={() => goTo(view.key, target)}
             aria-label={`${kpi.label}. Open ${tabLabel(view, target)}`}
-            className="min-w-0 text-left text-[12px] leading-snug text-ink-2 after:absolute after:inset-0 after:content-[''] focus-visible:outline-none focus-visible:after:outline-2 focus-visible:after:-outline-offset-2 focus-visible:after:outline-focus"
+            className="min-w-0 text-left text-[12px] leading-snug break-words text-ink-2 after:absolute after:inset-0 after:content-[''] focus-visible:outline-none focus-visible:after:outline-2 focus-visible:after:-outline-offset-2 focus-visible:after:outline-focus"
           >
             {kpi.label}
           </button>
         ) : (
-          <span className="min-w-0 text-[12px] leading-snug text-ink-2">{kpi.label}</span>
+          <span className="min-w-0 text-[12px] leading-snug break-words text-ink-2">{kpi.label}</span>
         )}
         {kpi.definition && (
           <Popover
@@ -90,12 +124,14 @@ function Tile({ kpi }: { kpi: Kpi }) {
           </Popover>
         )}
         {target && (
-          <IconChevronRight className="ml-auto size-3.5 shrink-0 text-muted opacity-0 transition-opacity group-hover/tile:opacity-100" />
+          <IconChevronRight className="mt-px ml-auto size-3.5 shrink-0 text-muted opacity-0 transition-opacity group-hover/tile:opacity-100" />
         )}
       </div>
       <div className="mt-1.5 flex items-end justify-between gap-3">
         <span className="cut-head text-[26px] leading-none font-semibold tracking-[-0.01em] whitespace-nowrap sm:text-[30px]">
-          {kpi.drill && !kpi.suppressed && kpi.value != null ? (
+          {hidden ? (
+            <span className="text-muted">{DASH}</span>
+          ) : kpi.drill && !kpi.suppressed && kpi.value != null ? (
             <Drill
               spec={kpi.drill}
               className="relative z-10"
@@ -107,20 +143,34 @@ function Tile({ kpi }: { kpi: Kpi }) {
             kpiValueText(kpi)
           )}
         </span>
-        {kpi.spark && !kpi.suppressed && kpi.spark.length > 1 && (
+        {!hidden && kpi.spark && !kpi.suppressed && kpi.spark.length > 1 && (
           <span className="mb-0.5 shrink-0">
             <Sparkline values={kpi.spark} width={64} height={24} label={`${kpi.label}, recent trend`} />
           </span>
         )}
       </div>
-      <Delta kpi={kpi} />
-      {kpi.suppressed ? (
+      {!hidden && <Delta kpi={kpi} />}
+      {hidden ? (
+        <GateNote gate={gate} />
+      ) : kpi.suppressed ? (
         <div className="mt-1 flex items-center gap-1 text-[12px] leading-snug text-muted">
           <IconLock className="size-3 shrink-0" />
           {SUPPRESSED_NOTE}
         </div>
       ) : (
         kpi.note && <div className="mt-1 text-[12px] leading-snug text-muted">{kpi.note}</div>
+      )}
+      {gate && (
+        // Its own row at the foot of the tile, so the label keeps the full width and badges line up.
+        <div className="mt-auto flex pt-2">
+          <TierBadge
+            compact
+            tier={gate.tier}
+            explain={gate.explain}
+            dataset={gate.limiting.dataset}
+            className="-ml-1"
+          />
+        </div>
       )}
     </div>
   )
@@ -138,7 +188,15 @@ export function KpiStrip({
   title?: string
   className?: string
 }) {
-  useTableFigure({ id, title, columns: KPI_COLUMNS, rows: kpiRows(kpis) })
+  const gateOf = useGateFn()
+  const gates = kpis.map((k) => gateOf(k.uses))
+  const tiered = gates.some(Boolean)
+  useTableFigure({
+    id,
+    title,
+    columns: tiered ? KPI_COLUMNS_WITH_TIER : KPI_COLUMNS,
+    rows: kpiRows(kpis, tiered ? gates : undefined),
+  })
   if (!kpis.length) return null
   return (
     <section
@@ -148,8 +206,8 @@ export function KpiStrip({
         className,
       )}
     >
-      {kpis.map((k) => (
-        <Tile key={k.id} kpi={k} />
+      {kpis.map((k, i) => (
+        <Tile key={k.id} kpi={k} gate={gates[i]} />
       ))}
     </section>
   )

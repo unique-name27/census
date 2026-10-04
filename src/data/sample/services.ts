@@ -1,5 +1,5 @@
 /**
- * Employee services for the last 24 months: help-desk cases against the Atlas service levels, and
+ * HR ops for the last 24 months: help-desk cases against the Atlas service levels, and
  * HR transactions with the deadline each governing process sets (Day -3 for new hires, final pay by
  * jurisdiction, payroll cut-off for job and pay changes).
  */
@@ -324,7 +324,7 @@ export function caseRows(w: World, rng: Rng, lateRng: Rng): HrCase[] {
     const opened = d * MINUTES_PER_DAY + openingMinute(lateRng)
     drafts.push({ opened, category: 'Offboarding', requester: p, stuck: null, late: true })
   }
-  // Employee services story 6: immigration cases stuck for more than 30 days.
+  // HR ops story 6: immigration cases stuck for more than 30 days.
   const backlogPeople = employees.filter((p) => p.term == null && p.hire < AS_OF - 400)
   for (let i = 0; i < 15; i++) {
     const d = onOrBeforeWeekday(AS_OF - rng.int(35, 140))
@@ -336,7 +336,7 @@ export function caseRows(w: World, rng: Rng, lateRng: Rng): HrCase[] {
       late: false,
     })
   }
-  // Employee services story 2: leave cases past their target, waiting on doctors, insurers or leave administrators.
+  // HR ops story 2: leave cases past their target, waiting on doctors, insurers or leave administrators.
   for (let i = 0; i < 10; i++) {
     const d = onOrBeforeWeekday(AS_OF - rng.int(9, 27))
     drafts.push({

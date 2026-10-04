@@ -3,6 +3,7 @@
  * open sibling tabs by key and print their labels without importing the view registry.
  */
 import { createContext, type ReactNode, use } from 'react'
+import type { DatasetKey } from '@/data/schema'
 import type { RouteView } from '@/data/store'
 import type { ViewTab } from '@/views/types'
 
@@ -12,6 +13,11 @@ export interface CurrentView {
   tabs: ViewTab[]
   /** The resolved sub-tab key on screen. */
   tab: string
+  /**
+   * The datasets the view reads: the tier of a number that declares no `uses` is the lowest of
+   * theirs. Without it such numbers are not gated.
+   */
+  datasets?: readonly DatasetKey[]
 }
 
 const Ctx = createContext<CurrentView | null>(null)

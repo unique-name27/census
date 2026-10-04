@@ -42,6 +42,7 @@ import {
   titled,
   workersSpec,
 } from './drill'
+import { FIGURE } from './lineage'
 import {
   type DeptMoveRow,
   type LevelRateRow,
@@ -310,7 +311,13 @@ export function regrettedQuarterSpec(p: Prep, row: RegrettedQuarterRow, start: s
 /** Voluntary leavers who gave one reason. */
 export function reasonSpec(p: Prep, row: ReasonRow): Spec {
   if (!row.records.length) return null
-  return leaversSpec(p, titled(`Voluntary leavers citing ${quoted(row.reason)}`, periodName(p)), row.records)
+  const spec = leaversSpec(
+    p,
+    titled(`Voluntary leavers citing ${quoted(row.reason)}`, periodName(p)),
+    row.records,
+  )
+  // The panel shows the exit-reason figure's tier, not the roster's.
+  return spec && { ...spec, uses: p.uses(FIGURE.exitReasons) }
 }
 
 const groupName = (dim: AttritionDim, group: string) =>

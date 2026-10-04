@@ -26,6 +26,22 @@ import {
   windowSub,
 } from './drills'
 import { TRANSITIONS, transitionsIn } from './flow'
+import {
+  APP_DIM,
+  appDimUses,
+  COHORT,
+  FILLED_REQ,
+  NEXT_STEP,
+  OPEN_REQ,
+  OUTCOME,
+  OWNER,
+  REASON,
+  REQ_DIM,
+  REQ_JOIN,
+  reqDimUses,
+  STAGE_REACHED,
+  uses,
+} from './lineage'
 import { breakdownParts, inQueue, joinAnd } from './nextStep'
 import { inWin } from './prepare'
 import { EMPTY_FUNNEL_DAYS, ttfDays } from './reqs'
@@ -226,6 +242,7 @@ function bottleneck(b: RecruitingBase): Scored | null {
           extras: [stepExtra(measured, i)],
         },
       ),
+    uses: uses(NEXT_STEP, appDimUses(seg?.s.dim)),
     score: 100 + ratio,
   }
 }
@@ -292,6 +309,8 @@ function lacksNextStep(b: RecruitingBase): Scored | null {
         : undefined,
     tab: 'pipeline',
     drill: () => activeDrill(b, lacking, { title: 'Candidates lacking a next step' }),
+    // Owners are named in the action and the people list; a segment only when the detail names it.
+    uses: uses(NEXT_STEP, OWNER, !concentrated && seg ? appDimUses(seg.dim) : []),
     score: 95 + Math.min(10, (n / Math.max(1, b.actives.length)) * 20),
   }
 }
@@ -400,6 +419,7 @@ function offerAcceptance(b: RecruitingBase, waiting: ReturnType<typeof offersWai
     tab: 'sources',
     drill: () =>
       offersDrill(b, period.offers, `Offers resolved ${period.nowWords}`, windowSub(b, period.window)),
+    uses: uses(OUTCOME, appDimUses(seg?.dim), topReasons.length ? REASON : [], waiting ? NEXT_STEP : []),
     score: 90 + drop * 100,
   }
 }
@@ -421,6 +441,7 @@ function offersWaitingFinding(
     people: waiting.items.map((x) => person(x, `${x.app.reqId} · offer out ${days(x.days)}`)),
     tab: 'pipeline',
     drill: () => activeDrill(b, waiting.items, { title: 'Offers waiting more than 5 days for an answer' }),
+    uses: uses(NEXT_STEP, top && top[1] >= 2 ? APP_DIM.recruiter : []),
     score: 75 + n,
   }
 }
@@ -505,6 +526,17 @@ function emptyFunnel(
           'Open reqs with nobody past the screen',
           `Open more than ${EMPTY_FUNNEL_DAYS} days and no candidate has reached the hiring manager stage.`,
         ),
+      // The title or detail names a req by its title; the funnel reads candidates through their req.
+      uses: uses(
+        OPEN_REQ,
+        REQ_JOIN,
+        STAGE_REACHED,
+        ['requisitions.jobTitle'],
+        concentrated ? ['requisitions.department', 'requisitions.priority'] : [],
+        vsCompany || slow ? FILLED_REQ : [],
+        vsCompany ? REQ_DIM.department : [],
+        slow ? reqDimUses(slow.top.dim) : [],
+      ),
       score: 80 + n,
     },
   }
@@ -572,6 +604,7 @@ function slowTimeToFill(b: RecruitingBase, slow: SlowFill): Scored {
         b.filled.filter((r) => REQ_KEY[top.dim](r) === top.value),
         `Reqs filled, ${top.value}, ${b.windowWords}`,
       ),
+    uses: uses(FILLED_REQ, reqDimUses(top.dim), reqDimUses(second?.dim)),
     score: 65 + 10 * (ratio - 1),
   }
 }
@@ -588,6 +621,7 @@ function dataJoin(b: RecruitingBase): Scored | null {
     action:
       'Check that Candidates and Requisitions use the same req IDs, then upload them again in the Data room.',
     drill: () => unmatchedDrill(b),
+    uses: REQ_JOIN,
     score: 99,
   }
 }
@@ -622,6 +656,7 @@ function sourceDryingUp(b: RecruitingBase): Scored | null {
     action: `Review ${lower(pick.source)} postings and spend with the sourcing team.`,
     tab: 'sources',
     drill: () => sourceDrill(b, picked, 'change'),
+    uses: uses(COHORT, APP_DIM.source),
     score: 40 + 50 * drop,
   }
 }
@@ -645,6 +680,7 @@ function withdrawalsRising(b: RecruitingBase): Scored | null {
   for (const a of wd) if (a.reason) reasons.set(a.reason, (reasons.get(a.reason) ?? 0) + 1)
   const topReason = [...reasons].sort((a, c) => c[1] - a[1])[0]
   const stageName = topStage ? (STAGE_AT[topStage[0]] ?? null) : null
+  const staged = !!(topStage && stageName)
   return {
     id: 'rec-withdrawals',
     severity: 'warning',
@@ -663,6 +699,7 @@ function withdrawalsRising(b: RecruitingBase): Scored | null {
         extras: [exitExtra],
         hide: ['nextEventDate', 'stageEnteredDate'],
       }),
+    uses: uses(OUTCOME, staged ? STAGE_REACHED : [], staged && topReason ? REASON : []),
     score: 30 + share * 100,
   }
 }
@@ -688,6 +725,7 @@ function bestSource(b: RecruitingBase): Scored | null {
     action: `Share these results with hiring teams and keep ${lower(best.source)} in the sourcing plan.`,
     tab: 'sources',
     drill: () => sourceDrill(b, best, 'hireRate'),
+    uses: uses(COHORT, OUTCOME, APP_DIM.source),
     score: 0,
   }
 }
@@ -754,5 +792,6 @@ function toFinding(s: Scored): Finding {
     filter,
     tab,
     drill,
+    uses: s.uses,
   }
 }

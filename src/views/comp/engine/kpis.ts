@@ -21,6 +21,7 @@ import {
   ruleExceptions,
   spendDrill,
 } from './drill'
+import { COMPA, FX, MARKET, MERIT, POPULATION, POSITION, PROMOTION, RATING, refs } from './lineage'
 import { marketTotal } from './market'
 import type { CompModel } from './model'
 import { coverageParts } from './notes'
@@ -92,6 +93,7 @@ export function buildKpis(m: Core, spend: SpendSummary): Kpi[] {
   return [
     {
       id: 'median-compa',
+      uses: COMPA,
       label: 'Median compa-ratio',
       value: scope.median,
       format: 'ratio',
@@ -105,6 +107,7 @@ export function buildKpis(m: Core, spend: SpendSummary): Kpi[] {
     },
     {
       id: 'in-band',
+      uses: COMPA,
       label: 'In healthy band',
       value: scope.inBand,
       format: 'pct',
@@ -118,6 +121,7 @@ export function buildKpis(m: Core, spend: SpendSummary): Kpi[] {
     },
     {
       id: 'below-min',
+      uses: POSITION,
       label: 'Below range minimum',
       value: belowShare,
       format: 'pct',
@@ -133,6 +137,7 @@ export function buildKpis(m: Core, spend: SpendSummary): Kpi[] {
     },
     {
       id: 'above-max',
+      uses: POSITION,
       label: 'Above range maximum',
       value: aboveShare,
       format: 'pct',
@@ -148,6 +153,7 @@ export function buildKpis(m: Core, spend: SpendSummary): Kpi[] {
     },
     {
       id: 'merit-spend',
+      uses: refs(MERIT, FX),
       label: 'Merit spend',
       value: hideSpend ? null : spend.spendPct,
       format: 'pct2',
@@ -167,6 +173,7 @@ export function buildKpis(m: Core, spend: SpendSummary): Kpi[] {
     },
     {
       id: 'p4p',
+      uses: refs(MERIT, RATING),
       label: 'Pay for performance',
       value: diff.ratio,
       format: 'times',
@@ -183,6 +190,7 @@ export function buildKpis(m: Core, spend: SpendSummary): Kpi[] {
     },
     {
       id: 'market',
+      uses: MARKET,
       label: 'Median market ratio',
       value: mkt.median,
       format: 'ratio',
@@ -231,6 +239,7 @@ export function buildCycleKpis(
   return [
     {
       id: 'eligible',
+      uses: MERIT,
       label: 'Merit proposals',
       value: pop.has.merit ? c.spend.eligible : null,
       format: 'int',
@@ -241,6 +250,7 @@ export function buildCycleKpis(
     },
     {
       id: 'spend',
+      uses: refs(MERIT, FX),
       label: 'Merit spend',
       value: spendPct,
       format: 'pct2',
@@ -254,6 +264,7 @@ export function buildCycleKpis(
     },
     {
       id: 'guideline-spend',
+      uses: refs(MERIT, FX, RATING),
       label: 'Spend at guideline',
       value: guidePct,
       format: 'pct2',
@@ -265,6 +276,7 @@ export function buildCycleKpis(
     },
     {
       id: 'promotions',
+      uses: refs(PROMOTION, pop.has.merit && 'comp.meritPct', POPULATION),
       label: 'Promotions proposed',
       value: pop.has.promotion || pop.has.merit ? promo.rows.length : null,
       format: 'int',
@@ -275,6 +287,7 @@ export function buildCycleKpis(
     },
     {
       id: 'exceptions',
+      uses: refs(MERIT, RATING),
       label: 'Guideline exceptions',
       value: pop.has.merit ? rules : null,
       format: 'int',

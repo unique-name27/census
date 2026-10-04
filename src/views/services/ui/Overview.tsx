@@ -143,6 +143,7 @@ export function Overview({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext }
   const txFigure = (
     <Figure
       id="services-tx-on-time-by-month"
+      uses={m.uses['services-tx-on-time-by-month']}
       span={m.hasCases ? 6 : 12}
       title="Transactions on time by month"
       subtitle={`Share of HR transactions due each month that were completed by their due date, ${firstMonth} to ${lastMonth}`}
@@ -267,6 +268,7 @@ export function Overview({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext }
         <div className={cx(spanClass(8), 'flex flex-col gap-4')}>
           <Figure
             id="services-cases-by-month"
+            uses={m.uses['services-cases-by-month']}
             span={12}
             title="Cases opened by month"
             subtitle={`Cases opened per month by category, the five largest plus Other, ${firstMonth} to ${lastMonth}`}
@@ -307,6 +309,7 @@ export function Overview({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext }
           <Grid>
             <Figure
               id="services-sla-by-month"
+              uses={m.uses['services-sla-by-month']}
               span={6}
               title="Resolution SLA by month"
               subtitle={`Share of cases opened each month that were resolved within target, ${firstMonth} to ${lastMonth}`}
@@ -343,6 +346,7 @@ export function Overview({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext }
             </Figure>
             <Figure
               id="services-cases-by-category"
+              uses={m.uses['services-cases-by-category']}
               span={6}
               title="Cases by category"
               subtitle={`Cases opened in the ${per}, with the share that met the resolution SLA`}
@@ -369,6 +373,7 @@ export function Overview({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext }
             </Figure>
             <Figure
               id="services-backlog-by-age"
+              uses={m.uses['services-backlog-by-age']}
               span={6}
               title="Open backlog by age"
               subtitle="Cases open at the as-of date, by days since they were opened and by status"

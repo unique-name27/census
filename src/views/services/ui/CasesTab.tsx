@@ -333,6 +333,7 @@ export function CasesTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext }
       >
         <Figure
           id="services-sla-by-category"
+          uses={m.uses['services-sla-by-category']}
           span={6}
           title="Resolution SLA by category"
           subtitle={`Share of cases opened in the ${per} resolved within the category target, lowest first`}
@@ -371,6 +372,7 @@ export function CasesTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext }
         </Figure>
         <Figure
           id="services-time-to-resolve"
+          uses={m.uses['services-time-to-resolve']}
           span={6}
           title="Time to resolve against target"
           subtitle={`Time from opened to resolved as a share of each category's resolution target (100% = on target), cases resolved in the ${per}`}
@@ -416,6 +418,7 @@ export function CasesTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext }
       >
         <Figure
           id="services-arrivals"
+          uses={m.uses['services-arrivals']}
           span={8}
           title="When cases arrive"
           subtitle={`Cases opened in the ${per} by weekday and hour of the opened time`}
@@ -455,6 +458,7 @@ export function CasesTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext }
         </Figure>
         <Figure
           id="services-csat-by-channel"
+          uses={m.uses['services-csat-by-channel']}
           span={4}
           title="Satisfaction by channel"
           subtitle={`Mean score (1 to 5) on cases resolved in the ${per}`}
@@ -488,6 +492,7 @@ export function CasesTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext }
       >
         <Figure
           id="services-reopen-escalate"
+          uses={m.uses['services-reopen-escalate']}
           span={12}
           title="Reopened and escalated by category"
           subtitle={`Cases opened in the ${per}: reopened after resolution, and escalated to a higher tier`}
@@ -515,6 +520,7 @@ export function CasesTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext }
         </Figure>
         <Figure
           id="services-team-workload"
+          uses={m.uses['services-team-workload']}
           span={12}
           title="Team workload"
           subtitle={`Cases by owning team, ${per}; open count at the as-of date`}
@@ -537,6 +543,7 @@ export function CasesTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext }
       >
         <Figure
           id="services-aged-cases"
+          uses={m.uses['services-aged-cases']}
           span={12}
           title="Cases open longer than 14 days"
           subtitle="Open at the as-of date, with the days past the category resolution target"

@@ -9,7 +9,7 @@ export {
   plainText,
   visibleColumns,
 } from './columns'
-export { csvField, downloadCsv, guardFormula, toCsv } from './csv'
+export { csvField, csvPreamble, downloadCsv, guardFormula, toCsv } from './csv'
 export { downloadBlob, MIME } from './download'
 export {
   type ComposedSvg,
@@ -23,7 +23,18 @@ export {
   svgToString,
   withLightTheme,
 } from './image'
-export { asOfIso, asOfLabel, fileStem, imageFooter, metaLine, slug, stampLine, viewLine } from './names'
+export {
+  asOfIso,
+  asOfLabel,
+  dataLine,
+  fileStem,
+  imageFooter,
+  metaLine,
+  slug,
+  stampLine,
+  standardLine,
+  viewLine,
+} from './names'
 export type { ExportOptions, ExportTable } from './types'
 export {
   buildViewWorkbook,
@@ -33,11 +44,13 @@ export {
   exportViewWorkbook,
   type FigureGroup,
   isFigureGroups,
+  slideFootnote,
   type ViewEntry,
   type ViewExportOptions,
   type ViewFigures,
   viewEntries,
 } from './view'
+export { WITHHELD_COLUMNS, withheldRows } from './withheld'
 export {
   addTableSheet,
   buildWorkbook,

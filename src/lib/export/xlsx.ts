@@ -18,8 +18,9 @@ import {
   visibleColumns,
 } from './columns'
 import { downloadBlob, MIME } from './download'
-import { fileStem, metaLine, stampLine, viewLine } from './names'
+import { dataLine, fileStem, metaLine, stampLine, viewLine } from './names'
 import type { ExportOptions, ExportTable } from './types'
+import { exportNote } from './withheld'
 
 type ExcelModule = typeof import('exceljs')
 
@@ -155,8 +156,12 @@ export function addTableSheet(
   ]
   if (table.subtitle) block.push({ text: table.subtitle, size: 10, color: XL.ink2 })
   block.push({ text: [viewLine(meta), metaLine(meta)].filter(Boolean).join(' · '), size: 9, color: XL.muted })
+  const data = dataLine(meta.standard, table.tier, table.withheld)
+  if (data) block.push({ text: data, size: 9, color: XL.ink2 })
   block.push({ text: stampLine(meta), size: 9, color: XL.muted, bold: true })
-  if (table.note) block.push({ text: table.note, size: 9, color: XL.muted, italic: true })
+  // A withheld table prints no note: notes usually carry the numbers the standard hides.
+  const note = exportNote(table)
+  if (note) block.push({ text: note, size: 9, color: XL.muted, italic: true })
   block.forEach((line, i) => {
     const cell = ws.getCell(i + 1, 1)
     cell.value = line.text

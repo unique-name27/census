@@ -2,7 +2,9 @@
  * Ordering and export rows for a view's readout. Pure.
  */
 import type { Column } from '@/charts/types'
+import { TIER_LABEL } from '@/data/quality/tier'
 import { isNum, plural } from '@/lib/format'
+import type { TierGate } from './tier/tierModel'
 import type { Finding, FindingPerson, Severity } from './types'
 
 export const SEVERITY_RANK: Record<Severity, number> = { critical: 0, warning: 1, info: 2, good: 3 }
@@ -58,15 +60,35 @@ export const READOUT_COLUMNS: Column[] = [
   { key: 'people', label: 'People', format: 'int', align: 'right' },
 ]
 
-/** Export rows in on-screen order. People are counted, not named. */
-export function readoutRows(findings: readonly Finding[]): Record<string, unknown>[] {
-  return sortFindings(findings).map((f) => ({
-    severity: SEVERITY_WORD[f.severity],
-    finding: f.title,
-    detail: f.detail ?? '',
-    nextStep: f.action ?? '',
-    people: peopleCount(f),
-  }))
+/** The readout table with each finding's tier after the finding. */
+export const READOUT_COLUMNS_WITH_TIER: Column[] = [
+  ...READOUT_COLUMNS.slice(0, 2),
+  { key: 'tier', label: 'Tier', format: 'text' },
+  ...READOUT_COLUMNS.slice(2),
+]
+
+/**
+ * Export rows in on-screen order. People are counted, not named. With `gateOf`, each row carries
+ * the finding's tier (pass only the findings the data standard shows).
+ */
+export function readoutRows(
+  findings: readonly Finding[],
+  gateOf?: (f: Finding) => TierGate | null,
+): Record<string, unknown>[] {
+  return sortFindings(findings).map((f) => {
+    const row: Record<string, unknown> = {
+      severity: SEVERITY_WORD[f.severity],
+      finding: f.title,
+      detail: f.detail ?? '',
+      nextStep: f.action ?? '',
+      people: peopleCount(f),
+    }
+    if (gateOf) {
+      const g = gateOf(f)
+      row.tier = g ? TIER_LABEL[g.tier] : ''
+    }
+    return row
+  })
 }
 
 /**

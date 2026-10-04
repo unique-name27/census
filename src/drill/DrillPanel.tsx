@@ -1,21 +1,41 @@
 /**
  * The drill panel: a sheet that slides in from the right with the records behind a number
- * (sortable, searchable, exportable) and, one click further, a person's card. Mounted once by
- * the app shell; opened with openDrill(spec) / openPerson(id) from anywhere.
+ * (sortable, searchable, exportable) and, one click further, a person's card. The header shows
+ * the tier of the drilled number when the spec names its fields, otherwise the tier of the
+ * records' dataset, labeled as such. Mounted once by the app shell; opened with openDrill(spec) /
+ * openPerson(id) from anywhere.
  */
 import { Dialog as BDialog } from '@base-ui/react/dialog'
 import { useMemo } from 'react'
 import { DataTable } from '@/charts/DataTable'
 import { useExportMeta } from '@/charts/useExportMeta'
 import { IconChevronRight, IconClose, IconCopy, IconDownload, IconFile } from '@/components/icons'
+import { TierBadge } from '@/components/tier/TierBadge'
 import { toast } from '@/components/toast'
 import { Button, Menu } from '@/components/ui'
 import { useAnalytics } from '@/data/context'
+import { datasetDef } from '@/data/schema'
 import { fmt } from '@/lib/format'
 import { PersonCard } from './PersonCard'
 import { buildDrillTable, drillNoun, PERSON_KEY, ROW_KEY } from './records'
 import { useDrillStore } from './store'
+import { drillTier } from './tier'
 import type { DrillSpec } from './types'
+
+/**
+ * The tier of the drilled number (from the spec's `uses`), or of the dataset the records come
+ * from, said so; a click opens the Quality panel of the dataset that sets it.
+ */
+function RecordsTier({ spec }: { spec: DrillSpec }) {
+  const { quality } = useAnalytics()
+  const t = drillTier(quality, spec)
+  return (
+    <span className="flex shrink-0 items-center gap-1.5">
+      {t.ofDataset && <span className="text-[12px] text-muted">{datasetDef(spec.kind).label} data</span>}
+      <TierBadge tier={t.tier} explain={t.explain} dataset={t.dataset} />
+    </span>
+  )
+}
 
 export function DrillPanel() {
   const stack = useDrillStore((s) => s.stack)
@@ -36,9 +56,10 @@ export function DrillPanel() {
                 Back
               </Button>
             )}
-            <span className="eyebrow flex-1">
+            <span className="eyebrow min-w-0 flex-1 truncate">
               {top?.type === 'person' ? 'Person' : 'Records behind the number'}
             </span>
+            {top?.type === 'records' && <RecordsTier spec={top.spec} />}
             <BDialog.Close
               aria-label="Close"
               className="inline-flex size-8 items-center justify-center rounded-control text-ink-2 hover:bg-hover hover:text-ink"
@@ -69,12 +90,13 @@ function RecordsView({ spec }: { spec: DrillSpec }) {
     note: spec.note,
     columns: table.columns,
     rows: table.rows,
+    tier: drillTier(ctx.quality, spec).tier,
   }
   const opts = { showPay: ctx.showPay }
 
   const onCsv = async () => {
     const m = await import('@/lib/export')
-    m.downloadCsv(exportTable, meta, { ...opts, fileName: m.fileStem(meta, spec.title) })
+    m.downloadCsv(exportTable, meta, { ...opts, fileName: m.fileStem(meta, spec.title), preamble: true })
   }
   const onXlsx = async () => {
     try {
@@ -123,7 +145,7 @@ function RecordsView({ spec }: { spec: DrillSpec }) {
       </div>
       {!ctx.showPay && spec.kind === 'comp' && (
         <p className="text-[12px] text-muted">
-          Pay amounts are hidden. Switch on "Show pay amounts" in Compensation to include them.
+          Pay amounts are hidden. Switch on "Show pay amounts" in Settings or in Compensation to include them.
         </p>
       )}
       <DataTable

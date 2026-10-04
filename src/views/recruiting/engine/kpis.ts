@@ -19,6 +19,7 @@ import {
   openReqsKpiDrill,
   timeToHireKpiDrill,
 } from './drills'
+import { KPI_USES } from './lineage'
 import { inWin, isOpenAt } from './prepare'
 import { medianTtf } from './reqs'
 import { acceptance, acceptanceByQuarter, daysToHire, quarterWindows } from './sources'
@@ -33,9 +34,10 @@ export function openReqSpark(reqs: readonly Requisition[], asOf: string, n = 8):
 
 export function headline(ctx: AnalyticsContext): Headline {
   const reqs = ctx.data.requisitions
-  if (!reqs.length) return { value: '—', label: 'open reqs' }
+  const uses = KPI_USES['open-reqs']
+  if (!reqs.length) return { value: '—', label: 'open reqs', uses }
   const open = reqs.filter((r) => isOpenAt(r, ctx.asOf)).length
-  return { value: fmt(open, 'int'), label: 'open reqs', spark: openReqSpark(reqs, ctx.asOf) }
+  return { value: fmt(open, 'int'), label: 'open reqs', spark: openReqSpark(reqs, ctx.asOf), uses }
 }
 
 /** A measure over 1 to 4 people is hidden (none at all just reads "—"). */
@@ -74,6 +76,7 @@ export function recruitingKpis(b: RecruitingBase): Kpi[] {
     tab: 'requisitions',
     definition: `Requisitions open on ${formatDate(b.asOf)}: opened by then and not yet filled, closed or cancelled. Reqs on hold are counted separately.`,
     drill: noReqs ? undefined : () => openReqsKpiDrill(b),
+    uses: KPI_USES['open-reqs'],
   })
 
   // Hires (window).
@@ -90,6 +93,7 @@ export function recruitingKpis(b: RecruitingBase): Kpi[] {
     tab: 'sources',
     definition: 'Candidates with status Hired whose offer was accepted (hired date) in the period.',
     drill: noCands ? undefined : () => hiresKpiDrill(b),
+    uses: KPI_USES.hires,
   })
 
   // Median time to fill.
@@ -123,6 +127,7 @@ export function recruitingKpis(b: RecruitingBase): Kpi[] {
     definition:
       'Median days from the date a req opened to the date its offer was accepted, for reqs filled in the period.',
     drill: ttf == null ? undefined : () => filledReqsDrill(b, b.filled, `Reqs filled, ${b.windowWords}`),
+    uses: KPI_USES['time-to-fill'],
   })
 
   // Median time to hire.
@@ -143,6 +148,7 @@ export function recruitingKpis(b: RecruitingBase): Kpi[] {
     tab: 'sources',
     definition: 'Median days from application to offer accepted, for hires in the period.',
     drill: tth == null ? undefined : () => timeToHireKpiDrill(b),
+    uses: KPI_USES['time-to-hire'],
   })
 
   // Offer acceptance.
@@ -174,6 +180,7 @@ export function recruitingKpis(b: RecruitingBase): Kpi[] {
     definition:
       'Offers accepted ÷ offers accepted or declined, for offers resolved in the period (hired date or decline date).',
     drill: accValue == null ? undefined : () => offerAcceptanceKpiDrill(b),
+    uses: KPI_USES['offer-acceptance'],
   })
 
   // Candidates lacking a next step (snapshot).
@@ -193,6 +200,7 @@ export function recruitingKpis(b: RecruitingBase): Kpi[] {
     definition:
       'Active candidates who lack a next step on the as-of date: no step booked for more than 1.5× the usual days for the stage, interview feedback pending more than 2 days, or an offer out more than 5 days. "No step booked" on its own is a state, not this alarm.',
     drill: noCands ? undefined : () => lackingKpiDrill(b),
+    uses: KPI_USES['lacking-next-step'],
   })
   return out
 }

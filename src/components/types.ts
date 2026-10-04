@@ -1,6 +1,7 @@
 /**
  * Shapes every domain engine returns and the shared components render.
  */
+import type { FieldRef } from '@/data/quality/fieldRef'
 import type { Filters } from '@/data/scope'
 import type { DrillSource } from '@/drill/Drill'
 import type { Format } from '@/lib/format'
@@ -31,6 +32,11 @@ export interface Kpi {
   definition?: string
   /** The records behind the value; clicking the value opens them (down to each person). */
   drill?: DrillSource
+  /**
+   * The fields the number is computed from ('employees.terminationDate'). Its tier is the lowest
+   * of theirs; without it, the tier of the view's datasets is used.
+   */
+  uses?: readonly FieldRef[]
 }
 
 export type Severity = 'critical' | 'warning' | 'info' | 'good'
@@ -64,4 +70,6 @@ export interface Finding {
   tab?: string
   /** The records behind the finding's number (opens the drill panel). */
   drill?: DrillSource
+  /** The fields the finding's number is computed from; its tier is the lowest of theirs. */
+  uses?: readonly FieldRef[]
 }

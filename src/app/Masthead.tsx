@@ -1,49 +1,20 @@
 /**
  * Top line of the band: wordmark, whose data this is (and whether pay amounts are on for this
- * session), the as-of date, related tools, the Data room and theme.
+ * session), the as-of date, related tools, the Data room and Settings (theme and every other
+ * preference live in the Settings sheet).
  */
 
-import { IconDatabase, IconEye, IconMonitor, IconMoon, IconSun } from '@/components/icons'
+import { IconDatabase, IconEye, IconGear } from '@/components/icons'
 import { goTo } from '@/components/navigation'
-import { Button, cx, IconButton, Menu, Tag } from '@/components/ui'
+import { Button, cx, Tag } from '@/components/ui'
 import { useAnalytics } from '@/data/context'
 import { SAMPLE_COMPANY } from '@/data/sample'
-import { type ThemePref, useCensus } from '@/data/store'
+import { openSettings, useCensus } from '@/data/store'
 import { formatDate } from '@/lib/dates'
 import { companyLine, uploadedCount } from './exportMeta'
 import { Mark } from './Mark'
+import { settingsTrigger } from './settings/SettingsSheet'
 import { ToolsMenu } from './ToolsMenu'
-
-const THEMES: { value: ThemePref; label: string; Icon: typeof IconSun }[] = [
-  { value: 'system', label: 'System', Icon: IconMonitor },
-  { value: 'light', label: 'Light', Icon: IconSun },
-  { value: 'dark', label: 'Dark', Icon: IconMoon },
-]
-
-function ThemeMenu() {
-  const theme = useCensus((s) => s.theme)
-  const setTheme = useCensus((s) => s.setTheme)
-  const current = THEMES.find((t) => t.value === theme) ?? THEMES[0]
-  return (
-    <Menu
-      width={180}
-      trigger={
-        <IconButton label={`Theme: ${current.label}`}>
-          <current.Icon />
-        </IconButton>
-      }
-      items={[
-        { heading: 'Theme' },
-        ...THEMES.map((t) => ({
-          label: t.label,
-          icon: <t.Icon />,
-          hint: t.value === theme ? 'Current' : undefined,
-          onSelect: () => setTheme(t.value),
-        })),
-      ]}
-    />
-  )
-}
 
 export function Wordmark() {
   return (
@@ -81,6 +52,7 @@ export function PayShownTag() {
 export function Masthead() {
   const ctx = useAnalytics()
   const onDataRoom = useCensus((s) => s.route.view === 'data')
+  const settingsOpen = useCensus((s) => s.settingsOpen.open)
   const { uploaded, total } = uploadedCount(ctx.sources)
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-1 pt-3 pb-2">
@@ -112,7 +84,16 @@ export function Masthead() {
             {uploaded} of {total} uploaded
           </span>
         </Button>
-        <ThemeMenu />
+        <Button
+          ref={settingsTrigger}
+          variant={settingsOpen ? 'secondary' : 'ghost'}
+          icon={<IconGear />}
+          aria-haspopup="dialog"
+          aria-expanded={settingsOpen}
+          onClick={() => openSettings()}
+        >
+          Settings
+        </Button>
       </div>
     </div>
   )

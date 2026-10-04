@@ -6,10 +6,12 @@
 import { create } from 'zustand'
 import { toast } from '@/components/toast'
 import type { ApplyOptions, FileFormat, ImportResult, Mapping, ParsedSheet } from '@/data/import'
+import type { DatasetVersion } from '@/data/quality'
 import { DATASET_KEYS, type DatasetKey, datasetDef } from '@/data/schema'
 import { useCensus } from '@/data/store'
 import { defaultFills } from '../engine/fills'
 import { blockingFields, learnedPicks, replacedMessage, type Step } from '../engine/flow'
+import { draftMapping } from '../engine/lineage'
 import {
   isNotCensus,
   nextPending,
@@ -60,8 +62,17 @@ export interface ReadProgress {
   total: number
 }
 
+/** What a re-map starts from: a version and the original sheet stored with it. */
+export interface RemapSource {
+  key: DatasetKey
+  sheet: ParsedSheet
+  version: Pick<DatasetVersion, 'mapping' | 'applyOptions' | 'fileName' | 'sheetName'>
+}
+
 interface SessionState {
   phase: 'idle' | 'reading' | 'review'
+  /** 'remap': one stored sheet opened again to change its mapping; nothing is uploaded. */
+  mode: 'upload' | 'remap'
   reading: ReadProgress | null
   sheets: SessionSheet[]
   status: Record<string, SheetStatus>
@@ -72,6 +83,8 @@ interface SessionState {
   /** An apply is being written. */
   busy: boolean
   start: (files: readonly File[], target?: DatasetKey | null) => Promise<void>
+  /** Open the mapping step on a version's stored sheet, starting from the mapping it was read with. */
+  remap: (src: RemapSource) => Promise<void>
   goto: (id: string) => Promise<void>
   setDataset: (id: string, dataset: DatasetKey | null) => Promise<void>
   update: (id: string, patch: (d: Draft) => Partial<Draft>) => void
@@ -82,6 +95,7 @@ interface SessionState {
 
 const IDLE = {
   phase: 'idle' as const,
+  mode: 'upload' as const,
   reading: null,
   sheets: [],
   status: {},
@@ -89,6 +103,28 @@ const IDLE = {
   drafts: {},
   notes: [],
   busy: false,
+}
+
+/** The reader's format for a stored file name (a re-map has no file to sniff). */
+export function formatOfName(fileName: string): FileFormat {
+  const ext = /\.([a-z]+)$/i.exec(fileName)?.[1]?.toLowerCase()
+  return ext === 'csv' ? 'csv' : ext === 'tsv' ? 'tsv' : ext === 'xls' ? 'xls' : 'xlsx'
+}
+
+/** The single-sheet session a re-map opens: the stored sheet, its dataset fixed. */
+export function remapSheet(src: RemapSource): SessionSheet {
+  const fileName = src.version.fileName ?? `${datasetDef(src.key).label} extract`
+  return {
+    id: 'remap',
+    fileName,
+    sheetName: src.version.sheetName ?? src.sheet.name,
+    rows: src.sheet.rows.length,
+    guesses: [{ key: src.key, confidence: 1 }],
+    dataset: src.key,
+    reason: 'target',
+    sheet: src.sheet,
+    format: formatOfName(fileName),
+  }
 }
 
 /** Let the browser paint progress between heavy steps. */
@@ -283,6 +319,38 @@ export const useImportSession = create<SessionState>((set, get) => {
       }
     },
 
+    async remap(src) {
+      if (get().phase !== 'idle') return
+      set({ ...IDLE, phase: 'reading', mode: 'remap' })
+      try {
+        const lib = await loadImportLib()
+        const def = datasetDef(src.key)
+        const auto = lib.autoMap(src.sheet.headers, src.sheet.rows, def, lib.loadLearnedSynonyms(src.key))
+        const item = remapSheet(src)
+        const draft: Draft = {
+          dataset: src.key,
+          mapping: draftMapping(def, src.version.mapping, src.sheet.headers, auto),
+          options: { ...(src.version.applyOptions ?? {}) },
+          overrides: [],
+          fromProfile: false,
+          profileStale: false,
+          step: 'columns',
+          version: 0,
+        }
+        set({
+          phase: 'review',
+          mode: 'remap',
+          sheets: [item],
+          status: { [item.id]: 'pending' },
+          currentId: item.id,
+          drafts: { [item.id]: draft },
+        })
+      } catch {
+        toast('The stored sheet could not be opened. Nothing was changed.', { tone: 'critical' })
+        set({ ...IDLE })
+      }
+    },
+
     async goto(id) {
       if (get().status[id] !== 'pending') return
       await show(id)
@@ -324,13 +392,25 @@ export const useImportSession = create<SessionState>((set, get) => {
         const lib = await loadImportLib()
         const importedAt = new Date().toISOString()
         const sheetName = item.format === 'csv' || item.format === 'tsv' ? undefined : item.sheetName
-        await useCensus.getState().replaceDataset(key, result.rows, {
-          fileName: item.fileName,
-          sheetName,
-          importedAt,
-          warnings: result.stats.rowsWithIssues,
-          profileFingerprint: lib.headerFingerprint(item.sheet.headers),
-        })
+        await useCensus.getState().replaceDataset(
+          key,
+          result.rows,
+          {
+            fileName: item.fileName,
+            sheetName,
+            importedAt,
+            warnings: result.stats.rowsWithIssues,
+            profileFingerprint: lib.headerFingerprint(item.sheet.headers),
+          },
+          {
+            // The version keeps its sheet, so it can be re-mapped later without uploading again.
+            raw: item.sheet,
+            mapping: draft.mapping,
+            options: { ...draft.options, ...result.used },
+            issues: result.issues,
+            rowsIn: result.stats.rowsIn,
+          },
+        )
         await lib.saveProfile(
           lib.makeProfile(key, item.sheet.headers, draft.mapping, { ...draft.options, ...result.used }),
         )

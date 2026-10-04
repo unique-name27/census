@@ -8,7 +8,15 @@ import type { SourceMeta } from '@/data/store'
 import { buildDrillTable } from '@/drill/records'
 import { buildManifest } from '../engine/manifest'
 import { DRILL_LIMIT, issueGroupKey, issueRecordsByGroup } from '../engine/records'
-import { checkDrillLabel, checkSpec, fieldSpec, issueSpec, midSentence, rowsSpec } from './drillSpecs'
+import {
+  checkDrillLabel,
+  checkSpec,
+  fieldSpec,
+  indexSpec,
+  issueSpec,
+  midSentence,
+  rowsSpec,
+} from './drillSpecs'
 
 const sample = generateSample()
 const sources = Object.fromEntries(
@@ -139,5 +147,28 @@ describe('last upload lines', () => {
     expect(gone.rows).toHaveLength(1)
     expect(gone.note).toBe(`${m.message} 1 logged row is no longer in the loaded data, so it is not listed.`)
     expect(issueSpec(ds, log, m, undefined)).toBeNull()
+  })
+})
+
+describe('indexSpec', () => {
+  const ds = {
+    key: 'employees' as const,
+    label: 'Employees',
+    source: { kind: 'sample' as const, label: 'Sample', detail: null },
+  }
+
+  it('lists the rows at the given indexes, in order', () => {
+    const spec = indexSpec(ds, sample, [3, 1, 999_999], 'Employees with no manager', { scope: 'Everyone' })
+    expect(spec?.rows).toEqual([sample.employees[3], sample.employees[1]])
+    expect(spec?.subtitle).toBe('Everyone · Employees · Sample data')
+    expect(spec?.note).toBeUndefined()
+  })
+
+  it('returns null with nothing to list and caps long lists', () => {
+    expect(indexSpec(ds, sample, [], 'Nothing')).toBeNull()
+    const many = sample.employees.map((_, i) => i)
+    const spec = indexSpec(ds, sample, many, 'Everyone', { note: 'All of them.' })
+    expect(spec?.rows).toHaveLength(Math.min(many.length, DRILL_LIMIT))
+    expect(spec?.note?.startsWith('All of them.')).toBe(true)
   })
 })

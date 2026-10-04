@@ -89,6 +89,19 @@ function Requirement({ f }: { f: FieldDef }) {
 }
 
 function DatasetChoice({ item, draft, def }: { item: SessionSheet; draft: Draft; def: DatasetDef | null }) {
+  const remapping = useImportSession((s) => s.mode === 'remap')
+  if (remapping && def)
+    return (
+      <p className="max-w-[80ch] text-[13px] text-ink-2">
+        Re-mapping the sheet kept with the current version of {def.label}, starting from the columns it was
+        read with. Nothing is uploaded again. Applying makes a new version, so its mapping needs confirming
+        again.
+      </p>
+    )
+  return <DatasetPicker item={item} draft={draft} def={def} />
+}
+
+function DatasetPicker({ item, draft, def }: { item: SessionSheet; draft: Draft; def: DatasetDef | null }) {
   const setDataset = useImportSession((s) => s.setDataset)
   const sheets = useImportSession((s) => s.sheets)
   const status = useImportSession((s) => s.status)

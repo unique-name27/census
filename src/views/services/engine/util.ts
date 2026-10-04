@@ -1,4 +1,4 @@
-/** Small helpers shared by the employee services engines. Pure. */
+/** Small helpers shared by the HR ops engines. Pure. */
 import { MIN_GROUP } from '@/data/schema'
 import { addMonths, monthStart, monthsBetween } from '@/lib/dates'
 

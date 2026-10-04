@@ -1,7 +1,8 @@
 /**
  * Everything the Org chart view derives from the analytics context, computed once per context:
  * the as-of tree over the whole roster (filters dim cards rather than remove them), flags, open
- * requisitions per hiring manager, the reviews index and the chart root.
+ * requisitions per hiring manager, the reviews index, the chart root, and which chart layers the
+ * data standard lets through (see `layerGates`).
  */
 import type { AnalyticsContext } from '@/data/context'
 import type { Requisition } from '@/data/schema'
@@ -9,6 +10,7 @@ import { employeeMatcher, type Filters } from '@/data/scope'
 import { buildReviewIndex, type ReviewIndex } from '@/lib/people'
 import { computeFlags, type Flag } from './flags'
 import { type ReqStub, reqCardId } from './layout'
+import { type LayerGates, layerGates, type OrgLineage } from './lineage'
 import { buildOrgTree, type OrgTree } from './tree'
 
 export interface OrgModel {
@@ -27,6 +29,10 @@ export interface OrgModel {
   dims: boolean
   /** Whether a person matches those filters (always true without them). */
   matches: (id: string) => boolean
+  /** Which chart layers meet the data standard, and why the others are held back. */
+  gates: LayerGates
+  /** The Job changes the flags read: all of them, or none when they are below the data standard. */
+  flagJobChanges: AnalyticsContext['all']['jobChanges']
 }
 
 /** The non-leader part of the filters, which dims cards in the chart. */
@@ -34,9 +40,15 @@ export const dimFilters = (f: Filters): Filters => ({ ...f, leaderId: null })
 export const hasDimFilters = (f: Filters) =>
   f.businessUnit.length > 0 || f.department.length > 0 || f.location.length > 0 || f.level.length > 0
 
-export function buildOrgModel(ctx: Pick<AnalyticsContext, 'all' | 'asOf' | 'filters' | 'org'>): OrgModel {
+export type OrgModelInput = Pick<AnalyticsContext, 'all' | 'asOf' | 'filters' | 'org'> &
+  Partial<Pick<AnalyticsContext, 'quality' | 'standard'>>
+
+export function buildOrgModel(ctx: OrgModelInput): OrgModel {
   const tree = buildOrgTree(ctx.all.employees, ctx.asOf)
-  const flags = computeFlags(tree, ctx.all.jobChanges)
+  const gates = layerGates(ctx)
+  // Below the data standard, "managing since" falls back to the hire date, as without Job changes.
+  const flagJobChanges = gates.jobChanges.ok ? ctx.all.jobChanges : []
+  const flags = computeFlags(tree, flagJobChanges)
   const reqs = new Map<string, ReqStub[]>()
   const reqByCardId = new Map<string, ReqStub>()
   const reqRecords = new Map<string, Requisition>()
@@ -74,6 +86,21 @@ export function buildOrgModel(ctx: Pick<AnalyticsContext, 'all' | 'asOf' | 'filt
     rootId,
     dims,
     matches,
+    gates,
+    flagJobChanges,
+  }
+}
+
+/** What the numbers for the org under `rootId` depend on (see `keyFigureUses` and `chartUses`). */
+export function orgLineage(
+  m: Pick<OrgModel, 'tree' | 'gates'>,
+  rootId: string,
+  filters: Filters,
+): OrgLineage {
+  return {
+    subOrg: rootId !== m.tree.rootId,
+    filters,
+    jobChanges: m.gates.jobChanges.ok,
   }
 }
 

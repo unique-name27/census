@@ -112,7 +112,13 @@ function OffscreenTabs({
             <div key={tab.key} data-export-tab={tab.key} className="pt-5">
               <FigureRegistryProvider>
                 <CurrentViewProvider
-                  value={{ key: view.key, label: view.label, tabs: view.tabs, tab: tab.key }}
+                  value={{
+                    key: view.key,
+                    label: view.label,
+                    tabs: view.tabs,
+                    tab: tab.key,
+                    datasets: view.datasets,
+                  }}
                 >
                   <RegistrySink onReady={(r) => onRegistry(tab.key, r)} />
                   <TabBoundary onError={(err) => onError(tab.key, err)}>

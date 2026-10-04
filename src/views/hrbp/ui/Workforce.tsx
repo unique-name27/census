@@ -19,6 +19,7 @@ import {
   mixGroupSpec,
   mixSpec,
 } from '../engine/buckets'
+import { FIGURE } from '../engine/lineage'
 import { CONTINGENT, type CountRow, type GrowthRow } from '../engine/workforce'
 import { DEF } from './defs'
 import { drillWhen } from './drill'
@@ -89,6 +90,7 @@ export function Workforce({ m }: { m: HrbpModel }) {
       >
         <Figure
           id="hrbp-hc-department"
+          uses={p.uses(FIGURE.byDepartment)}
           title="Headcount by department"
           subtitle={`Employees on ${asOf}${departments > DEPARTMENTS_SHOWN ? `, largest ${DEPARTMENTS_SHOWN} departments` : ''}`}
           data={wf.byDepartment}
@@ -111,6 +113,7 @@ export function Workforce({ m }: { m: HrbpModel }) {
         <div className="col-span-full flex min-w-0 flex-col gap-4 md:col-span-6">
           <Figure
             id="hrbp-hc-location"
+            uses={p.uses(FIGURE.byLocation)}
             title="Headcount by location"
             subtitle={`Employees on ${asOf} by work site`}
             data={wf.byLocation}
@@ -131,6 +134,7 @@ export function Workforce({ m }: { m: HrbpModel }) {
           </Figure>
           <Figure
             id="hrbp-hc-level"
+            uses={p.uses(FIGURE.byLevel)}
             title="Headcount by level"
             subtitle={`Employees on ${asOf}, L1 to E3`}
             data={wf.byLevel}
@@ -157,6 +161,7 @@ export function Workforce({ m }: { m: HrbpModel }) {
         </div>
         <Figure
           id="hrbp-tenure"
+          uses={p.uses(FIGURE.tenure)}
           title="Tenure"
           subtitle={`Employees on ${asOf} by years since hire`}
           data={wf.tenure}
@@ -179,6 +184,7 @@ export function Workforce({ m }: { m: HrbpModel }) {
         </Figure>
         <Figure
           id="hrbp-worker-mix"
+          uses={p.uses(FIGURE.workerMix(mixDim))}
           title="Contractors and interns"
           subtitle={`Active contractors and interns on ${asOf} by ${mixDim === 'location' ? 'site' : 'business unit'}`}
           data={mixRows}
@@ -240,6 +246,7 @@ export function Workforce({ m }: { m: HrbpModel }) {
       >
         <Figure
           id="hrbp-growth"
+          uses={p.uses(FIGURE.growth(growthBy === 'department' ? 'department' : 'businessUnit'))}
           title={`Growth by ${growthBy}`}
           subtitle={`Change in employees from 12 months ago to ${asOf}`}
           data={wf.growth}
@@ -287,6 +294,7 @@ export function Workforce({ m }: { m: HrbpModel }) {
         </Figure>
         <Figure
           id="hrbp-engineering-share"
+          uses={p.uses(FIGURE.engineeringShare)}
           title="Engineering share"
           subtitle={`Employees in engineering departments on ${asOf}`}
           data={eng.rows}

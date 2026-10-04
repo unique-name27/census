@@ -1,6 +1,7 @@
 /**
  * Companion tools the team already uses, listed in the masthead's Tools menu. Defaults point at the
- * user's published tools; anyone can change a link (kept in this browser only).
+ * user's published tools; anyone can change a link in Settings → Related tools (kept in this
+ * browser only, as part of the settings). Pure.
  */
 
 export interface Tool {
@@ -37,8 +38,6 @@ export const DEFAULT_TOOLS: Tool[] = [
   },
 ]
 
-const KEY = 'census:tools'
-
 /** Only web links; anything else (javascript:, data:, file paths) is refused. */
 export function normalizeUrl(raw: string): string | null {
   const s = raw.trim()
@@ -52,34 +51,12 @@ export function normalizeUrl(raw: string): string | null {
   }
 }
 
-/** Defaults merged with this browser's saved links (a saved empty string clears a default). */
+/**
+ * Defaults merged with the saved links (Settings → Related tools). A saved null clears a
+ * default link.
+ */
 export function mergeTools(saved: Record<string, string | null> | null | undefined): Tool[] {
   return DEFAULT_TOOLS.map((t) => (saved && t.id in saved ? { ...t, url: saved[t.id] ?? null } : t))
-}
-
-export function loadTools(): Tool[] {
-  try {
-    const raw = localStorage.getItem(KEY)
-    return mergeTools(raw ? (JSON.parse(raw) as Record<string, string | null>) : null)
-  } catch {
-    return DEFAULT_TOOLS
-  }
-}
-
-export function saveTools(urls: Record<string, string | null>): void {
-  try {
-    localStorage.setItem(KEY, JSON.stringify(urls))
-  } catch {
-    /* storage blocked: links apply for this session only */
-  }
-}
-
-export function clearTools(): void {
-  try {
-    localStorage.removeItem(KEY)
-  } catch {
-    /* ignore */
-  }
 }
 
 /** Atlas deep link for a process ID, e.g. OF-05 -> <catalog>#process.OF-05. */

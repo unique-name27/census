@@ -12,6 +12,7 @@ import { formatDate } from '@/lib/dates'
 import { fmt, plural } from '@/lib/format'
 import { candidateDrill, flowDrill, speedCellDrill, stepChangeDrill, stepDaysDrill } from '../engine/drills'
 import { type FlowKind, type SpeedCell, TRANSITIONS } from '../engine/flow'
+import { FIGURE_USES } from '../engine/lineage'
 import type { WaitDot } from '../engine/pipeline'
 import { HIRED, LAST_OPEN_STAGE } from '../engine/types'
 import { useRecruitingUi } from '../state'
@@ -213,6 +214,7 @@ export function PipelineTab() {
       >
         <Figure
           id="recruiting-candidate-flow"
+          uses={FIGURE_USES['recruiting-candidate-flow']}
           title="Candidate flow"
           subtitle={`Applications received ${windowText(b.window)}, by the furthest stage reached and outcome on ${formatDate(b.asOf)}`}
           data={flowRows}
@@ -265,6 +267,7 @@ export function PipelineTab() {
       >
         <Figure
           id="recruiting-stage-conversion"
+          uses={FIGURE_USES['recruiting-stage-conversion']}
           title="Stage conversion"
           subtitle={`Applications received ${windowText(b.window)}, by stage, with the median days to the next stage and the change vs the prior period`}
           data={conversion}
@@ -292,6 +295,7 @@ export function PipelineTab() {
         />
         <Figure
           id="recruiting-waiting-time"
+          uses={FIGURE_USES['recruiting-waiting-time']}
           title="Waiting time by stage"
           subtitle={`Days each active candidate has waited, ${formatDate(b.asOf)}`}
           data={m.waiting}
@@ -346,6 +350,7 @@ export function PipelineTab() {
       >
         <Figure
           id="recruiting-speed-heatmap"
+          uses={FIGURE_USES['recruiting-speed-heatmap']}
           title="Days per transition by month"
           subtitle={`Median days per step, steps completed in the 12 months to ${formatDate(b.window.end)}`}
           data={m.speed}

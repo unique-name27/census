@@ -38,6 +38,7 @@ export function ExportMenu({ view, tab }: { view: ViewDef; tab: string }) {
       asOf: ctx.asOf,
       isSample: ctx.isSample,
       sampleCompany: SAMPLE_COMPANY,
+      standard: ctx.standard,
     })
 
   const runTab = async (kind: ExportKind) => {

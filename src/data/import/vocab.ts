@@ -423,7 +423,7 @@ const reqPriority = firstMatch([
   [words('standard', 'normal', 'medium', 'low', 'regular', 'routine', 'moderate', 'p3', 'p4'), 'Standard'],
 ])
 
-/* ───────────── employee services ───────────── */
+/* ───────────── HR ops ───────────── */
 
 const caseStatus = firstMatch([
   [words('closed', 'cancel*'), 'Closed'],

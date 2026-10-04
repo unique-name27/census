@@ -22,24 +22,26 @@ export function NineBoxFigure({ m, span }: { m: TalentModel; span: FigureSpan })
   return (
     <Figure
       id="talent-nine-box"
+      uses={m.uses['talent-nine-box']}
       title="Performance and potential"
       subtitle={`Active employees by rating and potential${cycle ? ` in ${cycle}` : ''}, as of ${formatDate(ctx.asOf)}`}
       data={rows}
-      columns={nineBoxColumns(m.drill)}
+      columns={nineBoxColumns(m.drill, m.riskOverlay)}
       definitions={[DEF.nineBox, DEF.highPerformer, DEF.flightRisk]}
-      note={`${plural(nb.placed, 'person', 'people')} placed · ${plural(nb.notPlaced, 'person', 'people')} without a rating and potential in that cycle`}
+      note={`${plural(nb.placed, 'person', 'people')} placed · ${plural(nb.notPlaced, 'person', 'people')} without a rating and potential in that cycle${m.riskOverlay ? '' : ` · flight risk not shown: ${m.belowStandard.toLowerCase()}`}`}
       span={span}
       className="self-start"
       empty={empty}
       detail={{
         label: 'People',
-        columns: nineBoxDetailColumns(cycle),
+        columns: nineBoxDetailColumns(cycle, m.riskOverlay),
         rows: () => nb.cells.flatMap((c) => c.people.map((p) => ({ box: c.label, ...p }))),
       }}
     >
       <NineBox
         cells={nb.cells}
         cycle={cycle}
+        showRisk={m.riskOverlay}
         drillFor={(c, part) => m.drill.nineBox(c.performance, c.potential, part)}
       />
     </Figure>

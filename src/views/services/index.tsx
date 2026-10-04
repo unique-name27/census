@@ -1,5 +1,5 @@
 /**
- * Employee services: are employees getting fast, correct answers, and are HR transactions
+ * HR ops: are employees getting fast, correct answers, and are HR transactions
  * processed on time? Every measure ties to the Hire-to-Retire Atlas process that governs it.
  */
 import { useMemo } from 'react'
@@ -28,7 +28,7 @@ function View({ tab }: { tab: string }) {
 
 export const view: ViewDef = {
   key: 'services',
-  label: 'Employee services',
+  label: 'HR ops',
   tabs: [
     { key: 'overview', label: 'Overview' },
     { key: 'cases', label: 'Cases' },

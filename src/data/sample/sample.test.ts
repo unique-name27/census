@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { bestCostMs } from '@/lib/testBudget'
 import {
   CANDIDATE_STATUSES,
   CASE_CATEGORIES,
@@ -130,9 +131,7 @@ describe('generator', () => {
   })
 
   it('runs in under 600 ms', () => {
-    const start = performance.now()
-    generateSample()
-    expect(performance.now() - start).toBeLessThan(600)
+    expect(bestCostMs(() => generateSample())).toBeLessThan(600)
   })
 })
 
@@ -716,7 +715,7 @@ describe('story: recruiting', () => {
   })
 })
 
-describe('story: employee services', () => {
+describe('story: HR ops', () => {
   const cases = data.cases
   const resolved = cases.filter((c) => c.resolvedAt)
   const slaMet = (xs: typeof cases) =>

@@ -1,4 +1,4 @@
-/** Shared UI pieces for the Employee services view: wording, definitions, tones, empty states. */
+/** Shared UI pieces for the HR ops view: wording, definitions, tones, empty states. */
 import { useTools } from '@/app/ToolsMenu'
 import { processLink } from '@/app/tools'
 import type { Definition, Tone } from '@/charts'

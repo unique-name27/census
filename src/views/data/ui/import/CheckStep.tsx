@@ -79,8 +79,8 @@ export function PayLeftOutNote() {
       <IconInfoFilled className="mt-0.5 size-3.5 shrink-0 text-s1" />
       <span>
         Pay amounts are missing from this file. If it came from Census, they were left out because pay amounts
-        were switched off. Switch on Show and export pay amounts under Pay amounts, download the file again
-        and add that copy.
+        were switched off. Switch on Show pay amounts for this session in Settings, under Privacy, download
+        the file again and add that copy.
       </span>
     </p>
   )

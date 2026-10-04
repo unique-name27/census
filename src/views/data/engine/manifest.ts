@@ -5,6 +5,8 @@
  */
 import type { Column } from '@/charts'
 import type { Severity } from '@/components/types'
+import { TIER_LABEL, TIERS, type Tier } from '@/data/quality/tier'
+import type { QualityIndex } from '@/data/quality/types'
 import { DATASETS, type DatasetKey, type Datasets, type ISODate, type ViewKey } from '@/data/schema'
 import type { SourceMeta } from '@/data/store'
 import { formatDate } from '@/lib/dates'
@@ -19,7 +21,7 @@ export const VIEW_LABELS: Record<ViewKey, string> = {
   recruiting: 'Recruiting',
   hrbp: 'HR business partners',
   org: 'Org chart',
-  services: 'Employee services',
+  services: 'HR ops',
   talent: 'Talent',
   comp: 'Compensation',
 }
@@ -46,6 +48,8 @@ export interface ManifestRow {
   coverage: DatasetCoverage
   checks: DatasetCheck[]
   status: Severity
+  /** The dataset's tier (none, bronze, silver or gold), when the quality index was given. */
+  tier: Tier | null
   /** Header fingerprint of the saved mapping used for the upload, when there is one. */
   profileFingerprint: string | null
 }
@@ -115,6 +119,13 @@ export function buildManifest(args: {
   feeds?: Partial<Record<DatasetKey, readonly ViewKey[]>>
   /** Facts from the import log of each dataset's current upload. */
   uploads?: Partial<Record<DatasetKey, UploadFacts | null>>
+  /** Each dataset's tier, from the quality index. */
+  tiers?: Partial<Record<DatasetKey, Tier>>
+  /**
+   * The quality index: its import logs and tier rules add issues the checks here do not see, for
+   * the sample's raw extracts as for uploads.
+   */
+  quality?: Pick<QualityIndex, 'checks' | 'fields' | 'dataset'> | null
 }): ManifestRow[] {
   const { data, sources, asOf } = args
   const targetIsSample = (k: DatasetKey) => sources[k]?.kind !== 'upload'
@@ -132,6 +143,7 @@ export function buildManifest(args: {
       targetIsSample,
       fills: upload?.fills,
       changeKinds: upload ? upload.changeKinds : null,
+      quality: args.quality,
     })
     const feeds = feedsOf(def.usedBy, args.feeds?.[def.key])
     return {
@@ -146,6 +158,7 @@ export function buildManifest(args: {
       coverage,
       checks,
       status: worstSeverity(checks),
+      tier: args.tiers?.[def.key] ?? null,
       profileFingerprint: source.kind === 'upload' ? (source.profileFingerprint ?? null) : null,
     }
   })
@@ -157,8 +170,22 @@ export interface ManifestSummary {
   /** Datasets with at least one warning or critical check. */
   needsLook: number
   totalRows: number
-  /** "41,444 rows across 10 datasets · 2 need a look". Which ones are uploads is in the masthead and each row. */
+  /** Datasets per tier (all zero when tiers were not given). */
+  tiers: Record<Tier, number>
+  /**
+   * "41,444 rows across 10 datasets · 3 gold, 4 silver, 3 bronze · 2 need a look". Which ones are
+   * uploads is in the masthead and each row.
+   */
   text: string
+}
+
+/** "3 gold, 4 silver, 3 bronze", best first; empty when no row has a tier. */
+export function tierMixText(counts: Record<Tier, number>): string {
+  return [...TIERS]
+    .reverse()
+    .filter((t) => counts[t] > 0)
+    .map((t) => `${counts[t]} ${t === 'none' ? 'with no data' : TIER_LABEL[t].toLowerCase()}`)
+    .join(', ')
 }
 
 export function manifestSummary(rows: readonly ManifestRow[]): ManifestSummary {
@@ -166,9 +193,12 @@ export function manifestSummary(rows: readonly ManifestRow[]): ManifestSummary {
   const needsLook = rows.filter((r) => r.status === 'critical' || r.status === 'warning').length
   const totalRows = rows.reduce((a, r) => a + r.rows, 0)
   const total = rows.length
+  const tiers: Record<Tier, number> = { none: 0, bronze: 0, silver: 0, gold: 0 }
+  for (const r of rows) if (r.tier) tiers[r.tier]++
   const head = `${fmt(totalRows, 'int')} ${totalRows === 1 ? 'row' : 'rows'} across ${total} datasets`
+  const mix = tierMixText(tiers)
   const tail = needsLook ? ` · ${needsLook} ${needsLook === 1 ? 'needs' : 'need'} a look` : ''
-  return { uploaded, total, needsLook, totalRows, text: `${head}${tail}` }
+  return { uploaded, total, needsLook, totalRows, tiers, text: `${head}${mix ? ` · ${mix}` : ''}${tail}` }
 }
 
 /**
@@ -185,6 +215,7 @@ export const MANIFEST_COLUMNS: Column[] = [
   { key: 'feeds', label: 'Feeds', width: 34 },
   { key: 'source', label: 'Source', width: 28 },
   { key: 'sourceDetail', label: 'Source detail', width: 22 },
+  { key: 'tier', label: 'Tier', width: 10 },
   { key: 'rows', label: 'Rows', format: 'int' },
   {
     key: 'coverage',
@@ -208,6 +239,7 @@ export function manifestExportRows(rows: readonly ManifestRow[]): Record<string,
     feeds: r.feedsText,
     source: r.source.label,
     sourceDetail: r.source.detail ?? '',
+    tier: r.tier ? TIER_LABEL[r.tier] : '',
     rows: r.rows,
     coverage: r.coverage.core,
     status: STATUS_WORD[r.status],

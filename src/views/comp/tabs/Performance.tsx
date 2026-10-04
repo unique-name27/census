@@ -52,6 +52,7 @@ export function Performance({ m }: { m: CompModel }) {
       >
         <Figure
           id="comp-compa-by-rating"
+          uses={m.uses['comp-compa-by-rating']}
           title="Compa-ratio by rating"
           subtitle={`One dot per person, tick at the median, as of ${asOf}`}
           data={p.ratingDots}
@@ -77,6 +78,7 @@ export function Performance({ m }: { m: CompModel }) {
         </Figure>
         <Figure
           id="comp-merit-by-rating"
+          uses={m.uses['comp-merit-by-rating']}
           title="Merit by rating against the guideline"
           subtitle="Mean proposed merit % by rating, with the guideline for each rating marked, this cycle"
           data={p.meritByRating}
@@ -101,6 +103,7 @@ export function Performance({ m }: { m: CompModel }) {
       >
         <Figure
           id="comp-merit-matrix"
+          uses={m.uses['comp-merit-matrix']}
           title="Merit matrix"
           subtitle="Mean merit minus the guideline, by rating and range position; blue above guideline, red below"
           data={p.matrix}
@@ -134,6 +137,7 @@ export function Performance({ m }: { m: CompModel }) {
         </Figure>
         <Figure
           id="comp-differentiation-by-department"
+          uses={m.uses['comp-differentiation-by-department']}
           title="Differentiation by department"
           subtitle="Mean merit for ratings 4-5 ÷ mean merit for rating 3, lowest first"
           data={p.byDepartment}
@@ -164,6 +168,7 @@ export function Performance({ m }: { m: CompModel }) {
       >
         <Figure
           id="comp-bonus-by-rating"
+          uses={m.uses['comp-bonus-by-rating']}
           title="Bonus payout by rating"
           subtitle={`Mean last payout as a share of target, by ${m.pop.annualCycle ?? 'annual'} rating`}
           data={p.bonus}
@@ -201,6 +206,7 @@ export function Performance({ m }: { m: CompModel }) {
         </Figure>
         <Figure
           id="comp-equity-by-rating"
+          uses={m.uses['comp-equity-by-rating']}
           title="Equity by rating"
           subtitle="Median annual equity as a share of base salary, both in USD"
           data={p.equity}

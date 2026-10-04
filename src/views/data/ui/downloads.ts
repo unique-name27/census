@@ -3,9 +3,10 @@
  * written by the import library's template writer so every file can be uploaded again as is.
  * The libraries load on first use.
  */
-import type { ExportMeta } from '@/charts'
+import type { Column, ExportMeta } from '@/charts'
 import type { ImportIssue } from '@/data/import'
 import { ISSUE_COLUMNS, issueTableRows } from '@/data/import/issues'
+import type { Tier } from '@/data/quality/tier'
 import { generateSample, SAMPLE_COMPANY } from '@/data/sample'
 import { DATASET_KEYS, type DatasetKey, type Datasets, datasetDef } from '@/data/schema'
 import { todayISO } from '@/lib/dates'
@@ -13,6 +14,7 @@ import { toCsv } from '@/lib/export/csv'
 import { downloadBlob, MIME } from '@/lib/export/download'
 import { slug } from '@/lib/export/names'
 import { sampleWorkbookDatasets } from '../engine/flow'
+import { LINEAGE_COLUMNS, type LineageRow, lineageExportRows } from '../engine/lineage'
 import {
   COVERAGE_COLUMNS,
   coverageExportRows,
@@ -96,4 +98,94 @@ export async function downloadManifest(
 export function downloadIssuesCsv(issues: readonly ImportIssue[], fileStem: string): void {
   const csv = toCsv({ columns: ISSUE_COLUMNS, rows: issueTableRows(issues) }, { showPay: false })
   downloadBlob(new Blob([csv], { type: MIME.csv }), `${fileStem}.csv`)
+}
+
+/** A dataset's field-by-field quality and its checks, as a two-sheet workbook. */
+export async function downloadQuality(args: {
+  key: DatasetKey
+  tier: Tier
+  fields: { columns: readonly Column[]; rows: readonly Record<string, unknown>[] }
+  checks: { columns: readonly Column[]; rows: readonly Record<string, unknown>[] }
+  meta: ExportMeta
+}): Promise<void> {
+  const { downloadXlsx } = await import('@/lib/export')
+  const label = datasetDef(args.key).label
+  await downloadXlsx(
+    [
+      {
+        name: 'Fields',
+        title: `${label}: field quality`,
+        subtitle:
+          'Fill rate over the rows each field applies to, values not recognized or defaulted, and tier',
+        columns: args.fields.columns,
+        rows: args.fields.rows,
+        tier: args.tier,
+      },
+      {
+        name: 'Checks',
+        title: `${label}: checks`,
+        subtitle: 'The rules behind the tier, silver gates first',
+        columns: args.checks.columns,
+        rows: args.checks.rows,
+        tier: args.tier,
+      },
+    ],
+    { ...args.meta, tab: label },
+    {
+      showPay: false,
+      fileName: `census-${slug(datasetDef(args.key).sheet)}-quality-${slug(args.meta.asOf)}`,
+    },
+  )
+}
+
+/** Where each field of a version came from, as a workbook. */
+export async function downloadLineage(
+  key: DatasetKey,
+  rows: readonly LineageRow[],
+  meta: ExportMeta,
+): Promise<void> {
+  const { downloadXlsx } = await import('@/lib/export')
+  const label = datasetDef(key).label
+  await downloadXlsx(
+    [
+      {
+        name: 'Mapping',
+        title: `${label}: column mapping`,
+        subtitle: 'Source column, conversion, match confidence and review for each field',
+        columns: LINEAGE_COLUMNS,
+        rows: lineageExportRows(rows),
+      },
+    ],
+    { ...meta, tab: label },
+    { showPay: false, fileName: `census-${slug(datasetDef(key).sheet)}-mapping` },
+  )
+}
+
+/**
+ * The stored raw sheet with its original headers (hidden columns already left out by the
+ * caller). CSV keeps it machine-readable; Excel adds the title block.
+ */
+export async function downloadRaw(args: {
+  key: DatasetKey
+  sheetLabel: string
+  table: { columns: readonly Column[]; rows: readonly Record<string, unknown>[] }
+  meta: ExportMeta
+  format: 'csv' | 'xlsx'
+}): Promise<void> {
+  const label = datasetDef(args.key).label
+  const fileName = `census-${slug(datasetDef(args.key).sheet)}-raw-${slug(args.sheetLabel)}`
+  const table = {
+    name: 'Raw sheet',
+    title: `${label}: raw sheet as uploaded`,
+    subtitle: args.sheetLabel,
+    columns: args.table.columns,
+    rows: args.table.rows,
+  }
+  if (args.format === 'csv') {
+    const csv = toCsv(table, { showPay: false })
+    downloadBlob(new Blob([csv], { type: MIME.csv }), `${fileName}.csv`)
+    return
+  }
+  const { downloadXlsx } = await import('@/lib/export')
+  await downloadXlsx([table], { ...args.meta, tab: label }, { showPay: false, fileName })
 }

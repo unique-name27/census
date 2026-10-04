@@ -4,6 +4,7 @@
  */
 import type { Finding, Kpi } from '@/components/types'
 import type { AnalyticsContext } from '@/data/context'
+import { BELOW_STANDARD_TEXT } from '@/data/quality'
 import { SAMPLE_AS_OF } from '@/data/sample'
 import { type ISODate, LEVELS } from '@/data/schema'
 import { daysBetween } from '@/lib/dates'
@@ -26,6 +27,7 @@ import {
 import { buildFindings } from './findings'
 import { safeMedian, values } from './groups'
 import { buildCycleKpis, buildKpis } from './kpis'
+import { type FigureUses, figureUses, meetsFor, PROMOTED } from './lineage'
 import {
   type JobMarketRow,
   jobsBelowMarket,
@@ -100,8 +102,17 @@ export interface CompModel {
   company: Population
   isCompany: boolean
   showPay: boolean
+  /**
+   * Job changes meet the data standard, so "promoted in the last 12 months" may be read into
+   * gold numbers. Below it, the promoted column and segment drop out and say why.
+   */
+  promotionsShown: boolean
+  /** "Not yet confirmed for production": why a clause or column below the standard is left out. */
+  belowStandard: string
   kpis: Kpi[]
   findings: Finding[]
+  /** The dataset fields behind each figure, by figure id (for its tier). */
+  uses: FigureUses
   overview: {
     hist: Bin<CompPerson>[]
     histDomain: [number, number] | null
@@ -267,13 +278,20 @@ export function computeComp(ctx: AnalyticsContext, settings: CycleSettings): Com
     company,
     isCompany: ctx.isCompany,
     showPay: ctx.showPay,
+    promotionsShown: meetsFor(ctx)(PROMOTED),
+    belowStandard: BELOW_STANDARD_TEXT[ctx.standard],
     overview,
     ranges,
     performance,
     market,
     cycle: cycleModel,
   }
-  return { ...core, kpis: buildKpis(core, spend), findings: buildFindings(ctx, core) }
+  return {
+    ...core,
+    kpis: buildKpis(core, spend),
+    findings: buildFindings(ctx, core),
+    uses: figureUses(core),
+  }
 }
 
 /** Folder-tab headline: median compa-ratio of the scope. Cheap: one pass over comp rows. */

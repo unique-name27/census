@@ -105,6 +105,7 @@ export function RetentionTab({ m }: { m: TalentModel }) {
       >
         <Figure
           id="talent-risk-bands"
+          uses={m.uses['talent-risk-bands']}
           title="People by risk band"
           subtitle={
             ctx.isCompany
@@ -151,6 +152,7 @@ export function RetentionTab({ m }: { m: TalentModel }) {
         </Figure>
         <Figure
           id="talent-risk-back-test"
+          uses={m.uses['talent-risk-back-test']}
           title="Exit rate by risk band, back-tested"
           subtitle={`Scored as of ${formatDate(bt.scoredOn)} with points learned only from exits known by then; ${who} ${bt.outcome.label}, whole company`}
           data={bt.bands}
@@ -188,6 +190,7 @@ export function RetentionTab({ m }: { m: TalentModel }) {
         </Figure>
         <Figure
           id="talent-risk-drivers"
+          uses={m.uses['talent-risk-drivers']}
           title="What drives risk"
           subtitle="Share of people in the high band with each factor"
           data={drivers}
@@ -216,6 +219,7 @@ export function RetentionTab({ m }: { m: TalentModel }) {
       >
         <Figure
           id="talent-risk-factors"
+          uses={m.uses['talent-risk-factors']}
           title="Flight-risk factors and their evidence"
           subtitle={
             learnedFrom.length
@@ -240,6 +244,7 @@ export function RetentionTab({ m }: { m: TalentModel }) {
       >
         <Figure
           id="talent-key-talent-at-risk"
+          uses={m.uses['talent-key-talent-at-risk']}
           title={peopleTitle}
           subtitle={peopleSub}
           data={peopleRows}
@@ -277,6 +282,7 @@ export function RetentionTab({ m }: { m: TalentModel }) {
         />
         <Figure
           id="talent-promotion-overdue"
+          uses={m.uses['talent-promotion-overdue']}
           title="High performers overdue for promotion"
           subtitle={
             m.overdue.cycles.length === 2
@@ -307,6 +313,7 @@ export function RetentionTab({ m }: { m: TalentModel }) {
         />
         <Figure
           id="talent-regretted-high-performers"
+          uses={m.uses['talent-regretted-high-performers']}
           title="Regretted exits of high performers"
           subtitle={`Voluntary regretted exits whose last rating was 4 or 5, ${ctx.window.label}`}
           data={regret.current}

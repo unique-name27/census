@@ -7,6 +7,7 @@
  * that kind of record, and any row that names a person opens that person's card.
  */
 import type { Column } from '@/charts/types'
+import type { FieldRef } from '@/data/quality/fieldRef'
 import type {
   Candidate,
   CompRecord,
@@ -53,6 +54,11 @@ export interface DrillSpec<K extends DrillKind = DrillKind> {
   hide?: string[]
   /** One-line explanation of how the rows were selected. */
   note?: string
+  /**
+   * The fields the drilled number is computed from (its figure's `uses`). The panel and its
+   * exports then show that number's tier; without them, the tier of the records' dataset.
+   */
+  uses?: readonly FieldRef[]
 }
 
 /** Build a typed spec without repeating the kind's record type. */

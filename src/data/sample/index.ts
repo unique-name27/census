@@ -21,6 +21,7 @@ import {
 import { NameBook } from './names'
 import { buildOrg } from './org'
 import { rngFor } from './prng'
+import { withJobFunction } from './raw/jobFunction'
 import { recruitingRows } from './recruiting'
 import { caseRows, transactionRows } from './services'
 import { isConsecutiveHigh, learningRows, rateCycles, reviewRows, successionRows } from './talent'
@@ -45,7 +46,7 @@ export function generateSample(): Datasets {
 
   const { requisitions, candidates } = recruitingRows(world, names, rngFor('recruiting'))
   return {
-    employees: employeeRows(world),
+    employees: withJobFunction(employeeRows(world)),
     jobChanges: jobChangeRows(world),
     requisitions,
     candidates,
@@ -56,4 +57,12 @@ export function generateSample(): Datasets {
     learning: learningRows(world, rngFor('learning')),
     comp: compRows(world, rngFor('comp')),
   }
+}
+
+let cached: Datasets | null = null
+
+/** The generated sample, built once and shared (the store and the messy sample both start from it). */
+export function cachedSample(): Datasets {
+  cached ??= generateSample()
+  return cached
 }

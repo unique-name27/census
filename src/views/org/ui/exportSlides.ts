@@ -8,8 +8,8 @@ import { type ChartTheme, readChartTheme } from '@/charts/theme'
 import type { ExportMeta } from '@/charts/types'
 import { downloadBlob, MIME } from '@/lib/export/download'
 import { withLightTheme } from '@/lib/export/image'
-import { asOfLabel, stampLine } from '@/lib/export/names'
 import { NAME_PX, SLIDE, type SlidePlan, SMALL_PX, type Swatch } from '../engine'
+import { orgSlideText, type SlideTier } from './slideFooter'
 
 const FONT = 'Archivo'
 const hex = (c: string) => {
@@ -51,14 +51,14 @@ export interface LegendKey {
 export async function downloadOrgSlides(
   plans: readonly SlidePlan[],
   meta: ExportMeta,
-  opts: { fileName: string; legend: LegendKey[] },
+  opts: { fileName: string; legend: LegendKey[]; data?: SlideTier },
 ): Promise<void> {
   const [{ default: Pptx }, t] = await Promise.all([
     import('pptxgenjs'),
     withLightTheme(async () => readChartTheme()),
   ])
   const pptx = new Pptx()
-  buildOrgDeck(pptx, plans, meta, opts.legend, t)
+  buildOrgDeck(pptx, plans, meta, opts.legend, t, opts.data)
   const blob = (await pptx.write({ outputType: 'blob' })) as Blob
   downloadBlob(new Blob([blob], { type: MIME.pptx }), `${opts.fileName}.pptx`)
 }
@@ -70,6 +70,7 @@ export function buildOrgDeck(
   meta: ExportMeta,
   legend: readonly LegendKey[],
   t: DeckTheme,
+  data: SlideTier = {},
 ): void {
   pptx.layout = 'LAYOUT_WIDE'
   pptx.author = 'Census'
@@ -84,10 +85,10 @@ export function buildOrgDeck(
     box: hex(t.sheet2),
   }
   const M = SLIDE.margin
-  const footerRight = `Census · Org chart · ${meta.scope} · As of ${asOfLabel(meta.asOf)}`
 
   plans.forEach((plan, i) => {
     const s = pptx.addSlide()
+    const text = orgSlideText(plan, meta, i + 1, data)
     s.background = { color: 'FFFFFF' }
     s.addText(plan.title, {
       x: M,
@@ -229,19 +230,22 @@ export function buildOrgDeck(
       h: 0,
       line: { color: C.rule, width: 0.75 },
     })
-    s.addText(plan.note || stampLine(meta), {
-      x: M,
-      y: SLIDE.h - 0.55,
-      w: (SLIDE.w - 2 * M) * 0.5,
-      h: 0.3,
-      fontFace: FONT,
-      fontSize: 9,
-      color: C.muted,
-      margin: 0,
-      valign: 'top',
-      fit: 'shrink',
-    })
-    s.addText(`${footerRight}  ·  ${i + 1}`, {
+    s.addText(
+      text.left.map((line, j) => ({ text: line, options: { breakLine: j < text.left.length - 1 } })),
+      {
+        x: M,
+        y: SLIDE.h - 0.55,
+        w: (SLIDE.w - 2 * M) * 0.5,
+        h: 0.32,
+        fontFace: FONT,
+        fontSize: 9,
+        color: C.muted,
+        margin: 0,
+        valign: 'top',
+        fit: 'shrink',
+      },
+    )
+    s.addText(text.right, {
       x: M + (SLIDE.w - 2 * M) * 0.5,
       y: SLIDE.h - 0.55,
       w: (SLIDE.w - 2 * M) * 0.5,
@@ -253,6 +257,6 @@ export function buildOrgDeck(
       margin: 0,
       valign: 'top',
     })
-    s.addNotes([plan.subtitle, plan.note, stampLine(meta)].filter(Boolean).join('\n'))
+    s.addNotes(text.notes)
   })
 }

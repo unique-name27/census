@@ -18,7 +18,14 @@ A **Data standard** control in the filter row applies to every view:
 - **Validated (silver and up)**
 - **Everything, including raw (bronze and up):** the default, so nothing looks missing while data is being cleaned up. Every number carries its tier badge.
 
-Exports follow the control. Every sheet and slide states the data standard and each figure's tier.
+Exports follow the control. Every sheet, slide and chart image states the data standard and each
+figure's tier. A figure held back by the standard exports only the reason, never its rows or its
+note (notes often carry the hidden numbers), and the folder-tab headlines are gated like any KPI.
+
+A side clause, column or overlay that reads a lower-tier field is left out of the number it sits
+beside, with a short "not shown" note, instead of hiding that number: the compa-ratio finding
+under Production drops its "named pay as the reason" clause, the 9-box drops its flight-risk
+overlay. A number declares only the fields it actually shows.
 
 ## How a number gets its tier
 
@@ -32,11 +39,17 @@ Each KPI, figure and finding declares the fields it uses (`uses: ['employees.ter
    - **Empty in every row,** it is no data.
 
    For example, voluntary attrition is bronze when termination type is only 60% filled, even if the roster is certified.
+   - **Remapped after certification,** a gold field is capped at silver: your reference mappings changed certified rows, so the certified numbers no longer stand as they are until the data owner certifies again.
 3. **Fallback:** a number that declares no fields takes the lowest tier of its view's datasets.
 
 The badge explains itself on hover or focus: "Silver: Candidates mapping confirmed 2 Oct by you;
-not certified. Stage is 97% filled." Clicking the badge opens that dataset's Quality panel in the
-Data room.
+not certified. Stage is 97% filled." When several fields share the lowest tier, it names the one
+that explains it best: a capped field first, then the lowest fill, then the most values not
+recognized. Near a threshold the share gets one decimal, so 94.6% filled never reads as 95%.
+Clicking the badge opens that dataset's Quality panel in the Data room.
+
+Freshness is judged by the latest event date in the rows. Compensation has no event dates, so it
+is judged by the date its pay extract was taken (its load date), 45 d at most.
 
 ## Data room changes
 
@@ -64,11 +77,11 @@ The sample company now arrives the way real data does:
 | Employees | Gold | Certified by the HRIS team; headcount reconciles. Termination reason is 72% filled, so exit-reason charts are bronze. |
 | Job changes | Silver | Mapping confirmed, not certified |
 | Requisitions | Silver | 3% of reqs have no hiring manager ID |
-| Candidates | Bronze | Raw ATS export; stage names unconfirmed and 4% unrecognized |
+| Candidates | Bronze | Raw ATS export; mapping unconfirmed and 4% of sources unrecognized |
 | HR cases | Bronze | Help-desk export; first response missing on 8%, some categories unmapped |
 | HR transactions | Silver | |
 | Reviews | Gold | Certified after calibration |
-| Succession | Bronze | A hand-kept spreadsheet; 15% of successors are not in the roster |
+| Succession | Bronze | A hand-kept spreadsheet; 13 of 84 named successors (15%) are not in the roster, 14% of its rows |
 | Learning | Silver | |
 | Compensation | Gold | Reconciles to payroll; market median 60% filled, so the Market tab is bronze |
 

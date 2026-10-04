@@ -9,6 +9,7 @@ import { generateSample } from '@/data/sample'
 import type { Datasets } from '@/data/schema'
 import { DEFAULT_FILTERS, type Filters } from '@/data/scope'
 import { attrition } from '@/lib/people'
+import { bestCostMs } from '@/lib/testBudget'
 import { buildBase, trailing12 } from './base'
 import { computeTalent, type TalentModel, talentHeadline } from './index'
 import { monthsBack, voluntaryRates } from './risk'
@@ -52,13 +53,7 @@ describe('Talent on the sample company', () => {
     // The first run competes with the rest of the suite for CPU, so judge a generous bound on it
     // and the real budget on the best of a few cold-cache reruns.
     expect(ms).toBeLessThan(1500)
-    let best = Number.POSITIVE_INFINITY
-    for (let i = 0; i < 3; i++) {
-      const fresh = { ...ctx, data: { ...ctx.data }, all: { ...ctx.all } }
-      const t = performance.now()
-      computeTalent(fresh)
-      best = Math.min(best, performance.now() - t)
-    }
+    const best = bestCostMs(() => computeTalent({ ...ctx, data: { ...ctx.data }, all: { ...ctx.all } }))
     expect(best).toBeLessThan(250)
   })
 
@@ -127,7 +122,7 @@ describe('Talent on the sample company', () => {
       .map((r) => r.roleId)
     expect(roles.sort()).toEqual(['SP-001', 'SP-002', 'SP-003', 'SP-004'])
     expect(exposed?.people).toHaveLength(4)
-    expect(talentHeadline(ctx)).toEqual({ value: '71%', label: 'critical roles covered' })
+    expect(talentHeadline(ctx)).toMatchObject({ value: '71%', label: 'critical roles covered' })
   })
 
   it('story 5: export control training overdue in Operations and Hsinchu', () => {
@@ -299,6 +294,9 @@ describe('Talent on the sample company', () => {
     expectFiniteOrNull(empty.kpis)
     expect(empty.findings).toEqual([])
     expect(empty.kpis.find((k) => k.id === 'talent-high-performers')?.value).toBeNull()
-    expect(talentHeadline(ctxWith({}, datasets()))).toEqual({ value: '—', label: 'critical roles covered' })
+    expect(talentHeadline(ctxWith({}, datasets()))).toMatchObject({
+      value: '—',
+      label: 'critical roles covered',
+    })
   })
 })

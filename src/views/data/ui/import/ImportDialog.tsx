@@ -37,6 +37,7 @@ export default function ImportDialog() {
   const update = useImportSession((s) => s.update)
   const skip = useImportSession((s) => s.skip)
   const apply = useImportSession((s) => s.apply)
+  const remapping = useImportSession((s) => s.mode === 'remap')
 
   const item = sheets.find((s) => s.id === currentId) ?? null
   const draft = currentId ? (drafts[currentId] ?? null) : null
@@ -87,7 +88,7 @@ export default function ImportDialog() {
   ) : (
     <>
       <Button variant="ghost" className="mr-auto" disabled={busy} onClick={() => void skip(item.id)}>
-        Skip this sheet
+        {remapping ? 'Cancel' : 'Skip this sheet'}
       </Button>
       {stepIndex > 0 && (
         <Button disabled={busy} onClick={back}>
@@ -119,9 +120,10 @@ export default function ImportDialog() {
         if (!open && !busy) close()
       }}
       width={1040}
-      title={def ? `Import into ${def.label}` : 'Import a sheet'}
+      title={def ? (remapping ? `Re-map ${def.label}` : `Import into ${def.label}`) : 'Import a sheet'}
       description={
         <>
+          {remapping ? 'Stored sheet · ' : ''}
           {sheets.length > 1 ? `Sheet ${position} of ${sheets.length} · ` : ''}
           {item.fileName}
           {isText ? '' : ` › ${item.sheetName}`} · {fmt(item.rows, 'int')} {item.rows === 1 ? 'row' : 'rows'},{' '}

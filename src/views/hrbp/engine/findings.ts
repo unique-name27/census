@@ -32,6 +32,27 @@ import {
   titled,
 } from './drill'
 import { type KpiModel, windowPhrase } from './kpis'
+import {
+  all,
+  BUSINESS_UNIT,
+  DEPARTMENT,
+  DEPARTMENT_AT,
+  FIRST_YEAR,
+  HEADCOUNT,
+  ifPresent,
+  LEVEL,
+  LEVEL_AT,
+  type Lineage,
+  LOCATION,
+  MANAGER,
+  MANAGER_SINCE,
+  NONE,
+  ORG,
+  PAST_HEADCOUNT,
+  REASON,
+  REGRETTED_EXITS,
+  VOLUNTARY,
+} from './lineage'
 import type { OrgModel } from './org'
 import { annualRate, leftInFirstYear } from './rates'
 import type { WorkforceModel } from './workforce'
@@ -50,9 +71,16 @@ export const MAX_PEOPLE = 100
 const pct = (v: number) => fmt(v, 'pct')
 const pts = (v: number) => `${fmt(Math.abs(v) * 100, 'num1')} pts`
 
+/**
+ * Exit reasons are cited (in details and people notes) only when their data meets the data
+ * standard, so a bronze reason field never hides a finding whose number is confirmed.
+ */
+const citesReasons = (p: Prep): boolean => p.meets(REASON)
+const reasonLineage = (p: Prep): Lineage => (citesReasons(p) ? ifPresent(REASON) : NONE)
+
 function leaverNote(e: Employee, p: Prep): string {
   const parts = [`Left ${formatDate(e.terminationDate)}`]
-  if (e.terminationReason) parts.push(e.terminationReason)
+  if (e.terminationReason && citesReasons(p)) parts.push(e.terminationReason)
   if (e.managerId) parts.push(`under ${p.name(e.managerId)}`)
   return parts.join(' · ')
 }
@@ -70,7 +98,8 @@ function topReasons(list: readonly Employee[], n = 2): { reason: string; count: 
     .slice(0, n)
 }
 
-function reasonClause(list: readonly Employee[]): string {
+function reasonClause(p: Prep, list: readonly Employee[]): string {
+  if (!citesReasons(p)) return ''
   const top = topReasons(list).filter((r) => r.count >= 2)
   if (!top.length) return ''
   return `, most often ${listJoin(top.map((r) => `${quoted(r.reason)} (${r.count})`))}`
@@ -95,7 +124,7 @@ function regrettedClusters(p: Prep): Ranked | null {
   const top = teams[0]
   const mgr = p.ctx.org.byId.get(top.managerId)
   const where = mgr ? ` (${mgr.department}, ${mgr.location})` : ''
-  const reason = topReasons(top.list, 1)[0]
+  const reason = citesReasons(p) ? topReasons(top.list, 1)[0] : undefined
   const others = teams.slice(1)
   const dates = top.list.map((e) => e.terminationDate as string).sort()
   const detail = [
@@ -125,6 +154,7 @@ function regrettedClusters(p: Prep): Ranked | null {
       }),
     filter: mgr ? { leaderId: top.managerId } : undefined,
     tab: 'attrition',
+    uses: p.uses(REGRETTED_EXITS, MANAGER, reasonLineage(p), ifPresent(all(DEPARTMENT, LOCATION))),
     impact: top.list.length * 2,
   }
 }
@@ -185,7 +215,7 @@ function attritionVsCompany(p: Prep, kpi: KpiModel, att: AttritionModel): Ranked
         severity: kpi.vol.rate >= company * 1.75 && leavers.length >= 10 ? 'critical' : 'warning',
         title: `Voluntary attrition in ${p.ctx.scopeLabel} is ${pct(kpi.vol.rate)}, ${pts(diff)} above the company`,
         detail: [
-          `${count(leavers.length, 'voluntary exit', 'voluntary exits')} in ${phrase}${reasonClause(leavers)}.`,
+          `${count(leavers.length, 'voluntary exit', 'voluntary exits')} in ${phrase}${reasonClause(p, leavers)}.`,
           conc,
         ]
           .filter(Boolean)
@@ -196,6 +226,13 @@ function attritionVsCompany(p: Prep, kpi: KpiModel, att: AttritionModel): Ranked
         people: people(leavers, (e) => leaverNote(e, p)),
         drill,
         tab: 'attrition',
+        uses: p.uses(
+          VOLUNTARY,
+          reasonLineage(p),
+          ifPresent(DEPARTMENT),
+          ifPresent(LOCATION),
+          ifPresent(LEVEL),
+        ),
         impact: diff * kpi.vol.avgHeadcount,
       })
     } else if (diff <= -0.03) {
@@ -207,6 +244,7 @@ function attritionVsCompany(p: Prep, kpi: KpiModel, att: AttritionModel): Ranked
         action: 'Ask the leader what is working so other teams can learn from it.',
         drill,
         tab: 'attrition',
+        uses: p.uses(VOLUNTARY),
         impact: 0,
       })
     }
@@ -264,7 +302,7 @@ function attritionVsCompany(p: Prep, kpi: KpiModel, att: AttritionModel): Ranked
         severity: judged.rate >= company * 1.75 && judged.n >= 10 ? 'critical' : 'warning',
         title: `Voluntary attrition in ${top.group} is ${pct(rate)}, ${pts(rate - company)} above the company`,
         detail: [
-          `${count(leavers.length, 'voluntary exit', 'voluntary exits')} in ${phrase}${reasonClause(leavers)}.`,
+          `${count(leavers.length, 'voluntary exit', 'voluntary exits')} in ${phrase}${reasonClause(p, leavers)}.`,
           second,
         ]
           .filter(Boolean)
@@ -282,6 +320,13 @@ function attritionVsCompany(p: Prep, kpi: KpiModel, att: AttritionModel): Ranked
           }),
         filter: key === 'location' ? { location: [top.group] } : { department: [top.group] },
         tab: 'attrition',
+        uses: p.uses(
+          VOLUNTARY,
+          key === 'location' ? LOCATION : DEPARTMENT_AT,
+          reasonLineage(p),
+          ifPresent(key === 'location' ? DEPARTMENT : LOCATION),
+          ifPresent(LEVEL),
+        ),
         impact: top.excess,
       })
       if (key === 'location') flaggedLocation = top.group
@@ -334,13 +379,18 @@ function firstYear(p: Prep, kpi: KpiModel): Ranked | null {
           to: fy.to,
         }),
       tab: 'attrition',
+      uses: p.uses(FIRST_YEAR, ifPresent(DEPARTMENT)),
       impact: fy.leavers,
     }
   }
-  const dims: { key: 'businessUnit' | 'department' | 'location'; get: (e: Employee) => string }[] = [
-    { key: 'businessUnit', get: (e) => e.businessUnit },
-    { key: 'department', get: (e) => e.department },
-    { key: 'location', get: (e) => e.location },
+  const dims: {
+    key: 'businessUnit' | 'department' | 'location'
+    get: (e: Employee) => string
+    lineage: Lineage
+  }[] = [
+    { key: 'businessUnit', get: (e) => e.businessUnit, lineage: BUSINESS_UNIT },
+    { key: 'department', get: (e) => e.department, lineage: DEPARTMENT },
+    { key: 'location', get: (e) => e.location, lineage: LOCATION },
   ]
   for (const dim of dims) {
     const groups = new Map<string, Employee[]>()
@@ -391,6 +441,7 @@ function firstYear(p: Prep, kpi: KpiModel): Ranked | null {
         ),
       filter: { [dim.key]: [top.group] },
       tab: 'attrition',
+      uses: p.uses(FIRST_YEAR, dim.lineage, ifPresent(sub === DIMS.location ? LOCATION : DEPARTMENT)),
       impact: top.leavers.length,
     }
   }
@@ -449,6 +500,7 @@ function spanOutliers(p: Prep, org: OrgModel): Ranked | null {
         [...wide, ...narrow],
       ),
     tab: 'org',
+    uses: p.uses(ORG),
     impact: wide.length + narrow.length,
   }
 }
@@ -494,6 +546,7 @@ function newManagers(p: Prep, org: OrgModel): Ranked | null {
       }),
     filter: top.directs >= 8 ? { leaderId: top.managerId } : undefined,
     tab: 'org',
+    uses: p.uses(ORG, MANAGER_SINCE),
     impact: top.directs,
   }
 }
@@ -527,6 +580,7 @@ function singleReportChains(p: Prep, org: OrgModel): Ranked | null {
     })),
     drill: () => chainsSpec(p, org),
     tab: 'org',
+    uses: p.uses(ORG),
     impact: first.below / 10,
   }
 }
@@ -569,6 +623,7 @@ function orgDepth(p: Prep, org: OrgModel): Ranked | null {
         'Layer 1 is the top of the group; these people sit on layer 9 or deeper.',
       ),
     tab: 'org',
+    uses: p.uses(ORG),
     impact: deep.length / 10,
   }
 }
@@ -674,6 +729,8 @@ function rapidGrowth(p: Prep): Ranked | null {
       }),
     filter: { department: [top.dept] },
     tab: 'workforce',
+    // Under an org filter, the earlier roster is rebuilt with each person's unit and level on that date.
+    uses: p.uses(PAST_HEADCOUNT, DEPARTMENT_AT, p.ctx.isCompany ? NONE : all(BUSINESS_UNIT, LEVEL_AT)),
     impact: top.now - top.before,
   }
 }
@@ -733,6 +790,7 @@ function newHireConcentration(p: Prep): Ranked | null {
         },
       ),
     tab: 'workforce',
+    uses: p.uses(HEADCOUNT, MANAGER),
     impact: flagged.length,
   }
 }
@@ -763,6 +821,7 @@ function unevenGrowth(p: Prep, wf: WorkforceModel): Ranked | null {
     drill: () => growthSpec(p, top),
     filter: byBu ? { businessUnit: [top.group] } : { department: [top.group] },
     tab: 'workforce',
+    uses: p.uses(PAST_HEADCOUNT, BUSINESS_UNIT, byBu ? NONE : DEPARTMENT),
     impact: 0.5,
   }
 }

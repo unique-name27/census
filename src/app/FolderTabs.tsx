@@ -1,16 +1,18 @@
 /**
  * The five practices as file-folder tabs. Idle tabs sit recessed in the band; the open tab takes
- * the desk color and flows into it. Each tab prints the view's live headline for the current scope.
+ * the desk color and flows into it. Each tab prints the view's live headline for the current scope,
+ * gated on the data standard like any KPI: below it the tab reads "—" and says why on hover.
  */
 import { type KeyboardEvent, useEffect, useMemo, useRef } from 'react'
 import { Sparkline } from '@/charts/Sparkline'
 import { goTo } from '@/components/navigation'
-import { cx } from '@/components/ui'
+import { cx, Tip } from '@/components/ui'
 import { type AnalyticsContext, useAnalytics } from '@/data/context'
 import { useCensus } from '@/data/store'
 import { DASH } from '@/lib/format'
 import { VIEWS } from '@/views/registry'
 import type { Headline, ViewDef } from '@/views/types'
+import { type GatedHeadline, gateHeadline } from './headlineGate'
 import { revealInStrip, rovingIndex } from './keyboard'
 
 export const VIEW_PANEL_ID = 'census-view'
@@ -47,13 +49,13 @@ function FolderTab({
   ref,
 }: {
   view: ViewDef
-  headline: Headline
+  headline: GatedHeadline
   active: boolean
   focusable: boolean
   onKeyDown: (e: KeyboardEvent<HTMLButtonElement>) => void
   ref: (el: HTMLButtonElement | null) => void
 }) {
-  return (
+  const tab = (
     <button
       ref={ref}
       type="button"
@@ -85,15 +87,22 @@ function FolderTab({
         )}
       </span>
       <span className="mt-1 truncate text-[12px] leading-tight text-muted">{headline.label || ' '}</span>
+      {headline.hidden && <span className="sr-only">{`. ${headline.hidden}`}</span>}
       {active && <Flares />}
     </button>
   )
+  return headline.hidden ? <Tip content={`${capLabel(headline.label)}: ${headline.hidden}`}>{tab}</Tip> : tab
 }
+
+const capLabel = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 
 export function FolderTabs() {
   const ctx = useAnalytics()
   const current = useCensus((s) => s.route.view)
-  const headlines = useMemo(() => VIEWS.map((v) => safeHeadline(v, ctx)), [ctx])
+  const headlines = useMemo(
+    () => VIEWS.map((v) => gateHeadline(safeHeadline(v, ctx), ctx.quality, ctx.standard, v.datasets)),
+    [ctx],
+  )
   const strip = useRef<HTMLDivElement>(null)
   const tabs = useRef<(HTMLButtonElement | null)[]>([])
   const activeIndex = VIEWS.findIndex((v) => v.key === current)

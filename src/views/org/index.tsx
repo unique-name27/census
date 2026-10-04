@@ -2,7 +2,7 @@ import { Button, EmptyState, goTo } from '@/components'
 import { useAnalytics } from '@/data/context'
 import { fmt } from '@/lib/format'
 import type { ViewDef } from '../types'
-import { peopleManagers } from './engine'
+import { filterUses, peopleManagers, REPORTING_USES, refs } from './engine'
 import { ChartTab } from './ui/ChartTab'
 import { SandboxTab } from './ui/SandboxTab'
 
@@ -44,6 +44,11 @@ export const view: ViewDef = {
     { key: 'sandbox', label: 'Reorg sandbox' },
   ],
   View,
-  headline: (ctx) => ({ value: fmt(peopleManagers(ctx).managers, 'int'), label: 'people managers' }),
+  headline: (ctx) => ({
+    value: fmt(peopleManagers(ctx).managers, 'int'),
+    label: 'people managers',
+    // The same fields as the People managers key figure.
+    uses: refs(REPORTING_USES, filterUses(ctx.filters)),
+  }),
   datasets: ['employees', 'requisitions', 'reviews', 'jobChanges'],
 }

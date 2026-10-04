@@ -24,6 +24,16 @@ import {
   shareNote,
   titled,
 } from './drill'
+import {
+  ATTRITION,
+  FIRST_YEAR,
+  HEADCOUNT,
+  HIRES,
+  type Lineage,
+  PROMOTION_RATE,
+  REGRETTED,
+  VOLUNTARY,
+} from './lineage'
 import type { MovementModel } from './movement'
 import { annualRate, exitsByGroup, leftInFirstYear } from './rates'
 
@@ -131,6 +141,7 @@ export function computeKpis(p: Prep, movement: MovementModel): KpiModel {
     missing: string,
     noun: [string, string],
     leavers: { title: string; rows: Employee[] },
+    lineage: Lineage,
   ): Kpi => {
     const suppressed = r.own.avgHeadcount > 0 && r.own.avgHeadcount < MIN_GROUP
     const value = suppressed ? null : r.own.rate
@@ -162,6 +173,7 @@ export function computeKpis(p: Prep, movement: MovementModel): KpiModel {
       suppressed,
       tab: 'attrition',
       definition,
+      uses: p.uses(lineage),
     }
   }
 
@@ -209,6 +221,7 @@ export function computeKpis(p: Prep, movement: MovementModel): KpiModel {
       tab: 'workforce',
       definition: `Employees active on ${formatDate(asOf)}. Contractors and interns are counted separately.`,
       drill: () => employeesOnSpec(p, asOf, { rows: active }),
+      uses: p.uses(HEADCOUNT),
     },
     {
       id: 'hires',
@@ -223,6 +236,7 @@ export function computeKpis(p: Prep, movement: MovementModel): KpiModel {
       tab: 'workforce',
       definition: 'Employees whose hire date falls in the period. Contractors and interns are not included.',
       drill: () => hiresSpec(p, titled('Hires', scope, period), hireList),
+      uses: p.uses(HIRES),
     },
     rateKpi(
       'attrition',
@@ -233,6 +247,7 @@ export function computeKpis(p: Prep, movement: MovementModel): KpiModel {
       'No headcount in this period',
       ['exit', 'exits'],
       { title: 'Leavers', rows: records.exits },
+      ATTRITION,
     ),
     rateKpi(
       'voluntary',
@@ -243,6 +258,7 @@ export function computeKpis(p: Prep, movement: MovementModel): KpiModel {
       'Add Termination type to Employees to see this',
       ['voluntary exit', 'voluntary exits'],
       { title: 'Voluntary leavers', rows: records.voluntary },
+      VOLUNTARY,
     ),
     rateKpi(
       'regretted',
@@ -253,6 +269,7 @@ export function computeKpis(p: Prep, movement: MovementModel): KpiModel {
       'Add Regrettable to Employees to see this',
       ['regretted exit', 'regretted exits'],
       { title: 'Regretted leavers', rows: records.regretted },
+      REGRETTED,
     ),
     {
       id: 'first-year',
@@ -279,6 +296,7 @@ export function computeKpis(p: Prep, movement: MovementModel): KpiModel {
       tab: 'attrition',
       definition:
         'Of employees hired 12 to 24 months ago, the share who left within 365 days of their hire date.',
+      uses: p.uses(FIRST_YEAR),
     },
     {
       id: 'promotion-rate',
@@ -304,6 +322,7 @@ export function computeKpis(p: Prep, movement: MovementModel): KpiModel {
       tab: 'movement',
       definition:
         'Promotion events in the period from Job changes ÷ average headcount. Not annualized, because promotions come in cycles.',
+      uses: p.uses(PROMOTION_RATE),
     },
   ]
 

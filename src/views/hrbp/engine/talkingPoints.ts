@@ -3,8 +3,10 @@
  * Fixes the earlier tool, which named the manager with the most exits of any kind under the
  * regretted-exits bullet; this counts regretted exits per manager. Held to the same anonymity
  * rule as the tiles: no rate over fewer than 5 people, and no exit reason that could point to
- * one person.
+ * one person. Held to the data standard too: a point whose data is below it is left out and
+ * counted, as the tiles hide their numbers.
  */
+import { type DataStandard, type FieldRef, meetsStandard, STANDARD_LABEL } from '@/data/quality'
 import { MIN_GROUP } from '@/data/schema'
 import { addDays, formatDate } from '@/lib/dates'
 import { fmt } from '@/lib/format'
@@ -12,6 +14,21 @@ import { exitsIn } from '@/lib/people'
 import type { HrbpModel } from '.'
 import { count, possessive, quoted } from './base'
 import { windowPhrase } from './kpis'
+import {
+  ATTRITION,
+  FIRST_YEAR,
+  HEADCOUNT,
+  HRBP_DATASETS,
+  ifPresent,
+  type Lineage,
+  MANAGER,
+  NONE,
+  PAST_HEADCOUNT,
+  PROMOTION_RATE,
+  REASON,
+  REGRETTED,
+  VOLUNTARY,
+} from './lineage'
 
 const n = (v: number) => v.toLocaleString('en-US')
 
@@ -30,62 +47,88 @@ export function topRegrettedManager(m: HrbpModel): { name: string; count: number
   return best && best.count >= 2 ? { name: m.prep.name(best.id), count: best.count } : null
 }
 
+/** Why points were left out, by data standard. */
+const LEFT_OUT: Record<DataStandard, string> = {
+  gold: 'not yet confirmed for production',
+  silver: 'not yet validated',
+  bronze: 'missing',
+}
+
+interface Point {
+  text: string
+  uses: readonly FieldRef[] | undefined
+}
+
 export function talkingPoints(m: HrbpModel): string {
   const { prep: p, kpi, attrition, movement, findings } = m
+  const { quality, standard } = p.ctx
   const scope = p.ctx.scopeLabel
   const vsCompany = !p.ctx.isCompany
   const phrase = windowPhrase(p)
-  const lines: string[] = []
+  const points: Point[] = []
+  const add = (text: string, ...lineage: Lineage[]) => points.push({ text, uses: p.uses(...lineage) })
+  const shown = (uses: readonly FieldRef[] | undefined) =>
+    meetsStandard(quality.tierOf(uses, HRBP_DATASETS), standard)
 
   const before = kpi.headcountYearAgo
   if (before == null) {
-    lines.push(`Headcount is ${n(kpi.headcount)} employees.`)
-    lines.push(
+    add(`Headcount is ${n(kpi.headcount)} employees.`, HEADCOUNT)
+    add(
       'Attrition and the change from a year ago are not shown: the Employees upload has no leavers. Add rows with a Termination date to see them.',
+      HEADCOUNT,
     )
   } else {
     const change = kpi.headcount - before
     const growth = before >= 5 ? ` (${fmt(Math.abs(change) / before, 'pct')})` : ''
-    lines.push(
+    add(
       change === 0
         ? `Headcount is ${n(kpi.headcount)} employees, unchanged from 12 months ago.`
         : `Headcount is ${n(kpi.headcount)} employees, ${change > 0 ? 'up' : 'down'} ${n(Math.abs(change))}${growth} from 12 months ago.`,
+      PAST_HEADCOUNT,
     )
   }
 
   if (kpi.all.avgHeadcount > 0 && kpi.all.avgHeadcount < MIN_GROUP) {
-    lines.push('Rates are hidden to protect anonymity: this scope averages fewer than 5 employees.')
+    add('Rates are hidden to protect anonymity: this scope averages fewer than 5 employees.', ATTRITION)
   }
 
   if (kpi.vol.rate != null && kpi.vol.avgHeadcount >= MIN_GROUP) {
     const vs =
       vsCompany && kpi.companyVol != null ? ` against ${fmt(kpi.companyVol, 'pct')} for the company` : ''
     // A reason given by one person, or in a group under 5 leavers, could point to who said it.
-    const top = attrition.reasons[0]
+    // Reasons below the data standard are not cited; the rate still is.
+    const top = p.meets(REASON) ? attrition.reasons[0] : undefined
     const reason =
       top && top.exits >= 2 && attrition.voluntaryExits >= MIN_GROUP
         ? `. The top reason given was ${quoted(top.reason)} (${top.exits} of ${attrition.voluntaryExits} voluntary exits)`
         : ''
-    lines.push(`Voluntary attrition is ${fmt(kpi.vol.rate, 'pct')} over ${phrase}${vs}${reason}.`)
+    add(
+      `Voluntary attrition is ${fmt(kpi.vol.rate, 'pct')} over ${phrase}${vs}${reason}.`,
+      VOLUNTARY,
+      reason ? REASON : NONE,
+    )
   }
 
   if (kpi.regretted.rate != null && kpi.regretted.avgHeadcount >= MIN_GROUP) {
     const regretted = kpi.regretted.events
     const mgr = topRegrettedManager(m)
     const exits = count(regretted, 'regretted exit', 'regretted exits')
-    lines.push(
+    add(
       !regretted
         ? `No regretted exits over ${phrase}.`
         : mgr
           ? `${exits} over ${phrase}. The largest group, ${mgr.count} of ${n(regretted)}, left ${possessive(mgr.name)} team.`
           : `${exits} over ${phrase}, no more than one from any manager's team.`,
+      REGRETTED,
+      ifPresent(MANAGER),
     )
   }
 
   const fy = kpi.firstYear
   if (fy.rate != null) {
-    lines.push(
+    add(
       `First-year attrition is ${fmt(fy.rate, 'pct')}: ${fy.leavers} of ${fy.cohort} people hired ${formatDate(addDays(fy.from, 1))} to ${formatDate(fy.to)} left within a year.`,
+      FIRST_YEAR,
     )
   }
 
@@ -95,14 +138,31 @@ export function talkingPoints(m: HrbpModel): string {
       vsCompany && movement.companyPromotions.rate != null
         ? ` against ${fmt(movement.companyPromotions.rate, 'pct')} for the company`
         : ''
-    lines.push(
+    add(
       `Promotion rate is ${fmt(promo.rate, 'pct')} over ${phrase} (${count(promo.promotions, 'promotion', 'promotions')})${vs}.`,
+      PROMOTION_RATE,
     )
   }
 
-  const top = findings.find((f) => f.severity === 'critical') ?? findings.find((f) => f.severity !== 'good')
-  if (top) lines.push(`Top item to raise: ${top.title}.${top.action ? ` ${top.action}` : ''}`)
+  // The top item among the findings the readout shows under the data standard.
+  const listed = findings.filter((f) => shown(f.uses))
+  const top = listed.find((f) => f.severity === 'critical') ?? listed.find((f) => f.severity !== 'good')
+  if (top)
+    points.push({
+      text: `Top item to raise: ${top.title}.${top.action ? ` ${top.action}` : ''}`,
+      uses: top.uses,
+    })
 
-  const header = `Talking points for ${scope}, ${p.window.label.replace(' – ', ' to ')}, as of ${formatDate(p.asOf)}`
+  const lines = points.filter((pt) => shown(pt.uses)).map((pt) => pt.text)
+  const left = points.length - lines.length
+  if (left > 0)
+    lines.push(
+      left === 1
+        ? `One point is left out because its data is ${LEFT_OUT[standard]}.`
+        : `${n(left)} points are left out because their data is ${LEFT_OUT[standard]}.`,
+    )
+
+  const only = standard === 'bronze' ? '' : `, ${STANDARD_LABEL[standard].toLowerCase()} data only`
+  const header = `Talking points for ${scope}, ${p.window.label.replace(' – ', ' to ')}, as of ${formatDate(p.asOf)}${only}`
   return [header, '', ...lines.map((l) => `- ${l}`)].join('\n')
 }

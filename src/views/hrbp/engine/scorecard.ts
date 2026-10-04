@@ -12,6 +12,7 @@ import { activeAt, attrition, exitsIn, inWindow, isActiveAt } from '@/lib/people
 import { mean } from '@/lib/stats'
 import { cohortSummary, firstYearCohort } from './attrition'
 import type { Prep } from './base'
+import type { ScoreDim } from './lineage'
 import { promotionRate } from './movement'
 import { activeChildren, subtreeSizer } from './org'
 import { leftInFirstYear } from './rates'
@@ -74,6 +75,8 @@ export interface ScoreRecords {
 
 export interface Scorecard {
   rowsLabel: string
+  /** What the rows are: a leader's direct reports' orgs, business units, departments or locations. */
+  dim: ScoreDim
   rows: ScoreRow[]
 }
 
@@ -168,7 +171,7 @@ function metrics(
   }
 }
 
-function orgDefinitions(p: Prep): { label: string; defs: OrgDef[] } {
+function orgDefinitions(p: Prep): { label: string; dim: ScoreDim; defs: OrgDef[] } {
   const { ctx, people, asOf } = p
   const leaderId = ctx.filters.leaderId
   if (leaderId && ctx.org.byId.has(leaderId)) {
@@ -186,7 +189,7 @@ function orgDefinitions(p: Prep): { label: string; defs: OrgDef[] } {
         people: people.filter((e) => ids.has(e.employeeId)),
       })
     }
-    return { label: `${p.name(leaderId)}'s direct reports`, defs }
+    return { label: `${p.name(leaderId)}'s direct reports`, dim: 'leader', defs }
   }
   const active = p.emps.filter((e) => isActiveAt(e, asOf))
   const dims = [
@@ -204,6 +207,7 @@ function orgDefinitions(p: Prep): { label: string; defs: OrgDef[] } {
   }
   return {
     label: dim.label,
+    dim: dim.key,
     defs: [...groups.entries()].map(([k, list]) => ({
       key: k,
       label: k,
@@ -222,7 +226,7 @@ export function computeScorecard(p: Prep): Scorecard {
     if (arr) arr.push(c)
     else changesById.set(c.employeeId, [c])
   }
-  const { label, defs } = orgDefinitions(p)
+  const { label, dim, defs } = orgDefinitions(p)
   const company = metrics(p, p.ctx.all.employees, changesById)
 
   const rows: ScoreRow[] = []
@@ -277,5 +281,5 @@ export function computeScorecard(p: Prep): Scorecard {
       shade: {},
     })
   }
-  return { rowsLabel: label, rows }
+  return { rowsLabel: label, dim, rows }
 }

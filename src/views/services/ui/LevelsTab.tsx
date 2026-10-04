@@ -256,6 +256,7 @@ export function LevelsTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext 
       >
         <Figure
           id="services-scorecard"
+          uses={m.uses['services-scorecard']}
           span={12}
           title="Service level scorecard"
           subtitle={`${scored.length} Atlas measures with data, ${missed} missed, ${m.window.label}`}
@@ -280,6 +281,7 @@ export function LevelsTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext 
       >
         <Figure
           id="services-gap-to-target"
+          uses={m.uses['services-gap-to-target']}
           span={7}
           title="Gap to target"
           subtitle={`Actual minus target in points for each Atlas measure, ${per}; below zero misses the target`}
@@ -320,6 +322,7 @@ export function LevelsTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext 
         </Figure>
         <Figure
           id="services-response-by-category"
+          uses={m.uses['services-response-by-category']}
           span={5}
           title="First response SLA by category"
           subtitle={`Cases opened in the ${per} with a first reply inside the category response target, lowest first`}
@@ -369,6 +372,7 @@ export function LevelsTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext 
       >
         <Figure
           id="services-atlas-processes"
+          uses={m.uses['services-atlas-processes']}
           span={12}
           title="Processes behind these measures"
           subtitle={`Cases opened and transactions due in the ${per}, by governing process`}

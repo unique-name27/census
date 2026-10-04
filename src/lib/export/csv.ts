@@ -8,7 +8,7 @@
 import type { ExportMeta } from '@/charts/types'
 import { plainText, visibleColumns } from './columns'
 import { downloadBlob, MIME } from './download'
-import { fileStem, metaLine, stampLine } from './names'
+import { dataLine, fileStem, metaLine, stampLine } from './names'
 import type { ExportOptions, ExportTable } from './types'
 
 const FORMULA_START = /^[=+\-@\t\r]/
@@ -54,15 +54,24 @@ export function toCsv(
   return `${opts.bom === false ? '' : '﻿'}${lines.join('\r\n')}\r\n`
 }
 
+/** Title and context lines for a CSV: title, subtitle, scope and window, data standard and tier, stamp. */
+export function csvPreamble(table: ExportTable, meta: ExportMeta): string[] {
+  return [
+    table.title ?? table.name,
+    table.subtitle ?? '',
+    metaLine(meta),
+    dataLine(meta.standard, table.tier, table.withheld) ?? '',
+    stampLine(meta),
+  ].filter(Boolean)
+}
+
 /** Download one table as CSV. With `preamble: true`, title and context lines precede the header. */
 export function downloadCsv(
   table: ExportTable,
   meta: ExportMeta,
   opts: ExportOptions & { preamble?: boolean },
 ): void {
-  const preamble = opts.preamble
-    ? [table.title ?? table.name, table.subtitle ?? '', metaLine(meta), stampLine(meta)].filter(Boolean)
-    : undefined
+  const preamble = opts.preamble ? csvPreamble(table, meta) : undefined
   const csv = toCsv(table, { showPay: opts.showPay, preamble })
   downloadBlob(new Blob([csv], { type: MIME.csv }), `${opts.fileName ?? fileStem(meta, table.name)}.csv`)
 }

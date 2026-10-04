@@ -5,6 +5,7 @@
  * inside its time budget.
  */
 import { describe, expect, it } from 'vitest'
+import { bestCostMs } from '@/lib/testBudget'
 import { colorScheme } from './colorBy'
 import { exitImpact } from './detail'
 import { defaultExpanded } from './expand'
@@ -22,13 +23,14 @@ const ctx = sampleCtx()
 
 describe('Org chart engine on the sample company', () => {
   it('builds the tree, flags and default layout in under 150 ms', () => {
-    const t0 = performance.now()
-    const m = buildOrgModel(ctx)
-    const expanded = new Set([m.rootId, ...(m.tree.children.get(m.rootId) ?? [])])
-    const layout = layoutTree(visibleTree(m.tree, m.rootId, expanded, { reqs: m.reqs }))
-    const ms = performance.now() - t0
+    let cards = 0
+    const ms = bestCostMs(() => {
+      const m = buildOrgModel(ctx)
+      const expanded = new Set([m.rootId, ...(m.tree.children.get(m.rootId) ?? [])])
+      cards = layoutTree(visibleTree(m.tree, m.rootId, expanded, { reqs: m.reqs })).cards.length
+    })
     expect(ms).toBeLessThan(150)
-    expect(layout.cards.length).toBeGreaterThan(10)
+    expect(cards).toBeGreaterThan(10)
   })
 
   it('has one root (the CEO) and everyone active exactly once', () => {

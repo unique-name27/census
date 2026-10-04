@@ -22,6 +22,7 @@ import {
   responseDrill,
 } from './drills'
 import { type CaseColumns, type CaseFact, dueIn, onTimeRate, type TxColumns, type TxFact } from './facts'
+import type { Lineage } from './lineage'
 import { duration, type Share } from './util'
 
 export interface CaseSummary {
@@ -82,6 +83,8 @@ export interface KpiInputs {
   sparkTx?: (number | null)[]
   /** Scope for the drill-downs behind each tile. */
   scope: DrillScope
+  /** The fields behind each measure (engine/lineage.ts). */
+  lineage: Lineage
 }
 
 export function buildKpis(x: KpiInputs): Kpi[] {
@@ -95,6 +98,7 @@ export function buildKpis(x: KpiInputs): Kpi[] {
   const kpis: Kpi[] = []
   const s = x.scope
   const per = s.per
+  const L = x.lineage
 
   kpis.push({
     id: 'cases-opened',
@@ -108,6 +112,7 @@ export function buildKpis(x: KpiInputs): Kpi[] {
     note: x.hasCases ? `About ${fmt(cur.opened / x.window.months, 'int')} a month` : noCases,
     tab: 'cases',
     definition: 'Cases opened in the period, every category and channel.',
+    uses: L.opened,
     drill: drillWhen(s, cur.rows.opened, () =>
       caseDrill(s, cur.rows.opened, {
         title: `Cases opened, ${per}`,
@@ -133,6 +138,7 @@ export function buildKpis(x: KpiInputs): Kpi[] {
     tab: 'cases',
     definition:
       'Cases still open at the end of the as-of date, in any open status. Age runs from the opened date.',
+    uses: L.open,
     drill: drillWhen(s, backlog, () => openDrill(s, backlog, `Open cases at ${formatDate(x.asOf)}`)),
   })
 
@@ -156,6 +162,7 @@ export function buildKpis(x: KpiInputs): Kpi[] {
     tab: 'cases',
     definition:
       "Share of cases opened in the period resolved within their category's resolution target (calendar hours). Open cases already past their target count as missed; open cases still inside it are left out.",
+    uses: L.resolutionSla,
     drill: drillWhen(s, cur.rows.opened, () =>
       resolutionDrill(s, cur.rows.opened, `Cases judged on resolution SLA, ${per}`),
     ),
@@ -181,6 +188,7 @@ export function buildKpis(x: KpiInputs): Kpi[] {
     tab: 'levels',
     definition:
       "Share of cases opened in the period with a first reply within their category's response target (calendar hours).",
+    uses: L.responseSla,
     drill: drillWhen(s, cur.rows.opened, () =>
       responseDrill(s, cur.rows.opened, `Cases judged on first response SLA, ${per}`),
     ),
@@ -210,6 +218,7 @@ export function buildKpis(x: KpiInputs): Kpi[] {
     tab: 'cases',
     definition:
       'Median calendar time from opened to resolved, for cases resolved in the period. Shown in hours below 48 h and in days above.',
+    uses: L.resolved,
     drill: drillWhen(s, cur.rows.resolved, () =>
       resolveTimeDrill(s, cur.rows.resolved, `Cases resolved, ${per}`),
     ),
@@ -237,6 +246,7 @@ export function buildKpis(x: KpiInputs): Kpi[] {
         : `Out of 5 · ${fmt(cur.csat.n, 'int')} responses`,
     tab: 'cases',
     definition: 'Mean satisfaction score (1 to 5) on cases resolved in the period. Hidden below 5 responses.',
+    uses: L.csat,
     drill: drillWhen(s, cur.rows.resolved, () =>
       csatDrill(s, cur.rows.resolved, `Cases rated for satisfaction, ${per}`),
     ),
@@ -266,6 +276,7 @@ export function buildKpis(x: KpiInputs): Kpi[] {
     tab: 'transactions',
     definition:
       'Share of HR transactions due in the period that were completed on or before their due date. Open transactions past due count as late.',
+    uses: L.onTime,
     drill: drillWhen(s, due, () => onTimeDrill(s, due, `Transactions due, ${per}`)),
   })
 

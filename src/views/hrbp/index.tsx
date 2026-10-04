@@ -3,6 +3,7 @@ import { useAnalytics } from '@/data/context'
 import { fmt } from '@/lib/format'
 import type { ViewDef } from '../types'
 import { hrbpHeadline } from './engine'
+import { HRBP_DATASETS } from './engine/lineage'
 import { Attrition } from './ui/Attrition'
 import { HeaderActions } from './ui/HeaderActions'
 import { Movement } from './ui/Movement'
@@ -66,8 +67,8 @@ export const view: ViewDef = {
   View,
   headline: (ctx) => {
     const h = hrbpHeadline(ctx)
-    return { value: fmt(h.value, 'int'), label: 'employees', spark: h.spark }
+    return { value: fmt(h.value, 'int'), label: 'employees', spark: h.spark, uses: h.uses }
   },
-  datasets: ['employees', 'jobChanges', 'reviews'],
+  datasets: [...HRBP_DATASETS],
   HeaderActions,
 }

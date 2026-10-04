@@ -19,6 +19,7 @@ import {
 } from '../engine/drills'
 import type { TxFact } from '../engine/facts'
 import { onTimeRate } from '../engine/facts'
+import type { ServicesFigureId } from '../engine/lineage'
 import type { FinalPayRow, RetroMonthRow, SiteRow, TimingRow, TypeRow } from '../engine/transactions'
 import { TIMING_BINS } from '../engine/transactions'
 import { isOther } from '../engine/util'
@@ -96,7 +97,7 @@ function TypeOnTimeFigure({
   ctx,
   span,
 }: {
-  id: string
+  id: ServicesFigureId
   m: ServicesModel
   ctx: AnalyticsContext
   span: Span
@@ -123,6 +124,7 @@ function TypeOnTimeFigure({
   return (
     <Figure
       id={id}
+      uses={m.uses[id]}
       span={span}
       title="On time by transaction type"
       subtitle={`Transactions due in the ${per} completed by their due date, against the ${fmt(TRANSACTION_ON_TIME_TARGET, 'pct0')} target`}
@@ -293,6 +295,7 @@ export function TransactionsTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsCo
         <TypeOnTimeFigure id="services-tx-on-time-by-type" m={m} ctx={ctx} span={6} />
         <Figure
           id="services-tx-days-early-late"
+          uses={m.uses['services-tx-days-early-late']}
           span={6}
           title="Days early or late"
           subtitle={`Completed date minus due date, for completed transactions due in the ${per}`}
@@ -336,6 +339,7 @@ export function TransactionsTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsCo
       >
         <Figure
           id="services-final-pay"
+          uses={m.uses['services-final-pay']}
           span={12}
           title="Final pay on time by jurisdiction"
           subtitle={`Termination transactions due in the ${per}, paid by the local final pay deadline, lowest first`}
@@ -394,6 +398,7 @@ export function TransactionsTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsCo
       >
         <Figure
           id="services-new-hire-readiness"
+          uses={m.uses['services-new-hire-readiness']}
           span={6}
           title="New hire readiness by site"
           subtitle={`New hire transactions due in the ${per} that were completed by Day −3`}
@@ -432,6 +437,7 @@ export function TransactionsTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsCo
         </Figure>
         <Figure
           id="services-retro-by-month"
+          uses={m.uses['services-retro-by-month']}
           span={6}
           title="Retro adjustments by month"
           subtitle={`Share of job and pay changes completed after their payroll cut-off, by cut-off month, ${per}`}

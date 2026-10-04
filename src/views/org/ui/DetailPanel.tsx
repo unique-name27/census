@@ -221,7 +221,8 @@ export function DetailPanel(p: DetailPanelProps) {
                 value={fmt(stats.regrettedExits12, 'int')}
                 drill={stats.regrettedExits12 ? drills.regretted : null}
               />
-              {stats.openReqs > 0 && (
+              {/* Like the open-role cards, left out when Requisitions is below the data standard. */}
+              {stats.openReqs > 0 && p.model.gates.reqCards.ok && (
                 <Stat label="Open roles" value={fmt(stats.openReqs, 'int')} drill={drills.reqs} />
               )}
             </dl>

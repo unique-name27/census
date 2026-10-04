@@ -20,7 +20,7 @@ locations, as of 30 Sep 2026), so every view works before you load anything.
 | Recruiting | Are we hiring the people we need, fast enough, and where is the process stuck? | Overview · Pipeline · Requisitions · Sources & offers |
 | HR business partners | What does a leader's organization look like, how is it changing, what should come up in the next 1:1? | Overview · Workforce · Attrition · Movement · Org design |
 | Org chart | Who reports to whom, how is each team shaped, and what would a reorganization change? | Chart · Reorg sandbox |
-| Employee services | Are employees getting fast, correct answers, and are HR transactions on time? | Overview · Cases · HR transactions · Service levels |
+| HR ops | Are employees getting fast, correct answers, and are HR transactions on time? | Overview · Cases · HR transactions · Service levels |
 | Talent | Is performance assessed fairly, are critical roles covered, who might we lose, is required training done? | Overview · Performance · Potential & succession · Retention risk · Learning |
 | Compensation | Is pay where policy says, fair against performance and the market, and is the merit cycle on budget? | Overview · Range position · Pay for performance · Market · Merit cycle |
 

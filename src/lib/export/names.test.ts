@@ -1,6 +1,16 @@
 import { describe, expect, it } from 'vitest'
 import { plainText, visibleColumns } from './columns'
-import { asOfIso, asOfLabel, fileStem, metaLine, slug, stampLine } from './names'
+import {
+  asOfIso,
+  asOfLabel,
+  dataLine,
+  fileStem,
+  imageFooter,
+  metaLine,
+  slug,
+  stampLine,
+  standardLine,
+} from './names'
 
 describe('fileStem', () => {
   it('builds census-<view>-<name>-<as-of>', () => {
@@ -71,5 +81,38 @@ describe('plainText', () => {
     expect(plainText(Number.NaN, 'int')).toBe('')
     expect(plainText(true, undefined)).toBe('Yes')
     expect(plainText('2026-09-30', 'date')).toBe('2026-09-30')
+  })
+})
+
+describe('data standard and tier lines', () => {
+  it('names the standard with the tiers it admits', () => {
+    expect(standardLine('gold')).toBe('Data standard: Production (gold only)')
+    expect(standardLine('silver')).toBe('Data standard: Validated (silver and up)')
+    expect(standardLine('bronze')).toBe('Data standard: Everything (bronze and up)')
+  })
+  it('adds the tier, and says when the standard holds the figure back', () => {
+    expect(dataLine('bronze', 'silver')).toBe('Data standard: Everything (bronze and up) · Tier: Silver')
+    expect(dataLine('gold', 'bronze', true)).toBe(
+      'Data standard: Production (gold only) · Tier: Bronze, not shown under this standard',
+    )
+    expect(dataLine('silver')).toBe('Data standard: Validated (silver and up)')
+    expect(dataLine(undefined, 'gold')).toBe('Tier: Gold')
+    expect(dataLine(undefined, null)).toBeNull()
+  })
+})
+
+describe('imageFooter', () => {
+  const meta = { scope: 'Whole company', asOf: '2026-09-30', isSample: true }
+  it('adds the tier when the figure has one', () => {
+    expect(imageFooter(meta)).toBe('Whole company · As of 30 Sep 2026 · Census · Sample data')
+    expect(imageFooter(meta, 'silver')).toBe(
+      'Whole company · As of 30 Sep 2026 · Tier: Silver · Census · Sample data',
+    )
+  })
+
+  it('states the data standard in force, as sheets and slides do', () => {
+    expect(imageFooter({ ...meta, standard: 'gold' }, 'gold')).toBe(
+      'Whole company · As of 30 Sep 2026 · Production standard · Tier: Gold · Census · Sample data',
+    )
   })
 })

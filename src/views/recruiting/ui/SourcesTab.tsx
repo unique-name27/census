@@ -18,6 +18,7 @@ import {
   sourceDrill,
   sourceMonthDrill,
 } from '../engine/drills'
+import { FIGURE_USES } from '../engine/lineage'
 import type { ExitReasonRow, GroupAcceptance, ReasonRow, SourceMonthRow, SourceRow } from '../engine/sources'
 import { useRecruitingUi } from '../state'
 import { asOfNote, drillIf, NEED_CANDIDATES, NoRecruitingData, windowText } from './common'
@@ -87,6 +88,7 @@ export function SourcesTab() {
       >
         <Figure
           id="recruiting-source-effectiveness"
+          uses={FIGURE_USES['recruiting-source-effectiveness']}
           title="Source effectiveness"
           subtitle={`Share of applications hired, by source, applications received ${windowText(b.window)}. The table view has volume, offer acceptance, time to hire and change.`}
           data={m.sources}
@@ -181,6 +183,7 @@ export function SourcesTab() {
         </Figure>
         <Figure
           id="recruiting-applications-source-month"
+          uses={FIGURE_USES['recruiting-applications-source-month']}
           title="Applications by source by month"
           subtitle={`Applications received per month, 24 months to ${formatDate(b.window.end)}${changed?.change != null ? `. ${changed.source}: ${signedPct(changed.change)} ${b.compareLabel}, the biggest move against the overall trend` : ''}`}
           data={m.sourcesByMonth}
@@ -227,6 +230,7 @@ export function SourcesTab() {
       >
         <Figure
           id="recruiting-offer-acceptance-location"
+          uses={FIGURE_USES['recruiting-offer-acceptance-location']}
           title="Offer acceptance by location"
           subtitle={`Offers accepted ÷ offers resolved ${basis === 'quarter' ? `in ${quarterWords}` : windowText(b.window)}, by work site, largest first`}
           data={byLocation}
@@ -302,6 +306,7 @@ export function SourcesTab() {
         </Figure>
         <Figure
           id="recruiting-decline-reasons"
+          uses={FIGURE_USES['recruiting-decline-reasons']}
           title="Why offers were declined"
           subtitle={`Declined offers ${windowText(b.window)}, by reason`}
           data={m.declineReasons}
@@ -339,6 +344,7 @@ export function SourcesTab() {
       >
         <Figure
           id="recruiting-exit-reasons"
+          uses={FIGURE_USES['recruiting-exit-reasons']}
           title={exitKind === 'Rejected' ? 'Why candidates were rejected' : 'Why candidates withdrew'}
           subtitle={`${exitKind} ${windowText(b.window)}, by reason and the stage they left from`}
           data={m.exitReasons}

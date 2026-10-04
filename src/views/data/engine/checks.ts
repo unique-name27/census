@@ -4,6 +4,9 @@
  * sentence with the number in it.
  */
 import type { Severity } from '@/components/types'
+import { fieldShortfall } from '@/data/quality/compute'
+import { FRESHNESS, type Link, LINKS as QUALITY_LINKS } from '@/data/quality/rules'
+import type { QualityIndex } from '@/data/quality/types'
 import { type DatasetKey, type Datasets, datasetDef, type ISODate } from '@/data/schema'
 import type { SourceMeta } from '@/data/store'
 import { daysBetween, formatDate } from '@/lib/dates'
@@ -18,6 +21,10 @@ export type CheckKind =
   | 'unlinked'
   | 'stale'
   | 'import-warnings'
+  /** From the quality index: import errors, blocking issues and the rules with no check here. */
+  | 'quality-rule'
+  /** From the quality index: a field whose fill or values cap its tier. */
+  | 'field-tier'
 
 /** Which loaded rows a check is about, so its number can open them (`checkRecords`). */
 export type CheckSelect =
@@ -53,42 +60,21 @@ const UNLINKED_WARNING = 0.02
 
 const SEVERITY_ORDER: Record<DatasetCheck['severity'], number> = { critical: 0, warning: 1, info: 2 }
 
-export interface Link {
-  fields: string[]
-  target: DatasetKey
-  targetKey: string
-}
+export type { Link }
 
-/** References to other datasets: field → the dataset and key it must resolve in. */
-export const LINKS: Partial<Record<DatasetKey, Link>> = {
-  jobChanges: { fields: ['employeeId'], target: 'employees', targetKey: 'employeeId' },
-  transactions: { fields: ['employeeId'], target: 'employees', targetKey: 'employeeId' },
-  reviews: { fields: ['employeeId'], target: 'employees', targetKey: 'employeeId' },
-  learning: { fields: ['employeeId'], target: 'employees', targetKey: 'employeeId' },
-  comp: { fields: ['employeeId'], target: 'employees', targetKey: 'employeeId' },
-  succession: { fields: ['incumbentId', 'successorId'], target: 'employees', targetKey: 'employeeId' },
-  candidates: { fields: ['reqId'], target: 'requisitions', targetKey: 'reqId' },
-  // Leader filters scope requisitions and cases through these people.
-  requisitions: { fields: ['hiringManagerId'], target: 'employees', targetKey: 'employeeId' },
-  cases: { fields: ['requesterId'], target: 'employees', targetKey: 'employeeId' },
-}
+/**
+ * References to other datasets: field → the dataset and key it must resolve in. The quality rule's
+ * own list (`@/data/quality`), so the checks here and the tier never disagree, without the links of
+ * a dataset to itself (an employee's manager): an upload's preview can't check those against the
+ * roster it replaces. The quality index checks them, and `qualityChecks` reports them.
+ */
+export const LINKS: Partial<Record<DatasetKey, Link>> = Object.fromEntries(
+  Object.entries(QUALITY_LINKS).filter(([key, link]) => link && link.target !== key),
+)
 
 export const TARGET_NOUN: Partial<Record<DatasetKey, string>> = {
   employees: 'people who are not in Employees',
   requisitions: 'requisitions that are not in Requisitions',
-}
-
-/** The event date that says how current a dataset is, and how old it may be before it looks stale. */
-const FRESHNESS: Partial<Record<DatasetKey, { fields: string[]; what: string; maxDays: number }>> = {
-  employees: { fields: ['hireDate', 'terminationDate'], what: 'hire or exit', maxDays: 120 },
-  jobChanges: { fields: ['effectiveDate'], what: 'job change', maxDays: 180 },
-  requisitions: { fields: ['openedDate'], what: 'requisition', maxDays: 90 },
-  candidates: { fields: ['appliedDate'], what: 'application', maxDays: 60 },
-  cases: { fields: ['openedAt'], what: 'case', maxDays: 45 },
-  transactions: { fields: ['submittedDate'], what: 'transaction', maxDays: 60 },
-  reviews: { fields: ['cycleDate'], what: 'review cycle', maxDays: 400 },
-  succession: { fields: ['updatedDate'], what: 'succession update', maxDays: 400 },
-  learning: { fields: ['assignedDate'], what: 'assignment', maxDays: 180 },
 }
 
 type Row = Record<string, unknown>
@@ -306,6 +292,8 @@ export function datasetChecks(args: {
   source: SourceMeta
   coverage: DatasetCoverage
   asOf: ISODate
+  /** The quality index, for what the import log and the tier rules know (`qualityChecks`). */
+  quality?: Pick<QualityIndex, 'checks' | 'fields' | 'dataset'> | null
   /** Whether the dataset each link points at is still the sample. */
   targetIsSample?: (key: DatasetKey) => boolean
   /** From the last upload's log: what the importer filled itself. */
@@ -390,7 +378,60 @@ export function datasetChecks(args: {
       })
     }
   }
+  if (args.quality) out.push(...qualityChecks(key, args.quality, out))
   return out.sort((a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity])
+}
+
+/**
+ * What the quality index knows that the checks above do not say: import errors and blocking
+ * issues from the import log (uploads and the messy sample alike), fields whose fill or values cap
+ * their tier, and failing rules with no check of their own here (a manager who is not in the
+ * roster, a pay extract too old). `covered` are the checks already made, so a field is not named
+ * twice.
+ */
+export function qualityChecks(
+  key: DatasetKey,
+  quality: Pick<QualityIndex, 'checks' | 'fields' | 'dataset'>,
+  covered: readonly DatasetCheck[],
+): DatasetCheck[] {
+  const out: DatasetCheck[] = []
+  const rules = quality.checks(key)
+  const rule = (id: string) => rules.find((r) => r.id === id)
+  const blocking = rule('no-blocking')
+  if (blocking && !blocking.pass)
+    out.push({ kind: 'quality-rule', severity: 'warning', text: blocking.detail, count: blocking.count })
+  const errors = rule('issue-rate')
+  const errorRows = quality.dataset(key).version?.issues.rowsWithErrors ?? 0
+  if (errors && errorRows > 0)
+    out.push({
+      kind: 'quality-rule',
+      severity: errors.pass ? 'info' : 'warning',
+      text: errors.detail,
+      count: errorRows,
+    })
+  // References and freshness have checks of their own above, except where those don't look.
+  for (const id of ['references', 'fresh'] as const) {
+    const r = rule(id)
+    const own = id === 'references' ? LINKS[key] : FRESHNESS[key]
+    if (r && !r.pass && !own)
+      out.push({ kind: 'quality-rule', severity: 'warning', text: r.detail, count: r.count })
+  }
+  const named = new Set(
+    covered.flatMap((c) => (c.records && c.records.select.by !== 'unlinked' ? [c.records.select.field] : [])),
+  )
+  // Judged on the field itself, so a bronze dataset's weak fields show before its mapping is confirmed.
+  for (const f of quality.fields(key)) {
+    const field = f.ref.slice(f.ref.indexOf('.') + 1)
+    const short = f.tier === 'none' || named.has(field) ? null : fieldShortfall(f)
+    if (!short) continue
+    out.push({
+      kind: 'field-tier',
+      severity: 'warning',
+      text: short.text,
+      count: short.kind === 'coverage' ? f.blank : f.invalid + f.defaulted,
+    })
+  }
+  return out
 }
 
 /** The most serious check's severity, or 'good' when there is none. */

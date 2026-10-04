@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Employee, Review } from '@/data/schema'
 import { buildReviewIndex } from '@/lib/people'
-import { COLOR_BY_LABELS, colorScheme, OTHER_KEY, swatchCss } from './colorBy'
+import { COLOR_BY_LABELS, COLOR_BY_OPTIONS, colorScheme, isColorBy, OTHER_KEY, swatchCss } from './colorBy'
 import { exitImpact, ratingOf, teamStats } from './detail'
 import { AS_OF, ctxFor, person, smallCompany } from './fixtures'
 import { computeFlags } from './flags'
@@ -50,6 +50,27 @@ describe('colorScheme', () => {
     expect(s.keyOf(rows[rows.length - 1])).toBe(OTHER_KEY)
     expect(swatchCss(s.swatchOf(rows[0]))).toBe('var(--s1)')
     expect(swatchCss(s.swatchOf(rows[rows.length - 1]))).toBe('var(--deemph)')
+  })
+  it('colors by job function, largest first, with people who have none grouped together', () => {
+    const rows = [
+      person('A', null, { jobFunction: 'Engineering' }),
+      person('B', null, { jobFunction: 'Engineering' }),
+      person('C', null, { jobFunction: 'G&A' }),
+      person('D', null, { jobFunction: null }),
+      person('E', null, { jobFunction: '  ' }),
+      person('F', null),
+    ]
+    const s = colorScheme('jobFunction', rows, AS_OF)
+    expect(s.legend.map((k) => [k.label, k.count])).toEqual([
+      ['No job function', 3],
+      ['Engineering', 2],
+      ['G&A', 1],
+    ])
+    expect(swatchCss(s.swatchOf(rows[0]))).toBe('var(--s2)')
+    expect(COLOR_BY_LABELS.jobFunction).toBe('Job function')
+    expect(isColorBy('jobFunction')).toBe(true)
+    expect(isColorBy('gender')).toBe(false)
+    expect(COLOR_BY_OPTIONS.at(-1)).toBe('none')
   })
   it('uses the sequential ramp for level groups and tenure bands', () => {
     const rows = [

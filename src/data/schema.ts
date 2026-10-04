@@ -159,7 +159,7 @@ export type ReqStatus = (typeof REQ_STATUSES)[number]
 export const REQ_TYPES = ['New', 'Backfill'] as const
 export const REQ_PRIORITIES = ['Critical', 'High', 'Standard'] as const
 
-/* employee services */
+/* HR ops */
 export const CASE_STATUSES = [
   'New',
   'In progress',
@@ -294,6 +294,8 @@ export const POTENTIALS = ['Low', 'Moderate', 'High'] as const
 export type Potential = (typeof POTENTIALS)[number]
 export const READINESS = ['Ready now', 'Ready in 1-2 years', 'Ready in 3+ years'] as const
 export type Readiness = (typeof READINESS)[number]
+/** Job functions, the level above job family. Uploaded data may use its own; these are the sample's. */
+export const JOB_FUNCTIONS = ['Engineering', 'Operations', 'Sales & marketing', 'G&A', 'Executive'] as const
 export const LEARNING_CATEGORIES = [
   'Compliance',
   'Security',
@@ -309,6 +311,8 @@ export interface Employee {
   name: string
   jobTitle: string
   jobFamily?: string | null
+  /** Broad function above the job family (Engineering, Operations, Sales & marketing, G&A, Executive). */
+  jobFunction?: string | null
   businessUnit: string
   department: string
   location: string
@@ -596,8 +600,15 @@ export const DATASETS: DatasetDef[] = [
         'jobFamily',
         'Job family',
         'string',
-        ['job family', 'discipline', 'job function', 'family', 'function'],
+        ['job family', 'discipline', 'family'],
         'Discipline, e.g. Design verification.',
+      ),
+      f(
+        'jobFunction',
+        'Job function',
+        'string',
+        ['job function', 'function', 'functional area', 'job function name'],
+        'Broad function above the job family, e.g. Engineering or G&A.',
       ),
       f(
         'businessUnit',

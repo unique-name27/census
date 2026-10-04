@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import type { ExportMeta, RegisteredFigure } from '@/charts/types'
-import { buildViewWorkbook, entrySheetName, type FigureGroup, isFigureGroups, viewEntries } from './view'
+import {
+  buildViewWorkbook,
+  entrySheetName,
+  type FigureGroup,
+  isFigureGroups,
+  slideFootnote,
+  viewEntries,
+} from './view'
+import { WITHHELD_COLUMNS, withheldRows } from './withheld'
 
 const meta: ExportMeta = {
   view: 'Recruiting',
@@ -108,5 +116,76 @@ describe('buildViewWorkbook', () => {
       },
     )
     expect(wb.worksheets.map((w) => w.name)).toEqual(['Summary', 'Time to fill'])
+  })
+})
+
+describe('data standard and tiers', () => {
+  const tiered = [
+    { ...fig('ttf', 'Time to fill'), tier: 'gold' as const },
+    {
+      ...fig('stage', 'Stage conversion'),
+      tier: 'bronze' as const,
+      withheld: true,
+      columns: WITHHELD_COLUMNS,
+      rows: withheldRows('Not yet confirmed for production', 'Held back by Candidates current stage.'),
+      // A stale note from the figure must never reach the export.
+      note: 'overall 4.6%',
+    },
+  ]
+
+  it('states the standard on the Summary and lists each figure with its tier', async () => {
+    const wb = await buildViewWorkbook(
+      tiered,
+      { ...meta, tab: 'Pipeline', standard: 'gold' },
+      {
+        showPay: false,
+        images: false,
+      },
+    )
+    const ws = wb.getWorksheet('Summary')!
+    const rows: unknown[][] = []
+    ws.eachRow((row) => {
+      rows.push([1, 2, 3, 4, 5, 6].map((c) => row.getCell(c).value))
+    })
+    expect(rows).toContainEqual(['Data standard', 'Production (gold only)', null, null, null, null])
+    const head = rows.find((r) => r[0] === '#')!
+    expect(head).toEqual(['#', 'Figure', 'Tier', 'What it shows', 'Rows', 'Note'])
+    const withheld = rows.find((r) => (r[1] as { text?: string })?.text === 'Stage conversion')!
+    expect(withheld[2]).toBe('Bronze, not shown')
+    // The reason is exported, not the data, so no row count is claimed, and no note.
+    expect(withheld[4]).toBeNull()
+    expect(withheld[5]).toBe('')
+    const sheet = wb.getWorksheet('Stage conversion')!
+    // Title, subtitle, view line, then the data line.
+    expect(String(sheet.getCell(4, 1).value)).toBe(
+      'Data standard: Production (gold only) · Tier: Bronze, not shown under this standard',
+    )
+    const titleBlock: string[] = []
+    for (let r = 1; r < 10; r++) titleBlock.push(String(sheet.getCell(r, 1).value ?? ''))
+    expect(titleBlock.join(' ')).not.toContain('4.6%')
+  })
+
+  it('keeps the Summary columns as before when no figure has a tier', async () => {
+    const wb = await buildViewWorkbook([fig('ttf', 'Time to fill')], meta, { showPay: false, images: false })
+    const ws = wb.getWorksheet('Summary')!
+    let head: unknown[] = []
+    ws.eachRow((row) => {
+      if (row.getCell(1).value === '#') head = [1, 2, 3, 4, 5].map((c) => row.getCell(c).value)
+    })
+    expect(head).toEqual(['#', 'Figure', 'What it shows', 'Rows', 'Note'])
+  })
+
+  it('puts the tier before the note in slide footers', () => {
+    expect(slideFootnote({ tier: 'silver', note: '62 reqs filled' })).toBe('Tier: Silver  ·  62 reqs filled')
+    expect(slideFootnote({ tier: 'bronze', withheld: true })).toBe(
+      'Tier: Bronze, not shown under this standard',
+    )
+    expect(slideFootnote({ tier: 'bronze', withheld: true, note: 'company 68.2%' }, 'gold')).toBe(
+      'Production standard  ·  Tier: Bronze, not shown under this standard',
+    )
+    expect(slideFootnote({ note: 'n = 40' })).toBe('n = 40')
+    expect(slideFootnote({ tier: 'gold', note: 'n = 40' }, 'gold')).toBe(
+      'Production standard  ·  Tier: Gold  ·  n = 40',
+    )
   })
 })

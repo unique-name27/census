@@ -1,13 +1,19 @@
 /**
  * Figure: the sheet every chart and exportable table sits on.
  *
- * Header: title and subtitle, the view's own controls, a chart/table toggle, a definitions
- * datasheet and the export menu (CSV, Excel, copy, PNG, SVG, detail rows). Body: the chart
- * (kept mounted while the table view is shown, so it stays exportable), the table, or an empty
- * state. Footer: a muted note. The figure registers with its view so "Export view" includes it.
+ * Header: title and subtitle, the tier badge, the view's own controls, a chart/table toggle, a
+ * definitions datasheet and the export menu (CSV, Excel, copy, PNG, SVG, detail rows). Body: the
+ * chart (kept mounted while the table view is shown, so it stays exportable), the table, or an
+ * empty state. Footer: a muted note. The figure registers with its view so "Export view"
+ * includes it.
  *
  * The rows passed as `data` are exactly what the table shows and every export writes. Columns
  * marked `pay: true` are dropped unless pay amounts are switched on.
+ *
+ * Data standard: the figure's tier is the lowest among its `uses` (or the view's datasets). Below
+ * the standard the body becomes a note naming what holds it back and how to raise it; "Preview
+ * anyway" shows it on screen under a bronze band, and every export carries the reason instead of
+ * the data. A held-back figure shows no note either: notes usually carry its numbers.
  */
 import { type ReactNode, useEffect, useId, useRef, useState } from 'react'
 import {
@@ -19,15 +25,21 @@ import {
   IconInfo,
   IconTable,
 } from '@/components/icons'
+import { TierBadge } from '@/components/tier/TierBadge'
+import { heldBack } from '@/components/tier/tierModel'
+import { useTierGate } from '@/components/tier/useTierGate'
 import { cx, IconButton, Menu, type MenuItem, Popover } from '@/components/ui'
 import { useAnalytics } from '@/data/context'
+import type { FieldRef } from '@/data/quality/fieldRef'
 import { copyTable } from '@/lib/export/clipboard'
 import { downloadCsv } from '@/lib/export/csv'
 import { downloadPng, downloadSvg } from '@/lib/export/image'
 import { fileStem, imageFooter } from '@/lib/export/names'
+import { figureExport } from '@/lib/export/withheld'
 import { downloadXlsx } from '@/lib/export/xlsx'
 import { type Span, spanClass } from '@/lib/spans'
 import { DataTable, type DataTableProps } from './DataTable'
+import { HeldBackState, PreviewBar, PreviewFrame } from './FigureGate'
 import { nextFigureOrder, useFigureRegistry } from './registry'
 import type { Column, Definition } from './types'
 import { useExportMeta } from './useExportMeta'
@@ -81,6 +93,16 @@ export interface FigureProps<T extends object> {
   tableToggle?: boolean
   /** Table view options. */
   table?: FigureTableOptions<T>
+  /**
+   * The fields the figure is computed from ('employees.terminationDate'). Its tier is the lowest
+   * of theirs; without it, the tier of the view's datasets is used.
+   */
+  uses?: readonly FieldRef[]
+  /**
+   * Judge the figure against the data standard (default true). The Data room never gates; set
+   * false for figures about the data itself rather than a people number.
+   */
+  gate?: boolean
   className?: string
   children?: ReactNode
 }
@@ -103,38 +125,53 @@ export function Figure<T extends object>({
   image = true,
   tableToggle = true,
   table,
+  uses,
+  gate: gated = true,
   className,
   children,
 }: FigureProps<T>) {
-  const { showPay } = useAnalytics()
+  const { showPay, quality } = useAnalytics()
   const meta = useExportMeta()
   const registry = useFigureRegistry()
   const [order] = useState(nextFigureOrder)
   const [showTable, setShowTable] = useState(false)
+  const [preview, setPreview] = useState(false)
+  // Focus follows the preview toggle, but only once the reader has used it.
+  const [toggled, setToggled] = useState(false)
   const [status, setStatus] = useState<Status>(null)
   const chartRef = useRef<HTMLDivElement>(null)
   const timer = useRef<number | undefined>(undefined)
   const titleId = useId()
 
-  const rows = data as readonly Record<string, unknown>[]
-  const cols = columns as readonly Column[]
+  const gate = useTierGate(uses, gated)
+  const held = gate && !gate.shown ? heldBack(gate, quality) : null
+  const previewing = !!held && held.canPreview && preview
+  // Below the standard every export carries the reason and no note (notes often carry the hidden
+  // numbers); an on-screen preview never leaves the page.
+  const out = figureExport({ columns: columns as readonly Column[], rows: data, note }, held)
+  const { withheld, rows, columns: cols, note: outNote } = out
+  const tier = gate?.tier ?? null
   const isEmpty = !!empty
-  const hasChart = !tableOnly && !isEmpty
+  const showsBody = !held || previewing
+  const hasChart = !tableOnly && !isEmpty && showsBody
+  const canImage = hasChart && !withheld
 
-  // Figures with nothing to show stay out of view exports.
+  // Figures with nothing to show stay out of view exports; a held-back figure exports its reason.
   useEffect(() => {
     if (!registry || !rows.length) return
     return registry.register({
       id,
       title,
       subtitle,
-      note,
+      note: outNote,
       columns: cols.slice(),
       rows: rows.slice(),
-      getSvg: () => (image ? chartSvg(chartRef.current) : null),
+      getSvg: () => (image && !withheld ? chartSvg(chartRef.current) : null),
       order,
+      tier,
+      withheld,
     })
-  }, [registry, id, title, subtitle, note, cols, rows, order, image])
+  }, [registry, id, title, subtitle, outNote, cols, rows, order, image, tier, withheld])
 
   useEffect(() => () => window.clearTimeout(timer.current), [])
 
@@ -159,16 +196,16 @@ export function Figure<T extends object>({
   }
 
   const stem = fileStem(meta, id)
-  const exportTable = { name: title, title, subtitle, note, columns: cols, rows }
+  const exportTable = { name: title, title, subtitle, note: outNote, columns: cols, rows, tier, withheld }
   const exportImage = (save: (svg: SVGSVGElement) => Promise<void>) => {
-    const el = hasChart ? chartSvg(chartRef.current) : null
+    const el = canImage ? chartSvg(chartRef.current) : null
     if (!el) {
       flash({ text: 'This figure has no chart image', tone: 'error' })
       return
     }
     void run(() => save(el))
   }
-  const imageOpts = () => ({ header: { title, subtitle }, footer: imageFooter(meta) })
+  const imageOpts = () => ({ header: { title, subtitle }, footer: imageFooter(meta, tier) })
   const noRows = rows.length === 0
 
   const items: MenuItem[] = [
@@ -178,7 +215,8 @@ export function Figure<T extends object>({
       icon: <IconFile />,
       hint: '.csv',
       disabled: noRows,
-      onSelect: () => void run(() => downloadCsv(exportTable, meta, { showPay, fileName: stem })),
+      onSelect: () =>
+        void run(() => downloadCsv(exportTable, meta, { showPay, fileName: stem, preamble: true })),
     },
     {
       label: 'Download Excel',
@@ -200,7 +238,7 @@ export function Figure<T extends object>({
         ),
     },
   ]
-  if (detail) {
+  if (detail && !withheld) {
     items.push({
       label: 'Download detail rows (Excel)',
       icon: <IconTable />,
@@ -216,6 +254,7 @@ export function Figure<T extends object>({
                 subtitle,
                 columns: detail.columns,
                 rows: detailRows,
+                tier,
               },
             ],
             meta,
@@ -224,7 +263,7 @@ export function Figure<T extends object>({
         }),
     })
   }
-  if (!tableOnly && image) {
+  if (!tableOnly && image && !withheld) {
     items.push(
       { separator: true },
       { heading: 'Image' },
@@ -232,14 +271,14 @@ export function Figure<T extends object>({
         label: 'Download PNG',
         icon: <IconImage />,
         hint: 'For slides',
-        disabled: !hasChart,
+        disabled: !canImage,
         onSelect: () => exportImage((el) => downloadPng(el, stem, imageOpts())),
       },
       {
         label: 'Download SVG',
         icon: <IconImage />,
         hint: '.svg',
-        disabled: !hasChart,
+        disabled: !canImage,
         onSelect: () => exportImage((el) => downloadSvg(el, stem, imageOpts())),
       },
     )
@@ -271,7 +310,10 @@ export function Figure<T extends object>({
           </h3>
           {subtitle && <p className="mt-0.5 text-[13px] leading-snug text-ink-2">{subtitle}</p>}
         </figcaption>
-        <div className="-mt-0.5 -mr-1.5 ml-auto flex shrink-0 flex-wrap items-center justify-end gap-1">
+        <div
+          data-figure-actions
+          className="-mt-0.5 -mr-1.5 ml-auto flex max-w-full min-w-0 flex-wrap items-center justify-end gap-1"
+        >
           <span
             role="status"
             className={cx(
@@ -282,7 +324,20 @@ export function Figure<T extends object>({
           >
             {status?.text}
           </span>
-          {actions && <div className="mr-1 flex items-center gap-2">{actions}</div>}
+          {gate && (
+            <TierBadge
+              compact
+              tier={gate.tier}
+              explain={gate.explain}
+              dataset={gate.limiting.dataset}
+              className="mr-0.5"
+            />
+          )}
+          {actions && (
+            <div className="mr-1 flex max-w-full min-w-0 flex-wrap items-center justify-end gap-2">
+              {actions}
+            </div>
+          )}
           {hasChart && tableToggle && (
             <IconButton
               label={showTable ? 'Show chart' : 'Show table'}
@@ -323,24 +378,56 @@ export function Figure<T extends object>({
       </div>
 
       <div className="min-w-0 flex-1 px-4 pt-3 pb-4">
-        {isEmpty ? (
-          <div className="flex min-h-28 items-center rounded-control bg-sheet-2 px-4 py-5 text-[13px] text-ink-2">
-            {empty}
-          </div>
-        ) : tableOnly ? (
-          tableView
+        {held && gate && !previewing ? (
+          <HeldBackState
+            held={held}
+            tier={gate.tier}
+            focusPreview={toggled}
+            onPreview={() => {
+              setToggled(true)
+              setPreview(true)
+            }}
+          />
         ) : (
           <>
-            {/* biome-ignore lint/a11y/useSemanticElements: a named group around the chart, not a form fieldset */}
-            <div ref={chartRef} hidden={showTable && tableToggle} role="group" aria-label={`${title}, chart`}>
-              {children}
-            </div>
-            {showTable && tableToggle && tableView}
+            {held && gate && (
+              <PreviewBar
+                tier={gate.tier}
+                standard={gate.standard}
+                focusHide={toggled}
+                onHide={() => {
+                  setToggled(true)
+                  setPreview(false)
+                }}
+              />
+            )}
+            <PreviewFrame active={previewing}>
+              {isEmpty ? (
+                <div className="flex min-h-28 items-center rounded-control bg-sheet-2 px-4 py-5 text-[13px] text-ink-2">
+                  {empty}
+                </div>
+              ) : tableOnly ? (
+                tableView
+              ) : (
+                <>
+                  {/* biome-ignore lint/a11y/useSemanticElements: a named group around the chart, not a form fieldset */}
+                  <div
+                    ref={chartRef}
+                    hidden={showTable && tableToggle}
+                    role="group"
+                    aria-label={`${title}, chart`}
+                  >
+                    {children}
+                  </div>
+                  {showTable && tableToggle && tableView}
+                </>
+              )}
+            </PreviewFrame>
           </>
         )}
       </div>
 
-      {note && <p className="-mt-1 px-4 pb-3.5 text-[12px] leading-snug text-muted">{note}</p>}
+      {note && showsBody && <p className="-mt-1 px-4 pb-3.5 text-[12px] leading-snug text-muted">{note}</p>}
     </figure>
   )
 }

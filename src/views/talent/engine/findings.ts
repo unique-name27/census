@@ -11,6 +11,7 @@ import { fmt, plural } from '@/lib/format'
 import { listText, segmentFilter, segmentName, type TalentBase, UNKNOWN } from './base'
 import type { TalentDrills } from './drills'
 import type { LearningResult } from './learning'
+import type { TalentLineage } from './lineage'
 import { HIGH_GUIDELINE, type PerformanceResult } from './performance'
 import type { OverdueResult } from './promotion'
 import type { RetentionResult } from './retention'
@@ -30,6 +31,7 @@ export interface FindingInputs {
   learning: LearningResult
   risk: RiskModel
   drill: TalentDrills
+  lineage: Pick<TalentLineage, 'finding'>
 }
 
 /** "11.0 pts" for a fraction difference, without a sign. */
@@ -60,6 +62,7 @@ function segmentText(s: Segment): string {
 export function buildFindings(x: FindingInputs): Finding[] {
   const out: Finding[] = []
   const { base, performance: perf, succession: succ, retention: ret, overdue, learning, risk, drill } = x
+  const uses = x.lineage.finding
 
   // High-potential regretted exits in the last 6 months (needs termination type, regrettable and potential).
   const hipo = ret.hipoExits.people
@@ -83,6 +86,7 @@ export function buildFindings(x: FindingInputs): Finding[] {
           : undefined,
       tab: 'retention',
       drill: drill.hipoExits(),
+      uses: uses['talent-hipo-exits'],
     })
   }
 
@@ -116,6 +120,7 @@ export function buildFindings(x: FindingInputs): Finding[] {
           ? 'High risk of loss from the Census flight-risk model (the plans record none).'
           : 'High risk of loss as recorded in the succession plan.',
       ),
+      uses: uses['talent-succession-exposed'],
     })
   }
 
@@ -138,6 +143,7 @@ export function buildFindings(x: FindingInputs): Finding[] {
         'Critical roles with no successor ready now',
         `Rate = ${notReady} not ready ÷ ${succ.critical} critical roles. Successors who have left are not counted.`,
       ),
+      uses: uses['talent-critical-not-ready'],
     })
   }
 
@@ -156,6 +162,7 @@ export function buildFindings(x: FindingInputs): Finding[] {
       filter: { businessUnit: [f.businessUnit] },
       tab: 'performance',
       drill: drill.unitHigh(f.businessUnit),
+      uses: uses['talent-inflation'],
     })
   }
 
@@ -170,6 +177,7 @@ export function buildFindings(x: FindingInputs): Finding[] {
       filter: { businessUnit: [c.row.businessUnit] },
       tab: 'performance',
       drill: drill.calibration(c.row.businessUnit, 'all'),
+      uses: uses['talent-calibration'],
     })
   }
 
@@ -190,6 +198,7 @@ export function buildFindings(x: FindingInputs): Finding[] {
       filter: segmentFilter(t.dim, t.value),
       tab: 'learning',
       drill: drill.overdueSegment(),
+      uses: uses['talent-training-overdue'],
     })
   }
 
@@ -211,6 +220,7 @@ export function buildFindings(x: FindingInputs): Finding[] {
       filter: top ? { department: [top.value] } : undefined,
       tab: 'retention',
       drill: drill.promotionOverdue(),
+      uses: uses['talent-promotion-overdue'],
     })
   }
 
@@ -252,6 +262,7 @@ export function buildFindings(x: FindingInputs): Finding[] {
       filter: seg && seg.share >= 0.3 ? segmentFilter(seg.dim, seg.value) : undefined,
       tab: 'retention',
       drill: drill.keyTalent(),
+      uses: uses['talent-key-talent-risk'],
     })
   }
 
@@ -263,6 +274,7 @@ export function buildFindings(x: FindingInputs): Finding[] {
 /** One finding about something clearly working, when there is one. */
 function goodFinding(x: FindingInputs): Finding | null {
   const { performance: perf, succession: succ, learning, drill } = x
+  const uses = x.lineage.finding
   const cur = learning.current
   if (cur.rate != null && cur.rate >= 0.95 && cur.due >= 20) {
     return {
@@ -273,6 +285,7 @@ function goodFinding(x: FindingInputs): Finding | null {
       action: 'Keep the current reminder schedule for the next campaign.',
       tab: 'learning',
       drill: drill.onTime(null, 'onTime'),
+      uses: uses['talent-good-training'],
     }
   }
   const calibrated = new Set(perf.calibrationFlags.map((c) => c.row.businessUnit))
@@ -297,6 +310,7 @@ function goodFinding(x: FindingInputs): Finding | null {
       filter: { businessUnit: [match.group] },
       tab: 'performance',
       drill: drill.unitHigh(match.group),
+      uses: uses['talent-good-distribution'],
     }
   }
   if (succ.coverage != null && succ.coverage >= 0.8 && succ.critical >= 5) {
@@ -308,6 +322,7 @@ function goodFinding(x: FindingInputs): Finding | null {
       action: 'Keep the bench current at the next talent review.',
       tab: 'succession',
       drill: drill.coverage(),
+      uses: uses['talent-good-succession'],
     }
   }
   return null

@@ -1,44 +1,29 @@
 /**
- * Cycle settings shared by the header popover and the view body, persisted per browser.
- * Storage can be missing or blocked (private windows); the settings then live for the session.
+ * Cycle settings (merit budget, healthy compa-ratio band, merit guideline) live in the app
+ * settings, Settings → Compensation cycle. These adapters give the comp engine its own shape.
  */
-import { create } from 'zustand'
-import { type CycleSettings, DEFAULT_SETTINGS, sanitizeSettings } from './engine/settings'
+import { type CompCycleSettings, fromCycleSettings, toCycleSettings } from '@/data/settings'
+import { useCensus } from '@/data/store'
+import type { CycleSettings } from './engine/settings'
 
-const KEY = 'census:comp-cycle-settings'
+/** One engine object per stored settings object, so models memoized on it stay put. */
+const cache = new WeakMap<CompCycleSettings, CycleSettings>()
 
-function load(): CycleSettings {
-  try {
-    const raw = localStorage.getItem(KEY)
-    return raw ? sanitizeSettings(JSON.parse(raw)) : DEFAULT_SETTINGS
-  } catch {
-    return DEFAULT_SETTINGS
+export function cycleSettingsOf(c: CompCycleSettings): CycleSettings {
+  let s = cache.get(c)
+  if (!s) {
+    s = toCycleSettings(c)
+    cache.set(c, s)
   }
+  return s
 }
 
-function save(s: CycleSettings): void {
-  try {
-    localStorage.setItem(KEY, JSON.stringify(s))
-  } catch {
-    /* storage unavailable: the settings still apply until the tab closes */
-  }
+/** The cycle settings the comp engine reads, kept in step with Settings. */
+export function useCycleSettings(): CycleSettings {
+  return cycleSettingsOf(useCensus((s) => s.compCycle))
 }
 
-interface SettingsState {
-  settings: CycleSettings
-  setSettings: (s: CycleSettings) => void
-  reset: () => void
+/** Save new cycle settings (sanitized by the store). */
+export function setCycleSettings(s: CycleSettings): void {
+  useCensus.getState().setCompCycle(fromCycleSettings(s))
 }
-
-export const useCycleSettings = create<SettingsState>((set) => ({
-  settings: load(),
-  setSettings(next) {
-    const s = sanitizeSettings(next)
-    save(s)
-    set({ settings: s })
-  },
-  reset() {
-    save(DEFAULT_SETTINGS)
-    set({ settings: DEFAULT_SETTINGS })
-  },
-}))

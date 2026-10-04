@@ -1,4 +1,5 @@
 import type { Column } from '@/charts/types'
+import type { Tier } from '@/data/quality/tier'
 
 /** One table to export: a figure's rows, a detail list, or a sheet of a view workbook. */
 export interface ExportTable {
@@ -10,6 +11,10 @@ export interface ExportTable {
   note?: string
   columns: readonly Column[]
   rows: readonly Record<string, unknown>[]
+  /** The table's data tier, stated in the title block with the data standard. */
+  tier?: Tier | null
+  /** The rows are the reason the data standard holds the figure back, not its data. */
+  withheld?: boolean
 }
 
 export interface ExportOptions {

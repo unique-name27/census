@@ -49,9 +49,12 @@ export function NineBox({
   cells,
   cycle,
   drillFor,
+  showRisk = true,
 }: {
   cells: readonly NineBoxCell[]
   cycle?: string | null
+  /** Draw the high flight-risk overlay (false below the data standard). */
+  showRisk?: boolean
   /** The people behind a box, or its high flight-risk people. */
   drillFor?: (cell: NineBoxCell, part: 'all' | 'highRisk') => DrillSource
 }) {
@@ -83,7 +86,7 @@ export function NineBox({
       rows: [
         { value: fmt(c.count), label: c.count === 1 ? 'person' : 'people' },
         { value: fmt(c.share, 'pct'), label: 'of everyone placed' },
-        { value: fmt(c.highRisk), label: 'in the high flight-risk band' },
+        ...(showRisk ? [{ value: fmt(c.highRisk), label: 'in the high flight-risk band' }] : []),
       ],
       note: c.count ? 'Click to see the records' : 'Nobody is in this box',
     })
@@ -250,7 +253,7 @@ export function NineBox({
                     </text>
                     <text x={x + 10} y={y + cellH - 11} fill={ink} fontSize={12}>
                       {shareText}
-                      {showLabels && c.highRisk > 0 ? ` · ${fmt(c.highRisk)} high risk` : ''}
+                      {showRisk && showLabels && c.highRisk > 0 ? ` · ${fmt(c.highRisk)} high risk` : ''}
                     </text>
                   </g>
                 )
@@ -272,7 +275,7 @@ export function NineBox({
                 >
                   {plural(active.count, 'person', 'people')}
                 </Drill>
-                {active.highRisk > 0 && (
+                {showRisk && active.highRisk > 0 && (
                   <>
                     {' · '}
                     <Drill
@@ -295,7 +298,7 @@ export function NineBox({
             </button>
           </div>
           <DataTable
-            columns={nineBoxPeopleColumns(cycle)}
+            columns={nineBoxPeopleColumns(cycle, showRisk)}
             rows={active.people}
             maxRows={10}
             search={active.people.length > 10 ? 'Search people' : undefined}

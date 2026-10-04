@@ -63,6 +63,7 @@ export function SuccessionTab({ m }: { m: TalentModel }) {
       >
         <Figure
           id="talent-critical-roles"
+          uses={m.uses['talent-critical-roles']}
           title="Critical and key roles"
           subtitle={`Roles in the succession plan with successors still employed, as of ${asOf}`}
           data={succ.roles}
@@ -88,6 +89,7 @@ export function SuccessionTab({ m }: { m: TalentModel }) {
       >
         <Figure
           id="talent-bench-strength"
+          uses={m.uses['talent-bench-strength']}
           title="Bench strength by business unit"
           subtitle={`Named successors by readiness, ${BENCH_LABEL[scope]}`}
           data={benchTable}
@@ -132,6 +134,7 @@ export function SuccessionTab({ m }: { m: TalentModel }) {
       >
         <Figure
           id="talent-high-potentials-by-level"
+          uses={m.uses['talent-high-potentials-by-level']}
           title="High potentials by level"
           subtitle={`Share of people assessed who were rated High potential${potCycle ? `, ${potCycle}` : ''}`}
           data={succ.hipoByLevel}
@@ -154,6 +157,7 @@ export function SuccessionTab({ m }: { m: TalentModel }) {
         </Figure>
         <Figure
           id="talent-high-potentials-by-unit"
+          uses={m.uses['talent-high-potentials-by-unit']}
           title="High potentials by business unit"
           subtitle={`Share of people assessed who were rated High potential${potCycle ? `, ${potCycle}` : ''}`}
           data={succ.hipoByUnit}

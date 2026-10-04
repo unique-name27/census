@@ -169,3 +169,25 @@ describe('buildWorkbook', () => {
     expect(ws.getRow(6).getCell(4).value).toBe(151000)
   })
 })
+
+describe('data standard in the title block', () => {
+  it('adds a line with the standard and the tier above the stamp', async () => {
+    const wb = await buildWorkbook(
+      [
+        {
+          name: 'Attrition',
+          title: 'Attrition by department',
+          columns: [{ key: 'dept', label: 'Department' }],
+          rows: [{ dept: 'Test' }],
+          tier: 'silver',
+        },
+      ],
+      { ...meta, standard: 'bronze' },
+      { showPay: false },
+    )
+    const ws = wb.worksheets[0]
+    expect(ws.getCell('A3').value).toBe('Data standard: Everything (bronze and up) · Tier: Silver')
+    expect(ws.getCell('A4').value).toBe('Company confidential · Sample data')
+    expect(ws.getRow(6).getCell(1).value).toBe('Department')
+  })
+})

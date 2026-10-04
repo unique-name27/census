@@ -83,6 +83,30 @@ describe('readoutRows', () => {
   })
 })
 
+describe('readoutRows with tiers', () => {
+  it('adds the tier of each finding, in severity order', () => {
+    const tierOf = (id: string) => (id === 'b' ? 'gold' : id === 'a' ? 'bronze' : null)
+    const rows = readoutRows([finding('a', 'info'), finding('b', 'critical'), finding('c', 'good')], (f) => {
+      const tier = tierOf(f.id)
+      return tier
+        ? {
+            tier,
+            standard: 'bronze',
+            limiting: { tier, dataset: 'employees', ref: null },
+            shown: true,
+            explain: '',
+            reason: null,
+          }
+        : null
+    })
+    expect(rows.map((r) => [r.finding, r.tier])).toEqual([
+      ['Finding b', 'Gold'],
+      ['Finding a', 'Bronze'],
+      ['Finding c', ''],
+    ])
+  })
+})
+
 describe('labelInSentence', () => {
   it('lowers the first letter of ordinary labels and keeps acronyms', () => {
     expect(labelInSentence('Drivers')).toBe('drivers')

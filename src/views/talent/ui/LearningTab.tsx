@@ -61,6 +61,7 @@ export function LearningTab({ m }: { m: TalentModel }) {
       >
         <Figure
           id="talent-training-on-time-by-course"
+          uses={m.uses['talent-training-on-time-by-course']}
           title="Required training on time by course"
           subtitle={`Share of assignments due ${period} completed by the due date`}
           data={l.byCourse}
@@ -85,6 +86,7 @@ export function LearningTab({ m }: { m: TalentModel }) {
         </Figure>
         <Figure
           id="talent-completions-by-month"
+          uses={m.uses['talent-completions-by-month']}
           title="Completions by month"
           subtitle={`Courses completed each month, required and optional, ${period}`}
           data={l.completions}
@@ -121,6 +123,7 @@ export function LearningTab({ m }: { m: TalentModel }) {
       >
         <Figure
           id="talent-overdue-by-course"
+          uses={m.uses['talent-overdue-by-course']}
           title={`Overdue by course and ${dim}`}
           subtitle={`Share of past-due assignments not completed, as of ${asOf}`}
           data={cells}
@@ -160,6 +163,7 @@ export function LearningTab({ m }: { m: TalentModel }) {
         </Figure>
         <Figure
           id="talent-overdue-assignments"
+          uses={m.uses['talent-overdue-assignments']}
           title="Overdue assignments"
           subtitle={`Required, not completed and past due, as of ${asOf}`}
           data={l.overdue}
@@ -182,6 +186,7 @@ export function LearningTab({ m }: { m: TalentModel }) {
         />
         <Figure
           id="talent-learning-hours"
+          uses={m.uses['talent-learning-hours']}
           title="Learning hours per employee"
           subtitle={`Hours from courses completed ${period}, by business unit`}
           data={l.hours}

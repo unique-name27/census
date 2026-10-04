@@ -4,7 +4,7 @@
  * means nothing is remembered). The scenario never touches the datasets.
  */
 import { useState } from 'react'
-import type { ColorBy, ScenarioAction } from '../engine'
+import { type ColorBy, isColorBy, type ScenarioAction } from '../engine'
 
 const KEY = 'census:org:'
 
@@ -34,10 +34,10 @@ export interface ChartPrefs {
 const DEFAULT_PREFS: ChartPrefs = { colorBy: 'businessUnit', showReqs: false, showFlags: true }
 
 export function useChartPrefs(): [ChartPrefs, (patch: Partial<ChartPrefs>) => void] {
-  const [prefs, setPrefs] = useState<ChartPrefs>(() => ({
-    ...DEFAULT_PREFS,
-    ...read<Partial<ChartPrefs>>('prefs', {}),
-  }))
+  const [prefs, setPrefs] = useState<ChartPrefs>(() => {
+    const saved = { ...DEFAULT_PREFS, ...read<Partial<ChartPrefs>>('prefs', {}) }
+    return isColorBy(saved.colorBy) ? saved : { ...saved, colorBy: DEFAULT_PREFS.colorBy }
+  })
   const update = (patch: Partial<ChartPrefs>) => {
     setPrefs((p) => {
       const next = { ...p, ...patch }

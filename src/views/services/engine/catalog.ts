@@ -1,5 +1,5 @@
 /**
- * The Hire-to-Retire Atlas processes behind employee services, and the measurable targets the
+ * The Hire-to-Retire Atlas processes behind HR ops, and the measurable targets the
  * Service levels scorecard tracks.
  *
  * Process names, owners and service-level wording are quoted from the Atlas process library

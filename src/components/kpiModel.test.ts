@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { deltaDirection, deltaTone, kpiDeltaText, kpiRows, kpiValueText, SUPPRESSED_NOTE } from './kpiModel'
+import type { TierGate } from './tier/tierModel'
 import type { Kpi } from './types'
 
 const kpi = (patch: Partial<Kpi>): Kpi => ({
@@ -68,5 +69,48 @@ describe('kpiRows', () => {
       { measure: 'Regretted attrition', value: '—', change: '', comparedWith: '', note: SUPPRESSED_NOTE },
     ])
     expect(SUPPRESSED_NOTE).toBe('Hidden to protect anonymity (n < 5)')
+  })
+})
+
+describe('kpiRows with tiers', () => {
+  const gate = (tier: TierGate['tier'], shown: boolean, reason: string | null = null): TierGate => ({
+    tier,
+    standard: 'gold',
+    limiting: { tier, dataset: 'employees', ref: null },
+    shown,
+    explain: '',
+    reason,
+  })
+
+  it('adds each tier and exports a hidden number as a dash with its reason', () => {
+    const rows = kpiRows(
+      [
+        kpi({ delta: 4, deltaLabel: 'vs prior 12 months', note: '62 reqs filled' }),
+        kpi({ id: 'b', label: 'Offer acceptance', delta: 0.1 }),
+        kpi({ id: 'c', label: 'Open reqs' }),
+        kpi({ id: 'd', label: 'Exit reasons' }),
+      ],
+      [
+        gate('gold', true),
+        gate('silver', false, 'Not yet confirmed for production'),
+        null,
+        gate('none', false, 'No data: Employees termination reason is missing'),
+      ],
+    )
+    expect(rows[0]).toMatchObject({ value: '42 d', change: '+4 d', tier: 'Gold', note: '62 reqs filled' })
+    expect(rows[1]).toEqual({
+      measure: 'Offer acceptance',
+      value: '—',
+      change: '',
+      comparedWith: '',
+      note: 'Not yet confirmed for production',
+      tier: 'Silver',
+    })
+    expect(rows[2]).toMatchObject({ value: '42 d', tier: '' })
+    expect(rows[3]).toMatchObject({
+      value: '—',
+      tier: 'No data',
+      note: 'No data: Employees termination reason is missing',
+    })
   })
 })

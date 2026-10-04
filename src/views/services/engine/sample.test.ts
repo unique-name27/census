@@ -17,7 +17,7 @@ const find = (id: string): Finding => {
 }
 const pctIn = (text: string) => Number(/([\d.]+)%/.exec(text)?.[1])
 
-describe('employee services on the sample company', () => {
+describe('HR ops on the sample company', () => {
   it('runs in under 150 ms', () => {
     compute(ctx)
     const t0 = performance.now()
@@ -134,7 +134,7 @@ describe('employee services on the sample company', () => {
   })
 })
 
-describe('employee services on small scopes and short periods', () => {
+describe('HR ops on small scopes and short periods', () => {
   it('hides every rate and sensitive count behind the four executives at level E2', () => {
     const m = compute(sampleContext({ level: ['E2'] }))
     expect(m.people).toBe(4)

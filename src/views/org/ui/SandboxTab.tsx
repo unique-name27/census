@@ -27,6 +27,7 @@ import {
   directsDrill,
   entryPoints,
   exportCut,
+  heldBackNotes,
   layoutTree,
   MOVE_COLUMNS,
   type MoveMode,
@@ -34,19 +35,23 @@ import {
   movingIds,
   type OrgTree,
   orgDrill,
+  orgLineage,
   peopleDrill,
   ROSTER_COLUMNS,
   removedDrill,
   reportingChangesDrill,
   rippleOf,
   rosterRows,
+  SCENARIO_USES,
   type ScenarioAction,
+  sandboxUses,
   scopeLine,
   shownRows,
   spanChangesDrill,
   subtreeOf,
   teamChangeDrill,
   teamDrill,
+  usableColor,
   visibleIds,
   visibleTree,
 } from '../engine'
@@ -114,7 +119,8 @@ export function SandboxTab() {
     const first = entryPoints(tree, rootId, model.matches)[0]
     if (first) setCenterReq((r) => ({ id: first, n: (r?.n ?? 0) + 1 }))
   }, [dimKey])
-  const flags = useMemo(() => computeFlags(tree, ctx.all.jobChanges), [tree, ctx.all.jobChanges])
+  // Same Job changes as the chart's flags: none when they are below the data standard.
+  const flags = useMemo(() => computeFlags(tree, model.flagJobChanges), [tree, model.flagJobChanges])
   const diff = useMemo(() => diffTrees(base, tree), [base, tree])
   const changed = useMemo(
     () => new Set([...diff.reportingChanges.map((r) => r.id), ...diff.spanChanges.map((s) => s.id)]),
@@ -123,16 +129,14 @@ export function SandboxTab() {
   const orgIds = useMemo(() => subtreeOf(tree, rootId), [tree, rootId])
   // Color slots come from the roster today, so colors match the Chart tab and stay put.
   const allPeople = useMemo(() => [...base.people.values()], [base])
+  const { gates } = model
+  const colorBy = usableColor(gates, prefs.colorBy)
   const scheme = useMemo(
-    () =>
-      colorScheme(
-        prefs.colorBy,
-        allPeople,
-        ctx.asOf,
-        orgIds.map((id) => tree.people.get(id)).filter(isPerson),
-      ),
-    [prefs.colorBy, allPeople, orgIds, tree, ctx.asOf],
+    () => colorScheme(colorBy, allPeople, ctx.asOf, orgIds.map((id) => tree.people.get(id)).filter(isPerson)),
+    [colorBy, allPeople, orgIds, tree, ctx.asOf],
   )
+  const lineage = orgLineage(model, rootId, f)
+  const heldBack = heldBackNotes(gates, { colorBy: prefs.colorBy, openRoles: false, flags: true })
   const vtree = useMemo(() => visibleTree(tree, rootId, expanded.ids), [tree, rootId, expanded.ids])
   const layout = useMemo(() => layoutTree(vtree), [vtree])
   // The image export keeps to a readable number of cards: the top levels of a bigger chart.
@@ -435,6 +439,7 @@ export function SandboxTab() {
           columns={personColumns(tree, scope)}
           note={`${plural(rows.length, 'person', 'people')} shown. Drag a card onto a new manager; drag the background, or click the chart and scroll, to pan. Click a count on a card to list those people.`}
           tableToggle={false}
+          uses={sandboxUses({ ...lineage, colorBy })}
           actions={<TableToggle showTable={showTable} onChange={setShowTable} />}
         >
           <div className="relative">
@@ -458,9 +463,14 @@ export function SandboxTab() {
                   className="w-full sm:w-64"
                 />
                 <LevelsControl value={expanded.preset} onChange={expanded.setLevels} />
-                <ColorControl value={prefs.colorBy} onChange={(c) => setPrefs({ colorBy: c })} />
+                <ColorControl
+                  value={colorBy}
+                  onChange={(c) => setPrefs({ colorBy: c })}
+                  gates={gates.color}
+                />
                 <ColorLegend scheme={scheme} className="ml-auto" />
               </div>
+              {heldBack.length > 0 && <p className="mt-2 text-[12px] text-muted">{heldBack.join(' ')}</p>}
               <div className="mt-3 flex flex-col gap-3 lg:flex-row">
                 <Canvas
                   tree={tree}
@@ -541,6 +551,7 @@ export function SandboxTab() {
           subtitle="Managers whose number of direct reports changes in the scenario"
           data={spanRows}
           columns={spanColumns}
+          uses={SCENARIO_USES}
           tableOnly
           empty={spanRows.length ? null : 'No spans change yet.'}
           table={{ maxRows: 10, onRowClick: (r) => jump(r.id) }}

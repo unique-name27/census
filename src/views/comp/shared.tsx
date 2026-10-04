@@ -16,7 +16,7 @@ export { asOfNote, note } from './engine/notes'
 
 export function useCompModel(): CompModel {
   const ctx = useAnalytics()
-  const settings = useCycleSettings((s) => s.settings)
+  const settings = useCycleSettings()
   return useMemo(() => computeComp(ctx, settings), [ctx, settings])
 }
 

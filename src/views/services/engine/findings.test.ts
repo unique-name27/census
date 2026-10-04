@@ -186,7 +186,7 @@ describe('empty and partial data', () => {
     expect(m.kpis.every((k) => k.value === null)).toBe(true)
     expect(m.findings).toEqual([])
     expect(m.levels.every((l) => l.actual === null)).toBe(true)
-    expect(headline(ctx)).toEqual({ value: '—', label: 'open cases' })
+    expect(headline(ctx)).toMatchObject({ value: '—', label: 'open cases' })
   })
 
   it('names the missing column instead of reporting zero', () => {

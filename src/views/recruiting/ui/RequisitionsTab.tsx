@@ -18,6 +18,7 @@ import {
   reqRowDrill,
   ttfGroupDrill,
 } from '../engine/drills'
+import { FIGURE_USES } from '../engine/lineage'
 import {
   EMPTY_FUNNEL_DAYS,
   LOAD_FLAG_RATIO,
@@ -92,6 +93,7 @@ export function RequisitionsTab() {
       >
         <Figure
           id="recruiting-open-requisitions"
+          uses={FIGURE_USES['recruiting-open-requisitions']}
           title="Open requisitions"
           subtitle={`Reqs open on ${formatDate(b.asOf)}, with active candidates per stage and health`}
           data={rows}
@@ -165,6 +167,7 @@ export function RequisitionsTab() {
       >
         <Figure
           id="recruiting-open-req-age"
+          uses={FIGURE_USES['recruiting-open-req-age']}
           title="Open req age"
           subtitle={`Days since each open req opened, ${formatDate(b.asOf)}`}
           data={ageRows}
@@ -210,6 +213,7 @@ export function RequisitionsTab() {
         </Figure>
         <Figure
           id="recruiting-reqs-opened-filled"
+          uses={FIGURE_USES['recruiting-reqs-opened-filled']}
           title="Reqs opened and filled by month"
           subtitle={`Requisitions opened and filled per month, 12 months to ${formatDate(b.window.end)}`}
           data={m.openedFilled}
@@ -252,6 +256,7 @@ export function RequisitionsTab() {
       >
         <Figure
           id="recruiting-time-to-fill-department"
+          uses={FIGURE_USES['recruiting-time-to-fill-department']}
           title="Time to fill by department"
           subtitle={`Median days from opened to offer accepted, reqs filled ${windowText(b.window)}`}
           data={m.ttfByDepartment}
@@ -297,6 +302,7 @@ export function RequisitionsTab() {
         </Figure>
         <Figure
           id="recruiting-recruiter-load"
+          uses={FIGURE_USES['recruiting-recruiter-load']}
           title="Recruiter load"
           subtitle={`Open reqs and active candidates on ${formatDate(b.asOf)}, hires ${windowText(b.window)}`}
           data={m.recruiters}

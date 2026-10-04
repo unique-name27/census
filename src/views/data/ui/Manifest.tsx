@@ -3,17 +3,20 @@
  * where it came from, how many rows and how well its fields are filled, what needs a look, and
  * offers upload, downloads and reset. A row opens to show its fields and checks in full.
  */
-import { useState } from 'react'
+import { useEffect, useRef } from 'react'
 import { Meter } from '@/charts'
 import { IconChevronRight, IconDownload, IconFile, IconReset, IconUpload } from '@/components/icons'
+import { TierBadge } from '@/components/tier/TierBadge'
 import { toast } from '@/components/toast'
 import { Button, cx, IconButton, Menu, SeverityIcon, Tag, Tip } from '@/components/ui'
+import { useAnalytics } from '@/data/context'
 import type { DatasetKey, Datasets } from '@/data/schema'
 import { useCensus } from '@/data/store'
 import { Drill } from '@/drill/Drill'
 import { fmt } from '@/lib/format'
 import { coverageText } from '../engine/coverage'
 import { feedsLine, type ManifestRow } from '../engine/manifest'
+import { useRoom } from '../state/room'
 import { useImportSession } from '../state/session'
 import { DatasetDetail } from './DatasetDetail'
 import { CheckSentence } from './DrillSentence'
@@ -23,7 +26,7 @@ import { useBusy } from './useBusy'
 
 /** Desktop column template; below lg each row stacks into labelled lines. */
 const COLS =
-  'lg:grid lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1.25fr)_72px_132px_minmax(0,1.75fr)_auto] lg:items-start lg:gap-x-5'
+  'lg:grid lg:grid-cols-[minmax(0,1.3fr)_92px_minmax(0,1.15fr)_72px_132px_minmax(0,1.6fr)_auto] lg:items-start lg:gap-x-5'
 
 function CellLabel({ children }: { children: string }) {
   return <span className="eyebrow mb-0.5 block lg:hidden">{children}</span>
@@ -183,6 +186,21 @@ function Actions({ row, onUpload }: { row: ManifestRow; onUpload: (key: DatasetK
   )
 }
 
+/** The dataset's tier; selecting it opens the Quality panel below. */
+function Tier({ row }: { row: ManifestRow }) {
+  const ctx = useAnalytics()
+  const show = useRoom((s) => s.show)
+  if (!row.tier) return <span className="text-[13px] text-muted">—</span>
+  return (
+    <TierBadge
+      tier={row.tier}
+      explain={ctx.quality.explain(row.key)}
+      onOpen={() => show(row.key, 'quality')}
+      className="-ml-1.5"
+    />
+  )
+}
+
 /** The row count opens the rows themselves (the first 2,000 when there are more). */
 function RowCount({ row, data }: { row: ManifestRow; data: Datasets }) {
   const n = fmt(row.rows, 'int')
@@ -212,8 +230,13 @@ function Row({
   onUpload: (key: DatasetKey) => void
 }) {
   const detailId = `data-room-detail-${row.key}`
+  const ref = useRef<HTMLLIElement>(null)
+  const reveal = useRoom((s) => (s.reveal?.key === row.key ? s.reveal.nonce : null))
+  useEffect(() => {
+    if (reveal != null) ref.current?.scrollIntoView({ block: 'start', behavior: 'smooth' })
+  }, [reveal])
   return (
-    <li className="border-b border-rule last:border-b-0">
+    <li ref={ref} className="scroll-mt-4 border-b border-rule last:border-b-0">
       <div className={cx(COLS, 'grid grid-cols-2 gap-x-4 gap-y-3 px-4 py-3')}>
         <div className="col-span-2 min-w-0 lg:col-span-1">
           <h3>
@@ -236,6 +259,10 @@ function Row({
               </span>
             </button>
           </h3>
+        </div>
+        <div>
+          <CellLabel>Tier</CellLabel>
+          <Tier row={row} />
         </div>
         <div className="min-w-0">
           <CellLabel>Source</CellLabel>
@@ -272,19 +299,14 @@ export function Manifest({
   data: Datasets
   onUpload: (key: DatasetKey) => void
 }) {
-  const [open, setOpen] = useState<ReadonlySet<DatasetKey>>(() => new Set())
-  const toggle = (key: DatasetKey) =>
-    setOpen((s) => {
-      const next = new Set(s)
-      if (next.has(key)) next.delete(key)
-      else next.add(key)
-      return next
-    })
+  const open = useRoom((s) => s.open)
+  const toggle = useRoom((s) => s.toggle)
   return (
     // Bleeds to the edges of the Figure it sits in, so row hairlines run sheet-wide.
     <div className="-mx-4 -mb-4 min-w-0 border-t border-rule">
       <div aria-hidden="true" className={cx(COLS, 'hidden border-b border-rule px-4 py-2 lg:grid')}>
         <span className="eyebrow">Dataset</span>
+        <span className="eyebrow">Tier</span>
         <span className="eyebrow">Source</span>
         <span className="eyebrow text-right">Rows</span>
         <span className="eyebrow">Field coverage</span>
@@ -297,7 +319,7 @@ export function Manifest({
             key={r.key}
             row={r}
             data={data}
-            open={open.has(r.key)}
+            open={open.includes(r.key)}
             onToggle={() => toggle(r.key)}
             onUpload={onUpload}
           />

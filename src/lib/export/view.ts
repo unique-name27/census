@@ -16,11 +16,13 @@
 import type { Workbook } from 'exceljs'
 import type PptxGenJS from 'pptxgenjs'
 import type { ExportMeta, RegisteredFigure } from '@/charts/types'
+import { type DataStandard, STANDARD_LABEL, TIER_LABEL } from '@/data/quality/tier'
 import { fmt } from '@/lib/format'
 import { cellFormat, columnAlign, columnFormat, sampleRow, sampleValue, visibleColumns } from './columns'
 import { downloadBlob, MIME } from './download'
 import { pngDataUrl, type RasterImage, svgToPng, withLightTheme } from './image'
-import { asOfLabel, fileStem, metaLine, stampLine, viewLine } from './names'
+import { asOfLabel, fileStem, metaLine, stampLine, standardLine, viewLine } from './names'
+import { exportNote } from './withheld'
 import { addTableSheet, newWorkbook, saveWorkbook, uniqueSheetNames, XL } from './xlsx'
 
 export interface ViewExportOptions {
@@ -109,11 +111,20 @@ function writeSummary(
   const ws = wb.getWorksheet(sheetName)
   if (!ws) return
   ws.views = [{ showGridLines: false }]
-  ws.getColumn(1).width = 16
-  ws.getColumn(2).width = 46
-  ws.getColumn(3).width = 64
-  ws.getColumn(4).width = 9
-  ws.getColumn(5).width = 40
+  const figures = entries.map((e) => e.figure)
+  const tiered = figures.some((f) => f.tier)
+  // The figure list; the Tier column is there when the figures carry tiers.
+  const listCols: { head: string; width: number; right?: boolean; wrap?: boolean }[] = [
+    { head: '#', width: 16 },
+    { head: 'Figure', width: 46 },
+    ...(tiered ? [{ head: 'Tier', width: 12 }] : []),
+    { head: 'What it shows', width: 64, wrap: true },
+    { head: 'Rows', width: 9, right: true },
+    { head: 'Note', width: 40, wrap: true },
+  ]
+  listCols.forEach((c, i) => {
+    ws.getColumn(i + 1).width = c.width
+  })
 
   const title = ws.getCell('A1')
   title.value = viewLine(meta) || 'Census'
@@ -123,7 +134,6 @@ function writeSummary(
   sub.value = [meta.company, 'Census people analytics'].filter(Boolean).join(' · ')
   sub.font = { size: 10, color: { argb: XL.muted } }
 
-  const figures = entries.map((e) => e.figure)
   const anyPay = figures.some((f) => f.columns.some((c) => c.pay))
   const tabs = [...new Set(entries.flatMap((e) => (e.group ? [e.group.label] : [])))]
   const facts: [string, string][] = [
@@ -132,6 +142,12 @@ function writeSummary(
     ['Window', meta.window],
     ['As of', asOfLabel(meta.asOf)],
     ['Data', meta.isSample ? 'Sample data (fictional company)' : 'Uploaded data'],
+    ...(meta.standard
+      ? ([['Data standard', standardLine(meta.standard).replace(/^Data standard: /, '')]] as [
+          string,
+          string,
+        ][])
+      : []),
     ...(anyPay ? ([['Pay amounts', opts.showPay ? 'Included' : 'Left out']] as [string, string][]) : []),
     ['Exported', new Date().toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })],
   ]
@@ -147,14 +163,14 @@ function writeSummary(
   }
 
   r++
-  const head = ['#', 'Figure', 'What it shows', 'Rows', 'Note']
-  head.forEach((h, i) => {
+  listCols.forEach((col, i) => {
     const c = ws.getCell(r, i + 1)
-    c.value = h
+    c.value = col.head
     c.font = { size: 10, bold: true, color: { argb: XL.ink } }
     c.border = { bottom: { style: 'thin', color: { argb: XL.ink } } }
-    c.alignment = { horizontal: i === 3 ? 'right' : 'left' }
+    c.alignment = { horizontal: col.right ? 'right' : 'left' }
   })
+  const colOf = (head: string) => listCols.findIndex((c) => c.head === head) + 1
   let row = r
   entries.forEach(({ figure: f, group }, i) => {
     row++
@@ -172,19 +188,22 @@ function writeSummary(
     const link = ws.getCell(row, 2)
     link.value = { text: f.title, hyperlink: `#'${sheetNames[i].replace(/'/g, "''")}'!A1` }
     link.font = { size: 10, underline: true, color: { argb: XL.link } }
-    ws.getCell(row, 3).value = f.subtitle ?? ''
-    ws.getCell(row, 4).value = f.rows.length
-    ws.getCell(row, 4).numFmt = '#,##0'
-    ws.getCell(row, 5).value = f.note ?? ''
-    for (const col of [1, 3, 4, 5]) ws.getCell(row, col).font = { size: 10, color: { argb: XL.ink2 } }
-    for (let col = 1; col <= 5; col++) {
-      ws.getCell(row, col).border = { bottom: { style: 'hair', color: { argb: XL.rule } } }
-      ws.getCell(row, col).alignment = {
-        ...ws.getCell(row, col).alignment,
-        vertical: 'top',
-        wrapText: col === 3 || col === 5,
-      }
-    }
+    if (tiered)
+      ws.getCell(row, colOf('Tier')).value = f.tier
+        ? `${TIER_LABEL[f.tier]}${f.withheld ? ', not shown' : ''}`
+        : ''
+    ws.getCell(row, colOf('What it shows')).value = f.subtitle ?? ''
+    // A withheld figure exports its reason, not its rows.
+    ws.getCell(row, colOf('Rows')).value = f.withheld ? null : f.rows.length
+    ws.getCell(row, colOf('Rows')).numFmt = '#,##0'
+    // A withheld figure's note could carry the numbers the standard hides.
+    ws.getCell(row, colOf('Note')).value = exportNote(f) ?? ''
+    listCols.forEach((col, j) => {
+      const cell = ws.getCell(row, j + 1)
+      if (j !== 1) cell.font = { size: 10, color: { argb: XL.ink2 } }
+      cell.border = { bottom: { style: 'hair', color: { argb: XL.rule } } }
+      cell.alignment = { ...cell.alignment, vertical: 'top', wrapText: !!col.wrap }
+    })
   })
   const foot = ws.getCell(row + 2, 1)
   foot.value = stampLine(meta)
@@ -220,7 +239,16 @@ export async function buildViewWorkbook(
     const layout = addTableSheet(
       wb,
       names[i + 1],
-      { name: f.title, title: f.title, subtitle: f.subtitle, note: f.note, columns: f.columns, rows: f.rows },
+      {
+        name: f.title,
+        title: f.title,
+        subtitle: f.subtitle,
+        note: exportNote(f),
+        columns: f.columns,
+        rows: f.rows,
+        tier: f.tier,
+        withheld: f.withheld,
+      },
       entryMeta(meta, e),
       opts,
     )
@@ -346,13 +374,14 @@ function titleSlide(pptx: PptxGenJS, meta: ExportMeta) {
     [
       { text: meta.scope, options: { breakLine: true } },
       { text: meta.window, options: { breakLine: true } },
-      { text: `As of ${asOfLabel(meta.asOf)}` },
+      { text: `As of ${asOfLabel(meta.asOf)}`, options: { breakLine: !!meta.standard } },
+      ...(meta.standard ? [{ text: standardLine(meta.standard) }] : []),
     ],
     {
       x: M,
       y: 4.0,
       w: W - 2 * M,
-      h: 1.1,
+      h: 1.45,
       fontFace: FONT,
       fontSize: 14,
       color: C.ink2,
@@ -537,6 +566,47 @@ function tableRows(
 }
 
 /**
+ * The left footer of a figure slide: the data standard, the figure's tier, then its note (left
+ * out when the standard withholds the figure, since notes carry its numbers).
+ */
+export function slideFootnote(
+  f: Pick<RegisteredFigure, 'tier' | 'withheld' | 'note'>,
+  standard?: DataStandard,
+): string {
+  const tier = f.tier
+    ? `Tier: ${TIER_LABEL[f.tier]}${f.withheld ? ', not shown under this standard' : ''}`
+    : ''
+  const std = standard ? `${STANDARD_LABEL[standard]} standard` : ''
+  return [std, tier, exportNote(f) ?? ''].filter(Boolean).join('  ·  ')
+}
+
+/** A figure the data standard holds back: the reason in place of the chart (rows hold it). */
+function withheldBody(slide: Slide, f: RegisteredFigure, top: number) {
+  const r = f.rows[0] ?? {}
+  const lines = [String(r.status ?? 'Not shown under the data standard'), String(r.reason ?? '')].filter(
+    Boolean,
+  )
+  slide.addText(
+    lines.map((text, i) => ({
+      text,
+      options: { breakLine: i < lines.length - 1, bold: i === 0, color: i === 0 ? C.ink : C.ink2 },
+    })),
+    {
+      x: M,
+      y: top + 0.2,
+      w: W - 2 * M,
+      h: 1.6,
+      fontFace: FONT,
+      fontSize: 14,
+      margin: 0.2,
+      valign: 'top',
+      fill: { color: C.sheet2 },
+      paraSpaceAfter: 6,
+    },
+  )
+}
+
+/**
  * A 16:9 deck for the view: title slide, then a slide per figure. With figures grouped by tab,
  * each tab opens with a divider slide.
  */
@@ -575,8 +645,9 @@ export async function exportViewDeck(
     const top = figureHeader(s, f)
     const boxW = W - 2 * M
     const boxH = H - 0.85 - top
-    const img = images.get(f.id)
-    if (img) {
+    const img = f.withheld ? undefined : images.get(f.id)
+    if (f.withheld) withheldBody(s, f, top)
+    else if (img) {
       const inW = img.width / 96
       const inH = img.height / 96
       const k = Math.min(boxW / inW, boxH / inH, 2)
@@ -617,8 +688,8 @@ export async function exportViewDeck(
         margin: 0,
       })
     }
-    footer(s, pptx, f.note ?? '', right(m, ++slideNo))
-    const notes = [f.subtitle, f.note].filter(Boolean).join('\n')
+    footer(s, pptx, slideFootnote(f, meta.standard), right(m, ++slideNo))
+    const notes = [f.subtitle, exportNote(f)].filter(Boolean).join('\n')
     if (notes) s.addNotes(notes)
   }
 

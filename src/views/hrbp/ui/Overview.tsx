@@ -1,6 +1,7 @@
 import { Columns, Figure, Lines } from '@/charts'
 import { Grid, KpiStrip, Readout } from '@/components'
 import { useAnalytics } from '@/data/context'
+import { BELOW_STANDARD_TEXT } from '@/data/quality'
 import { drill } from '@/drill/Drill'
 import { addDays, formatDate } from '@/lib/dates'
 import { fmt } from '@/lib/format'
@@ -8,6 +9,7 @@ import type { HrbpModel } from '../engine'
 import { NO_HISTORY } from '../engine/base'
 import { bridgeSpec, flowMonthSpec, flowSpec, type ScoreCell, scoreSpec } from '../engine/buckets'
 import { employeesOnSpec } from '../engine/drill'
+import { FIGURE, PROMOTION_RATE } from '../engine/lineage'
 import { SCORE_METRICS, type ScoreMetric, type ScoreRow } from '../engine/scorecard'
 import { LAST_YEAR, YEAR_BEFORE } from '../engine/workforce'
 import { DEF } from './defs'
@@ -47,10 +49,15 @@ export function Overview({ m }: { m: HrbpModel }) {
   // Scorecard cells open the records behind them; the row itself still rescopes the app.
   const scoreDrill = (row: ScoreRow, cell: ScoreCell) => scoreSpec(p, row, cell)
   const scoreCol = (cell: ScoreCell) => (x: { source: ScoreRow }) => scoreDrill(x.source, cell)
+  // Promotion rate comes from Job changes. Below the data standard its column drops out, so the
+  // scorecard still shows in a meeting held to that standard.
+  const withPromotions = p.meets(PROMOTION_RATE)
+  const metrics = SCORE_METRICS.filter((k) => withPromotions || k !== 'promotionRate')
 
   const scorecard = (
     <Figure
       id="hrbp-scorecard"
+      uses={p.uses(FIGURE.scorecard(card.dim, withPromotions))}
       title="Sub-org scorecard"
       subtitle={`${
         ctx.filters.leaderId ? 'Each direct report’s organization' : card.rowsLabel
@@ -63,9 +70,10 @@ export function Overview({ m }: { m: HrbpModel }) {
         voluntary: r.voluntary,
         regretted: r.regretted,
         firstYear: r.firstYear,
-        promotionRate: r.promotionRate,
+        promotionRate: withPromotions ? r.promotionRate : null,
         avgSpan: r.avgSpan,
-        offCompany: SCORE_METRICS.filter((k) => r.shade[k])
+        offCompany: metrics
+          .filter((k) => r.shade[k])
           .map((k) => `${METRIC_LABEL[k]} ${r.shade[k]}`)
           .join('; '),
         // Not a column: the engine row behind the table row, for its drills.
@@ -79,12 +87,32 @@ export function Overview({ m }: { m: HrbpModel }) {
         { key: 'voluntary', label: 'Voluntary attrition', format: 'pct', drill: scoreCol('voluntary') },
         { key: 'regretted', label: 'Regretted attrition', format: 'pct', drill: scoreCol('regretted') },
         { key: 'firstYear', label: 'First-year attrition', format: 'pct', drill: scoreCol('firstYear') },
-        { key: 'promotionRate', label: 'Promotion rate', format: 'pct', drill: scoreCol('promotionRate') },
+        ...(withPromotions
+          ? [
+              {
+                key: 'promotionRate' as const,
+                label: 'Promotion rate',
+                format: 'pct' as const,
+                drill: scoreCol('promotionRate'),
+              },
+            ]
+          : []),
         { key: 'avgSpan', label: 'Avg span', format: 'num1', drill: scoreCol('avgSpan') },
         { key: 'offCompany', label: 'Materially off the company', format: 'text' },
       ]}
-      definitions={[DEF.voluntary, DEF.regretted, DEF.firstYear, DEF.promotionRate, DEF.span, DEF.suppressed]}
-      note={`Orgs under 5 employees are folded into Other · as of ${asOf}`}
+      definitions={[
+        DEF.voluntary,
+        DEF.regretted,
+        DEF.firstYear,
+        ...(withPromotions ? [DEF.promotionRate] : []),
+        DEF.span,
+        DEF.suppressed,
+      ]}
+      note={`Orgs under 5 employees are folded into Other · as of ${asOf}${
+        withPromotions
+          ? ''
+          : ` · promotion rate not shown: ${BELOW_STANDARD_TEXT[ctx.standard].toLowerCase()}`
+      }`}
       // The body is an HTML table: no chart image to export (PNG and SVG would be empty).
       image={false}
       empty={card.rows.length ? null : 'No sub-organizations to compare in this scope.'}
@@ -95,6 +123,7 @@ export function Overview({ m }: { m: HrbpModel }) {
           if (row.filter) rescope(ctx, row.filter)
         }}
         drillFor={scoreDrill}
+        hide={withPromotions ? [] : ['promotionRate']}
       />
     </Figure>
   )
@@ -110,6 +139,7 @@ export function Overview({ m }: { m: HrbpModel }) {
       <div className="col-span-full flex min-w-0 flex-col gap-4 lg:col-span-8">
         <Figure
           id="hrbp-headcount-trend"
+          uses={p.uses(FIGURE.headcountTrend)}
           title="Headcount over time"
           subtitle={`Employees at each month end, ${yearAgo} to ${asOf}, with the year before in gray on the same months`}
           data={series}
@@ -148,6 +178,7 @@ export function Overview({ m }: { m: HrbpModel }) {
         <Grid>
           <Figure
             id="hrbp-hires-exits"
+            uses={p.uses(FIGURE.hiresExits)}
             title="Hires and exits by month"
             subtitle={`Employees hired and employees who left, ${wf.flows[0] ? formatDate(`${wf.flows[0].month}-01`) : ''} to ${asOf}`}
             data={wf.flows}
@@ -184,6 +215,7 @@ export function Overview({ m }: { m: HrbpModel }) {
           {showBridge && (
             <Figure
               id="hrbp-headcount-bridge"
+              uses={p.uses(FIGURE.bridge)}
               title="Headcount bridge"
               subtitle="From headcount 12 months ago to today"
               data={wf.bridge}

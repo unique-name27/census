@@ -31,6 +31,7 @@ rather than hard-code IDs.
 | `services.ts` | HR cases and HR transactions (final pay deadlines by jurisdiction) |
 | `talent.ts` | ratings, reviews, succession, learning |
 | `comp.ts` | compensation |
+| `raw/` | the messy sample: raw extracts, the gaps in the certified datasets, starter tiers, and `jobFunction` from the business unit (see "The messy sample") |
 
 People added after a module's stories were calibrated get that module's rows from a separate stream:
 the first-year leavers of the earlier hire cohorts (tag `prior-first-year-leaver`) draw their cases from
@@ -136,7 +137,7 @@ Each story lists where it lives, how to find it, and the measured magnitude.
 5. **Growth.** Headcount 30 Sep 2025 → 30 Sep 2026: Silicon Engineering **488 → 556 (+13.9%)**; Corporate **196 → 196 (flat)**; Systems & Software +6.0%, Operations +4.3%, Go-to-Market +5.1%.
 6. **Company baseline.** Voluntary 9.4%, total 12.0%, regretted 4.8% (T12, annualized over average headcount). The prior 12 months: voluntary 8.6%, total 11.2%.
 
-### Employee services
+### HR ops
 
 1. **Payroll spike in July 2026.** Payroll cases opened in July 2026: **118** vs a median **45** per month (2.6×). SLA attainment for those cases **60.2%** vs **92.0%** for payroll in other months. Company-wide attainment **89.8%**.
 2. **Leave & accommodation.** SLA attainment **70.0%** (resolved cases). Of 15 open leave cases, **13** are 'Waiting on third party' (10 of them planted, opened 9-27 days before the as-of date and past their 7-day target).
@@ -168,3 +169,32 @@ Each story lists where it lives, how to find it, and the measured magnitude.
 `candidates.nextEventDate` (scheduled interviews), `requisitions.targetStartDate`, and the deadline
 fields `transactions.dueDate` and `learning.dueDate`. Everything else is on or before 30 Sep 2026;
 case timestamps end by 30 Sep 2026 23:59.
+
+## The messy sample
+
+`generateSample()` stays clean so the engine tests can measure the planted stories exactly. The app
+loads a messy version of it instead (`src/data/sample/raw`, registered in `main.tsx` with
+`setSampleSeed`), the way real data arrives (docs/DATA-TIERS.md, "Sample data that sucks"). Seven
+datasets are written out as raw extracts and read back through the real importer
+(`sheetFromRows` → `autoMap` → `applyMapping`, with the roster for linking); the version keeps the
+original sheet, the mapping and the import log. Every row survives the import, and only the cells
+below differ from the clean sample, so every planted story still shows (`raw.test.ts` checks both).
+
+| Dataset | Loads as | Arrives as | What is wrong with it |
+|---|---|---|---|
+| Employees | Gold | rows, certified by the HRIS team (headcount 1,450 and 166 exits reconcile) | Termination reason is blank for 139 of the 497 leavers (72% filled), all of them exits before 1 Oct 2025 |
+| Job changes | Silver | `Job history report.xlsx`: Worker ID, Action Type ("Promotion > Promote employee"), IC level codes; mapping confirmed | 3 promotions before 2023 carry a legacy grade ("G7") as the prior level |
+| Requisitions | Silver | `ATS job report.csv`: Job Req ID, Dept, "San Jose, CA", "Closed - Filled", M/D/YYYY; mapping confirmed | 17 closed reqs (3%) have no hiring manager; 3 have the hire reason "Conversion"; the 38 Design Verification and Test & Product Engineering reqs closed before Oct 2025 use the old ATS names "DV" and "Test & Product Eng", which the roster does not have |
+| Candidates | Bronze | `ATS candidate export.csv`: first and last name columns, ATS stage and status names, MM/DD/YYYY | 371 applications (4%) have a source spelling the importer does not recognize ("LinkedIn Recruiter", "Indeed") |
+| HR cases | Bronze | `Help desk case export.csv`: Case Number, State, HR Service, "1 - Critical", "L0 - Self-service", second timestamps | First response is missing on 534 of the 6,675 cases past New (8%); 165 cases from 2026 carry one of three unmapped help-desk services as their category |
+| HR transactions | Silver | `Business process audit.xlsx`: business process names, day-first dates; mapping confirmed | 4 old job changes read "TBC" in the retro column |
+| Reviews | Gold | rows, certified by the Talent team after calibration | None |
+| Succession | Bronze | `Succession tracker FY26.xlsx`: a title row above the header, "Tier 1", H/M/L, 15-Mar-2026 | 13 of the 84 named successors (15%) are not in the roster: 8 typed as a name, 5 external candidates; 5 incumbent IDs are in lower case |
+| Learning | Silver | `LMS completion export.csv`: Training Type ("Compliance Training"), Y/N; mapping confirmed | 5 old optional assignments read "TBC" as the mandatory flag |
+| Compensation | Gold | rows, certified by Total rewards (rows and total base in USD reconcile) | Market median is blank for 580 of 1,450 people (60% filled) |
+
+Every choice is drawn from a named stream (`raw-<dataset>`), so the messy sample is as
+deterministic as the clean one. Employees get `jobFunction` from the business unit in
+`generateSample()` itself: Silicon Engineering and Systems & Software are Engineering, Operations
+is Operations, Go-to-Market is Sales & marketing, Corporate is G&A and the Executive Office is
+Executive.

@@ -91,4 +91,17 @@ describe('buildExportMeta', () => {
     expect(meta.company).toBe('Company data')
     expect(meta.tab).toBeUndefined()
   })
+
+  it('carries the data standard when given', () => {
+    const base = {
+      viewLabel: 'Talent',
+      scopeLabel: 'Whole company',
+      window,
+      asOf: '2026-09-30',
+      isSample: true,
+      sampleCompany: 'Northgate Semiconductor',
+    }
+    expect(buildExportMeta({ ...base, standard: 'gold' }).standard).toBe('gold')
+    expect('standard' in buildExportMeta(base)).toBe(false)
+  })
 })

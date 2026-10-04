@@ -1,5 +1,5 @@
 /**
- * Employee services engine: one pure function of the analytics context that returns everything
+ * HR ops engine: one pure function of the analytics context that returns everything
  * the view draws. The UI calls it inside useMemo keyed on the context.
  */
 import type { Finding, Kpi } from '@/components/types'
@@ -7,6 +7,7 @@ import type { AnalyticsContext } from '@/data/context'
 import { CASE_OPEN_STATUSES, MIN_GROUP } from '@/data/schema'
 import type { Window } from '@/data/scope'
 import { dateOf, monthsBetween } from '@/lib/dates'
+import type { Headline } from '@/views/types'
 import {
   type AgedCaseRow,
   type AgedPrivateRow,
@@ -45,6 +46,7 @@ import {
 import { buildFindings } from './findings'
 import { buildKpis, type CaseSummary, caseSummary, openAt } from './kpis'
 import { type LevelRow, type ProcessRow, processCoverage, scorecard } from './levels'
+import { figureUses, lineage, type Refs, type ServicesFigureId } from './lineage'
 import {
   type FinalPayRow,
   finalPayByJurisdiction,
@@ -113,6 +115,8 @@ export interface ServicesModel {
   retroSummary: { rate: number | null; retro: number | null; n: number }
   levels: LevelRow[]
   processes: ProcessRow[]
+  /** The fields behind each figure, for its `uses` (engine/lineage.ts). */
+  uses: Record<ServicesFigureId, Refs>
 }
 
 export function compute(ctx: AnalyticsContext): ServicesModel {
@@ -139,6 +143,7 @@ export function compute(ctx: AnalyticsContext): ServicesModel {
   const windowMonths = monthsBetween(window.start, window.end)
   const backlogFacts = openAt(cases, asOf)
   const txMonths = onTimeByMonth(tx, months)
+  const L = lineage(caseCols)
 
   const kpis = buildKpis({
     facts: cases,
@@ -155,6 +160,7 @@ export function compute(ctx: AnalyticsContext): ServicesModel {
     sparkResponse: last12.map((m) => m.responseRate),
     sparkTx: txMonths.slice(-12).map((m) => m.rate),
     scope,
+    lineage: L,
   })
 
   const findings = buildFindings({
@@ -171,7 +177,20 @@ export function compute(ctx: AnalyticsContext): ServicesModel {
     newHireRegions,
     small,
     scope,
+    lineage: L,
   })
+
+  const aged = small ? [] : agedCases(cases, 14)
+  const levels = scorecard({
+    cases,
+    tx,
+    window,
+    asOf,
+    hasResolved: caseCols.resolvedAt,
+    hasResponse: caseCols.firstResponseAt,
+    hasDue: txCols.dueDate,
+  })
+  const processes = processCoverage(cases, tx, window)
 
   return {
     asOf,
@@ -195,7 +214,7 @@ export function compute(ctx: AnalyticsContext): ServicesModel {
     categories,
     backlog: backlogByAge(cases),
     backlogTotal: backlogFacts.length,
-    aged: small ? [] : agedCases(cases, 14),
+    aged,
     agedPrivate: agedPrivate(cases, 14),
     resolve: caseCols.resolvedAt ? timeToResolve(cases, window) : [],
     arrivals: arrivals(cases, window),
@@ -210,16 +229,15 @@ export function compute(ctx: AnalyticsContext): ServicesModel {
     txMonths,
     retro: retroByMonth(tx, windowMonths),
     retroSummary: retroSummary(tx, window),
-    levels: scorecard({
-      cases,
-      tx,
-      window,
-      asOf,
-      hasResolved: caseCols.resolvedAt,
-      hasResponse: caseCols.firstResponseAt,
-      hasDue: txCols.dueDate,
+    levels,
+    processes,
+    uses: figureUses(L, {
+      caseCols,
+      levels,
+      processes,
+      assignee: aged.some((r) => r.assignee),
+      exitTypes: finalPay.some((r) => r.records.some((f) => f.exitType != null)),
     }),
-    processes: processCoverage(cases, tx, window),
   }
 }
 
@@ -231,9 +249,11 @@ function retroSummary(tx: readonly TxFact[], window: Window): ServicesModel['ret
 const OPEN = new Set<string>(CASE_OPEN_STATUSES)
 
 /** Folder-tab headline: open cases at the as-of date and cases opened per month (last 8). Cheap. */
-export function headline(ctx: AnalyticsContext): { value: string; label: string; spark?: (number | null)[] } {
+export function headline(ctx: AnalyticsContext): Headline {
   const cases = ctx.data.cases
-  if (!cases.length) return { value: '—', label: 'open cases' }
+  // The same fields as the Open backlog tile: by resolved time, or by status without one.
+  const uses = lineage({ resolvedAt: cases.some((c) => !!c.resolvedAt) }).open
+  if (!cases.length) return { value: '—', label: 'open cases', uses }
   const months = trailingMonths(ctx.asOf, 8)
   const index = new Map(months.map((m, i) => [m, i]))
   const counts = months.map(() => 0)
@@ -250,5 +270,6 @@ export function headline(ctx: AnalyticsContext): { value: string; label: string;
     value: open.toLocaleString('en-US'),
     label: open === 1 ? 'open case' : 'open cases',
     spark: counts,
+    uses,
   }
 }

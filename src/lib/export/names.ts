@@ -4,6 +4,7 @@
  * both are accepted.
  */
 import type { ExportMeta } from '@/charts/types'
+import { type DataStandard, STANDARD_LABEL, TIER_LABEL, type Tier } from '@/data/quality/tier'
 import { formatDate, isValidDate } from '@/lib/dates'
 
 const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec']
@@ -60,9 +61,50 @@ export function viewLine(meta: Pick<ExportMeta, 'view' | 'tab'>): string {
   return [meta.view, meta.tab].filter(Boolean).join(' · ')
 }
 
-/** Footer under exported chart images: "Whole company · As of 30 Sep 2026 · Census · Sample data" */
-export function imageFooter(meta: Pick<ExportMeta, 'scope' | 'asOf' | 'isSample'>): string {
-  return [meta.scope, `As of ${asOfLabel(meta.asOf)}`, 'Census', meta.isSample ? 'Sample data' : '']
+/**
+ * Footer under exported chart images: "Whole company · As of 30 Sep 2026 · Production standard ·
+ * Tier: Gold · Census · Sample data" (the standard and the tier when known), as sheets and slides
+ * state them.
+ */
+export function imageFooter(
+  meta: Pick<ExportMeta, 'scope' | 'asOf' | 'isSample' | 'standard'>,
+  tier?: Tier | null,
+): string {
+  return [
+    meta.scope,
+    `As of ${asOfLabel(meta.asOf)}`,
+    meta.standard ? `${STANDARD_LABEL[meta.standard]} standard` : '',
+    tier ? `Tier: ${TIER_LABEL[tier]}` : '',
+    'Census',
+    meta.isSample ? 'Sample data' : '',
+  ]
     .filter(Boolean)
     .join(' · ')
+}
+
+const STANDARD_RANGE: Record<DataStandard, string> = {
+  gold: 'gold only',
+  silver: 'silver and up',
+  bronze: 'bronze and up',
+}
+
+/** "Data standard: Validated (silver and up)". */
+export function standardLine(standard: DataStandard): string {
+  return `Data standard: ${STANDARD_LABEL[standard]} (${STANDARD_RANGE[standard]})`
+}
+
+/**
+ * The data line of an export: the standard in force and the tier of what is exported, e.g.
+ * "Data standard: Production (gold only) · Tier: Silver, not shown under this standard".
+ * Null when neither is known (exports from outside the views).
+ */
+export function dataLine(
+  standard: DataStandard | undefined,
+  tier?: Tier | null,
+  withheld?: boolean,
+): string | null {
+  const parts: string[] = []
+  if (standard) parts.push(standardLine(standard))
+  if (tier) parts.push(`Tier: ${TIER_LABEL[tier]}${withheld ? ', not shown under this standard' : ''}`)
+  return parts.length ? parts.join(' · ') : null
 }

@@ -40,6 +40,9 @@ export function Ranges({ m }: { m: CompModel }) {
     m.showPay && r.below.length
       ? ` · ${fmt(r.costToMin.usd, 'money')} a year to bring everyone to minimum`
       : ''
+  // Recent promotions come from Job changes: below the data standard the column drops out.
+  const belowColumns = outsideColumns(m, 'below').filter((c) => m.promotionsShown || c.key !== 'promoted')
+  const promoted = m.promotionsShown ? '' : ` · promotions not shown: ${m.belowStandard.toLowerCase()}`
 
   return (
     <div>
@@ -49,6 +52,7 @@ export function Ranges({ m }: { m: CompModel }) {
       >
         <Figure
           id="comp-penetration-by-level"
+          uses={m.uses['comp-penetration-by-level']}
           title="Range penetration by level"
           subtitle="Box from the 25th to the 75th percentile, line from the 10th to the 90th, tick at the median"
           data={r.penetration}
@@ -76,6 +80,7 @@ export function Ranges({ m }: { m: CompModel }) {
         </Figure>
         <Figure
           id="comp-compa-by-tenure"
+          uses={m.uses['comp-compa-by-tenure']}
           title="Compa-ratio by tenure"
           subtitle={`One mark per person, tick at the median; shape shows range position, as of ${asOf}`}
           data={r.tenure}
@@ -101,10 +106,11 @@ export function Ranges({ m }: { m: CompModel }) {
       >
         <Figure
           id="comp-below-minimum"
+          uses={m.uses['comp-below-minimum']}
           title="Below range minimum"
           subtitle={`Largest gap first, as of ${asOf}`}
           data={r.below}
-          columns={outsideColumns(m, 'below')}
+          columns={belowColumns}
           definitions={[
             DEF_POSITION,
             {
@@ -114,13 +120,14 @@ export function Ranges({ m }: { m: CompModel }) {
             },
             DEF_FX,
           ]}
-          note={`${note(m, r.below.length, 'people', m.showPay)}${cost}`}
+          note={`${note(m, r.below.length, 'people', m.showPay)}${cost}${promoted}`}
           tableOnly
           table={{ rowTone: gapTone, search: 'Search people', maxRows: 12, onRowClick: personRow }}
           empty={emptyIf(r.below, noRanges, 'Nobody in this scope is paid below range minimum.')}
         />
         <Figure
           id="comp-above-maximum"
+          uses={m.uses['comp-above-maximum']}
           title="Above range maximum"
           subtitle={`Largest overage first, as of ${asOf}`}
           data={r.above}
@@ -147,6 +154,7 @@ export function Ranges({ m }: { m: CompModel }) {
       >
         <Figure
           id="comp-compression"
+          uses={m.uses['comp-compression']}
           title="New hires vs incumbents"
           subtitle={`Median compa-ratio by department and level, hired in the last 12 months vs before, as of ${asOf}`}
           data={r.compression}

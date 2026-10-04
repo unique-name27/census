@@ -4,10 +4,12 @@
  * date) and which optional columns exist. Built once per analytics context.
  */
 import type { AnalyticsContext } from '@/data/context'
+import { type FieldRef, meetsStandard } from '@/data/quality'
 import { type Employee, type ISODate, type JobChange, LEVELS, type Level } from '@/data/schema'
 import { type PeriodPreset, periodWindows, type Window } from '@/data/scope'
 import { addDays, addMonths, formatMonthShort, formatRange, monthEnd, quarterStart } from '@/lib/dates'
 import { isActiveAt, isEmployee } from '@/lib/people'
+import { all as allOf, HRBP_DATASETS, type Lineage, resolveLineage, scopeLineage } from './lineage'
 
 /** A reporting block (quarter or month) with the length used to annualize rates inside it. */
 export interface Block extends Window {
@@ -175,6 +177,17 @@ export interface Prep {
   companyChanges: JobChange[]
   history: History
   name: (id: string | null | undefined) => string
+  /**
+   * The fields a number reads (its lineage, see `./lineage`), plus the fields the active org
+   * filters read. Optional groups count only when their data is loaded.
+   */
+  uses: (...parts: Lineage[]) => readonly FieldRef[]
+  /**
+   * Whether to show a supporting detail (exit reasons cited in a finding, the promotion column of
+   * the scorecard): always under Everything, else when its fields meet the data standard. A
+   * detail below it is left out, so it never takes the headline number down with it.
+   */
+  meets: (part: Lineage) => boolean
   has: {
     /** Some row has a termination date: without leavers every exit rate is unknown, not 0. */
     terminationDate: boolean
@@ -201,6 +214,17 @@ export function prepare(ctx: AnalyticsContext): Prep {
   const companyEmps = ctx.isCompany ? emps : all.filter(isEmployee)
   const changes = employeeChanges(ctx.data.jobChanges, org.byId)
   const companyChanges = ctx.isCompany ? changes : employeeChanges(ctx.all.jobChanges, org.byId)
+  const scope = scopeLineage(ctx.filters)
+  const presence = new Map<FieldRef, boolean>()
+  const meets = new Map<Lineage, boolean>()
+  const present = (ref: FieldRef) => {
+    let has = presence.get(ref)
+    if (has === undefined) {
+      has = ctx.quality.fieldTier(ref) !== 'none'
+      presence.set(ref, has)
+    }
+    return has
+  }
   return {
     ctx,
     asOf,
@@ -214,6 +238,16 @@ export function prepare(ctx: AnalyticsContext): Prep {
     companyChanges,
     history: buildHistory(changes),
     name: (id) => (id ? (org.byId.get(id)?.name ?? id) : '—'),
+    uses: (...parts) => resolveLineage(allOf(...parts, scope), present),
+    meets: (part) => {
+      let ok = meets.get(part)
+      if (ok === undefined) {
+        const tier = ctx.quality.tierOf(resolveLineage(part, present), HRBP_DATASETS)
+        ok = ctx.standard === 'bronze' || meetsStandard(tier, ctx.standard)
+        meets.set(part, ok)
+      }
+      return ok
+    },
     has: {
       terminationDate: all.some((e) => !!e.terminationDate),
       jobChanges: ctx.all.jobChanges.length > 0,

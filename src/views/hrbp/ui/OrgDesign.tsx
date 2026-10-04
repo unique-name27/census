@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { BarList, Columns, Figure } from '@/charts'
 import { KpiStrip, Section, Segmented } from '@/components'
-import type { Kpi, Severity } from '@/components/types'
+import type { Severity } from '@/components/types'
 import { useAnalytics } from '@/data/context'
 import { drill } from '@/drill/Drill'
 import { formatDate } from '@/lib/dates'
@@ -11,9 +11,9 @@ import {
   layerBuSpec,
   type ManagerCell,
   managerCellSpec,
-  orgTileSpec,
   spanBucketSpec,
 } from '../engine/buckets'
+import { FIGURE } from '../engine/lineage'
 import { type ManagerFlag, type ManagerRow, SPAN_BUCKETS } from '../engine/org'
 import { DEF } from './defs'
 import { drillWhen } from './drill'
@@ -43,66 +43,12 @@ export function OrgDesign({ m }: { m: HrbpModel }) {
   const p = m.prep
   const asOf = formatDate(ctx.asOf)
   const managers = org.managers.filter(FILTERS[filter])
-  const hasManagers = org.managers.length > 0
-  const tile = (t: Parameters<typeof orgTileSpec>[2], has: boolean) =>
-    drillWhen(has, () => orgTileSpec(p, org, t))
   const managerCell = (cell: ManagerCell, count: (r: ManagerRow) => number) => (r: ManagerRow) =>
     drillWhen(count(r) > 0, () => managerCellSpec(p, org, r, cell))
 
-  const kpis: Kpi[] = [
-    {
-      id: 'managers',
-      label: 'Managers',
-      value: org.managers.length,
-      format: 'int',
-      note: `${org.activeWorkers.toLocaleString('en-US')} active workers`,
-      definition: 'Active people in scope with at least one active direct report.',
-      drill: tile('managers', hasManagers),
-    },
-    {
-      id: 'mean-span',
-      label: 'Mean span',
-      value: org.meanSpan,
-      format: 'num1',
-      note: 'Direct reports per manager',
-      definition: DEF.span.text,
-      drill: tile('meanSpan', hasManagers),
-    },
-    {
-      id: 'median-span',
-      label: 'Median span',
-      value: org.medianSpan,
-      format: 'num1',
-      note:
-        org.medianSpan != null
-          ? `Half of managers have ${Math.ceil(org.medianSpan)} or more direct reports`
-          : 'Direct reports per manager',
-      definition: DEF.span.text,
-      drill: tile('medianSpan', hasManagers),
-    },
-    {
-      id: 'manager-ratio',
-      label: 'Manager ratio',
-      value: org.managerRatio,
-      format: 'num1',
-      note: 'Individual contributors per manager',
-      definition: 'Active workers who manage nobody, divided by the number of managers.',
-      drill: tile('managerRatio', org.managerRatio != null && org.individuals.length > 0),
-    },
-    {
-      id: 'layers',
-      label: 'Layers',
-      value: org.layers,
-      format: 'int',
-      note: 'From the top of this scope',
-      definition: DEF.layers.text,
-      drill: tile('layers', org.layers != null),
-    },
-  ]
-
   return (
     <>
-      <KpiStrip id="hrbp-org-kpis" title="Org design figures" kpis={kpis} />
+      <KpiStrip id="hrbp-org-kpis" title="Org design figures" kpis={m.orgKpis} />
 
       <Section
         title="Spans and layers"
@@ -110,6 +56,7 @@ export function OrgDesign({ m }: { m: HrbpModel }) {
       >
         <Figure
           id="hrbp-span-of-control"
+          uses={p.uses(FIGURE.spanOfControl)}
           title="Span of control"
           subtitle={`Managers by number of active direct reports, ${asOf}`}
           data={org.spanBuckets}
@@ -144,6 +91,7 @@ export function OrgDesign({ m }: { m: HrbpModel }) {
         </Figure>
         <Figure
           id="hrbp-layers-bu"
+          uses={p.uses(FIGURE.layersByBusinessUnit)}
           title="Layers by business unit"
           subtitle={`Reporting levels inside each business unit, ${asOf}`}
           data={org.layersByBu}
@@ -183,6 +131,7 @@ export function OrgDesign({ m }: { m: HrbpModel }) {
       >
         <Figure
           id="hrbp-managers"
+          uses={p.uses(FIGURE.managers)}
           title="Manager table"
           subtitle={`Managers on ${asOf}, regretted exits over the last 12 months`}
           data={managers}
@@ -248,6 +197,7 @@ export function OrgDesign({ m }: { m: HrbpModel }) {
         />
         <Figure
           id="hrbp-single-report-chains"
+          uses={p.uses(FIGURE.singleReportChains)}
           title="Single-report chains"
           subtitle={`Managers whose only direct report leads 5 or more people, ${asOf}`}
           data={org.chains}

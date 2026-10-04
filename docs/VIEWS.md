@@ -171,7 +171,7 @@ small KpiStrip.
 
 ---
 
-## Employee services (`services`)
+## HR ops (`services`)
 
 Question: are employees getting fast, correct answers and are HR transactions processed on time?
 Readers: People operations, payroll, benefits and HRIS leads. Ties every measure to the
@@ -442,3 +442,55 @@ title, manager, level, department, location, directs, total org) so CSV/Excel wo
 of the visible chart; and an "Org slide" export (PowerPoint, one slide per selected leader with
 their direct org, like the old tool's slide builder) using pptxgenjs. Large orgs: virtualize or
 collapse by default below depth 3 so 1,500 people stay fast.
+
+---
+
+## AI in HR (`ai`)
+
+Question: which AI agents does the HR team have, what is each one for, and when should you not
+use it? A catalog of Glean agents, organized by HR area. For now every entry is a clearly marked
+sample, with sample links.
+
+Placement: the last folder tab, "AI in HR". Folder-tab headline: number of agents ("agents"),
+plus "sample" while the catalog is the sample.
+
+Each agent has:
+- name, HR area (Recruiting, Onboarding, HR business partners, HR ops, Talent,
+  Compensation, Compliance, People ops), audience (HR team, managers, employees) and status
+  (Sample, Pilot, Live)
+- a one-sentence description, "Use it for" (2-4 bullets) and "Don't use it for" (guardrails, e.g.
+  "Not for hiring or pay decisions; it drafts, people decide")
+- example prompts, each with a Copy button
+- the data it draws on (e.g. Greenhouse, the HRIS, the Hire-to-Retire Atlas, policy pages)
+- owner team, and an "Open in Glean" link (opens in a new tab). Sample links are labeled "Sample
+  link".
+
+Layout:
+- A short responsible-use note at the top, one or two plain sentences: agents assist and people
+  decide, and only use agents approved for the data you share with them.
+- Filters: HR area, audience, status, and a search over names, descriptions and use cases.
+- Agents grouped by HR area, as sheets in a responsive grid. This is the one place in Census where
+  cards are the right form, because each agent is an object people pick from.
+- A compact "Agents by area" summary. Its counts filter the list.
+- The catalog as a table-only Figure, so it exports to CSV or Excel like every other table.
+
+Editing (the catalog is a sample to be replaced):
+- Edit in place: add, edit and remove agents, and reset to the sample.
+- Import from and export to an Excel sheet named "AI agents", with the same columns as the
+  catalog.
+- Kept in this browser like the Tools links, with the same safe-link rule (http/https only).
+
+Light links from the other views: each view's header area shows one quiet line, "AI agents for
+Recruiting (4)", which opens this tab filtered to that area. It is a link, not a second catalog.
+
+Sample catalog (about 20 agents):
+- Recruiting: Job description writer, Interview kit builder, Candidate scorecard summary,
+  Offer justification prep
+- Onboarding: New hire guide (first-week questions), Start readiness checker
+- HR business partners: Leader 1:1 prep, Reorg impact brief, Policy answers by country
+- HR ops: HR help desk triage, Leave and benefits navigator, Employment verification
+  drafter
+- Talent: Review writing coach, Calibration brief, Career path explorer, Learning recommender
+- Compensation: Pay range explainer, Merit guideline checker
+- Compliance: Export control screening guide (process steps only, never nationality decisions)
+- People ops: Process finder for the Hire-to-Retire Atlas

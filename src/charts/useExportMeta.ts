@@ -1,6 +1,6 @@
 /**
  * Export context for a figure on screen: the view and tab it sits in, the scope, window and
- * as-of date, and whether the data is the sample company.
+ * as-of date, whether the data is the sample company, and the data standard in force.
  */
 import { useCurrentView } from '@/components/currentView'
 import { useAnalytics } from '@/data/context'
@@ -18,5 +18,6 @@ export function useExportMeta(): ExportMeta {
     asOf: ctx.asOf,
     isSample: ctx.isSample,
     company: ctx.isSample ? SAMPLE_COMPANY : 'Company data',
+    standard: ctx.standard,
   }
 }

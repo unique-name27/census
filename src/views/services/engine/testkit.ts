@@ -1,4 +1,4 @@
-/** Fixture builders for the employee services engine tests. Not used by the app. */
+/** Fixture builders for the HR ops engine tests. Not used by the app. */
 import { buildContext } from '@/data/context'
 import { generateSample } from '@/data/sample'
 import {

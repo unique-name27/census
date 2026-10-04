@@ -32,7 +32,7 @@ const VIEW_LABELS: Record<ViewKey, string> = {
   recruiting: 'Recruiting',
   hrbp: 'HR business partners',
   org: 'Org chart',
-  services: 'Employee services',
+  services: 'HR ops',
   talent: 'Talent',
   comp: 'Compensation',
 }

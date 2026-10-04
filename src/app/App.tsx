@@ -22,7 +22,8 @@ import { FilterBar } from './FilterBar'
 import { FolderTabs, VIEW_PANEL_ID } from './FolderTabs'
 import { LoadingShell } from './Loading'
 import { Masthead } from './Masthead'
-import { useHashRouting, useThemeAttribute } from './useShell'
+import { SettingsSheet } from './settings/SettingsSheet'
+import { useDisplaySettings, useHashRouting } from './useShell'
 import { VIEW_BODY_ID, ViewHeader } from './ViewHeader'
 
 const PAGE = 'mx-auto w-full max-w-[1440px] px-(--gutter)'
@@ -36,7 +37,9 @@ function ViewPage({ view, requestedTab }: { view: ViewDef; requestedTab: string 
     <div id={VIEW_PANEL_ID} role="tabpanel" aria-labelledby={`tab-${view.key}`}>
       <FilterBar />
       <FigureRegistryProvider key={view.key}>
-        <CurrentViewProvider value={{ key: view.key, label: view.label, tabs: view.tabs, tab }}>
+        <CurrentViewProvider
+          value={{ key: view.key, label: view.label, tabs: view.tabs, tab, datasets: view.datasets }}
+        >
           <ViewHeader view={view} tab={tab} />
           <div
             id={VIEW_BODY_ID}
@@ -124,7 +127,8 @@ function Shell() {
 export function App() {
   const ready = useCensus((s) => s.ready)
   const init = useCensus((s) => s.init)
-  useThemeAttribute()
+  const motion = useCensus((s) => s.motion)
+  useDisplaySettings()
   useEffect(() => {
     void init().then(() => {
       if (useCensus.getState().storageUnavailable)
@@ -136,13 +140,14 @@ export function App() {
     })
   }, [init])
   return (
-    <MotionConfig reducedMotion="user">
+    <MotionConfig reducedMotion={motion === 'reduce' ? 'always' : 'user'}>
       <TooltipProvider>
         {ready ? (
           <AnalyticsProvider>
             <Shell />
-            {/* Inside the provider: the panel reads the analytics context (names, as-of, pay setting). */}
+            {/* Inside the provider: the panels read the analytics context (names, as-of, tiers, pay setting). */}
             <DrillPanel />
+            <SettingsSheet />
           </AnalyticsProvider>
         ) : (
           <LoadingShell />

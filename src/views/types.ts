@@ -1,5 +1,6 @@
 import type { ComponentType } from 'react'
 import type { AnalyticsContext } from '@/data/context'
+import type { FieldRef } from '@/data/quality/fieldRef'
 import type { DatasetKey, ViewKey } from '@/data/schema'
 
 export interface ViewTab {
@@ -12,6 +13,11 @@ export interface Headline {
   value: string
   label: string
   spark?: (number | null)[]
+  /**
+   * The fields the number (and its spark) is computed from. The folder tab gates it on the data
+   * standard like any KPI; without it, the tier of the view's datasets is used.
+   */
+  uses?: readonly FieldRef[]
 }
 
 export interface ViewDef {

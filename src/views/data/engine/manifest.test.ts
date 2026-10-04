@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { buildContext } from '@/data/context'
-import { generateSample } from '@/data/sample'
+import type { Tier } from '@/data/quality'
+import { generateSample, SAMPLE_AS_OF } from '@/data/sample'
 import { DATASET_KEYS, type DatasetKey, type Datasets } from '@/data/schema'
 import { DEFAULT_FILTERS } from '@/data/scope'
 import type { SourceMeta } from '@/data/store'
@@ -17,6 +18,7 @@ import {
   manifestExportRows,
   manifestSummary,
   sourceInfo,
+  tierMixText,
 } from './manifest'
 
 const sampleSources = (data: Datasets): Record<DatasetKey, SourceMeta> =>
@@ -32,7 +34,7 @@ describe('labels', () => {
     expect(feedsText(all)).toBe('All six views')
     expect(feedsLine(all)).toBe('Feeds all six views')
     expect(feedsText(['comp', 'services', 'talent', 'hrbp', 'recruiting'])).toBe(
-      'Recruiting, HR business partners, Employee services, Talent, Compensation',
+      'Recruiting, HR business partners, HR ops, Talent, Compensation',
     )
     expect(feedsLine(['recruiting'])).toBe('Feeds Recruiting')
   })
@@ -51,7 +53,7 @@ describe('labels', () => {
     expect(text.requisitions).toBe('Recruiting, Org chart')
     expect(text.reviews).toBe('HR business partners, Org chart, Talent, Compensation')
     // Recruiting reads requisitions and candidates only.
-    expect(text.employees).toBe('HR business partners, Org chart, Employee services, Talent, Compensation')
+    expect(text.employees).toBe('HR business partners, Org chart, HR ops, Talent, Compensation')
     // Every view's declared datasets are listed as feeding it.
     for (const v of VIEWS)
       for (const d of v.datasets) expect(rows.find((r) => r.key === d)?.feeds).toContain(v.key)
@@ -90,6 +92,31 @@ describe('labels', () => {
     const mixed = manifestSummary([row('upload', 'warning'), row('sample', 'good'), row('upload', 'info')])
     expect(mixed).toMatchObject({ uploaded: 2, needsLook: 1, totalRows: 30 })
     expect(mixed.text).toBe('30 rows across 3 datasets · 1 needs a look')
+  })
+
+  it('counts tiers, best first', () => {
+    const row = (tier: Tier | null) =>
+      ({ source: { kind: 'sample' }, status: 'good', rows: 1, tier }) as Parameters<
+        typeof manifestSummary
+      >[0][number]
+    const s = manifestSummary([row('gold'), row('bronze'), row('gold'), row('none'), row(null)])
+    expect(s.tiers).toEqual({ none: 1, bronze: 1, silver: 0, gold: 2 })
+    expect(s.text).toBe('5 rows across 5 datasets · 2 gold, 1 bronze, 1 with no data')
+    expect(tierMixText({ none: 0, bronze: 0, silver: 0, gold: 0 })).toBe('')
+  })
+
+  it('carries each dataset’s tier into the rows and the export', () => {
+    const rows = buildManifest({
+      data: generateSample(),
+      sources: Object.fromEntries(
+        DATASET_KEYS.map((k) => [k, { kind: 'sample', rowCount: 0 }]),
+      ) as Parameters<typeof buildManifest>[0]['sources'],
+      asOf: SAMPLE_AS_OF,
+      tiers: { employees: 'gold' },
+    })
+    expect(rows.find((r) => r.key === 'employees')?.tier).toBe('gold')
+    expect(rows.find((r) => r.key === 'comp')?.tier).toBeNull()
+    expect(manifestExportRows(rows)[0].tier).toBe('Gold')
   })
 })
 

@@ -1,7 +1,9 @@
 /**
  * A view's readout: the findings a specialist would raise with a leader, most severe first. Each
- * finding can name the people behind it, rescope the app to where it concentrates, or open the
- * tab with the detail. Registers as a "Readout" table so view exports include it.
+ * finding carries its tier and can name the people behind it, rescope the app to where it
+ * concentrates, or open the tab with the detail. Findings below the data standard are hidden and
+ * counted, with an option to show them on screen. Registers as a "Readout" table (the findings
+ * the standard shows) so view exports include it.
  */
 import { useState } from 'react'
 import { useAnalytics } from '@/data/context'
@@ -19,10 +21,14 @@ import {
   peopleChipLabel,
   peoplePreview,
   READOUT_COLUMNS,
+  READOUT_COLUMNS_WITH_TIER,
   readoutRows,
   SEVERITY_WORD,
   sortFindings,
 } from './readoutModel'
+import { TierBadge } from './tier/TierBadge'
+import { hiddenFindingsText, splitByStandard, type TierGate } from './tier/tierModel'
+import { useGateFn } from './tier/useTierGate'
 import { toast } from './toast'
 import type { Finding, FindingPerson } from './types'
 import { cx, SeverityIcon } from './ui'
@@ -80,7 +86,7 @@ function People({ people, total }: { people: FindingPerson[]; total?: number }) 
   )
 }
 
-function FindingItem({ finding }: { finding: Finding }) {
+function FindingItem({ finding, gate }: { finding: Finding; gate: TierGate | null }) {
   const ctx = useAnalytics()
   const view = useCurrentView()
   const setFilters = useCensus((s) => s.setFilters)
@@ -98,10 +104,22 @@ function FindingItem({ finding }: { finding: Finding }) {
     <li className="flex gap-2.5 border-t border-rule px-4 py-3.5 first:border-t-0">
       <SeverityIcon severity={finding.severity} className="mt-[3px] size-3.5 shrink-0" />
       <div className="min-w-0 flex-1">
-        <h3 className="text-[14px] leading-snug font-semibold [font-stretch:100%]">
-          <span className="sr-only">{SEVERITY_WORD[finding.severity]}: </span>
-          {finding.title}
-        </h3>
+        <div className="flex items-start gap-2">
+          <h3 className="min-w-0 flex-1 text-[14px] leading-snug font-semibold [font-stretch:100%]">
+            <span className="sr-only">{SEVERITY_WORD[finding.severity]}: </span>
+            {finding.title}
+          </h3>
+          {gate && (
+            <TierBadge
+              compact
+              tier={gate.tier}
+              explain={gate.explain}
+              dataset={gate.limiting.dataset}
+              className="-mt-px -mr-1"
+            />
+          )}
+        </div>
+        {gate && !gate.shown && <p className="mt-0.5 text-[12px] leading-snug text-muted">{gate.reason}</p>}
         {finding.detail && <p className="mt-1 text-[13px] leading-snug text-ink-2">{finding.detail}</p>}
         {finding.action && (
           <p className="mt-1.5 text-[13px] leading-snug">
@@ -155,9 +173,25 @@ export function Readout({
   className?: string
 }) {
   const [expanded, setExpanded] = useState(false)
-  useTableFigure({ id, title, columns: READOUT_COLUMNS, rows: readoutRows(findings) })
-  const sorted = sortFindings(findings)
+  const [showHidden, setShowHidden] = useState(false)
+  const ctx = useAnalytics()
+  const gateOf = useGateFn()
+  const gates = new Map(findings.map((f) => [f, gateOf(f.uses)]))
+  const gateOfFinding = (f: Finding) => gates.get(f) ?? null
+  const tiered = findings.some((f) => gates.get(f))
+  const { shown, hidden } = splitByStandard(findings, gateOfFinding)
+  const hiddenText = hidden.length ? hiddenFindingsText(hidden.length, ctx.standard) : undefined
+  // Exports carry exactly what the standard shows, and say how many were held back.
+  useTableFigure({
+    id,
+    title,
+    note: hiddenText,
+    columns: tiered ? READOUT_COLUMNS_WITH_TIER : READOUT_COLUMNS,
+    rows: readoutRows(shown, tiered ? gateOfFinding : undefined),
+  })
+  const sorted = sortFindings(shown)
   const visible = expanded ? sorted : sorted.slice(0, FIRST)
+  const hiddenSorted = sortFindings(hidden)
   return (
     <section
       aria-label={title}
@@ -170,14 +204,16 @@ export function Readout({
         )}
       </header>
       {sorted.length === 0 ? (
-        <p className="flex items-center gap-2 px-4 py-4 text-[13px] text-ink-2">
-          <IconGood className="size-3.5 shrink-0 text-muted" />
-          {emptyText}
-        </p>
+        hidden.length === 0 && (
+          <p className="flex items-center gap-2 px-4 py-4 text-[13px] text-ink-2">
+            <IconGood className="size-3.5 shrink-0 text-muted" />
+            {emptyText}
+          </p>
+        )
       ) : (
         <ol>
           {visible.map((f) => (
-            <FindingItem key={f.id} finding={f} />
+            <FindingItem key={f.id} finding={f} gate={gates.get(f) ?? null} />
           ))}
         </ol>
       )}
@@ -187,6 +223,31 @@ export function Readout({
             {expanded ? 'Show fewer' : `Show all ${sorted.length} findings`}
           </button>
         </div>
+      )}
+      {hidden.length > 0 && (
+        <div
+          className={cx(
+            'px-4 py-2.5 text-[12px] leading-snug text-muted',
+            sorted.length > 0 && 'border-t border-rule',
+          )}
+        >
+          {hiddenText}.{' '}
+          <button
+            type="button"
+            className={LINK}
+            aria-expanded={showHidden}
+            onClick={() => setShowHidden(!showHidden)}
+          >
+            {showHidden ? 'Hide them' : 'Show them'}
+          </button>
+        </div>
+      )}
+      {showHidden && hidden.length > 0 && (
+        <ol aria-label="Findings below the data standard" className="border-t border-rule bg-sheet-2">
+          {hiddenSorted.map((f) => (
+            <FindingItem key={f.id} finding={f} gate={gates.get(f) ?? null} />
+          ))}
+        </ol>
       )}
     </section>
   )

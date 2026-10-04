@@ -17,6 +17,7 @@ import {
   quarterOffersDrill,
   ttfGroupDrill,
 } from '../engine/drills'
+import { FIGURE_USES } from '../engine/lineage'
 import { STATE_NAME } from '../engine/nextStep'
 import type { PipelineCell } from '../engine/pipeline'
 import type { OpenByDeptRow, TtfRow } from '../engine/reqs'
@@ -117,6 +118,7 @@ export function OverviewTab() {
         <Grid>
           <Figure
             id="recruiting-pipeline-today"
+            uses={FIGURE_USES['recruiting-pipeline-today']}
             title="Pipeline today"
             subtitle={`Active candidates by stage and next step on ${formatDate(b.asOf)}`}
             data={pipelineRows}
@@ -175,6 +177,7 @@ export function OverviewTab() {
         >
           <Figure
             id="recruiting-hires-by-month"
+            uses={FIGURE_USES['recruiting-hires-by-month']}
             title="Hires by month"
             subtitle="Offers accepted per month, last 24 months"
             data={m.hiresByMonth}
@@ -210,6 +213,7 @@ export function OverviewTab() {
           </Figure>
           <Figure
             id="recruiting-offer-acceptance-quarter"
+            uses={FIGURE_USES['recruiting-offer-acceptance-quarter']}
             title="Offer acceptance by quarter"
             subtitle="Offers accepted ÷ offers resolved, last 8 quarters"
             data={accRows}
@@ -262,6 +266,7 @@ export function OverviewTab() {
         >
           <Figure
             id="recruiting-open-reqs-department"
+            uses={FIGURE_USES['recruiting-open-reqs-department']}
             title="Open reqs by department"
             subtitle={`Open requisitions on ${formatDate(b.asOf)}, marked by the age of the oldest`}
             data={m.openByDepartment}
@@ -316,6 +321,7 @@ export function OverviewTab() {
           </Figure>
           <Figure
             id="recruiting-time-to-fill-level"
+            uses={FIGURE_USES['recruiting-time-to-fill-level']}
             title="Time to fill by level"
             subtitle={`Median days from opened to offer accepted, reqs filled ${windowText(b.window)}`}
             data={m.ttfByLevel}

@@ -2,7 +2,7 @@
 
 ## Context
 
-Census has seven tabs: Recruiting, HR business partners, Org chart, Employee services, Talent,
+Census has seven tabs: Recruiting, HR business partners, Org chart, HR ops, Talent,
 Compensation and the Data room. Drill-down on every number is being finished in the background.
 You asked two things:
 
@@ -105,8 +105,8 @@ with a count. Both shapes work in the same sheet.
 4. UI: `src/views/onboarding/ui/*` using `Figure`, the chart kit, `KpiStrip`, `Readout`, drill specs on every number, and table rows that open the person card.
 5. Data room: templates and import mapping for the two new datasets; the Tasks import accepts relative due dates such as "Day -3".
 6. Avoid duplicates:
-   - move "New hire readiness by site" from Employee services > HR transactions to Onboarding, and replace it with a link
-   - keep Employee services' ON-03 row in the Service levels scorecard, since that measures HR operations processing, not people readiness
+   - move "New hire readiness by site" from HR ops > HR transactions to Onboarding, and replace it with a link
+   - keep HR ops' ON-03 row in the Service levels scorecard, since that measures HR operations processing, not people readiness
    - Recruiting's Overview gets one "Hires vs plan" KPI that opens Onboarding > Hiring plan
 
 ### How I'd verify it
@@ -153,7 +153,7 @@ To keep the number of folder tabs sensible and avoid duplicates:
 | People scorecard | New first folder tab **Scorecard**; Census opens here | Today's data |
 | Action center | **Actions** button in the masthead with an open-items count, beside the Data room; not a folder tab | Today's data, plus onboarding tasks and right to work once loaded |
 | Compliance & right to work | New folder tab **Compliance** | New Right to work dataset; Atlas calendar as reference data |
-| Leave & return to work | New sub-tab **Leave & return** under Employee services | Today's data, plus two optional transaction fields |
+| Leave & return to work | New sub-tab **Leave & return** under HR ops | Today's data, plus two optional transaction fields |
 | Surveys (all programs) | New folder tab **Listening**; each survey's key result also appears in the view it belongs to | New survey responses dataset |
 
 ### People scorecard (home)
@@ -172,7 +172,7 @@ To keep the number of folder tabs sensible and avoid duplicates:
 - **Contract change:** each view's engine exports `actions(ctx)`, returning items of type `ActionItem { owner (role + person), due, severity, what, subject (person, candidate, case or req), view, drill }`. Items come from:
   - Recruiting: next steps from the action queue
   - Onboarding: starts not ready, probation decisions due
-  - Employee services: cases past target, overdue transactions
+  - HR ops: cases past target, overdue transactions
   - Talent: overdue required training
   - Compliance: expiries
 - **Layout:** grouped by owner (manager, HRBP, recruiter, HR ops, IT, trade compliance). Each owner gets:
@@ -196,7 +196,7 @@ To keep the number of folder tabs sensible and avoid duplicates:
   - statutory deadlines in the next 60 days for the jurisdictions where people work
 - **Reference data:** the statutory calendar is bundled from the Atlas repo's `data/country-*.json` into `src/data/reference/`.
 
-### Leave & return to work (Employee services sub-tab)
+### Leave & return to work (HR ops sub-tab)
 - **Data:** leave start and return-from-leave transactions, paired per person. Two optional new transaction fields: `leaveReason`, using the Atlas's 9 categories at category level only (no medical detail), and `expectedReturnDate`.
 - **Figures:**
   - on leave now, by reason and org
@@ -221,8 +221,8 @@ of the charts).
 | Stay interviews | Twice a year for key talent | What keeps people and what would make them leave | Talent > Retention risk |
 | Exit survey | At notice of resignation | Primary reason (the 12-reason taxonomy), driver gaps between regretted and other leavers, would they return | HR business partners > Attrition |
 | Manager feedback (upward) | Twice a year | Manager effectiveness themes. Manager cuts only at 10 or more respondents over four quarters. | HR business partners > Org design |
-| HR service survey | When a case is resolved | Satisfaction and effort by category and channel; extends today's case CSAT | Employee services > Cases |
-| Return to work | 30 days after returning from leave | Was the return smooth (systems ready, manager check-in) | Employee services > Leave & return |
+| HR service survey | When a case is resolved | Satisfaction and effort by category and channel; extends today's case CSAT | HR ops > Cases |
+| Return to work | 30 days after returning from leave | Was the return smooth (systems ready, manager check-in) | HR ops > Leave & return |
 | Training evaluation | After a course | Course usefulness and relevance, by course | Talent > Learning |
 | Engagement and eNPS (off) | Quarterly pulse | Engagement and eNPS by org | Off by default, behind one switch, because you turned it off before. Say the word to enable it. |
 
@@ -265,7 +265,7 @@ comments are not imported (privacy).
 2. Onboarding with upcoming starts and the hiring plan (Part 1).
 3. People scorecard and Action center, which share the new `summary` and `actions` contracts.
 4. Listening: the survey dataset, sample waves, the Listening tab, and one linked number per related view.
-5. Leave & return to work (Employee services sub-tab).
+5. Leave & return to work (HR ops sub-tab).
 6. Compliance & right to work.
 
 Each step uses the same process as before:

@@ -4,8 +4,9 @@
  */
 import { useState } from 'react'
 import { useExportMeta } from '@/charts'
-import { Button, Dialog, MultiSelect, Segmented, Switch, toast } from '@/components'
+import { Button, Dialog, MultiSelect, Segmented, Switch, toast, useTierGate } from '@/components'
 import { useAnalytics } from '@/data/context'
+import type { FieldRef } from '@/data/quality/fieldRef'
 import { fileStem } from '@/lib/export/names'
 import { plural } from '@/lib/format'
 import { type ColorScheme, colorScheme, type OrgTree, planSlides, type ReqStub, subtreeOf } from '../engine'
@@ -20,6 +21,7 @@ export function SlidesDialog({
   scheme,
   reqs,
   reqByCardId,
+  uses,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -30,9 +32,12 @@ export function SlidesDialog({
   scheme: ColorScheme
   reqs?: ReadonlyMap<string, readonly ReqStub[]>
   reqByCardId: ReadonlyMap<string, ReqStub>
+  /** The org chart figure's fields, so the deck states the chart's tier as the figure does. */
+  uses?: readonly FieldRef[]
 }) {
   const ctx = useAnalytics()
   const meta = useExportMeta()
+  const gate = useTierGate(uses)
   const [levels, setLevels] = useState<'1' | '2'>('1')
   const [useColor, setUseColor] = useState(scheme.by !== 'none')
   const [busy, setBusy] = useState(false)
@@ -61,6 +66,7 @@ export function SlidesDialog({
       await downloadOrgSlides(plans, meta, {
         fileName: fileStem(meta, 'org-slides'),
         legend: useColor ? sch.legend.map((k) => ({ label: k.label, swatch: k.swatch })) : [],
+        data: { tier: gate?.tier, withheld: !!gate && !gate.shown },
       })
       const fell = plans.filter((p) => p.levels === 1 && levels === '2').length
       toast(`Downloaded ${plural(plans.length, 'slide')}`, {

@@ -1,6 +1,6 @@
 /**
- * Color keys for the cards' top edge. Categories (department, business unit, location) take the
- * categorical slots in a fixed order, largest group first; with more than eight groups the
+ * Color keys for the cards' top edge. Categories (department, business unit, job function,
+ * location) take the categorical slots in a fixed order, largest group first; with more than eight groups the
  * smallest fold into "Other". Ordered dimensions (level, tenure) use the sequential blue ramp.
  *
  * Slots are ranked over the whole as-of roster and reused for any root or focus, so a department
@@ -9,11 +9,12 @@
 import type { Employee, ISODate } from '@/data/schema'
 import { TENURE_BANDS, tenureBand, tenureYears } from '@/lib/people'
 
-export type ColorBy = 'department' | 'businessUnit' | 'location' | 'level' | 'tenure' | 'none'
+export type ColorBy = 'department' | 'businessUnit' | 'jobFunction' | 'location' | 'level' | 'tenure' | 'none'
 
 export const COLOR_BY_LABELS: Record<ColorBy, string> = {
   department: 'Department',
   businessUnit: 'Business unit',
+  jobFunction: 'Job function',
   location: 'Location',
   level: 'Level',
   tenure: 'Tenure',
@@ -51,9 +52,18 @@ const LEVEL_STEPS: SeqStep[] = [200, 300, 400, 500, 600, 700]
 const TENURE_STEPS: SeqStep[] = [200, 300, 450, 600, 700]
 const NO_LEVEL = 'No level'
 
+/** The options in menu order. */
+export const COLOR_BY_OPTIONS: readonly ColorBy[] = Object.keys(COLOR_BY_LABELS) as ColorBy[]
+
+export const isColorBy = (v: unknown): v is ColorBy =>
+  typeof v === 'string' && Object.hasOwn(COLOR_BY_LABELS, v)
+
+export const NO_JOB_FUNCTION = 'No job function'
+
 const CATEGORICAL: Partial<Record<ColorBy, (e: Employee) => string>> = {
   department: (e) => e.department || 'Unknown',
   businessUnit: (e) => e.businessUnit || 'Unknown',
+  jobFunction: (e) => e.jobFunction?.trim() || NO_JOB_FUNCTION,
   location: (e) => e.location || 'Unknown',
 }
 

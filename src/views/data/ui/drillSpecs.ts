@@ -225,3 +225,29 @@ export function issueSpec(
     ),
   }
 }
+
+/* ───────────── rows by index (the quality index's drills) ───────────── */
+
+/**
+ * The rows at `indexes` of a dataset (the quality index hands out row indexes), the first
+ * 2,000 when there are more. Null when there is nothing to list.
+ */
+export function indexSpec(
+  ds: DrillDataset,
+  data: Datasets,
+  indexes: readonly number[],
+  title: string,
+  opts: { scope?: string | null; note?: string | null } = {},
+): DrillSpec | null {
+  const all = recordsOf(data, ds.key)
+  const found = indexes.flatMap((i) => (all[i] ? [all[i]] : []))
+  if (!found.length) return null
+  const { rows, note } = capped(ds.key, found)
+  return {
+    kind: ds.key,
+    title,
+    subtitle: subtitleOf(ds, opts.scope),
+    rows,
+    note: joinNotes(opts.note, note),
+  }
+}

@@ -41,6 +41,7 @@ export function Market({ m }: { m: CompModel }) {
       >
         <Figure
           id="comp-market-by-family"
+          uses={m.uses['comp-market-by-family']}
           title="Gap to market by job family"
           subtitle={`The 15 families of ${MARKET_CHART_MIN} or more people furthest below market, median base ÷ market median minus 1, as of ${asOf}`}
           data={k.familyChart}
@@ -65,6 +66,7 @@ export function Market({ m }: { m: CompModel }) {
         </Figure>
         <Figure
           id="comp-market-by-location"
+          uses={m.uses['comp-market-by-location']}
           title="Gap to market by location"
           subtitle={sub}
           data={k.byLocation}
@@ -94,6 +96,7 @@ export function Market({ m }: { m: CompModel }) {
       >
         <Figure
           id="comp-market-by-level"
+          uses={m.uses['comp-market-by-level']}
           title="Gap to market by level"
           subtitle={sub}
           data={k.byLevel}
@@ -117,6 +120,7 @@ export function Market({ m }: { m: CompModel }) {
         </Figure>
         <Figure
           id="comp-jobs-below-market"
+          uses={m.uses['comp-jobs-below-market']}
           title="Jobs furthest below market"
           subtitle={`Job family and level pairs with 5 or more people, lowest market ratio first; 10% or more below market is marked, as of ${asOf}`}
           data={k.jobs}

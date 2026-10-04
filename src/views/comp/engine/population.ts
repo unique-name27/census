@@ -77,6 +77,8 @@ export interface Population {
   noFx: number
   /** Which optional fields exist in at least one row (missing columns give null, not 0). */
   has: {
+    /** Some roster row has a job family (otherwise job family falls back to department for everyone). */
+    jobFamily: boolean
     ranges: boolean
     market: boolean
     merit: boolean
@@ -101,12 +103,13 @@ export function positionOf(base: number, min: number | null, max: number | null)
   return p < 0.25 ? 'Q1' : p < 0.5 ? 'Q2' : p < 0.75 ? 'Q3' : 'Q4'
 }
 
-const ANNUAL = /annual|year[\s-]?end|focal/i
+/** Cycle names that mark an annual cycle; without one, the latest cycle that rated potential is used. */
+export const ANNUAL_CYCLE = /annual|year[\s-]?end|focal/i
 
 /** The latest annual cycle on or before d: named "Annual"/"Year-end", else the latest with potential. */
 function latestAnnualCycle(idx: ReviewIndex, reviews: readonly Review[], d: ISODate): string | null {
   const closed = idx.cycles.filter((c) => c.cycleDate <= d)
-  for (let i = closed.length - 1; i >= 0; i--) if (ANNUAL.test(closed[i].cycle)) return closed[i].cycle
+  for (let i = closed.length - 1; i >= 0; i--) if (ANNUAL_CYCLE.test(closed[i].cycle)) return closed[i].cycle
   const withPotential = new Set(reviews.filter((r) => r.potential).map((r) => r.cycle))
   for (let i = closed.length - 1; i >= 0; i--) if (withPotential.has(closed[i].cycle)) return closed[i].cycle
   return null
@@ -134,12 +137,14 @@ export function buildPopulation(
   const people: CompPerson[] = []
   const seen = new Set<string>()
   let noFx = 0
+  let hasFamily = false
   for (const c of data.comp) {
     const e = active.get(c.employeeId)
     if (!e || seen.has(c.employeeId) || !isNum(c.baseSalary)) continue
     seen.add(c.employeeId)
     const fx = positive(c.fxToUsd)
     if (fx == null) noFx++
+    if (e.jobFamily) hasFamily = true
     const min = positive(c.rangeMin)
     const mid = positive(c.rangeMid)
     const max = positive(c.rangeMax)
@@ -193,6 +198,7 @@ export function buildPopulation(
     missing,
     noFx,
     has: {
+      jobFamily: hasFamily,
       ranges: people.some((p) => p.position != null),
       market: some((p) => p.marketRatio),
       merit: some((p) => p.merit),

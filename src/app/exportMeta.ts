@@ -3,6 +3,7 @@
  * ExportMeta header for workbooks and decks. Pure.
  */
 import type { ExportMeta } from '@/charts/types'
+import type { DataStandard } from '@/data/quality/tier'
 import { DATASET_KEYS, type DatasetKey, datasetDef } from '@/data/schema'
 import type { Window } from '@/data/scope'
 import type { SourceMeta } from '@/data/store'
@@ -72,6 +73,8 @@ export function buildExportMeta(args: {
   asOf: string
   isSample: boolean
   sampleCompany: string
+  /** The data standard in force, stated on every sheet and slide. */
+  standard?: DataStandard
 }): ExportMeta {
   return {
     view: args.viewLabel,
@@ -82,5 +85,6 @@ export function buildExportMeta(args: {
     asOf: args.asOf,
     isSample: args.isSample,
     company: args.isSample ? args.sampleCompany : 'Company data',
+    ...(args.standard && { standard: args.standard }),
   }
 }

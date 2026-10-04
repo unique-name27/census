@@ -46,6 +46,7 @@ import {
   retroDrill,
 } from './drills'
 import { type CaseFact, dueIn, onTimeRate, type TxFact } from './facts'
+import { type Lineage, union, when } from './lineage'
 import { type FinalPayRow, retroCandidates, retroShare, type SiteRow } from './transactions'
 import { duration, isOther } from './util'
 
@@ -65,6 +66,8 @@ export interface FindingInputs {
   small?: boolean
   /** Scope for the drill-downs behind each finding's number. */
   scope: DrillScope
+  /** The fields behind each measure (engine/lineage.ts). */
+  lineage: Lineage
 }
 
 interface Ranked extends Finding {
@@ -192,6 +195,13 @@ function volumeSpikes(x: FindingInputs): Ranked[] {
           order: (a, b) => Number(b.resolutionMet === false) - Number(a.resolutionMet === false),
         }),
       ),
+      // The SLA rates set the severity and the detail; a segment adds the requester's org.
+      uses: union(
+        x.lineage.opened,
+        x.lineage.category,
+        when(slaSpike.rate != null, x.lineage.resolutionSla),
+        when(seg, x.lineage.segment),
+      ),
       rank: 3,
       category,
     })
@@ -249,6 +259,13 @@ function slowCategories(x: FindingInputs, raised: ReadonlySet<string>): Ranked[]
       drill: drillWhen(x.scope, r.records, () =>
         resolutionDrill(x.scope, r.records, `Cases judged on resolution SLA, ${r.category}, ${x.scope.per}`),
       ),
+      // Only categories with an Atlas process are raised, so the process counts too.
+      uses: union(
+        x.lineage.resolutionSla,
+        x.lineage.category,
+        x.lineage.process,
+        when(seg, x.lineage.segment),
+      ),
       rank: 2,
       category: r.category,
     })
@@ -291,6 +308,7 @@ function finalPayLate(x: FindingInputs): Ranked[] {
         drill: drillWhen(x.scope, r.records, () =>
           onTimeDrill(x.scope, r.records, `Final pay due, ${r.name}, ${x.scope.per}`, { exitType: true }),
         ),
+        uses: union(x.lineage.onTime, x.lineage.txType, x.lineage.site, when(split, x.lineage.exitType)),
         rank: 1 + (r.rate ?? 1),
       }
     })
@@ -326,6 +344,7 @@ function newHireReadiness(x: FindingInputs): Ranked[] {
       drill: drillWhen(x.scope, r.records, () =>
         onTimeDrill(x.scope, r.records, `New hires due, ${r.region}, ${x.scope.per}`),
       ),
+      uses: union(x.lineage.onTime, x.lineage.txType, x.lineage.site),
       rank: 4,
     })
   }
@@ -348,6 +367,7 @@ function newHireReadiness(x: FindingInputs): Ranked[] {
       drill: drillWhen(x.scope, s.records, () =>
         onTimeDrill(x.scope, s.records, `New hires due, ${s.location}, ${x.scope.per}`),
       ),
+      uses: union(x.lineage.onTime, x.lineage.txType, x.lineage.site),
       rank: 4,
     })
   }
@@ -375,6 +395,7 @@ function channelGap(x: FindingInputs): Ranked[] {
       drill: drillWhen(x.scope, c.resolvedRecords, () =>
         csatDrill(x.scope, c.resolvedRecords, `Cases rated for satisfaction, ${c.channel}, ${x.scope.per}`),
       ),
+      uses: union(x.lineage.csat, x.lineage.channel),
       rank: 7,
     })
   }
@@ -413,6 +434,7 @@ function reopenHotspots(x: FindingInputs): Ranked[] {
       drill: drillWhen(x.scope, r.records, () =>
         reopenDrill(x.scope, r.records, `Reopened cases, ${r.category}, ${x.scope.per}`),
       ),
+      uses: union(x.lineage.reopen, x.lineage.category, when(seg, x.lineage.segment)),
       rank: 6,
     })
   }
@@ -448,6 +470,7 @@ function agedBacklog(x: FindingInputs): Ranked[] {
         () => openDrill(x.scope, list, `Cases open more than 30 days, ${category}`, true),
         true,
       ),
+      uses: union(x.lineage.open, x.lineage.category, when(slaText, x.lineage.resolutionSla)),
       rank: 5,
     })
   }
@@ -469,6 +492,7 @@ function retroAdjustments(x: FindingInputs): Ranked[] {
       drill: drillWhen(x.scope, changes, () =>
         retroDrill(x.scope, changes, `Retro adjustments, ${x.scope.per}`),
       ),
+      uses: x.lineage.retro,
       rank: 8,
     },
   ]
@@ -504,6 +528,7 @@ function strongest(x: FindingInputs): Ranked[] {
           `Cases judged on resolution SLA, ${best.category}, ${x.scope.per}`,
         ),
       ),
+      uses: union(x.lineage.resolutionSla, x.lineage.category, when(hours.value != null, x.lineage.resolved)),
       rank: 9,
     },
   ]

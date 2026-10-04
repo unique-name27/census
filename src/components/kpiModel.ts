@@ -2,8 +2,10 @@
  * Text and tone for KPI tiles, and the rows a KPI strip contributes to view exports. Pure.
  */
 import type { Column } from '@/charts/types'
+import { TIER_LABEL } from '@/data/quality/tier'
 import { MIN_GROUP } from '@/data/schema'
 import { DASH, fmt, fmtDelta, isNum } from '@/lib/format'
+import type { TierGate } from './tier/tierModel'
 import type { Kpi } from './types'
 
 export const SUPPRESSED_NOTE = `Hidden to protect anonymity (n < ${MIN_GROUP})`
@@ -46,16 +48,34 @@ export const KPI_COLUMNS: Column[] = [
   { key: 'note', label: 'Note', format: 'text' },
 ]
 
-/** Formatted rows for the "Key figures" table in view exports (values are text: units differ by row). */
-export function kpiRows(kpis: readonly Kpi[]): Record<string, unknown>[] {
-  return kpis.map((k) => {
-    const change = kpiDeltaText(k)
-    return {
+/** The key figures table with each number's tier after its value. */
+export const KPI_COLUMNS_WITH_TIER: Column[] = [
+  ...KPI_COLUMNS.slice(0, 2),
+  { key: 'tier', label: 'Tier', format: 'text' },
+  ...KPI_COLUMNS.slice(2),
+]
+
+/**
+ * Formatted rows for the "Key figures" table in view exports (values are text: units differ by
+ * row). With `gates` (one per KPI), each row carries its tier, and a number the data standard
+ * hides exports as "—" with the reason, exactly as the tile shows it.
+ */
+export function kpiRows(
+  kpis: readonly Kpi[],
+  gates?: readonly (TierGate | null)[],
+): Record<string, unknown>[] {
+  return kpis.map((k, i) => {
+    const gate = gates?.[i] ?? null
+    const hidden = !!gate && !gate.shown
+    const change = hidden ? null : kpiDeltaText(k)
+    const row: Record<string, unknown> = {
       measure: k.label,
-      value: kpiValueText(k),
+      value: hidden ? DASH : kpiValueText(k),
       change: change ?? '',
       comparedWith: change ? (k.deltaLabel ?? '') : '',
-      note: k.suppressed ? SUPPRESSED_NOTE : (k.note ?? ''),
+      note: hidden ? (gate.reason ?? '') : k.suppressed ? SUPPRESSED_NOTE : (k.note ?? ''),
     }
+    if (gates) row.tier = gate ? TIER_LABEL[gate.tier] : ''
+    return row
   })
 }

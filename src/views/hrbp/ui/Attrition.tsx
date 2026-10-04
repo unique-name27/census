@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { BarList, Columns, Figure, Lines } from '@/charts'
 import { Section, Segmented } from '@/components'
 import { useAnalytics } from '@/data/context'
+import { BELOW_STANDARD_TEXT } from '@/data/quality'
 import { LEVELS, MIN_GROUP } from '@/data/schema'
 import { drill } from '@/drill/Drill'
 import { openPerson } from '@/drill/store'
@@ -29,6 +30,7 @@ import {
   regrettedQuarterSpec,
   typedCountSpec,
 } from '../engine/buckets'
+import { FIGURE, REASON } from '../engine/lineage'
 import { DEF } from './defs'
 import { drillWhen } from './drill'
 
@@ -67,6 +69,8 @@ export function Attrition({ m }: { m: HrbpModel }) {
   const groupsWithRate = groupRows.filter((r) => r[rateKey] != null)
   const regrettedRows = a.regrettedByQuarter
   const showRegretted = regrettedRows.length > 0
+  // Exit reasons below the data standard drop out of the leaver table instead of hiding the table.
+  const withReason = p.meets(REASON)
 
   // Drills: each mark and count opens the leavers behind it.
   const quarterDrill = (rows: readonly QuarterExitRow[]) => drill(() => quarterExitSpec(p, rows))
@@ -88,6 +92,7 @@ export function Attrition({ m }: { m: HrbpModel }) {
       >
         <Figure
           id="hrbp-attrition-quarter"
+          uses={p.uses(FIGURE.attritionByQuarter)}
           title="Attrition by quarter"
           subtitle={`Annualized exit rate per quarter by termination type, ${qRange}`}
           data={quarters}
@@ -136,6 +141,7 @@ export function Attrition({ m }: { m: HrbpModel }) {
         </Figure>
         <Figure
           id="hrbp-regretted-quarter"
+          uses={p.uses(FIGURE.regrettedByQuarter)}
           title="Regretted attrition by quarter"
           subtitle={`Annualized regretted exit rate per quarter, ${qRange}${ctx.isCompany ? '' : ', with the company for comparison'}`}
           data={regrettedRows}
@@ -191,6 +197,7 @@ export function Attrition({ m }: { m: HrbpModel }) {
       >
         <Figure
           id="hrbp-exit-reasons"
+          uses={p.uses(FIGURE.exitReasons)}
           title="Why people left"
           subtitle={`Voluntary exits by reason, ${window}`}
           data={a.reasons}
@@ -237,6 +244,7 @@ export function Attrition({ m }: { m: HrbpModel }) {
         </Figure>
         <Figure
           id={`hrbp-attrition-${dim}`}
+          uses={p.uses(FIGURE.attritionByGroup(dim))}
           title={`${voluntaryOnly ? 'Voluntary attrition' : 'Attrition'} by ${dim}`}
           subtitle={`Annualized exits ÷ average headcount, ${window}, groups under ${MIN_GROUP} hidden`}
           data={groupRows}
@@ -336,6 +344,7 @@ export function Attrition({ m }: { m: HrbpModel }) {
       >
         <Figure
           id="hrbp-exits-tenure"
+          uses={p.uses(FIGURE.exitsByTenure)}
           title="Exits by tenure at exit"
           subtitle={`Employee exits by years of service when they left, ${window}`}
           data={a.byTenure}
@@ -369,6 +378,7 @@ export function Attrition({ m }: { m: HrbpModel }) {
         </Figure>
         <Figure
           id="hrbp-attrition-level"
+          uses={p.uses(FIGURE.attritionByLevel)}
           title="Attrition by level"
           subtitle={`Annualized exits ÷ average headcount at each level, ${window}`}
           data={a.byLevel}
@@ -414,6 +424,7 @@ export function Attrition({ m }: { m: HrbpModel }) {
         </Figure>
         <Figure
           id="hrbp-exits-rating"
+          uses={p.uses(FIGURE.exitsByRating)}
           title="Exits by last rating"
           subtitle={`Employee exits by their last performance rating before leaving, ${window}`}
           data={a.byRating}
@@ -460,6 +471,7 @@ export function Attrition({ m }: { m: HrbpModel }) {
         </Figure>
         <Figure
           id="hrbp-regretted-leavers"
+          uses={p.uses(FIGURE.regrettedLeavers(withReason))}
           title="Regretted leavers"
           subtitle={`Voluntary exits marked regrettable, ${window}, newest first. Select a row to open the person.`}
           data={a.regrettedLeavers}
@@ -477,12 +489,14 @@ export function Attrition({ m }: { m: HrbpModel }) {
               drill: (r) => drillWhen(!!r.managerId, () => managerRegrettedSpec(p, a, r.managerId)),
             },
             { key: 'exitDate', label: 'Exit date', format: 'date' },
-            { key: 'reason', label: 'Reason', format: 'text' },
+            ...(withReason ? [{ key: 'reason' as const, label: 'Reason', format: 'text' as const }] : []),
             { key: 'lastRating', label: 'Last rating', format: 'int' },
             { key: 'tenure', label: 'Tenure', format: 'years' },
           ]}
           definitions={[DEF.regretted]}
-          note={`${a.regrettedLeavers.length} regretted leavers · as of ${asOf}`}
+          note={`${a.regrettedLeavers.length} regretted leavers · as of ${asOf}${
+            withReason ? '' : ` · reasons not shown: ${BELOW_STANDARD_TEXT[ctx.standard].toLowerCase()}`
+          }`}
           tableOnly
           table={{
             search: 'Search leavers',

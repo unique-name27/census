@@ -65,6 +65,12 @@
   --color-warning-wash: var(--warning-wash);
   --color-serious-wash: var(--serious-wash);
   --color-critical-wash: var(--critical-wash);
+  --color-tier-gold: var(--tier-gold);
+  --color-tier-silver: var(--tier-silver);
+  --color-tier-bronze: var(--tier-bronze);
+  --color-tier-gold-wash: var(--tier-gold-wash);
+  --color-tier-silver-wash: var(--tier-silver-wash);
+  --color-tier-bronze-wash: var(--tier-bronze-wash);
 
   --radius-sheet: var(--radius-sheet);
   --radius-control: var(--radius-control);
@@ -114,6 +120,23 @@
       animation-duration: 0.001ms !important;
       transition-duration: 0.001ms !important;
     }
+  }
+  /* Settings → Display → Motion: "Reduce motion" pins the same rule whatever the OS says. */
+  :root[data-motion="reduce"] *,
+  :root[data-motion="reduce"] *::before,
+  :root[data-motion="reduce"] *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+  /* Settings → Display → Text size zooms the app root (src/app/useShell.ts). Menus, popovers,
+     tooltips and sheets render in portals outside it: their content takes the same zoom, while
+     the positioner or sheet frame stays unzoomed so placement and screen fit stay correct. */
+  :root[data-text-size]
+    [data-base-ui-portal]
+    > :is([role="presentation"][data-side], [role="dialog"], [role="alertdialog"])
+    > * {
+    zoom: var(--text-zoom, 1);
   }
 }
 

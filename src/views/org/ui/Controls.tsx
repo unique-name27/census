@@ -7,10 +7,12 @@ import { Button, IconChevronRight, Menu, type MenuItem, Segmented } from '@/comp
 import { cx } from '@/components/ui'
 import {
   COLOR_BY_LABELS,
+  COLOR_BY_OPTIONS,
   COMPANY_ROOT,
   type ColorBy,
   type ColorScheme,
   chainTo,
+  type LayerGate,
   type LevelsPreset,
   type OrgTree,
   swatchCss,
@@ -38,16 +40,31 @@ export function LevelsControl({
   )
 }
 
-const COLOR_OPTIONS: ColorBy[] = ['department', 'businessUnit', 'location', 'level', 'tenure', 'none']
-
-export function ColorControl({ value, onChange }: { value: ColorBy; onChange: (v: ColorBy) => void }) {
+/**
+ * The color key menu. Keys whose field has no data, or is below the data standard, are listed but
+ * cannot be picked; the hint says why.
+ */
+export function ColorControl({
+  value,
+  onChange,
+  gates,
+}: {
+  value: ColorBy
+  onChange: (v: ColorBy) => void
+  gates?: Record<ColorBy, LayerGate>
+}) {
   const items: MenuItem[] = [
     { heading: 'Color the top edge by' },
-    ...COLOR_OPTIONS.map((c) => ({
-      label: COLOR_BY_LABELS[c],
-      onSelect: () => onChange(c),
-      icon: c === value ? <span className="size-1.5 rounded-full bg-ink" /> : undefined,
-    })),
+    ...COLOR_BY_OPTIONS.map((c) => {
+      const off = gates && !gates[c].ok
+      return {
+        label: COLOR_BY_LABELS[c],
+        onSelect: () => onChange(c),
+        icon: c === value ? <span className="size-1.5 rounded-full bg-ink" /> : undefined,
+        disabled: off,
+        hint: off ? (gates[c].noData ? 'No data' : 'Below standard') : undefined,
+      }
+    }),
   ]
   return (
     <Menu

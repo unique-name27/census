@@ -83,6 +83,7 @@ export function PerformanceTab({ m }: { m: TalentModel }) {
       >
         <Figure
           id="talent-high-share-by-department"
+          uses={m.uses['talent-high-share-by-department']}
           title="Share rated 4-5 by department"
           subtitle={`People rated 4 or 5 as a share of people rated, ${cycle}`}
           data={perf.byDepartment}
@@ -110,6 +111,7 @@ export function PerformanceTab({ m }: { m: TalentModel }) {
         </Figure>
         <Figure
           id="talent-rating-mix"
+          uses={m.uses['talent-rating-mix']}
           title="Rating mix by business unit"
           subtitle={`Share of people at each rating, ${cycle}, with the guideline on top`}
           data={perf.mix}
@@ -137,6 +139,7 @@ export function PerformanceTab({ m }: { m: TalentModel }) {
       >
         <Figure
           id="talent-calibration-shift"
+          uses={m.uses['talent-calibration-shift']}
           title="Calibration shift by business unit"
           subtitle={`Average manager-proposed rating and average final rating, ${cycle}`}
           data={perf.calibration}
@@ -167,6 +170,7 @@ export function PerformanceTab({ m }: { m: TalentModel }) {
         </Figure>
         <Figure
           id="talent-average-rating-by-cycle"
+          uses={m.uses['talent-average-rating-by-cycle']}
           title="Average rating by cycle"
           subtitle="Mean final rating per business unit in each review cycle"
           data={perf.cycles}
@@ -199,6 +203,7 @@ export function PerformanceTab({ m }: { m: TalentModel }) {
       >
         <Figure
           id="talent-high-share-by-level"
+          uses={m.uses['talent-high-share-by-level']}
           title="Share rated 4-5 by level"
           subtitle={`People rated 4 or 5 as a share of people rated, ${cycle}`}
           data={perf.byLevel}
@@ -225,6 +230,7 @@ export function PerformanceTab({ m }: { m: TalentModel }) {
         </Figure>
         <Figure
           id="talent-exit-by-rating"
+          uses={m.uses['talent-exit-by-rating']}
           title="Exit rate within 12 months by rating"
           subtitle={
             exitCycle

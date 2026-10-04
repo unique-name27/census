@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Column } from '@/charts/types'
 import { toTsv } from './clipboard'
-import { csvField, guardFormula, toCsv } from './csv'
+import { csvField, csvPreamble, guardFormula, toCsv } from './csv'
 
 const columns: Column[] = [
   { key: 'name', label: 'Name' },
@@ -79,5 +79,28 @@ describe('toTsv', () => {
       { showPay: false },
     )
     expect(tsv).toBe("A\tB\nx y z\t50%\n'+1\t")
+  })
+})
+
+describe('csvPreamble', () => {
+  it('states the data standard and the tier between the context and the stamp', () => {
+    const lines = csvPreamble(
+      { name: 'ttf', title: 'Time to fill', columns, rows: [], tier: 'gold' },
+      {
+        view: 'Recruiting',
+        scope: 'Whole company',
+        window: 'Last 12 months',
+        asOf: '2026-09-30',
+        isSample: false,
+        company: 'Company data',
+        standard: 'silver',
+      },
+    )
+    expect(lines).toEqual([
+      'Time to fill',
+      'Whole company · Last 12 months · As of 30 Sep 2026',
+      'Data standard: Validated (silver and up) · Tier: Gold',
+      'Company confidential',
+    ])
   })
 })

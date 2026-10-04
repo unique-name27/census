@@ -2,22 +2,28 @@
  * Head of the Data room: the name, the privacy statement, where the loaded data stands, and the
  * actions that cover every dataset at once. "Reset everything" asks for confirmation in place.
  */
-import { useEffect, useRef, useState } from 'react'
+import { type KeyboardEvent, useEffect, useRef, useState } from 'react'
+import { rovingIndex } from '@/app/keyboard'
 import { IconDownload, IconFile, IconLock, IconReset, IconWarning } from '@/components/icons'
+import { goTo } from '@/components/navigation'
 import { toast } from '@/components/toast'
-import { Button } from '@/components/ui'
+import { Button, cx } from '@/components/ui'
 import { useAnalytics } from '@/data/context'
 import { type DatasetKey, datasetDef } from '@/data/schema'
 import { useCensus } from '@/data/store'
 import { fmt } from '@/lib/format'
 import type { ManifestSummary } from '../engine/manifest'
+import { DATA_TABS, type DataTab } from '../links'
 import { useImportLogs } from '../state/importLog'
 import { downloadSampleWorkbook, downloadTemplate } from './downloads'
 import { useBusy } from './useBusy'
 
 const COUNT_WORDS = ['No', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten']
 
-/** "Nine datasets, 39,994 rows. Compensation was left out because pay amounts are off; …" */
+/**
+ * "Nine datasets, 39,994 rows. Compensation was left out because pay amounts are off; … This is the
+ * clean sample, …". The workbook is the clean sample; the app shows the messy one.
+ */
 export function sampleToastText(done: {
   rows: number
   datasets: readonly DatasetKey[]
@@ -25,10 +31,11 @@ export function sampleToastText(done: {
 }): string {
   const n = done.datasets.length
   const head = `${done.leftOut.length ? (COUNT_WORDS[n] ?? n) : 'All ten'} datasets, ${fmt(done.rows, 'int')} rows.`
-  if (!done.leftOut.length) return head
+  const clean = 'This is the clean sample, so some numbers and tiers differ from the ones on screen.'
+  if (!done.leftOut.length) return `${head} ${clean}`
   const names = done.leftOut.map((k) => datasetDef(k).label).join(' and ')
   const were = done.leftOut.length === 1 ? `${names} was` : `${names} were`
-  return `${head} ${were} left out because pay amounts are off; switch them on to include ${done.leftOut.length === 1 ? 'it' : 'them'}.`
+  return `${head} ${were} left out because pay amounts are off; switch them on to include ${done.leftOut.length === 1 ? 'it' : 'them'}. ${clean}`
 }
 
 function ResetConfirm({ uploaded, onDone }: { uploaded: number; onDone: () => void }) {
@@ -74,7 +81,56 @@ function ResetConfirm({ uploaded, onDone }: { uploaded: number; onDone: () => vo
   )
 }
 
-export function DataRoomHeader({ summary }: { summary: ManifestSummary }) {
+export const DATA_BODY_ID = 'data-room-body'
+
+/** Datasets and Categories & mapping, as underline tabs like a view's sub-tabs. */
+function DataTabs({ active }: { active: DataTab }) {
+  const refs = useRef<(HTMLButtonElement | null)[]>([])
+  const onKeyDown = (i: number) => (e: KeyboardEvent<HTMLButtonElement>) => {
+    const next = rovingIndex(e.key, i, DATA_TABS.length)
+    if (next == null) return
+    e.preventDefault()
+    refs.current[next]?.focus()
+    goTo('data', DATA_TABS[next].route)
+  }
+  return (
+    <div
+      role="tablist"
+      aria-label="Data room sections"
+      className="-mx-(--gutter) flex gap-6 overflow-x-auto px-(--gutter) [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+    >
+      {DATA_TABS.map((t, i) => {
+        const selected = t.key === active
+        return (
+          <button
+            key={t.key}
+            ref={(el) => {
+              refs.current[i] = el
+            }}
+            type="button"
+            role="tab"
+            id={`subtab-data-${t.key}`}
+            aria-selected={selected}
+            aria-controls={DATA_BODY_ID}
+            tabIndex={selected ? 0 : -1}
+            onClick={() => goTo('data', t.route)}
+            onKeyDown={onKeyDown(i)}
+            className={cx(
+              'relative h-10 shrink-0 text-[13px] whitespace-nowrap transition-colors focus-visible:-outline-offset-2',
+              selected
+                ? 'font-semibold text-ink after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:bg-ink'
+                : 'font-medium text-ink-2 hover:text-ink',
+            )}
+          >
+            {t.label}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+export function DataRoomHeader({ summary, tab }: { summary: ManifestSummary; tab: DataTab }) {
   const ctx = useAnalytics()
   const asOfOverride = useCensus((s) => s.asOfOverride)
   const { isBusy, run } = useBusy()
@@ -132,7 +188,9 @@ export function DataRoomHeader({ summary }: { summary: ManifestSummary }) {
         </div>
       </div>
       {confirming && <ResetConfirm uploaded={summary.uploaded} onDone={() => setConfirming(false)} />}
-      <div className="mt-4 border-b border-rule" />
+      <div className="mt-4 border-b border-rule">
+        <DataTabs active={tab} />
+      </div>
     </div>
   )
 }

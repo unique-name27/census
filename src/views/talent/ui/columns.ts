@@ -29,9 +29,10 @@ import type { BenchScope, BenchTableRow, CoverageRow, HipoGroupRow, RoleRow } fr
 
 export type NineBoxRow = Omit<NineBoxCell, 'people'>
 
-export const nineBoxColumns = (d: TalentDrills): Column<NineBoxRow>[] => {
+/** `risk` false leaves out the flight-risk overlay (below the data standard). */
+export const nineBoxColumns = (d: TalentDrills, risk = true): Column<NineBoxRow>[] => {
   const all = (r: NineBoxRow) => d.nineBox(r.performance, r.potential, 'all')
-  return [
+  const cols: Column<NineBoxRow>[] = [
     { key: 'performance', label: 'Performance' },
     { key: 'potential', label: 'Potential' },
     { key: 'label', label: 'Box' },
@@ -44,13 +45,14 @@ export const nineBoxColumns = (d: TalentDrills): Column<NineBoxRow>[] => {
       drill: (r) => d.nineBox(r.performance, r.potential, 'highRisk'),
     },
   ]
+  return risk ? cols : cols.filter((c) => c.key !== 'highRisk')
 }
 
 /** "Rating (2025 Annual)": the 9-box reads the annual cycle, which can differ from the latest one. */
 const cycleLabel = (label: string, cycle: string | null | undefined) =>
   cycle ? `${label} (${cycle})` : label
 
-export const nineBoxPeopleColumns = (cycle?: string | null): Column<NineBoxPerson>[] => [
+export const nineBoxPeopleColumns = (cycle?: string | null, risk = true): Column<NineBoxPerson>[] => [
   { key: 'name', label: 'Name' },
   { key: 'employeeId', label: 'ID' },
   { key: 'jobTitle', label: 'Job title' },
@@ -60,13 +62,13 @@ export const nineBoxPeopleColumns = (cycle?: string | null): Column<NineBoxPerso
   { key: 'manager', label: 'Manager' },
   { key: 'rating', label: cycleLabel('Rating', cycle), format: 'int' },
   { key: 'potential', label: cycleLabel('Potential', cycle) },
-  { key: 'riskBand', label: 'Flight risk' },
+  ...(risk ? [{ key: 'riskBand', label: 'Flight risk' }] : []),
 ]
 
-export const nineBoxDetailColumns = (cycle?: string | null): Column[] => [
+export const nineBoxDetailColumns = (cycle?: string | null, risk = true): Column[] => [
   { key: 'box', label: 'Box' },
-  ...nineBoxPeopleColumns(cycle),
-  { key: 'riskScore', label: 'Flight-risk score', format: 'int' },
+  ...nineBoxPeopleColumns(cycle, risk),
+  ...(risk ? [{ key: 'riskScore', label: 'Flight-risk score', format: 'int' as const }] : []),
 ]
 
 export const distributionColumns = (d: TalentDrills): Column<DistributionRow>[] => [

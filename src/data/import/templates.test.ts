@@ -95,7 +95,7 @@ describe('template layout', () => {
     expect(ws.getRow(1).getCell(1).font?.bold).toBe(true)
     expect(ws.views[0]).toMatchObject({ state: 'frozen', ySplit: 1 })
     expect(ws.rowCount).toBe(3)
-    expect(ws.getCell('K2').value).toEqual(new Date(Date.UTC(2012, 2, 1)))
+    expect(ws.getCell('L2').value).toEqual(new Date(Date.UTC(2012, 2, 1)))
     const typeCol = datasetDef('employees').fields.findIndex((f) => f.key === 'employmentType') + 1
     const dv = ws.getRow(2).getCell(typeCol).dataValidation
     expect(dv).toMatchObject({ type: 'list', formulae: ['"Employee,Contractor,Intern"'] })

@@ -78,6 +78,7 @@ export function Cycle({ m }: { m: CompModel }) {
       >
         <Figure
           id="comp-spend-by-bu"
+          uses={m.uses['comp-spend-by-bu']}
           title="Merit spend by business unit"
           subtitle={`Σ merit ÷ Σ eligible base, USD, this cycle against the ${pct2(s.meritBudget)} budget`}
           data={c.byBu}
@@ -100,6 +101,7 @@ export function Cycle({ m }: { m: CompModel }) {
         </Figure>
         <Figure
           id="comp-merit-distribution"
+          uses={m.uses['comp-merit-distribution']}
           title="Merit distribution"
           subtitle="Proposed merit % per person, this cycle"
           data={c.hist}
@@ -131,6 +133,7 @@ export function Cycle({ m }: { m: CompModel }) {
       >
         <Figure
           id="comp-guideline-exceptions"
+          uses={m.uses['comp-guideline-exceptions']}
           title="Guideline exceptions"
           subtitle={`Rule breaks first, then the largest gaps to the guideline, as of ${asOf}`}
           data={c.exceptions}
@@ -158,6 +161,7 @@ export function Cycle({ m }: { m: CompModel }) {
       >
         <Figure
           id="comp-promotions"
+          uses={m.uses['comp-promotions']}
           title="Promotions in this cycle"
           subtitle="Promotion increases proposed this cycle, kept apart from merit"
           data={c.promotions.rows}
@@ -177,6 +181,7 @@ export function Cycle({ m }: { m: CompModel }) {
         />
         <Figure
           id="comp-rewards-mix"
+          uses={m.uses['comp-rewards-mix']}
           title="Total rewards mix by level"
           subtitle="Share of target pay from base, target bonus and annual equity, USD"
           data={c.mix}

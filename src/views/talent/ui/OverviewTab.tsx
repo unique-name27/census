@@ -41,6 +41,7 @@ export function OverviewTab({ m }: { m: TalentModel }) {
       >
         <Figure
           id="talent-rating-distribution"
+          uses={m.uses['talent-rating-distribution']}
           title="Rating distribution vs guideline"
           subtitle={cycle ? `Share of people at each rating, ${cycle}` : 'Share of people at each rating'}
           data={perf.distribution}
@@ -65,6 +66,7 @@ export function OverviewTab({ m }: { m: TalentModel }) {
         </Figure>
         <Figure
           id="talent-succession-coverage"
+          uses={m.uses['talent-succession-coverage']}
           title="Succession coverage by business unit"
           subtitle="Critical and key roles by the readiness of their best successor, as of the latest plans"
           data={succ.coverageByUnit.filter((r) => r.roles > 0)}
@@ -101,6 +103,7 @@ export function OverviewTab({ m }: { m: TalentModel }) {
       >
         <Figure
           id="talent-key-talent-top"
+          uses={m.uses['talent-key-talent-top']}
           title="Key talent at risk, top 10"
           subtitle={`Rated 4-5 and in the high flight-risk band, scored as of ${asOf}`}
           data={top10}

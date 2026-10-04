@@ -90,7 +90,7 @@ export function DropZone({ className }: { className?: string }) {
       }}
       onDrop={onDrop}
       className={cx(
-        spanClass(8),
+        spanClass(12),
         'flex flex-col rounded-sheet bg-sheet transition-[background-color,box-shadow] duration-100',
         over && 'bg-hover shadow-[inset_0_0_0_2px_var(--ink)]',
         className,

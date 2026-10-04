@@ -1,6 +1,7 @@
 /**
  * One row of filters above the content: period first, then the org filters, then a muted count of
- * who is in scope. Active org filters show as removable chips underneath, with the leader's chain.
+ * who is in scope. Under it, the data standard that applies to every view. Active org filters
+ * show as removable chips underneath, with the leader's chain.
  */
 import { useMemo } from 'react'
 import { FILTER_DIMENSION_LABELS, filterChips, isFiltered } from '@/components/filterLabels'
@@ -21,6 +22,7 @@ import {
 } from './filterOptions'
 import { LeaderPicker } from './LeaderPicker'
 import { PeriodControl } from './PeriodControl'
+import { StandardControl } from './StandardControl'
 
 const CHIP =
   'inline-flex h-7 max-w-full items-center gap-1.5 rounded-control bg-sheet pl-2 text-[12px] shadow-[inset_0_0_0_1px_var(--rule)]'
@@ -123,6 +125,9 @@ export function FilterBar() {
             : `${fmt(inScope, 'int')} of ${plural(total, 'person', 'people')} in scope`}
         </p>
       </fieldset>
+      <div className="mt-2.5">
+        <StandardControl />
+      </div>
       {showChips && (
         <div className="mt-2 flex flex-wrap items-center gap-1.5">
           {filters.leaderId && <LeaderCrumbs leaderId={filters.leaderId} />}

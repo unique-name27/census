@@ -5,17 +5,16 @@
  */
 import { useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { DataTable, Figure } from '@/charts'
-import type { Kpi } from '@/components'
 import { Button, Grid, IconSlides, KpiStrip, Switch, toast } from '@/components'
 import { useAnalytics } from '@/data/context'
 import type { Employee } from '@/data/schema'
 import { useCensus } from '@/data/store'
-import type { DrillSpec } from '@/drill'
 import { formatDate } from '@/lib/dates'
 import { fmt, plural } from '@/lib/format'
 import {
   COMPANY_ROOT,
   canExpand,
+  chartUses,
   colorScheme,
   type DrillScope,
   defaultSlideLeaders,
@@ -23,15 +22,19 @@ import {
   entryPoints,
   exportCut,
   flagRows,
+  flagTableUses,
+  heldBackNotes,
   isWithin,
-  keyFigureDrills,
   layoutTree,
   orgDrill,
   orgKeyFigures,
+  orgKpis,
+  orgLineage,
   STRUCTURAL,
   scopeLabel,
   shownRows,
   subtreeOf,
+  usableColor,
   visibleIds,
   visibleTree,
 } from '../engine'
@@ -86,19 +89,15 @@ export function ChartTab() {
   const chartRef = useRef<HTMLDivElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
 
-  const reqs = prefs.showReqs ? model.reqs : undefined
+  // Layers whose data is below the data standard are held back; the chart itself stays.
+  const reqs = prefs.showReqs && model.gates.reqCards.ok ? model.reqs : undefined
+  const colorBy = usableColor(model.gates, prefs.colorBy)
   const orgIds = useMemo(() => subtreeOf(tree, rootId), [tree, rootId])
   // Color slots come from the whole roster, so a department keeps its color in any focus.
   const allPeople = useMemo(() => [...tree.people.values()], [tree])
   const scheme = useMemo(
-    () =>
-      colorScheme(
-        prefs.colorBy,
-        allPeople,
-        ctx.asOf,
-        orgIds.map((id) => tree.people.get(id)).filter(isPerson),
-      ),
-    [prefs.colorBy, allPeople, orgIds, tree, ctx.asOf],
+    () => colorScheme(colorBy, allPeople, ctx.asOf, orgIds.map((id) => tree.people.get(id)).filter(isPerson)),
+    [colorBy, allPeople, orgIds, tree, ctx.asOf],
   )
   const vtree = useMemo(
     () => visibleTree(tree, rootId, expanded.ids, { reqs }),
@@ -228,61 +227,24 @@ export function ChartTab() {
 
   // Key figures for the org on screen (only the people matching the filters when they are on).
   const people = orgIds.length
-  const kd = () => keyFigureDrills(tree, rootId, key, scope, flags, model.reqRecords)
-  /** A zero has nothing behind it: no drill, so no underline that opens nothing. */
-  const when = (n: number, src: () => DrillSpec | null) => (n > 0 ? src : undefined)
-  const kpis: Kpi[] = [
-    {
-      id: 'org-people',
-      label: model.dims ? 'People matching' : 'People in this org',
-      value: key.people.length,
-      format: 'int',
-      note: model.dims
-        ? 'Matching the filters · every worker type'
-        : 'Including the leader · every worker type',
-      drill: when(key.people.length, () => kd().people),
-    },
-    {
-      id: 'org-managers',
-      label: 'People managers',
-      value: key.managers.length,
-      format: 'int',
-      drill: when(key.managers.length, () => kd().managers),
-    },
-    {
-      id: 'org-span',
-      label: 'Median span',
-      value: key.medianSpan,
-      format: 'num1',
-      note: 'Direct reports per manager',
-      definition: 'Median number of direct reports among people with at least one, all worker types.',
-      drill: when(key.managers.length, () => kd().medianSpan),
-    },
-    {
-      id: 'org-layers',
-      label: 'Layers',
-      value: key.layers,
-      format: 'int',
-      definition: 'Levels from the top of this org to its deepest report, counting the top as 1.',
-      drill: when(key.layers, () => kd().layers),
-    },
-    {
-      id: 'org-open-roles',
-      label: 'Open roles',
-      value: key.openReqIds.length,
-      format: 'int',
-      note: 'Open requisitions',
-      drill: when(key.openReqIds.length, () => kd().openRoles),
-    },
-    {
-      id: 'org-flags',
-      label: 'Structure flags',
-      value: key.flagged.length,
-      format: 'int',
-      note: 'People with a span, chain or new-manager flag',
-      drill: when(key.flagged.length, () => kd().flagged),
-    },
-  ]
+  const lineage = orgLineage(model, rootId, f)
+  const chartFields = chartUses({ ...lineage, colorBy, reqCards: !!reqs })
+  const kpis = orgKpis({
+    tree,
+    rootId,
+    key,
+    scope,
+    flags,
+    reqRecords: model.reqRecords,
+    lineage,
+    dims: model.dims,
+  })
+  const { gates } = model
+  const heldBack = heldBackNotes(gates, {
+    colorBy: prefs.colorBy,
+    openRoles: prefs.showReqs,
+    flags: prefs.showFlags,
+  })
 
   const title = rootId === tree.rootId ? 'Org chart' : `Org chart: ${rootName}`
   const dimNote = model.dims
@@ -303,6 +265,7 @@ export function ChartTab() {
           definitions={CHART_DEFINITIONS}
           note={`${plural(rows.length, 'person', 'people')} shown of ${fmt(people, 'int')} in this org.${dimNote} Drag to pan, or click the chart and scroll. Ctrl and scroll, or pinch, to zoom. Arrow keys move through the tree. Click a count on a card to list those people.`}
           tableToggle={false}
+          uses={chartFields}
           actions={
             <>
               <Button size="sm" icon={<IconSlides />} onClick={() => openSlides()}>
@@ -334,7 +297,11 @@ export function ChartTab() {
                   placeholder="Find a person"
                 />
                 <LevelsControl value={expanded.preset} onChange={expanded.setLevels} />
-                <ColorControl value={prefs.colorBy} onChange={(c) => setPrefs({ colorBy: c })} />
+                <ColorControl
+                  value={colorBy}
+                  onChange={(c) => setPrefs({ colorBy: c })}
+                  gates={gates.color}
+                />
                 <Switch
                   checked={prefs.showReqs}
                   onChange={(v) => setPrefs({ showReqs: v })}
@@ -359,6 +326,7 @@ export function ChartTab() {
                 />
                 <ColorLegend scheme={scheme} className="ml-auto" />
               </div>
+              {heldBack.length > 0 && <p className="mt-2 text-[12px] text-muted">{heldBack.join(' ')}</p>}
 
               <div className="mt-3 flex flex-col gap-3 lg:flex-row">
                 <Canvas
@@ -423,6 +391,7 @@ export function ChartTab() {
           subtitle={`Span outliers, single-report chains, new managers with large teams, and people shown away from their data manager${model.dims ? ', among people matching the filters' : ''}`}
           data={flagTable}
           columns={flagColumns(tree, model.dims ? scopeIds : orgIds, flags, scope)}
+          uses={flagTableUses(lineage)}
           tableOnly
           empty={flagTable.length ? null : 'No flags in this org.'}
           table={{
@@ -431,9 +400,16 @@ export function ChartTab() {
             onRowClick: (r) => jump(r.employeeId, { scroll: true }),
           }}
           note={
-            flagTable.length
-              ? `${plural(flaggedPeople, 'person', 'people')} with a structure flag. Click a row to find the person on the chart, or a count to list the people.`
-              : undefined
+            [
+              flagTable.length
+                ? `${plural(flaggedPeople, 'person', 'people')} with a structure flag. Click a row to find the person on the chart, or a count to list the people.`
+                : null,
+              gates.jobChanges.reason
+                ? `New-manager flags use hire dates: ${gates.jobChanges.reason}.`
+                : null,
+            ]
+              .filter(Boolean)
+              .join(' ') || undefined
           }
         />
       </Grid>
@@ -449,6 +425,7 @@ export function ChartTab() {
         scheme={scheme}
         reqs={reqs}
         reqByCardId={model.reqByCardId}
+        uses={chartFields}
       />
     </div>
   )

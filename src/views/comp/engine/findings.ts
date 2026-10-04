@@ -1,6 +1,10 @@
 /**
  * The Compensation readout: findings a comp partner would raise with a leader, most severe first.
  * Counts and ratios always; dollar amounts only when pay amounts are switched on. Pure.
+ *
+ * Data standard: a finding's `uses` are what it actually says. A secondary clause or segment that
+ * reads fields below the standard (pay as an exit reason, recent promotions) is left out and said
+ * so, rather than hiding a finding whose headline number meets the standard.
  */
 import type { Finding, FindingPerson, Severity } from '@/components/types'
 import type { AnalyticsContext } from '@/data/context'
@@ -26,6 +30,23 @@ import {
   X_TENURE,
 } from './drill'
 import { safeMedian, values } from './groups'
+import {
+  BY,
+  COMPA,
+  dimUses,
+  FX,
+  familyUses,
+  MARKET,
+  MARKET_VS_MID,
+  MERIT,
+  type Meets,
+  meetsFor,
+  PAY_REASON,
+  POSITION,
+  RATING,
+  refs,
+  VOLUNTARY_ATTRITION,
+} from './lineage'
 import { MARKET_CHART_MIN, MARKET_FLAG, MARKET_RANGE_GAP } from './market'
 import type { CompModel } from './model'
 import { DIFFERENTIATION_FLOOR } from './performance'
@@ -45,7 +66,7 @@ const BELOW_MIN_CRITICAL = 0.05
 const ATTRITION_ESCALATE = 0.03
 const PAY_REASONS = new Set(['Base salary', 'Equity, bonus or total rewards'])
 
-export type FindingsInput = Omit<CompModel, 'kpis' | 'findings'>
+export type FindingsInput = Omit<CompModel, 'kpis' | 'findings' | 'uses'>
 
 interface Ranked extends Finding {
   /** People affected, for ordering within a severity. */
@@ -62,13 +83,18 @@ const shareOf = (n: number, of: number) =>
 
 /* ───────── low compa-ratio by location or department ───────── */
 
-function lowCompa(ctx: AnalyticsContext, m: FindingsInput): Ranked[] {
+function lowCompa(ctx: AnalyticsContext, m: FindingsInput, meets: Meets): Ranked[] {
   const out: Ranked[] = []
   const dims: { key: 'location' | 'department'; rows: typeof m.overview.byLocation }[] = [
     { key: 'location', rows: m.overview.byLocation },
     { key: 'department', rows: m.overview.byDepartment },
   ]
   const companyVol = attrition(ctx.all.employees, ctx.window, 'voluntary')
+  // Attrition, pay as the exit reason and range minimums are side clauses: each is said only when
+  // its fields meet the data standard, so the compa-ratio finding never hides because of them.
+  const attritionOk = meets(VOLUNTARY_ATTRITION)
+  const reasonOk = meets(PAY_REASON)
+  const positionOk = meets(POSITION)
   const flaggedLocations = new Set<string>()
   for (const { key, rows } of dims) {
     for (const g of rows) {
@@ -95,12 +121,17 @@ function lowCompa(ctx: AnalyticsContext, m: FindingsInput): Ranked[] {
         (e) =>
           e.terminationType === 'Voluntary' && e.terminationReason && PAY_REASONS.has(e.terminationReason),
       ).length
-      const comparable = vol.rate != null && companyVol.rate != null && vol.avgHeadcount >= MIN_GROUP
+      const comparable =
+        attritionOk && vol.rate != null && companyVol.rate != null && vol.avgHeadcount >= MIN_GROUP
       const linked = comparable && vol.rate! > companyVol.rate!
       const sentences: string[] = []
       if (linked) {
-        const reasons =
-          payExits > 0 ? `, and ${payExits} of ${vol.events} leavers named pay as the reason` : ''
+        // Below the standard the reasons are not read at all, so the note does not depend on them.
+        const reasons = !reasonOk
+          ? ` (exit reasons not shown: ${m.belowStandard.toLowerCase()})`
+          : payExits > 0
+            ? `, and ${payExits} of ${vol.events} leavers named pay as the reason`
+            : ''
         sentences.push(
           `Voluntary attrition there is ${fmt(vol.rate, 'pct')} vs ${fmt(companyVol.rate, 'pct')} for the company over ${windowPhrase(ctx.filters.period)}${reasons}.`,
         )
@@ -113,8 +144,11 @@ function lowCompa(ctx: AnalyticsContext, m: FindingsInput): Ranked[] {
       const low = m.pop.people
         .filter((p) => inGroup(p) && p.compa != null && p.compa < m.settings.bandLow)
         .sort((a, b) => a.compa! - b.compa!)
+      // A department is judged without the locations already flagged, so it reads location too.
+      const excludes = key === 'department' && flaggedLocations.size > 0
       if (low.length) {
-        const under = g.belowMin > 0 ? `, ${fmt(g.belowMin, 'int')} of them below range minimum` : ''
+        const under =
+          g.belowMin > 0 && positionOk ? `, ${fmt(g.belowMin, 'int')} of them below range minimum` : ''
         sentences.push(
           `${peopleText(low.length)} there ${isAre(low.length)} paid below the healthy band of ${ratio(m.settings.bandLow)}${under}.`,
         )
@@ -130,6 +164,14 @@ function lowCompa(ctx: AnalyticsContext, m: FindingsInput): Ranked[] {
         tab: 'ranges',
         people: low.map((p) => person(p, `compa-ratio ${ratio(p.compa)}`)),
         drill: () => compaGroupDrill(m, g, 'measured'),
+        uses: refs(
+          COMPA,
+          BY[key],
+          excludes && BY.location,
+          comparable && VOLUNTARY_ATTRITION,
+          linked && payExits > 0 && reasonOk && PAY_REASON,
+          low.length > 0 && g.belowMin > 0 && positionOk && POSITION,
+        ),
         weight: g.n,
       })
     }
@@ -206,13 +248,15 @@ const PROMOTED_DIM: Dimension<CompPerson> = {
   get: (p) => (p.promotedRecently ? 'Yes' : 'No'),
 }
 
-function belowMin(m: FindingsInput): Ranked[] {
+function belowMin(m: FindingsInput, meets: Meets, promotionsLoaded: boolean): Ranked[] {
   const rows = m.ranges.below
   if (!rows.length) return []
   const placed = m.pop.people.filter((p) => p.position != null)
   const affected = placed.filter((p) => p.position === 'Below minimum')
   const share = rows.length / placed.length
-  const dims = [...ORG_DIMS, PROMOTED_DIM]
+  // Segments whose fields are below the data standard are not named.
+  const allDims = [...ORG_DIMS, PROMOTED_DIM]
+  const dims = allDims.filter((d) => meets(dimUses(d.key)))
   const getOf = new Map(dims.map((d) => [d.key, d.get]))
   const segs = concentration(placed, (p) => p.position === 'Below minimum', dims).filter(
     (s) => s.dim !== 'promoted' || s.value === 'Yes',
@@ -225,7 +269,11 @@ function belowMin(m: FindingsInput): Ranked[] {
   const seg = (s: { dim: string; value: string }): Seg => ({ ...s, get: getOf.get(s.dim)! })
   const sentences: string[] = []
   if (first) sentences.push(exclusivePhrase(affected, seg(first), second && seg(second)))
-  if (m.showPay && m.ranges.costToMin.usd > 0) {
+  // Job changes below the standard are not read, and the finding says so whatever they hold.
+  if (promotionsLoaded && !dims.includes(PROMOTED_DIM))
+    sentences.push(`Recent promotions not shown: ${m.belowStandard.toLowerCase()}.`)
+  const costed = m.showPay && m.ranges.costToMin.usd > 0 && meets(FX)
+  if (costed) {
     const skipped = m.ranges.costToMin.skipped
     sentences.push(
       `Bringing them to minimum costs ${fmt(m.ranges.costToMin.usd, 'money')} a year${skipped ? ` (${peopleText(skipped)} without an FX rate left out)` : ''}.`,
@@ -261,6 +309,8 @@ function belowMin(m: FindingsInput): Ranked[] {
             ? `Rate = ${fmt(rows.length, 'int')} below minimum ÷ ${fmt(placed.length, 'int')} people with a salary range.`
             : undefined,
         ),
+      // Each person is listed with their department.
+      uses: refs(POSITION, BY.department, dimUses(first?.dim), dimUses(second?.dim), costed && FX),
       weight: rows.length,
     },
   ]
@@ -335,6 +385,8 @@ function aboveMax(m: FindingsInput): Ranked[] {
           'Above range maximum',
           `Rate = ${fmt(rows.length, 'int')} above maximum ÷ ${fmt(placed.length, 'int')} people with a salary range.`,
         ),
+      // Each person is listed with their level and tenure.
+      uses: refs(POSITION, BY.level, BY.tenureBand),
       weight: rows.length,
     },
   ]
@@ -378,6 +430,7 @@ function compressionFindings(m: FindingsInput): Ranked[] {
             Number(b.hiredRecently) - Number(a.hiredRecently) || (a.compa ?? 0) - (b.compa ?? 0),
           note: `Median compa-ratio ${ratio(newMed)} for ${peopleText(hires.length)} hired in the last 12 months vs ${ratio(incMed)} for ${fmt(inc.length, 'int')} incumbents.`,
         }),
+      uses: refs(COMPA, BY.department, BY.level, BY.tenureBand),
       weight: cell.length,
     })
   }
@@ -405,6 +458,7 @@ function overBudget(m: FindingsInput): Ranked[] {
       filter: { businessUnit: [r.group] },
       tab: 'cycle',
       drill: () => spendDrill(m, r, 'priced'),
+      uses: refs(MERIT, FX, BY.businessUnit),
       weight: r.n,
     })
   }
@@ -421,6 +475,7 @@ function overBudget(m: FindingsInput): Ranked[] {
       action: 'Agree where to bring proposals back to budget before calibration closes.',
       tab: 'cycle',
       drill: () => spendDrill(m, { ...company, group: null }, 'priced'),
+      uses: refs(MERIT, FX),
       weight: company.eligible,
     })
   }
@@ -440,12 +495,14 @@ function exceptions(m: FindingsInput, explained: ReadonlySet<string>): Ranked[] 
   if (topLow.length) parts.push(`${fmt(topLow.length, 'int')} rated 5 below 2%`)
   if (lowHigh.length) parts.push(`${fmt(lowHigh.length, 'int')} rated 1-2 above 3%`)
   let detail = ''
+  let namesDept = false
   if (outliers.length) {
     const byDept = new Map<string, number>()
     for (const o of outliers) byDept.set(o.department, (byDept.get(o.department) ?? 0) + 1)
     const [dept, n] = [...byDept.entries()].sort((a, b) => b[1] - a[1])[0]
     // A department with no differentiation produces outliers at both ends; its finding counts them.
     const concentrated = n >= outliers.length / 2 && !explained.has(dept)
+    namesDept = concentrated || (!rules && outliers.length === 1)
     if (rules) {
       const where = concentrated ? `, ${fmt(n, 'int')} of them in ${dept}` : ''
       detail = `Another ${fmt(outliers.length, 'int')} ${outliers.length === 1 ? 'proposal is' : 'proposals are'} unusual for the rating${where}.`
@@ -472,6 +529,7 @@ function exceptions(m: FindingsInput, explained: ReadonlySet<string>): Ranked[] 
         rules
           ? exceptionsDrill(m, [...topLow, ...lowHigh], 'Proposals that break the guideline rules')
           : exceptionsDrill(m, outliers, 'Proposals unusual for the rating'),
+      uses: refs(MERIT, RATING, namesDept && BY.department),
       weight: rules * 4 + outliers.length,
     },
   ]
@@ -482,6 +540,8 @@ function exceptions(m: FindingsInput, explained: ReadonlySet<string>): Ranked[] 
 function belowMarket(m: FindingsInput): Ranked[] {
   const ranges: Ranked[] = []
   const positioning: Ranked[] = []
+  // Ranges vs positioning is decided by market ÷ midpoint; a single department becomes the filter.
+  const uses = refs(MARKET, MARKET_VS_MID, familyUses(m.pop), BY.department)
   for (const g of m.market.byFamily) {
     if (g.median == null || g.median > MARKET_FLAG + 1e-9 || g.group.startsWith('Other (')) continue
     // Families too small to rank on the chart are too noisy to raise.
@@ -510,6 +570,7 @@ function belowMarket(m: FindingsInput): Ranked[] {
         filter,
         tab: 'market',
         drill: () => marketDrill(m, g),
+        uses,
         weight: g.n * (1 - g.median),
       })
     } else {
@@ -523,6 +584,7 @@ function belowMarket(m: FindingsInput): Ranked[] {
         filter,
         tab: 'market',
         drill: () => marketDrill(m, g),
+        uses,
         weight: g.n * (1 - g.median),
       })
     }
@@ -558,6 +620,7 @@ function noDifferentiation(m: FindingsInput): Ranked[] {
         filter: { department: [r.group] },
         tab: 'performance',
         drill: () => differentiationDrill(m, r, r.group, null),
+        uses: refs(MERIT, RATING, BY.department),
         weight: r.n45 + r.n3,
       }
     })
@@ -577,6 +640,7 @@ function goodNews(m: FindingsInput, others: readonly Ranked[]): Ranked[] {
         action: 'Keep the guideline as it is for the next cycle.',
         tab: 'performance',
         drill: () => differentiationDrill(m, d, null, null),
+        uses: refs(MERIT, RATING),
         weight: d.n45 + d.n3,
       },
     ]
@@ -602,6 +666,7 @@ function goodNews(m: FindingsInput, others: readonly Ranked[]): Ranked[] {
             sort: (a, b) => (a.compa ?? 0) - (b.compa ?? 0) || a.name.localeCompare(b.name),
             note: `Share = ${fmt(inBand, 'int')} with a compa-ratio from ${ratio(m.settings.bandLow)} to ${ratio(m.settings.bandHigh)} ÷ ${fmt(n, 'int')} with a compa-ratio.`,
           }),
+        uses: COMPA,
         weight: n,
       },
     ]
@@ -619,6 +684,7 @@ function toFinding(r: Ranked): Finding {
   if (r.filter) f.filter = r.filter
   if (r.tab) f.tab = r.tab
   if (r.drill) f.drill = r.drill
+  if (r.uses?.length) f.uses = r.uses
   return f
 }
 
@@ -626,9 +692,10 @@ export function buildFindings(ctx: AnalyticsContext, m: FindingsInput): Finding[
   if (!m.pop.people.length) return []
   const flat = noDifferentiation(m)
   const explained = new Set(flat.map((f) => f.filter?.department?.[0]).filter((d): d is string => !!d))
+  const meets = meetsFor(ctx)
   const found: Ranked[] = [
-    ...lowCompa(ctx, m),
-    ...belowMin(m),
+    ...lowCompa(ctx, m, meets),
+    ...belowMin(m, meets, ctx.quality.datasetTier('jobChanges') !== 'none'),
     ...overBudget(m),
     ...compressionFindings(m),
     ...flat,

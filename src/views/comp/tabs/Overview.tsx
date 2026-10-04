@@ -51,6 +51,7 @@ export function Overview({ m }: { m: CompModel }) {
   const location = (
     <Figure
       id="comp-compa-by-location"
+      uses={m.uses['comp-compa-by-location']}
       title="Median compa-ratio by location"
       subtitle={`Lowest first; a square marks ${fmt(LOW_COMPA, 'ratio')} or lower, as of ${asOf}`}
       data={o.byLocation}
@@ -83,6 +84,7 @@ export function Overview({ m }: { m: CompModel }) {
         <div className={cx(spanClass(8), 'grid content-start gap-4')}>
           <Figure
             id="comp-compa-distribution"
+            uses={m.uses['comp-compa-distribution']}
             title="Compa-ratio distribution"
             subtitle={`People per ${fmt(COMPA_STEP, 'ratio')} of compa-ratio (base salary ÷ range midpoint), active employees as of ${asOf}`}
             data={o.hist}
@@ -112,6 +114,7 @@ export function Overview({ m }: { m: CompModel }) {
           </Figure>
           <Figure
             id="comp-position-by-bu"
+            uses={m.uses['comp-position-by-bu']}
             title="Range position by business unit"
             subtitle="Share of people below minimum, in each quarter of the range and above maximum"
             data={positionRows}
@@ -140,6 +143,7 @@ export function Overview({ m }: { m: CompModel }) {
       >
         <Figure
           id="comp-compa-by-level"
+          uses={m.uses['comp-compa-by-level']}
           title="Median compa-ratio by level"
           subtitle={`In level order, as of ${asOf}`}
           data={o.byLevel}
@@ -165,6 +169,7 @@ export function Overview({ m }: { m: CompModel }) {
         </Figure>
         <Figure
           id="comp-compa-by-department"
+          uses={m.uses['comp-compa-by-department']}
           title="Median compa-ratio by department"
           subtitle={`Lowest first, as of ${asOf}`}
           data={o.byDepartment}

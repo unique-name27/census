@@ -1,6 +1,7 @@
 /**
  * Contracts shared by figures, tables and exports.
  */
+import type { DataStandard, Tier } from '@/data/quality/tier'
 import type { DrillSource } from '@/drill/Drill'
 import type { Format } from '@/lib/format'
 
@@ -55,6 +56,13 @@ export interface RegisteredFigure {
   /** The rendered chart SVG, if the figure has one. */
   getSvg: () => SVGSVGElement | null
   order: number
+  /** The figure's data tier; absent when it is not gated (e.g. the Data room). */
+  tier?: Tier | null
+  /**
+   * The data standard hides the figure: `rows` hold the reason instead of its data, and there is
+   * no image. A preview shown on screen is never exported.
+   */
+  withheld?: boolean
 }
 
 /** Context stamped on every export (header rows, file names, slide footers). */
@@ -66,4 +74,6 @@ export interface ExportMeta {
   asOf: string
   isSample: boolean
   company: string
+  /** The data standard in force; every sheet, slide and CSV preamble states it. */
+  standard?: DataStandard
 }

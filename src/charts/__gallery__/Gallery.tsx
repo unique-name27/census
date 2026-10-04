@@ -1,7 +1,7 @@
 /**
  * Chart kit gallery (dev only, served at /gallery.html): every kit chart inside a Figure with
- * fake data, a theme switch to check light and dark, the pay-amounts switch, and the view
- * exports driven by the figure registry.
+ * fake data, the data tier badges and the below-standard states, a theme switch to check light
+ * and dark, the pay-amounts switch, and the view exports driven by the figure registry.
  */
 import { useState } from 'react'
 import { IconDownload, IconSlides } from '@/components/icons'
@@ -26,6 +26,7 @@ import { FigureRegistryProvider, useFigureRegistry } from '../registry'
 import { useChartTheme } from '../theme'
 import type { Column, ExportMeta } from '../types'
 import * as D from './data'
+import { TierGallery } from './Tiers'
 
 type ThemeChoice = 'system' | 'light' | 'dark'
 
@@ -101,6 +102,7 @@ function Charts() {
       <p className="col-span-12 text-[13px] text-ink-2" aria-live="polite">
         Click a bar, segment, line or Other row to test drill-down. {picked && `Selected: ${picked}`}
       </p>
+      <TierGallery onOpen={(tier) => setPicked(`${tier} badge`)} />
       <Figure
         id="gal-attrition-by-dept"
         title="Voluntary attrition by department"

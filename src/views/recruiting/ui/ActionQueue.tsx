@@ -8,10 +8,11 @@ import { type Column, Figure } from '@/charts'
 import { Button, cx, IconClose, IconCopy, SeverityIcon, spanClass, toast } from '@/components'
 import { Drill } from '@/drill'
 import { formatDate } from '@/lib/dates'
-import { writeClipboard } from '@/lib/export'
+import { writeClipboard } from '@/lib/export/clipboard'
 import { fmt, plural } from '@/lib/format'
 import type { RecruitingBase } from '../engine/base'
 import { activeDrill, candidateDrill, queueOwnerDrill } from '../engine/drills'
+import { FIGURE_USES } from '../engine/lineage'
 import { ownerNote } from '../engine/messages'
 import { type QueueGroup, type QueueRow, queueRows } from '../engine/pipeline'
 import { useRecruitingUi } from '../state'
@@ -197,6 +198,7 @@ export function ActionQueue({ base: b, groups }: { base: RecruitingBase; groups:
       <OwnersPanel base={b} groups={groups} total={rows.length} />
       <Figure
         id="recruiting-action-queue"
+        uses={FIGURE_USES['recruiting-action-queue']}
         title="Action queue"
         subtitle={`Active candidates who lack a next step (past the usual time) on ${formatDate(asOf)}, by owner of the next action`}
         data={shown}

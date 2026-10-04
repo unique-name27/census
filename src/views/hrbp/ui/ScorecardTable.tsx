@@ -50,13 +50,17 @@ export function ScorecardTable({
   rows,
   onPick,
   drillFor,
+  hide = [],
 }: {
   rows: ScoreRow[]
   onPick: (row: ScoreRow) => void
+  /** Columns left out (a metric whose data is below the data standard). */
+  hide?: readonly ScoreCell[]
   /** The records behind a cell; null for cells with none (hidden values, zero counts). */
   drillFor?: (row: ScoreRow, cell: ScoreCell) => DrillSource
 }) {
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 } | null>(null)
+  const cols = COLS.filter((c) => !hide.includes(c.key))
   const pinned = rows.filter((r) => r.kind === 'other' || r.kind === 'company')
   let body = rows.filter((r) => r.kind !== 'other' && r.kind !== 'company')
   if (sort) {
@@ -191,7 +195,7 @@ export function ScorecardTable({
           </div>
           {row.sublabel && <div className="text-[12px] leading-snug text-muted">{row.sublabel}</div>}
         </td>
-        {COLS.map((c) => cell(row, c))}
+        {cols.map((c) => cell(row, c))}
       </tr>
     )
   }
@@ -205,7 +209,7 @@ export function ScorecardTable({
           <thead>
             <tr>
               {header('label', 'Organization', false)}
-              {COLS.map((c) => header(c.key, c.label, true))}
+              {cols.map((c) => header(c.key, c.label, true))}
             </tr>
           </thead>
           <tbody>
