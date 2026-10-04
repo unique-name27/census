@@ -9,12 +9,13 @@ import { formatDate } from '@/lib/dates'
 import { fmt } from '@/lib/format'
 import { spanClass } from '@/lib/spans'
 import { PositionBars } from '../charts/PositionBars'
-import { bandDefinition, DEF_COMPA, DEF_POPULATION, DEF_POSITION, PERSON_COLUMNS } from '../columns'
+import { PERSON_COLUMNS } from '../columns'
 import { binColumns, binItems, compaGroupColumns, positionColumns } from '../drillColumns'
+import { FIGURE_METRIC } from '../engine/definitions'
 import { compaBinDrill, compaGroupDrill, positionDrill } from '../engine/drill'
-import { isLowCompa, LOW_COMPA } from '../engine/findings'
 import { COMPA_STEP, type CompModel } from '../engine/model'
 import type { CompaGroupRow } from '../engine/ranges'
+import { lowCompaAt } from '../engine/rules'
 import { emptyIf, MISSING, note } from '../shared'
 
 /** Interior bin edges on the step grid; the domain supplies the outer two. */
@@ -25,7 +26,9 @@ export function edges(domain: [number, number] | null, step: number): number[] {
   return out
 }
 
-const lowTone = (d: CompaGroupRow) => (isLowCompa(d.median) ? 'serious' : 'default')
+/** Bars at or below the low compa-ratio threshold ('comp.compa.lowGroup') are marked. */
+const lowTone = (threshold: number) => (d: CompaGroupRow) =>
+  lowCompaAt(d.median, threshold) ? 'serious' : 'default'
 const nText = (d: { n: number }) => `n = ${fmt(d.n, 'int')}`
 
 /** Click-to-drill on a compa-ratio group (a bar of a BarList). */
@@ -47,16 +50,19 @@ export function Overview({ m }: { m: CompModel }) {
   // A total row only adds information when there is more than one business unit to compare.
   const positionRows = o.positionByBu.length > 1 ? [o.positionAll, ...o.positionByBu] : o.positionByBu
   const lastBin = o.hist.length - 1
+  const low = m.rules.lowCompa.threshold
+  const tone = lowTone(low)
 
   const location = (
     <Figure
       id="comp-compa-by-location"
       uses={m.uses['comp-compa-by-location']}
+      metric={FIGURE_METRIC['comp-compa-by-location']}
       title="Median compa-ratio by location"
-      subtitle={`Lowest first; a square marks ${fmt(LOW_COMPA, 'ratio')} or lower, as of ${asOf}`}
+      subtitle={`Lowest first; a square marks ${fmt(low, 'ratio')} or lower, as of ${asOf}`}
       data={o.byLocation}
       columns={compaGroupColumns('Location', m)}
-      definitions={[DEF_COMPA, DEF_POPULATION]}
+      definitions={m.definitions['comp-compa-by-location']}
       note={note(m, n)}
       empty={emptyIf(o.byLocation, null, 'No compa-ratios in this scope.')}
     >
@@ -67,7 +73,7 @@ export function Overview({ m }: { m: CompModel }) {
         format="ratio"
         sort="asc"
         ref={companyRef(m)}
-        tone={lowTone}
+        tone={tone}
         secondary={nText}
         onSelect={compaBar(m)}
       />
@@ -85,11 +91,12 @@ export function Overview({ m }: { m: CompModel }) {
           <Figure
             id="comp-compa-distribution"
             uses={m.uses['comp-compa-distribution']}
+            metric={FIGURE_METRIC['comp-compa-distribution']}
             title="Compa-ratio distribution"
             subtitle={`People per ${fmt(COMPA_STEP, 'ratio')} of compa-ratio (base salary ÷ range midpoint), active employees as of ${asOf}`}
             data={o.hist}
             columns={binColumns(m, o.hist, 'compa')}
-            definitions={[DEF_COMPA, bandDefinition(s), DEF_POPULATION]}
+            definitions={m.definitions['comp-compa-distribution']}
             note={`${note(m, n)}${o.median == null ? '' : ` · ${fmt(o.median, 'ratio')} median`}`}
             empty={emptyIf(o.hist, null, 'No compa-ratios in this scope.')}
             detail={{ label: 'People', columns: PERSON_COLUMNS, rows: () => o.people }}
@@ -115,11 +122,12 @@ export function Overview({ m }: { m: CompModel }) {
           <Figure
             id="comp-position-by-bu"
             uses={m.uses['comp-position-by-bu']}
+            metric={FIGURE_METRIC['comp-position-by-bu']}
             title="Range position by business unit"
             subtitle="Share of people below minimum, in each quarter of the range and above maximum"
             data={positionRows}
             columns={positionColumns(m)}
-            definitions={[DEF_POSITION, DEF_POPULATION]}
+            definitions={m.definitions['comp-position-by-bu']}
             note={note(m, o.positionAll.n)}
             empty={emptyIf(
               positionRows,
@@ -139,16 +147,17 @@ export function Overview({ m }: { m: CompModel }) {
 
       <Section
         title="Where pay sits"
-        dek={`Median compa-ratio by level and department, as of ${asOf}. Orange bars with a square marker sit at a median of ${fmt(LOW_COMPA, 'ratio')} or lower.`}
+        dek={`Median compa-ratio by level and department, as of ${asOf}. Orange bars with a square marker sit at a median of ${fmt(low, 'ratio')} or lower.`}
       >
         <Figure
           id="comp-compa-by-level"
           uses={m.uses['comp-compa-by-level']}
+          metric={FIGURE_METRIC['comp-compa-by-level']}
           title="Median compa-ratio by level"
           subtitle={`In level order, as of ${asOf}`}
           data={o.byLevel}
           columns={compaGroupColumns('Level', m)}
-          definitions={[DEF_COMPA, DEF_POPULATION]}
+          definitions={m.definitions['comp-compa-by-level']}
           note={note(m, n)}
           span={5}
           // Shorter than the department list beside it: end the sheet at its content.
@@ -162,7 +171,7 @@ export function Overview({ m }: { m: CompModel }) {
             format="ratio"
             sort="none"
             ref={companyRef(m)}
-            tone={lowTone}
+            tone={tone}
             secondary={nText}
             onSelect={compaBar(m)}
           />
@@ -170,11 +179,12 @@ export function Overview({ m }: { m: CompModel }) {
         <Figure
           id="comp-compa-by-department"
           uses={m.uses['comp-compa-by-department']}
+          metric={FIGURE_METRIC['comp-compa-by-department']}
           title="Median compa-ratio by department"
           subtitle={`Lowest first, as of ${asOf}`}
           data={o.byDepartment}
           columns={compaGroupColumns('Department', m)}
-          definitions={[DEF_COMPA, DEF_POPULATION]}
+          definitions={m.definitions['comp-compa-by-department']}
           note={note(m, n)}
           span={7}
           empty={emptyIf(o.byDepartment, null, 'No compa-ratios in this scope.')}
@@ -186,7 +196,7 @@ export function Overview({ m }: { m: CompModel }) {
             format="ratio"
             sort="asc"
             ref={companyRef(m)}
-            tone={lowTone}
+            tone={tone}
             secondary={nText}
             rowHeight={26}
             onSelect={compaBar(m)}

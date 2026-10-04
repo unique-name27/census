@@ -8,7 +8,14 @@ import { fmt, plural } from '@/lib/format'
 import type { TalentModel } from '../engine'
 import { listText } from '../engine/base'
 import { drillsWithUses } from '../engine/drillUses'
-import { backTestSummary, factorDef, RISK_BANDS } from '../engine/risk'
+import { backTestSummary, factorDef, factorText, RISK_BANDS } from '../engine/risk'
+import {
+  FIGURE_METRIC,
+  highRangeText,
+  highRatingText,
+  TALENT_METRIC as M,
+  yearsText,
+} from '../engine/settings'
 import { scopeColors } from './colors'
 import {
   backTestColumns,
@@ -19,7 +26,7 @@ import {
   PROMOTION_OVERDUE_COLUMNS,
   riskPersonColumns,
 } from './columns'
-import { DEF } from './defs'
+import { defsFor, mainReasonTerm, TERM } from './defs'
 
 type PeopleView = 'key' | 'high' | 'watch'
 
@@ -38,14 +45,18 @@ export function RetentionTab({ m }: { m: TalentModel }) {
   const risk = m.risk
   const bt = risk.backTest
   const [view, setView] = useState<PeopleView>('key')
+  const s = m.settings
+  const hi = highRatingText(s.highRating)
+  const range = highRangeText(s.highRating)
+  const years = yearsText(s.promotionYears)
   const highCount = ret.bands.find((b) => b.band === 'High')?.people ?? 0
   const drivers = ret.drivers
     .filter((d) => d.anyReason > 0)
-    .map((d) => ({ ...d, share: highCount >= 5 ? d.anyReason / highCount : null }))
+    .map((d) => ({ ...d, share: highCount >= s.minGroup ? d.anyReason / highCount : null }))
   const evidence = risk.evidence.map((e) => ({
     ...e,
     how: POINT_SOURCE[e.source],
-    definition: factorDef.get(e.key)?.text ?? '',
+    definition: factorText(e.key, s.highRating),
   }))
   const noPeople = ret.scored ? null : 'Nobody in this scope is an active employee at the as-of date.'
   const who = risk.exitKind === 'voluntary' ? 'voluntary exits' : 'exits'
@@ -96,7 +107,7 @@ export function RetentionTab({ m }: { m: TalentModel }) {
   const peopleTitle = view === 'key' ? 'Key talent at risk' : 'Flight risk by person'
   const peopleSub =
     view === 'key'
-      ? `Rated 4-5 and in the high flight-risk band, as of ${asOf}`
+      ? `Rated ${range} and in the high flight-risk band, as of ${asOf}`
       : view === 'high'
         ? `Everyone in the high band, any rating, as of ${asOf}`
         : `Everyone in the high and medium bands, any rating, as of ${asOf}`
@@ -112,6 +123,7 @@ export function RetentionTab({ m }: { m: TalentModel }) {
         <Figure
           id="talent-risk-bands"
           uses={m.uses['talent-risk-bands']}
+          metric={FIGURE_METRIC['talent-risk-bands']}
           title="People by risk band"
           subtitle={
             ctx.isCompany
@@ -120,7 +132,7 @@ export function RetentionTab({ m }: { m: TalentModel }) {
           }
           data={ret.bands}
           columns={bandColumns(bandsDrill)}
-          definitions={[DEF.flightRisk, DEF.bands]}
+          definitions={defsFor(ctx.metrics, [M.riskBands, M.flightRisk], [], [M.highPerformers])}
           note={`${plural(ret.scored, 'person', 'people')} scored · company-wide the high band is the top ${highShare} (score ${fmt(risk.cutHigh)} and up) and the medium band the next ${mediumShare}`}
           span={4}
           empty={noPeople}
@@ -159,11 +171,12 @@ export function RetentionTab({ m }: { m: TalentModel }) {
         <Figure
           id="talent-risk-back-test"
           uses={m.uses['talent-risk-back-test']}
+          metric={FIGURE_METRIC['talent-risk-back-test']}
           title="Exit rate by risk band, back-tested"
           subtitle={`Scored as of ${formatDate(bt.scoredOn)} with points learned only from exits known by then; ${who} ${bt.outcome.label}, whole company`}
           data={bt.bands}
           columns={backTestColumns(backTestDrill)}
-          definitions={[DEF.backTest, DEF.bands]}
+          definitions={defsFor(ctx.metrics, [M.backTest, M.riskBands], [], [M.highPerformers])}
           note={`${backTestSummary(bt)} ${plural(bt.population, 'person', 'people')} scored, ${fmt(bt.leavers)} left.${
             bt.learned
               ? ` Points learned from ${fmt(bt.learnedLeavers)} leavers before ${formatDate(bt.scoredOn)}.`
@@ -197,11 +210,17 @@ export function RetentionTab({ m }: { m: TalentModel }) {
         <Figure
           id="talent-risk-drivers"
           uses={m.uses['talent-risk-drivers']}
+          metric={FIGURE_METRIC['talent-risk-drivers']}
           title="What drives risk"
           subtitle="Share of people in the high band with each factor"
           data={drivers}
           columns={driverColumns(driversDrill)}
-          definitions={[DEF.flightRisk, DEF.mainReason]}
+          definitions={defsFor(
+            ctx.metrics,
+            [M.riskDrivers, M.flightRisk],
+            [],
+            [M.riskBands, M.highPerformers],
+          )}
           note={`${plural(highCount, 'person', 'people')} in the high band · the number after each bar counts people for whom it is the main reason`}
           span={4}
           empty={noPeople ?? (drivers.length ? null : 'No factor earned points.')}
@@ -226,6 +245,7 @@ export function RetentionTab({ m }: { m: TalentModel }) {
         <Figure
           id="talent-risk-factors"
           uses={m.uses['talent-risk-factors']}
+          metric={FIGURE_METRIC['talent-risk-factors']}
           title="Flight-risk factors and their evidence"
           subtitle={
             learnedFrom.length
@@ -234,7 +254,7 @@ export function RetentionTab({ m }: { m: TalentModel }) {
           }
           data={evidence}
           columns={evidenceColumns(factorsDrill)}
-          definitions={[DEF.flightRisk, DEF.lift, DEF.backTest]}
+          definitions={defsFor(ctx.metrics, [M.flightRisk, M.backTest], [TERM.lift], [M.highPerformers])}
           note={`${pointsNote}. A person counts once at each month-end they were active.${offNote}`}
           tableOnly
           table={{ maxRows: 12 }}
@@ -251,14 +271,20 @@ export function RetentionTab({ m }: { m: TalentModel }) {
         <Figure
           id="talent-key-talent-at-risk"
           uses={m.uses['talent-key-talent-at-risk']}
+          metric={FIGURE_METRIC['talent-key-talent-at-risk']}
           title={peopleTitle}
           subtitle={peopleSub}
           data={peopleRows}
           columns={riskPersonColumns(peopleRows, { full: true })}
-          definitions={[DEF.keyTalent, DEF.flightRisk, DEF.mainReason, DEF.bands]}
+          definitions={defsFor(
+            ctx.metrics,
+            [M.keyTalent, M.flightRisk, M.riskBands],
+            [mainReasonTerm(s)],
+            [M.highPerformers, M.riskDrivers],
+          )}
           note={
             view === 'key'
-              ? `${plural(ret.keyTalent.length, 'person', 'people')} of ${fmt(ret.highPerformers)} active people rated 4-5 · high band = top ${highShare} of scores company-wide`
+              ? `${plural(ret.keyTalent.length, 'person', 'people')} of ${fmt(ret.highPerformers)} active people rated ${range} · high band = top ${highShare} of scores company-wide`
               : `${plural(peopleRows.length, 'person', 'people')} · high band = top ${highShare}, medium = next ${mediumShare} company-wide`
           }
           tableOnly
@@ -268,7 +294,7 @@ export function RetentionTab({ m }: { m: TalentModel }) {
               value={view}
               onChange={setView}
               options={[
-                { value: 'key', label: 'Rated 4-5' },
+                { value: 'key', label: `Rated ${range}` },
                 { value: 'high', label: 'High band' },
                 { value: 'watch', label: 'High and medium' },
               ]}
@@ -278,27 +304,28 @@ export function RetentionTab({ m }: { m: TalentModel }) {
           empty={
             noPeople ??
             (view === 'key' && !m.has.reviews
-              ? 'Upload Reviews to see who is rated 4 or 5.'
+              ? `Upload Reviews to see who is rated ${hi}.`
               : peopleRows.length
                 ? null
                 : view === 'key'
-                  ? 'Nobody rated 4 or 5 is in the high flight-risk band in this scope.'
+                  ? `Nobody rated ${hi} is in the high flight-risk band in this scope.`
                   : 'Nobody in this scope is in these bands.')
           }
         />
         <Figure
           id="talent-promotion-overdue"
           uses={m.uses['talent-promotion-overdue']}
+          metric={FIGURE_METRIC['talent-promotion-overdue']}
           title="High performers overdue for promotion"
           subtitle={
             m.overdue.cycles.length === 2
-              ? `Rated 4-5 in ${m.overdue.cycles[0].cycle} and ${m.overdue.cycles[1].cycle}, no promotion in 3 years, as of ${asOf}`
-              : `Consistent high performers with no promotion in 3 years, as of ${asOf}`
+              ? `Rated ${range} in ${m.overdue.cycles[0].cycle} and ${m.overdue.cycles[1].cycle}, no promotion in ${years}, as of ${asOf}`
+              : `Consistent high performers with no promotion in ${years}, as of ${asOf}`
           }
           data={m.overdue.rows}
           columns={PROMOTION_OVERDUE_COLUMNS}
-          definitions={[DEF.overduePromotion]}
-          note={`${plural(m.overdue.rows.length, 'person', 'people')} of ${fmt(m.overdue.eligible)} with 3+ years and both ratings${
+          definitions={defsFor(ctx.metrics, [M.promotionOverdue], [], [M.highPerformers])}
+          note={`${plural(m.overdue.rows.length, 'person', 'people')} of ${fmt(m.overdue.eligible)} with ${+s.promotionYears.toFixed(1)}+ years and both ratings${
             promoZero && overdueLow
               ? ` · ${fmt(overdueLow)} of them are in the low flight-risk band because time since promotion did not go with more exits here; the wait is still worth a conversation`
               : ''
@@ -314,17 +341,18 @@ export function RetentionTab({ m }: { m: TalentModel }) {
               ? (m.overdue.reason ?? 'Not enough history to apply this rule.')
               : m.overdue.rows.length
                 ? null
-                : 'No consistent high performer has waited more than 3 years for a promotion.'
+                : `No consistent high performer has waited more than ${years} for a promotion.`
           }
         />
         <Figure
           id="talent-regretted-high-performers"
           uses={m.uses['talent-regretted-high-performers']}
+          metric={FIGURE_METRIC['talent-regretted-high-performers']}
           title="Regretted exits of high performers"
-          subtitle={`Voluntary regretted exits whose last rating was 4 or 5, ${ctx.window.label}`}
+          subtitle={`Voluntary regretted exits whose last rating was ${hi}, ${ctx.window.label}`}
           data={regret.current}
           columns={EXIT_PERSON_COLUMNS}
-          definitions={[DEF.regrettedHigh]}
+          definitions={defsFor(ctx.metrics, [M.regrettedHigh], [], [M.highPerformers])}
           note={
             regret.available
               ? `${plural(regret.current.length, 'exit')} · ${fmt(regret.prior.length)} in the prior period`

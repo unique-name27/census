@@ -18,32 +18,34 @@ import {
   ttfGroupDrill,
 } from '../engine/drills'
 import { FIGURE_USES } from '../engine/lineage'
+import { FIGURE_METRICS } from '../engine/metricLinks'
 import { STATE_NAME } from '../engine/nextStep'
 import type { PipelineCell } from '../engine/pipeline'
 import type { OpenByDeptRow, TtfRow } from '../engine/reqs'
 import type { QuarterAcceptance } from '../engine/sources'
 import { NEXT_STATES } from '../engine/types'
+import { RM } from '../metrics'
 import { useRecruitingUi } from '../state'
 import {
   asOfNote,
+  defOf,
   drillIf,
   NEED_CANDIDATES,
   NEED_REQS,
   NoRecruitingData,
   TABLET_FULL,
+  ttfSpan,
   windowText,
 } from './common'
 import { useRecruiting } from './hooks'
 import { PipelineBars } from './PipelineBars'
-
-/** An open req older than this marks its department amber. */
-const OLD_REQ_DAYS = 120
 
 export function OverviewTab() {
   const m = useRecruiting()
   const b = m.base
   const openQueue = useRecruitingUi((s) => s.openQueue)
   if (!b.apps.length && !b.reqs.length) return <NoRecruitingData />
+  const { minGroup, oldReqDays } = b.settings
 
   const pipelineRows = m.pipeline.flatMap((s) =>
     NEXT_STATES.flatMap((state) => {
@@ -97,14 +99,15 @@ export function OverviewTab() {
     q,
   }))
   type AccRow = (typeof accRows)[number]
-  // Hidden quarters and levels (fewer than 5) carry no records, so they never drill.
+  // Hidden quarters and levels (under the anonymity minimum) carry no records, so they never drill.
   const quarterDrill = (q: QuarterAcceptance, only?: 'Hired' | 'Declined') =>
     drillIf(only ? q.apps.some((a) => a.outcome === only) : q.apps.length, () =>
       quarterOffersDrill(b, q, only),
     )
   const deptDrill = (d: OpenByDeptRow) => () => openReqsDrill(b, d.reqs, `Open reqs, ${d.department}`)
   const levelDrill = (d: TtfRow) => drillIf(d.filled.length, () => ttfGroupDrill(b, d))
-  const ageTone = (d: { oldest: number }) => (d.oldest > OLD_REQ_DAYS ? 'warning' : 'default')
+  // An open req older than the old req setting (Open req age) marks its department amber.
+  const ageTone = (d: { oldest: number }) => (d.oldest > oldReqDays ? 'warning' : 'default')
   const hiresTotal = m.hiresByMonth.reduce((s, r) => s + r.hires, 0)
 
   return (
@@ -119,6 +122,7 @@ export function OverviewTab() {
           <Figure
             id="recruiting-pipeline-today"
             uses={FIGURE_USES['recruiting-pipeline-today']}
+            metric={FIGURE_METRICS['recruiting-pipeline-today']}
             title="Pipeline today"
             subtitle={`Active candidates by stage and next step on ${formatDate(b.asOf)}`}
             data={pipelineRows}
@@ -144,6 +148,7 @@ export function OverviewTab() {
                 : NEED_CANDIDATES
             }
             definitions={[
+              defOf(b, RM.activeCandidates),
               {
                 term: 'No step booked',
                 text: 'Nothing is on the calendar and no interview is waiting on a decision: the application needs review, an interview needs scheduling, or the candidate is at the offer stage with no offer sent yet. A state, not an alarm.',
@@ -154,10 +159,10 @@ export function OverviewTab() {
                 term: 'Scheduled',
                 text: 'An interview or call is booked after the as-of date. In motion.',
               },
-              {
+              defOf(b, RM.lackingNextStep, {
                 term: 'Lacks a next step',
-                text: 'The alarm (the diamond): no step booked for more than 1.5× the usual days for the stage, a decision pending more than 2 days after the interview, or an offer out more than 5 days. These candidates make up the action queue.',
-              },
+                extra: 'The chart marks these candidates with the diamond.',
+              }),
             ]}
             note={`${plural(b.actives.length, 'active candidate')} · click a segment or a count to see the candidates · ${asOfNote(b.asOf)}`}
           >
@@ -178,6 +183,7 @@ export function OverviewTab() {
           <Figure
             id="recruiting-hires-by-month"
             uses={FIGURE_USES['recruiting-hires-by-month']}
+            metric={FIGURE_METRICS['recruiting-hires-by-month']}
             title="Offers accepted by month"
             subtitle="Candidates hired, by the month the offer was accepted, last 24 months"
             data={m.hiresByMonth}
@@ -193,10 +199,7 @@ export function OverviewTab() {
             span={7}
             empty={b.apps.length ? null : NEED_CANDIDATES}
             definitions={[
-              {
-                term: 'Offers accepted',
-                text: 'Candidates with status Hired, counted in the month the offer was accepted. People stats counts hires by start date in the Employees data, so its monthly hires can differ.',
-              },
+              defOf(b, RM.offersAccepted, { extra: 'Each month counts the offers accepted in that month.' }),
             ]}
             note={`${plural(hiresTotal, 'offer accepted', 'offers accepted')} in 24 months · ${asOfNote(b.asOf)}`}
           >
@@ -214,6 +217,7 @@ export function OverviewTab() {
           <Figure
             id="recruiting-offer-acceptance-quarter"
             uses={FIGURE_USES['recruiting-offer-acceptance-quarter']}
+            metric={FIGURE_METRICS['recruiting-offer-acceptance-quarter']}
             title="Offer acceptance by quarter"
             subtitle="Offers accepted ÷ offers resolved, last 8 quarters"
             data={accRows}
@@ -240,11 +244,10 @@ export function OverviewTab() {
                   : 'No declined offers in the data, so acceptance can’t be measured.'
             }
             definitions={[
-              {
-                term: 'Offer acceptance',
-                text: 'Offers accepted ÷ offers accepted or declined, by the date each offer was resolved. Quarters with fewer than 5 resolved offers show no rate.',
-                formula: 'hired ÷ (hired + declined)',
-              },
+              defOf(b, RM.offerAcceptance, {
+                settings: false,
+                extra: `Each quarter counts the offers resolved in it. Quarters with fewer than ${minGroup} resolved offers show no rate.`,
+              }),
             ]}
             note={asOfNote(b.asOf)}
           >
@@ -267,6 +270,7 @@ export function OverviewTab() {
           <Figure
             id="recruiting-open-reqs-department"
             uses={FIGURE_USES['recruiting-open-reqs-department']}
+            metric={FIGURE_METRICS['recruiting-open-reqs-department']}
             title="Open reqs by department"
             subtitle={`Open requisitions on ${formatDate(b.asOf)}, marked by the age of the oldest`}
             data={m.openByDepartment}
@@ -287,13 +291,10 @@ export function OverviewTab() {
                 : NEED_REQS
             }
             definitions={[
-              {
-                term: 'Open req',
-                text: 'Open on the as-of date: opened by then and not yet filled, closed or cancelled. Reqs on hold are not counted.',
-              },
+              defOf(b, RM.openReqs, { term: 'Open req' }),
               {
                 term: 'Amber',
-                text: `The department's oldest open req has been open more than ${OLD_REQ_DAYS} days.`,
+                text: `The department's oldest open req has been open more than ${plural(oldReqDays, 'day')} (the old req setting of Open req age).`,
               },
             ]}
             note={`${plural(b.req.open.length, 'open req')} · ${asOfNote(b.asOf)}`}
@@ -322,8 +323,9 @@ export function OverviewTab() {
           <Figure
             id="recruiting-time-to-fill-level"
             uses={FIGURE_USES['recruiting-time-to-fill-level']}
+            metric={FIGURE_METRICS['recruiting-time-to-fill-level']}
             title="Time to fill by level"
-            subtitle={`Median days from opened to offer accepted, reqs filled ${windowText(b.window)}`}
+            subtitle={`Median days from ${ttfSpan(b)}, reqs filled ${windowText(b.window)}`}
             data={m.ttfByLevel}
             columns={
               [
@@ -343,11 +345,10 @@ export function OverviewTab() {
                     : 'No reqs filled in this period.'
             }
             definitions={[
-              {
+              defOf(b, RM.timeToFill, {
                 term: 'Time to fill',
-                text: 'Days from the date the req opened to the date its offer was accepted. Levels with fewer than 5 filled reqs show no median.',
-                formula: 'filled date − opened date',
-              },
+                extra: `Levels with fewer than ${minGroup} filled reqs show no median.`,
+              }),
             ]}
             note={`${plural(b.filled.length, 'req')} filled · company median ${fmt(m.companyTtf, 'days')} · ${asOfNote(b.asOf)}`}
           >
@@ -363,7 +364,7 @@ export function OverviewTab() {
                   ? { value: m.companyTtf, label: `Company ${fmt(m.companyTtf, 'days')}` }
                   : undefined
               }
-              nullNote="Fewer than 5 reqs filled"
+              nullNote={`Fewer than ${minGroup} reqs filled`}
               onSelect={(d) => drill(levelDrill(d))}
               ariaLabel="Time to fill by level"
             />

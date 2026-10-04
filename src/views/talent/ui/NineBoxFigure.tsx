@@ -3,8 +3,9 @@ import { useAnalytics } from '@/data/context'
 import { formatDate } from '@/lib/dates'
 import { plural } from '@/lib/format'
 import type { TalentModel } from '../engine'
+import { FIGURE_METRIC, TALENT_METRIC as M } from '../engine/settings'
 import { type NineBoxRow, nineBoxColumns, nineBoxDetailColumns } from './columns'
-import { DEF } from './defs'
+import { defsFor } from './defs'
 import { NineBox } from './NineBox'
 
 export function NineBoxFigure({ m, span }: { m: TalentModel; span: FigureSpan }) {
@@ -23,11 +24,12 @@ export function NineBoxFigure({ m, span }: { m: TalentModel; span: FigureSpan })
     <Figure
       id="talent-nine-box"
       uses={m.uses['talent-nine-box']}
+      metric={FIGURE_METRIC['talent-nine-box']}
       title="Performance and potential"
       subtitle={`Active employees by rating and potential${cycle ? ` in ${cycle}` : ''}, as of ${formatDate(ctx.asOf)}`}
       data={rows}
       columns={nineBoxColumns(m.drill, m.riskOverlay)}
-      definitions={[DEF.nineBox, DEF.highPerformer, DEF.flightRisk]}
+      definitions={defsFor(ctx.metrics, [M.nineBox, M.highPerformers, M.flightRisk], [], [M.riskBands])}
       note={`${plural(nb.placed, 'person', 'people')} placed · ${plural(nb.notPlaced, 'person', 'people')} without a rating and potential in that cycle${m.riskOverlay ? '' : ` · flight risk not shown: ${m.belowStandard.toLowerCase()}`}`}
       span={span}
       className="self-start"
@@ -42,6 +44,7 @@ export function NineBoxFigure({ m, span }: { m: TalentModel; span: FigureSpan })
         cells={nb.cells}
         cycle={cycle}
         showRisk={m.riskOverlay}
+        highRating={m.settings.highRating}
         drillFor={(c, part) => m.drill.nineBox(c.performance, c.potential, part)}
       />
     </Figure>

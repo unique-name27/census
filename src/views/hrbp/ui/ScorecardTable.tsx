@@ -14,11 +14,12 @@ import { type Format, fmt } from '@/lib/format'
 import type { ScoreCell } from '../engine/buckets'
 import {
   METRIC_POLARITY,
+  type Scorecard,
   type ScoreMetric,
   type ScoreRow,
-  SHADE_MIN_HEADCOUNT,
   type Shade,
 } from '../engine/scorecard'
+import { plain, ptsText } from './defs'
 
 interface Col {
   key: ScoreCell
@@ -48,11 +49,14 @@ type SortKey = ScoreCell | 'label'
 
 export function ScorecardTable({
   rows,
+  rule,
   onPick,
   drillFor,
   hide = [],
 }: {
   rows: ScoreRow[]
+  /** When a cell is marked (the "Materially off the company" settings), for the legend. */
+  rule: Scorecard['rule']
   onPick: (row: ScoreRow) => void
   /** Columns left out (a metric whose data is below the data standard). */
   hide?: readonly ScoreCell[]
@@ -220,8 +224,9 @@ export function ScorecardTable({
       </div>
       <p className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px] text-muted">
         <span>
-          Marked cells differ from the company by more than 1 pt or 10% (0.5 for span), in orgs of{' '}
-          {SHADE_MIN_HEADCOUNT} or more:
+          Marked cells differ from the company by more than {ptsText(rule.rateFloor)} or{' '}
+          {fmt(rule.relative, 'pct0')} ({plain(rule.spanFloor)} for span), in orgs of {rule.minHeadcount} or
+          more:
         </span>
         <span className="inline-flex items-center gap-1">
           <span className="inline-block size-2.5 rounded-[2px] bg-critical-wash shadow-[inset_0_0_0_1px_var(--rule-strong)]" />

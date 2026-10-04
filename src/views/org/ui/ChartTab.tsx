@@ -14,6 +14,7 @@ import { fmt, plural } from '@/lib/format'
 import {
   COMPANY_ROOT,
   canExpand,
+  chartDefinitions,
   chartUses,
   colorScheme,
   type DrillScope,
@@ -21,7 +22,9 @@ import {
   directsDrill,
   entryPoints,
   exportCut,
+  FIGURE_METRIC,
   flagRows,
+  flagTableDefinitions,
   flagTableUses,
   heldBackNotes,
   isWithin,
@@ -49,7 +52,7 @@ import { SlidesDialog } from './SlidesDialog'
 import { useChartPrefs } from './state'
 import { flagColumns, personColumns, TableToggle } from './tables'
 import { useExpansion } from './useExpansion'
-import { CHART_DEFINITIONS, useOrgModel } from './useOrgModel'
+import { useOrgModel } from './useOrgModel'
 
 const FLAG_KINDS = new Set([...STRUCTURAL, 'placement'])
 
@@ -239,6 +242,7 @@ export function ChartTab() {
     lineage,
     dims: model.dims,
     openRoles: prefs.showReqs,
+    metrics: ctx.metrics,
   })
   const { gates } = model
   const heldBack = heldBackNotes(gates, {
@@ -263,7 +267,8 @@ export function ChartTab() {
           subtitle={`Reporting lines on ${formatDate(ctx.asOf)}, everyone active including contractors and interns`}
           data={rows}
           columns={personColumns(tree, chartScope)}
-          definitions={CHART_DEFINITIONS}
+          metric={FIGURE_METRIC['org-chart']}
+          definitions={chartDefinitions(ctx.metrics, model.rules)}
           note={`${plural(rows.length, 'person', 'people')} shown of ${fmt(people, 'int')} in this org.${dimNote} Drag to pan, or click the chart and scroll. Ctrl and scroll, or pinch, to zoom. Arrow keys move through the tree. Click a count on a card to list those people.`}
           tableToggle={false}
           uses={chartFields}
@@ -392,6 +397,8 @@ export function ChartTab() {
           subtitle={`Span outliers, single-report chains, new managers with large teams, and people shown away from their data manager${model.dims ? ', among people matching the filters' : ''}`}
           data={flagTable}
           columns={flagColumns(tree, model.dims ? scopeIds : orgIds, flags, scope)}
+          metric={FIGURE_METRIC['org-flags']}
+          definitions={flagTableDefinitions(ctx.metrics, model.rules)}
           uses={flagTableUses(lineage)}
           tableOnly
           empty={flagTable.length ? null : 'No flags in this org.'}

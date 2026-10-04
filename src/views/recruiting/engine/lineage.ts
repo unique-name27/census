@@ -32,6 +32,25 @@ export const OPEN_REQ: Refs = [
 /** Filled in a window (cancelled reqs excluded), and time to fill from opened date to filled date. */
 export const FILLED_REQ: Refs = ['requisitions.openedDate', 'requisitions.filledDate', 'requisitions.status']
 
+/**
+ * Time to fill that stops at the hire's start date (a dictionary setting): the req's hire, linked
+ * to the employee they became by name and start date.
+ */
+export const START_DATE: Refs = [
+  'candidates.reqId',
+  'requisitions.reqId',
+  'candidates.appliedDate',
+  'candidates.status',
+  'candidates.hiredDate',
+  'candidates.candidateName',
+  'employees.name',
+  'employees.hireDate',
+]
+
+/** The fields of a time-to-fill number: the filled reqs, plus the start dates when the clock stops there. */
+export const filledUses = (end: 'accepted' | 'start'): Refs =>
+  end === 'start' ? uses(FILLED_REQ, START_DATE) : FILLED_REQ
+
 /** Applications received in a window (the cohort), by applied date. */
 export const COHORT: Refs = ['candidates.appliedDate']
 

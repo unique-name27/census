@@ -11,6 +11,7 @@ import {
   sanitizeSettings,
   saveSettings,
   settingsBlob,
+  settingsFileName,
   toCycleSettings,
 } from './settings'
 
@@ -60,9 +61,10 @@ describe('settings', () => {
       motion: 'reduce',
       dataStandard: 'gold',
       asOfOverride: null,
-      compCycle: { ...DEFAULT_COMP_CYCLE, guideline: { ...DEFAULT_COMP_CYCLE.guideline, 5: 0.08 } },
       tools: { lattice: 'https://example.com/lattice', toolkit: null },
     })
+    // The comp cycle moved to the metric dictionary; Settings no longer carries it.
+    expect(s).not.toHaveProperty('compCycle')
   })
 
   it('accept the comp engine shape too', () => {
@@ -79,11 +81,11 @@ describe('settings', () => {
     st.setItem(LEGACY_KEYS.tools, JSON.stringify({ catalog: null }))
     st.setItem(LEGACY_KEYS.compCycle, JSON.stringify({ meritBudget: 0.03, bandLow: 0.9, bandHigh: 1.1 }))
     const s = loadSettings(st)
-    expect(s).toMatchObject({
+    expect(s).toEqual({
+      ...DEFAULT_SETTINGS,
       theme: 'dark',
       asOfOverride: '2026-06-30',
       tools: { catalog: null },
-      compCycle: { meritBudgetPct: 0.03 },
     })
     saveSettings({ ...s, theme: 'light' }, st)
     expect(JSON.parse(st.getItem(SETTINGS_KEY)!).theme).toBe('light')
@@ -96,6 +98,7 @@ describe('settings', () => {
   it('export to a file and import it back, keeping current values for anything invalid', async () => {
     const mine = { ...DEFAULT_SETTINGS, theme: 'dark' as const, dataStandard: 'silver' as const }
     const text = await settingsBlob(mine, new Date('2026-10-03T00:00:00Z')).text()
+    expect(JSON.parse(text)).not.toHaveProperty('metrics')
     const file = JSON.parse(text)
     expect(file).toMatchObject({
       kind: 'census-settings',
@@ -117,10 +120,10 @@ describe('settings', () => {
   it('import field by field, keeping current values for anything invalid or missing', () => {
     const mine = {
       ...DEFAULT_SETTINGS,
-      compCycle: { ...DEFAULT_COMP_CYCLE, healthyBand: [0.85, 1.15] as [number, number] },
       tools: { lattice: 'https://intranet.example.com/lattice' },
       asOfOverride: '2026-06-30',
     }
+    const myCycle = { ...DEFAULT_COMP_CYCLE, healthyBand: [0.85, 1.15] as [number, number] }
     const file = (settings: unknown) => ({ kind: 'census-settings', version: 1, settings })
     const today = '2026-10-03'
 
@@ -135,9 +138,16 @@ describe('settings', () => {
       catalog: 'https://catalog.example.com/hr',
     })
 
-    // The comp cycle merges field by field.
-    const cycle = parseSettingsFile(file({ compCycle: { meritBudgetPct: 0.05 } }), mine, today)
-    expect(cycle.ok && cycle.settings.compCycle).toEqual({ ...mine.compCycle, meritBudgetPct: 0.05 })
+    // An older file's comp cycle merges field by field over the cycle in force, and is handed
+    // back for the store to apply to the metric dictionary.
+    const cycle = parseSettingsFile(file({ compCycle: { meritBudgetPct: 0.05 } }), mine, today, myCycle)
+    expect(cycle).toEqual({
+      ok: true,
+      settings: mine,
+      applied: [],
+      compCycle: { ...myCycle, meritBudgetPct: 0.05 },
+    })
+    expect(parseSettingsFile(file({ compCycle: { meritBudgetPct: 9 } }), mine, today).ok).toBe(false)
 
     // Reporting dates outside 1 Jan 1990 to today are refused, as in the Settings sheet.
     for (const d of ['2099-12-31', '1989-12-31', '2026-10-04'])
@@ -145,6 +155,23 @@ describe('settings', () => {
     const date = parseSettingsFile(file({ asOfOverride: '2026-10-03' }), mine, today)
     expect(date.ok && date.settings.asOfOverride).toBe('2026-10-03')
     expect(sanitizeSettings({ asOfOverride: '2099-12-31' }, today).asOfOverride).toBeNull()
+  })
+
+  it('carry the metric dictionary in the file and hand it back on import', async () => {
+    const metrics = {
+      overrides: { 'comp.merit.spend': { text: {}, params: { meritBudget: 0.04 } } },
+      log: [],
+    }
+    const text = await settingsBlob(DEFAULT_SETTINGS, new Date('2026-10-03T00:00:00Z'), metrics).text()
+    expect(JSON.parse(text).metrics).toEqual(metrics)
+    const r = parseSettingsFile(text, DEFAULT_SETTINGS)
+    expect(r.ok && r.metricsSection).toEqual(metrics)
+    // A file with only the dictionary is still a settings file.
+    const only = parseSettingsFile(
+      { kind: 'census-settings', version: 1, settings: {}, metrics },
+      DEFAULT_SETTINGS,
+    )
+    expect(only.ok && only.metricsSection).toEqual(metrics)
   })
 
   it('refuse files that are not Census settings', () => {
@@ -171,5 +198,11 @@ describe('settings', () => {
       ok: false,
       error: 'The file holds no settings Census can use.',
     })
+  })
+})
+
+describe('settingsFileName', () => {
+  it('follows the slug style of every other Census export', () => {
+    expect(settingsFileName('2026-10-04')).toBe('census-settings-2026-10-04.json')
   })
 })

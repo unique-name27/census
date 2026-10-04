@@ -82,6 +82,15 @@ describe('applicability table', () => {
     expect(which('cases', 'assignee', rows)).toEqual([true, false, true])
   })
 
+  it('leaves employee relations out of the case topic, so the privacy redaction is no gap', () => {
+    const rows = [
+      { category: 'Payroll', subcategory: 'Missing pay' },
+      { category: 'Employee relations', subcategory: null },
+    ]
+    expect(which('cases', 'subcategory', rows)).toEqual([true, false])
+    expect(APPLICABILITY.cases?.subcategory.scope).toBe('Cases outside employee relations')
+  })
+
   it('applies potential to cycles that assess it and retro to types that track it', () => {
     const reviews = [
       { cycle: '2025 Annual', potential: 'High' },

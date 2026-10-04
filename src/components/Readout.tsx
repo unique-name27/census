@@ -12,6 +12,8 @@ import { drill } from '@/drill/Drill'
 import { openPerson } from '@/drill/store'
 import { plural } from '@/lib/format'
 import { type Span, spanClass } from '@/lib/spans'
+import { DefinitionChangedMark } from '@/views/data/metrics/ui/EditDefinition'
+import { QualityLensLine } from '@/views/data/quality-overview/LensLine'
 import { tabLabel, useCurrentView } from './currentView'
 import { describeFocus } from './filterLabels'
 import { IconChevronDown, IconChevronRight, IconGood } from './icons'
@@ -122,9 +124,25 @@ function FindingItem({ finding, gate }: { finding: Finding; gate: TierGate | nul
               />
             </>
           )}
+          {/* As on KPI tiles and figures, a changed definition is marked whether or not the lens is on. */}
+          {finding.metricId && (
+            <>
+              {' '}
+              <DefinitionChangedMark metricId={finding.metricId} className="ml-0.5 align-[-4px]" />
+            </>
+          )}
         </div>
         {gate && !gate.shown && <p className="mt-0.5 text-[12px] leading-snug text-muted">{gate.reason}</p>}
         {finding.detail && <p className="mt-1 text-[13px] leading-snug text-ink-2">{finding.detail}</p>}
+        {/* The quality lens (view header switch): field limiting it, rows used and left out. */}
+        <QualityLensLine
+          uses={finding.uses}
+          metricId={finding.metricId}
+          label="This finding"
+          variant="finding"
+          showChanged={false}
+          className="mt-1.5"
+        />
         {finding.action && (
           <p className="mt-1.5 text-[13px] leading-snug">
             <span className="text-muted">Next step: </span>

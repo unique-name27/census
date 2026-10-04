@@ -11,6 +11,9 @@
  * share ("under 2%") or within 10% above a day target; otherwise Missed. This departs from the
  * literal "within 5 pts" for ceilings, where 5 pts would be several times the target itself.
  * Fewer than 5 cases or transactions, or fewer than 5 people behind them, give no actual.
+ *
+ * Those numbers are the defaults: each target, the three at-risk bands and the anonymity minimum
+ * are settings in the metric dictionary (../metrics.ts), passed in as `settings`.
  */
 
 import {
@@ -25,40 +28,24 @@ import { businessDaysBetween } from '@/lib/dates'
 import { median } from '@/lib/stats'
 import { openedIn, resolutionSla, resolvedIn } from './cases'
 import {
-  AT_RISK_CEILING_SHARE,
-  AT_RISK_DAYS_SHARE,
-  AT_RISK_PTS,
   ATLAS_PROCESSES,
+  LEVEL_CLOCKS,
+  type LevelClock,
   SERVICE_LEVELS,
   type ServiceLevelDef,
   type ServiceLevelId,
 } from './catalog'
 import { type CaseFact, dueIn, onTimeRate, type TxFact } from './facts'
+import { type AtRiskBands, defaultSettings, levelDef, type ServicesSettings } from './settings'
 import { retroCandidates, retroShare } from './transactions'
 import { isShowable, type Personal, peopleIn } from './util'
+
+export { LEVEL_CLOCKS, type LevelClock } from './catalog'
 
 export type LevelStatus = 'Met' | 'At risk' | 'Missed'
 
 /** The rows a measure judged: cases or transactions. */
 export type LevelRecords = { kind: 'cases'; rows: CaseFact[] } | { kind: 'transactions'; rows: TxFact[] }
-
-/** A business-day clock on cases: the clock stops at resolution or at the first response. */
-export interface LevelClock {
-  category: string
-  days: number
-  stop: 'resolved' | 'responded'
-}
-
-/** The case measures timed on a business-day clock. */
-export const LEVEL_CLOCKS: Partial<Record<ServiceLevelId, LevelClock>> = {
-  'py05-payroll-2bd': { category: 'Payroll', days: 2, stop: 'resolved' },
-  'ds07-verification-2bd': { category: 'Employment verification', days: 2, stop: 'resolved' },
-  'ds04-access-2bd': { category: 'Systems access', days: 2, stop: 'resolved' },
-  'bn03-benefits-5bd': { category: 'Benefits', days: 5, stop: 'resolved' },
-  'lv01-leave-response-1bd': { category: 'Leave & accommodation', days: 1, stop: 'responded' },
-  'lv01-leave-designation-5bd': { category: 'Leave & accommodation', days: 5, stop: 'resolved' },
-  'mv06-immigration-response-1bd': { category: 'Immigration & mobility', days: 1, stop: 'responded' },
-}
 
 /** The date a clock stops for a case, or null while it runs. */
 export const clockStop = (f: CaseFact, c: Pick<LevelClock, 'stop'>): string | null =>
@@ -119,6 +106,8 @@ export interface LevelInputs {
   hasResolved: boolean
   hasResponse: boolean
   hasDue: boolean
+  /** Targets, at-risk bands and the anonymity minimum in force (default: the registered defaults). */
+  settings?: ServicesSettings
 }
 
 interface Measured {
@@ -132,11 +121,11 @@ interface Measured {
 
 const none: Measured = { actual: null, n: 0, people: 0, misses: [], records: null }
 
-/** A share of the judged rows; null below MIN_GROUP rows or people. */
-function measured(hits: number, judged: CaseFact[], misses: string[]): Measured {
+/** A share of the judged rows; null below `min` rows or people. */
+function measured(hits: number, judged: CaseFact[], misses: string[], min: number): Measured {
   const people = peopleIn(judged)
   return {
-    actual: isShowable(judged.length, people) ? hits / judged.length : null,
+    actual: isShowable(judged.length, people, min) ? hits / judged.length : null,
     n: judged.length,
     people,
     misses,
@@ -145,7 +134,7 @@ function measured(hits: number, judged: CaseFact[], misses: string[]): Measured 
 }
 
 /** Share of cases opened in the window whose clock (in business days) stopped in time. */
-function businessDayShare(rows: readonly CaseFact[], clock: LevelClock, asOf: string): Measured {
+function businessDayShare(rows: readonly CaseFact[], clock: LevelClock, asOf: string, min: number): Measured {
   let hits = 0
   const judged: CaseFact[] = []
   const misses: string[] = []
@@ -156,13 +145,13 @@ function businessDayShare(rows: readonly CaseFact[], clock: LevelClock, asOf: st
     if (met) hits++
     else misses.push(f.caseId)
   }
-  return measured(hits, judged, misses)
+  return measured(hits, judged, misses, min)
 }
 
 const isJudgedTx = (f: TxFact) => f.outcome === 'on-time' || f.outcome === 'late' || f.outcome === 'overdue'
 
-function txShare(rows: readonly TxFact[]): Measured {
-  const r = onTimeRate(rows)
+function txShare(rows: readonly TxFact[], min: number): Measured {
+  const r = onTimeRate(rows, min)
   const misses = rows
     .filter((f) => f.outcome === 'late' || f.outcome === 'overdue')
     .map((f) => f.transactionId)
@@ -175,7 +164,8 @@ function txShare(rows: readonly TxFact[]): Measured {
   }
 }
 
-function measure(def: ServiceLevelDef, x: LevelInputs): Measured {
+/** `def` carries the target in force. */
+function measure(def: ServiceLevelDef, x: LevelInputs, min: number): Measured {
   const due = dueIn(x.tx, x.window)
   const txOf = (type: string) => due.filter((f) => f.type === type)
   const clock = LEVEL_CLOCKS[def.id]
@@ -183,7 +173,7 @@ function measure(def: ServiceLevelDef, x: LevelInputs): Measured {
     const ok = clock.stop === 'resolved' ? x.hasResolved : x.hasResponse
     if (!ok) return none
     const opened = openedIn(x.cases, x.window).filter((f) => f.category === clock.category)
-    return businessDayShare(opened, clock, x.asOf)
+    return businessDayShare(opened, clock, x.asOf, min)
   }
   switch (def.id) {
     case 'er02-median-days': {
@@ -197,7 +187,7 @@ function measure(def: ServiceLevelDef, x: LevelInputs): Measured {
         .map((f) => f.caseId)
       const people = peopleIn(closed)
       return {
-        actual: isShowable(days.length, people) ? median(days) : null,
+        actual: isShowable(days.length, people, min) ? median(days) : null,
         n: days.length,
         people,
         misses,
@@ -205,17 +195,17 @@ function measure(def: ServiceLevelDef, x: LevelInputs): Measured {
       }
     }
     case 'on03-hire-day-minus-3':
-      return x.hasDue ? txShare(txOf('New hire')) : none
+      return x.hasDue ? txShare(txOf('New hire'), min) : none
     case 'of05-final-pay':
-      return x.hasDue ? txShare(txOf('Termination')) : none
+      return x.hasDue ? txShare(txOf('Termination'), min) : none
     case 'mv04-location-cutoff':
-      return x.hasDue ? txShare(txOf('Location change')) : none
+      return x.hasDue ? txShare(txOf('Location change'), min) : none
     case 'mv05-job-change-cutoff':
-      return x.hasDue ? txShare(txOf('Job change')) : none
+      return x.hasDue ? txShare(txOf('Job change'), min) : none
     case 'lv03-return-ready':
-      return x.hasDue ? txShare(txOf('Return from leave')) : none
+      return x.hasDue ? txShare(txOf('Return from leave'), min) : none
     case 'ds01-retro-share': {
-      const r = retroShare(x.tx, x.window)
+      const r = retroShare(x.tx, x.window, min)
       const judged = retroCandidates(due)
       const misses = judged.filter((f) => f.retro === true).map((f) => f.transactionId)
       return {
@@ -231,15 +221,22 @@ function measure(def: ServiceLevelDef, x: LevelInputs): Measured {
   }
 }
 
-/** Status of an actual against its target. */
-export function levelStatus(def: ServiceLevelDef, actual: number | null): LevelStatus | null {
+/**
+ * Status of an actual against its target (`def.target`: pass the service level with the target in
+ * force, see `levelDef`). The at-risk bands are settings; they default to the registered ones.
+ */
+export function levelStatus(
+  def: ServiceLevelDef,
+  actual: number | null,
+  bands: AtRiskBands = defaultSettings().atRisk,
+): LevelStatus | null {
   if (actual == null) return null
   const band =
     def.unit === 'days'
-      ? def.target * AT_RISK_DAYS_SHARE
+      ? def.target * bands.daysShare
       : def.direction === 'max'
-        ? def.target * AT_RISK_CEILING_SHARE
-        : AT_RISK_PTS
+        ? def.target * bands.ceilingShare
+        : bands.pts
   if (def.direction === 'min') {
     if (actual >= def.target) return 'Met'
     return actual >= def.target - band ? 'At risk' : 'Missed'
@@ -259,9 +256,12 @@ export function levelGap(def: ServiceLevelDef, actual: number | null): number | 
 const hoursText = (h: number) => (h <= 48 ? `${h} h` : `${Math.round((h / 24) * 10) / 10} d`)
 
 export function scorecard(x: LevelInputs): LevelRow[] {
+  const cfg = x.settings ?? defaultSettings()
+  const min = cfg.minGroup
   const opened = openedIn(x.cases, x.window)
-  return SERVICE_LEVELS.map((def) => {
-    const m = measure(def, x)
+  return SERVICE_LEVELS.map((registered) => {
+    const def = levelDef(registered, cfg)
+    const m = measure(def, x, min)
     const inCat = def.caseCategory ? opened.filter((f) => f.category === def.caseCategory) : []
     const target = inCat.find((f) => f.resolutionTarget != null)?.resolutionTarget ?? null
     return {
@@ -277,11 +277,11 @@ export function scorecard(x: LevelInputs): LevelRow[] {
       unit: def.unit,
       actual: m.actual,
       gap: levelGap(def, m.actual),
-      status: levelStatus(def, m.actual),
-      n: m.n && m.people < MIN_GROUP ? null : m.n,
+      status: levelStatus(def, m.actual, cfg.atRisk),
+      n: m.n && m.people < min ? null : m.n,
       window: x.window.label,
       misses: m.misses,
-      caseSla: def.caseCategory && x.hasResolved ? resolutionSla(inCat).rate : null,
+      caseSla: def.caseCategory && x.hasResolved ? resolutionSla(inCat, min).rate : null,
       caseSlaTarget: def.caseCategory && target != null ? hoursText(target) : null,
       records: m.records,
       clock: LEVEL_CLOCKS[def.id] ?? null,
@@ -298,19 +298,19 @@ export interface ProcessRow {
   owner: string
   sla: string
   covers: string
-  /** Cases opened in the window; null when behind fewer than 5 people (hidden). */
+  /** Cases opened in the window; null when behind fewer people than the anonymity minimum (hidden). */
   cases: number | null
-  /** Transactions due in the window; null when behind fewer than 5 people (hidden). */
+  /** Transactions due in the window; null when behind fewer people than the anonymity minimum (hidden). */
   transactions: number | null
   /** The cases and transactions behind the counts. */
   caseRecords: CaseFact[]
   txRecords: TxFact[]
 }
 
-/** A count shown when it is zero or behind at least MIN_GROUP people; otherwise hidden (null). */
-function countOf(rows: readonly Personal[] | undefined): number | null {
+/** A count shown when it is zero or behind at least `min` people; otherwise hidden (null). */
+function countOf(rows: readonly Personal[] | undefined, min: number): number | null {
   if (!rows?.length) return 0
-  return peopleIn(rows) >= MIN_GROUP ? rows.length : null
+  return peopleIn(rows) >= min ? rows.length : null
 }
 
 function push<T>(map: Map<string, T[]>, key: string, row: T) {
@@ -321,10 +321,15 @@ function push<T>(map: Map<string, T[]>, key: string, row: T) {
 
 /**
  * Every Atlas process that governs a case category or a transaction type, with the volume it
- * carried in the window: cases opened and transactions due. A count behind fewer than 5 people is
- * hidden, so a small scope can't show that one of its members had, say, an immigration case.
+ * carried in the window: cases opened and transactions due. A count behind fewer than `min` people
+ * is hidden, so a small scope can't show that one of its members had, say, an immigration case.
  */
-export function processCoverage(cases: readonly CaseFact[], tx: readonly TxFact[], w: Window): ProcessRow[] {
+export function processCoverage(
+  cases: readonly CaseFact[],
+  tx: readonly TxFact[],
+  w: Window,
+  min = MIN_GROUP,
+): ProcessRow[] {
   const covers = new Map<string, string[]>()
   for (const c of CASE_CATEGORIES) push(covers, c.processId, `${c.category} cases`)
   for (const t of TRANSACTION_TYPES) push(covers, TRANSACTION_PROCESS[t], `${t} transactions`)
@@ -346,8 +351,8 @@ export function processCoverage(cases: readonly CaseFact[], tx: readonly TxFact[
         owner: p?.owner ?? '—',
         sla: p?.sla ?? '—',
         covers: what.join(', '),
-        cases: countOf(caseRecords),
-        transactions: countOf(txRecords),
+        cases: countOf(caseRecords, min),
+        transactions: countOf(txRecords, min),
         caseRecords,
         txRecords,
       }

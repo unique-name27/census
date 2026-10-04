@@ -9,12 +9,15 @@
  *
  * A move that would put someone under a person in their own reporting line (for example a manager
  * under one of their reports) is blocked in both modes and explained, never silently fixed.
+ *
+ * Warnings and the diff's span outliers use the wide-span and narrow-span settings in force
+ * (`OrgRules`), the same as the chart's flags.
  */
 import type { Employee } from '@/data/schema'
 import { levelIndex } from '@/data/schema'
 import { isEmployee } from '@/data/scope'
 import { fmt, plural } from '@/lib/format'
-import { WIDE_SPAN } from './flags'
+import { defaultOrgRules, type OrgRules } from './rules'
 import { type OrgTree, treeFromParents } from './tree'
 
 export type MoveMode = 'person' | 'team'
@@ -109,7 +112,9 @@ function orgIds(w: Working, id: string): string[] {
   return out
 }
 
-function check(w: Working, a: ScenarioAction): CheckResult {
+type SpanRules = Pick<OrgRules, 'wideSpan' | 'narrowSpan'>
+
+function check(w: Working, a: ScenarioAction, rules: SpanRules): CheckResult {
   const person = w.people.get(a.personId)
   if (!person) {
     return {
@@ -131,7 +136,7 @@ function check(w: Working, a: ScenarioAction): CheckResult {
     const mgr = w.parent.get(a.personId)!
     const after = directsOf(w, mgr).length - 1 + directsOf(w, a.personId).length
     const warnings: string[] = []
-    if (after >= WIDE_SPAN) warnings.push(`${nameIn(w, mgr)} would have ${after} direct reports.`)
+    if (after >= rules.wideSpan) warnings.push(`${nameIn(w, mgr)} would have ${after} direct reports.`)
     return { ok: true, warnings }
   }
 
@@ -168,7 +173,7 @@ function check(w: Working, a: ScenarioAction): CheckResult {
 
   const warnings: string[] = []
   const newAfter = directsOf(w, a.toManagerId).length + 1
-  if (newAfter >= WIDE_SPAN) warnings.push(`${target.name} would have ${newAfter} direct reports.`)
+  if (newAfter >= rules.wideSpan) warnings.push(`${target.name} would have ${newAfter} direct reports.`)
   if (person.level && target.level && levelIndex(person.level) >= levelIndex(target.level)) {
     warnings.push(
       `${person.name} (${person.level}) would report to someone at the same or a lower level (${target.name}, ${target.level}).`,
@@ -203,9 +208,13 @@ function apply(w: Working, a: ScenarioAction) {
 
 const working = (t: OrgTree): Working => ({ people: new Map(t.people), parent: new Map(t.parent) })
 
-/** Check one action against a tree. */
-export function checkAction(tree: OrgTree, action: ScenarioAction): CheckResult {
-  return check(working(tree), action)
+/** Check one action against a tree; warnings use the span settings in force. */
+export function checkAction(
+  tree: OrgTree,
+  action: ScenarioAction,
+  rules: SpanRules = defaultOrgRules(),
+): CheckResult {
+  return check(working(tree), action, rules)
 }
 
 /** Who moves with an action: the person, plus everyone below them when they move with their org. */
@@ -231,9 +240,13 @@ function crossDeptOf(
 }
 
 /** What an action would change, for the live preview while dragging and the move dialog. */
-export function rippleOf(tree: OrgTree, action: ScenarioAction): Ripple {
+export function rippleOf(
+  tree: OrgTree,
+  action: ScenarioAction,
+  rules: SpanRules = defaultOrgRules(),
+): Ripple {
   const w = working(tree)
-  const res = check(w, action)
+  const res = check(w, action, rules)
   const person = w.people.get(action.personId)
   const old = w.parent.get(action.personId) ?? null
   const directs = person ? directsOf(w, action.personId) : []
@@ -313,8 +326,10 @@ export function applyScenario(base: OrgTree, actions: readonly ScenarioAction[])
   const w = working(base)
   const applied: ScenarioAction[] = []
   const skipped: ScenarioResult['skipped'] = []
+  // Only whether an action still applies matters here; warnings are not kept.
+  const rules = defaultOrgRules()
   for (const a of actions) {
-    const res = check(w, a)
+    const res = check(w, a, rules)
     if (!res.ok) {
       skipped.push({ action: a, reason: res.reason ?? 'This change no longer applies.' })
       continue
@@ -349,7 +364,9 @@ export interface ScenarioDiff {
   spanChanges: { id: string; name: string; before: number; after: number; delta: number; change: string }[]
   managersCreated: { id: string; name: string; directs: number }[]
   managersEmptied: { id: string; name: string; before: number }[]
+  /** Managers who reach the wide-span setting in the scenario. */
   newWideSpans: { id: string; name: string; directs: number }[]
+  /** Managers who become a narrow span (a span of 1 by default) in the scenario. */
   newSpansOfOne: { id: string; name: string }[]
   crossDept: { id: string; name: string; department: string; managerDepartment: string }[]
   layers: { before: number; after: number; byDepth: { layer: number; before: number; after: number }[] }
@@ -384,8 +401,13 @@ export function signedCount(n: number): string {
   return n > 0 ? `+${fmt(n, 'int')}` : fmt(n, 'int')
 }
 
-/** What changes between the as-of tree and the scenario tree. */
-export function diffTrees(before: OrgTree, after: OrgTree): ScenarioDiff {
+/** What changes between the as-of tree and the scenario tree; span outliers use the settings in force. */
+export function diffTrees(
+  before: OrgTree,
+  after: OrgTree,
+  rules: SpanRules = defaultOrgRules(),
+): ScenarioDiff {
+  const narrow = (n: number) => n >= 1 && n <= rules.narrowSpan
   const nameOf = (id: string | null) =>
     id ? (after.people.get(id)?.name ?? before.people.get(id)?.name ?? id) : 'Top level'
 
@@ -422,8 +444,8 @@ export function diffTrees(before: OrgTree, after: OrgTree): ScenarioDiff {
       spanChanges.push({ id, name, before: b, after: a, delta: a - b, change: signedCount(a - b) })
     if (b === 0 && a > 0) managersCreated.push({ id, name, directs: a })
     if (b > 0 && a === 0 && after.people.has(id)) managersEmptied.push({ id, name, before: b })
-    if (a >= WIDE_SPAN && b < WIDE_SPAN) newWideSpans.push({ id, name, directs: a })
-    if (a === 1 && b !== 1) newSpansOfOne.push({ id, name })
+    if (a >= rules.wideSpan && b < rules.wideSpan) newWideSpans.push({ id, name, directs: a })
+    if (narrow(a) && !narrow(b)) newSpansOfOne.push({ id, name })
   }
   spanChanges.sort((x, y) => Math.abs(y.delta) - Math.abs(x.delta) || x.name.localeCompare(y.name))
 

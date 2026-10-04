@@ -1,26 +1,39 @@
 /**
  * The Talent readout: findings a talent or calibration owner would raise with leaders, each with
  * the number in its title, up to two sentences of detail, one neutral next step, the segment it
- * concentrates in (finding.filter) and the tab that explains it.
+ * concentrates in (finding.filter) and the tab that explains it. Each finding names its rule in
+ * the metric dictionary (`metricId`), and every threshold is one of that rule's settings.
  * Pure: no React, no DOM.
  */
 import type { Finding, FindingPerson } from '@/components/types'
 import { formatDate, formatMonth } from '@/lib/dates'
 import type { Segment } from '@/lib/decompose'
 import { fmt, plural } from '@/lib/format'
+import { targetStatus } from '@/metrics/api'
+import type { MetricTarget } from '@/metrics/types'
 import { listText, segmentFilter, segmentName, type TalentBase, UNKNOWN } from './base'
 import type { TalentDrills } from './drills'
 import type { LearningResult } from './learning'
 import type { TalentLineage } from './lineage'
-import { HIGH_GUIDELINE, type PerformanceResult } from './performance'
+import type { PerformanceResult } from './performance'
 import type { OverdueResult } from './promotion'
 import type { RetentionResult } from './retention'
 import { factorDef, type RiskModel } from './risk'
+import { highRatingText, TALENT_METRIC as M } from './settings'
 import type { SuccessionResult } from './succession'
+import { targetWords } from './wording'
 
-/** A training gap is critical only for a compliance or security course with at least 10 people behind. */
+/**
+ * A training gap can be critical only for a compliance or security course (and only with enough
+ * people behind, a setting of the rule).
+ */
 const CRITICAL_TRAINING = /compliance|security/i
-const CRITICAL_TRAINING_PEOPLE = 10
+
+/** "4 or higher" for a high performer rating of 4, "5" for 5. */
+const orHigher = (min: number) => (min >= 5 ? '5' : `${min} or higher`)
+
+/** "3 or more years", "a year or more", "2.5 or more years". */
+const yearsOrMore = (years: number) => (years === 1 ? 'a year or more' : `${+years.toFixed(1)} or more years`)
 
 export interface FindingInputs {
   base: TalentBase
@@ -63,8 +76,12 @@ export function buildFindings(x: FindingInputs): Finding[] {
   const out: Finding[] = []
   const { base, performance: perf, succession: succ, retention: ret, overdue, learning, risk, drill } = x
   const uses = x.lineage.finding
+  const s = base.settings
+  const rule = s.findings
+  const hi = highRatingText(s.highRating)
 
-  // High-potential regretted exits in the last 6 months (needs termination type, regrettable and potential).
+  // High-potential regretted exits in the look-back window (6 months by default; needs termination
+  // type, regrettable and potential).
   const hipo = ret.hipoExits.people
   if (ret.hipoExits.available && hipo.length > 0) {
     const named = hipo
@@ -73,8 +90,9 @@ export function buildFindings(x: FindingInputs): Finding[] {
     const bu = majority(hipo, (p) => base.byId.get(p.employeeId)?.businessUnit)
     out.push({
       id: 'talent-hipo-exits',
+      metricId: M.hipoExitsRule,
       severity: hipo.length >= 2 ? 'critical' : 'warning',
-      title: `${plural(hipo.length, 'high-potential person', 'high-potential people')} rated 4 or higher resigned in the last 6 months.`,
+      title: `${plural(hipo.length, 'high-potential person', 'high-potential people')} rated ${orHigher(s.highRating)} resigned in the last ${plural(rule.hipoExitMonths, 'month')}.`,
       detail: `${listText(named)}. ${hipo.length === 1 ? 'This was a regretted loss.' : 'All were regretted losses.'}`,
       action: 'Hold stay conversations with the high potentials who remain in these teams this month.',
       people: people(
@@ -100,6 +118,7 @@ export function buildFindings(x: FindingInputs): Finding[] {
     const dept = majority(exposed, (r) => r.department)
     out.push({
       id: 'talent-succession-exposed',
+      metricId: M.successionExposedRule,
       severity: 'critical',
       title: `${plural(exposed.length, 'role has', 'roles have')} an incumbent at high risk of loss and no successor named.`,
       detail: `${exposed
@@ -132,7 +151,8 @@ export function buildFindings(x: FindingInputs): Finding[] {
     const none = roles.length - thin
     out.push({
       id: 'talent-critical-not-ready',
-      severity: notReady / succ.critical > 0.4 ? 'critical' : 'warning',
+      metricId: M.criticalNotReadyRule,
+      severity: notReady / succ.critical > rule.notReadyCritical ? 'critical' : 'warning',
       title: `${notReady} of ${succ.critical} critical roles (${pct(notReady / succ.critical)}) have no successor who is ready now.`,
       detail: `${thin === 0 ? 'None' : thin} of them ${thin === 1 ? 'has' : 'have'} successors who need more time, and ${none === 0 ? 'none' : none} ${none === 1 ? 'has' : 'have'} nobody named.`,
       action: 'Agree on development plans that make one successor ready now for each of these roles.',
@@ -155,8 +175,9 @@ export function buildFindings(x: FindingInputs): Finding[] {
       : ''
     out.push({
       id: `talent-inflation-${f.businessUnit}`,
+      metricId: M.inflationRule,
       severity: 'warning',
-      title: `${f.businessUnit} rated ${pct(f.share)} of people 4 or 5 in ${perf.cycle?.cycle ?? 'the latest cycle'}, ${pts(f.share - HIGH_GUIDELINE)} above the ${pct0(HIGH_GUIDELINE)} guideline.`,
+      title: `${f.businessUnit} rated ${pct(f.share)} of people ${hi} in ${perf.cycle?.cycle ?? 'the latest cycle'}, ${pts(f.share - s.highGuideline)} above the ${pct0(s.highGuideline)} guideline.`,
       detail: `${histText}${f.rest != null ? `The rest of the scope is at ${pct(f.rest)}.` : ''}`.trim(),
       action: `Review the ${f.businessUnit} rating distribution against the guideline in the next calibration session.`,
       filter: { businessUnit: [f.businessUnit] },
@@ -170,6 +191,7 @@ export function buildFindings(x: FindingInputs): Finding[] {
   for (const c of perf.calibrationFlags.slice(0, 2)) {
     out.push({
       id: `talent-calibration-${c.row.businessUnit}`,
+      metricId: M.calibrationRule,
       severity: 'warning',
       title: `Calibration lowered ${c.row.businessUnit} ratings by ${fmt(c.row.shift, 'num2')} points on average in ${perf.cycle?.cycle ?? 'the latest cycle'}, vs ${fmt(c.rest.shift, 'num2')} elsewhere.`,
       detail: `Calibration moved ${pct0(c.row.movedDown)} of manager-proposed ratings down in ${c.row.businessUnit}, against ${pct0(c.rest.movedDown)} in the rest of the scope.`,
@@ -187,9 +209,12 @@ export function buildFindings(x: FindingInputs): Finding[] {
     const t = conc.top
     const where = segmentName(t.dim, t.value)
     const critical =
-      t.segValue >= 0.25 && t.affected >= CRITICAL_TRAINING_PEOPLE && CRITICAL_TRAINING.test(conc.category)
+      t.segValue >= rule.overdueCriticalShare &&
+      t.affected >= rule.overdueCriticalPeople &&
+      CRITICAL_TRAINING.test(conc.category)
     out.push({
       id: 'talent-training-overdue',
+      metricId: M.trainingOverdueRule,
       severity: critical ? 'critical' : 'warning',
       title: `${t.affected} of ${t.population} people in ${where} (${pct(t.segValue)}) are overdue on ${conc.course}, vs ${pct(t.compValue)} elsewhere.`,
       detail: `${conc.second ? `${segmentText(conc.second).replace(/^./, (m) => m.toUpperCase())} is also high. ` : ''}${conc.dueDate ? `The course was due ${formatDate(conc.dueDate)}; ` : ''}${plural(conc.overdue, 'person is', 'people are')} overdue on it in total.`,
@@ -203,17 +228,19 @@ export function buildFindings(x: FindingInputs): Finding[] {
   }
 
   // High performers overdue for promotion.
-  if (overdue.available && overdue.rows.length >= 3) {
+  if (overdue.available && overdue.rows.length >= Math.max(1, rule.promotionMinPeople)) {
     const n = overdue.rows.length
     const top = overdue.top?.dim === 'department' ? overdue.top : null
     const inTop = top ? overdue.rows.filter((r) => r.department === top.value) : []
     const levels = [...new Set(inTop.map((r) => r.level ?? '—'))].sort()
     const [c1, c2] = overdue.cycles
+    const years = s.promotionYears
     out.push({
       id: 'talent-promotion-overdue',
+      metricId: M.promotionOverdueRule,
       severity: 'warning',
-      title: `${n} consistent high performers have had no promotion in 3 or more years${top ? `, ${inTop.length} of them in ${top.value}` : ''}.`,
-      detail: `All were rated 4 or 5 in ${c1.cycle} and ${c2.cycle} and have been here at least 3 years.${top && levels.length <= 3 ? ` In ${top.value} they are at ${listText(levels)}.` : ''}`,
+      title: `${plural(n, 'consistent high performer has', 'consistent high performers have')} had no promotion in ${yearsOrMore(years)}${top ? `, ${inTop.length} of them in ${top.value}` : ''}.`,
+      detail: `${n === 1 ? 'They were' : 'All were'} rated ${hi} in ${c1.cycle} and ${c2.cycle} and have been here at least ${years === 1 ? 'a year' : `${+years.toFixed(1)} years`}.${top && levels.length <= 3 ? ` In ${top.value} they are at ${listText(levels)}.` : ''}`,
       action:
         'Review promotion readiness for these people with their managers before the next promotion cycle.',
       people: people(overdue.rows.map((r) => ({ ...r, note: `${r.department}, ${r.level ?? '—'}` }))),
@@ -236,7 +263,7 @@ export function buildFindings(x: FindingInputs): Finding[] {
       .filter((r) => r.n > 0)
       .sort((a, b) => b.n - a.n)
       .slice(0, 2)
-    const share = ret.highPerformers >= 5 ? kt.length / ret.highPerformers : null
+    const share = ret.highPerformers >= s.minGroup ? kt.length / ret.highPerformers : null
     const seg = ret.keyTalentTop
     const bt = risk.backTest
     const where = seg ? `${seg.affected} of them are in ${segmentName(seg.dim, seg.value)}. ` : ''
@@ -254,8 +281,9 @@ export function buildFindings(x: FindingInputs): Finding[] {
         : ''
     out.push({
       id: 'talent-key-talent-risk',
+      metricId: M.keyTalentRule,
       severity: 'warning',
-      title: `${plural(kt.length, 'person', 'people')} rated 4 or 5 ${kt.length === 1 ? 'is' : 'are'} in the high flight-risk band${share != null ? `, ${pct(share)} of high performers` : ''}.`,
+      title: `${plural(kt.length, 'person', 'people')} rated ${hi} ${kt.length === 1 ? 'is' : 'are'} in the high flight-risk band${share != null ? `, ${pct(share)} of high performers` : ''}.`,
       detail: `${where}${reasonText} ${btText}`.trim(),
       action: 'Ask their managers to hold stay conversations this month, starting with the highest scores.',
       people: people(kt.map((k) => ({ ...k, note: `${k.department} · ${k.reason1}` }))),
@@ -271,16 +299,27 @@ export function buildFindings(x: FindingInputs): Finding[] {
   return out
 }
 
+/** "above the 95% target" (or "at" it), or "within the target of at most 8%". */
+function againstTarget(rate: number, t: MetricTarget): string {
+  if (t.comparator !== '>=') return `within the target of ${targetWords(t)}`
+  return `${rate > t.value + 1e-12 ? 'above' : 'at'} the ${targetWords(t)} target`
+}
+
 /** One finding about something clearly working, when there is one. */
 function goodFinding(x: FindingInputs): Finding | null {
-  const { performance: perf, succession: succ, learning, drill } = x
+  const { base, performance: perf, succession: succ, learning, drill } = x
   const uses = x.lineage.finding
+  const s = base.settings
+  const rule = s.findings
   const cur = learning.current
-  if (cur.rate != null && cur.rate >= 0.95 && cur.due >= 20) {
+  const target = s.onTimeTarget
+  const met = targetStatus(cur.rate, target) === 'met'
+  if (cur.rate != null && target && met && cur.due >= rule.goodTrainingMinDue) {
     return {
       id: 'talent-good-training',
+      metricId: M.goodTrainingRule,
       severity: 'good',
-      title: `${pct(cur.rate)} of required training due in this period was completed on time, above the 95% target.`,
+      title: `${pct(cur.rate)} of required training due in this period was completed on time, ${againstTarget(cur.rate, target)}.`,
       detail: `${cur.onTime} of ${cur.due} assignments were done by their due date.`,
       action: 'Keep the current reminder schedule for the next campaign.',
       tab: 'learning',
@@ -295,17 +334,19 @@ function goodFinding(x: FindingInputs): Finding | null {
         !g.other &&
         g.high != null &&
         g.share != null &&
-        g.rated >= 100 &&
-        Math.abs(g.share - HIGH_GUIDELINE) <= 0.03 &&
+        g.rated >= rule.goodDistributionMinRated &&
+        Math.abs(g.share - s.highGuideline) <= rule.goodDistributionTolerance + 1e-12 &&
         !calibrated.has(g.group),
     )
     .sort((a, b) => b.rated - a.rated)[0]
   if (match && match.share != null) {
+    const hi = highRatingText(s.highRating)
     return {
       id: 'talent-good-distribution',
+      metricId: M.goodDistributionRule,
       severity: 'good',
-      title: `${match.group} ratings match the guideline: ${pct0(match.share)} rated 4 or 5 against ${pct0(HIGH_GUIDELINE)}.`,
-      detail: `${match.high} of ${match.rated} people rated in ${perf.cycle?.cycle ?? 'the latest cycle'} received a 4 or 5.`,
+      title: `${match.group} ratings match the guideline: ${pct0(match.share)} rated ${hi} against ${pct0(s.highGuideline)}.`,
+      detail: `${match.high} of ${match.rated} people rated in ${perf.cycle?.cycle ?? 'the latest cycle'} received a ${hi}.`,
       action: `Use the ${match.group} calibration approach as the reference in the next cycle.`,
       filter: { businessUnit: [match.group] },
       tab: 'performance',
@@ -313,9 +354,14 @@ function goodFinding(x: FindingInputs): Finding | null {
       uses: uses['talent-good-distribution'],
     }
   }
-  if (succ.coverage != null && succ.coverage >= 0.8 && succ.critical >= 5) {
+  if (
+    succ.coverage != null &&
+    succ.coverage >= rule.goodSuccessionCoverage - 1e-12 &&
+    succ.critical >= rule.goodSuccessionMinCritical
+  ) {
     return {
       id: 'talent-good-succession',
+      metricId: M.goodSuccessionRule,
       severity: 'good',
       title: `${pct(succ.coverage)} of critical roles have a successor who is ready now.`,
       detail: `${succ.criticalCovered} of ${succ.critical} critical roles are covered.`,

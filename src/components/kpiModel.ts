@@ -131,7 +131,12 @@ function shownSpark(k: Kpi, gate: TierGate | null | undefined): readonly (number
  */
 export function kpiColumns(
   kpis: readonly Kpi[],
-  opts: { tiered?: boolean; gates?: readonly (TierGate | null)[] } = {},
+  opts: {
+    tiered?: boolean
+    gates?: readonly (TierGate | null)[]
+    /** Each tile's target in words ("Met: target at most 8.0%"), or null; a column when any has one. */
+    targets?: readonly (string | null)[]
+  } = {},
 ): Column[] {
   const points = Math.max(0, ...kpis.map((k, i) => shownSpark(k, opts.gates?.[i]).length))
   const trend: Column[] = []
@@ -152,6 +157,9 @@ export function kpiColumns(
     { key: 'changeText', label: 'Change', format: 'text', align: 'right', only: 'slides' },
     { key: 'changeUnit', label: 'Change unit', format: 'text', only: 'sheets' },
     { key: 'comparedWith', label: 'Compared with', format: 'text' },
+    ...(opts.targets?.some(Boolean)
+      ? [{ key: 'target', label: 'Target', format: 'text' } satisfies Column]
+      : []),
     { key: 'note', label: 'Note', format: 'text' },
     ...trend,
   ]
@@ -167,6 +175,7 @@ export function kpiColumns(
 export function kpiRows(
   kpis: readonly Kpi[],
   gates?: readonly (TierGate | null)[],
+  targets?: readonly (string | null)[],
 ): Record<string, unknown>[] {
   return kpis.map((k, i) => {
     const gate = gates?.[i] ?? null
@@ -194,6 +203,7 @@ export function kpiRows(
       row[trendKey(spark.length - 1 - j)] = valueCell(v, k.format).value
     })
     if (gates) row.tier = gate ? TIER_LABEL[gate.tier] : ''
+    if (targets) row.target = blank ? '' : (targets[i] ?? '')
     return row
   })
 }

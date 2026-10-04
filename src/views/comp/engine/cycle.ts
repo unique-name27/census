@@ -9,26 +9,28 @@ import { isNum } from '@/lib/format'
 import { median, sum } from '@/lib/stats'
 import { groupRows, safeMedian, safeShare, values } from './groups'
 import type { CompPerson } from './population'
+import { defaultRules, type ExceptionRules } from './rules'
 import { type CycleSettings, guidelineFor, type RatingKey, ratingKey } from './settings'
-import { shownGap } from './text'
+import { settingPct, shownGap } from './text'
 
-/** Guideline rules from the spec: a top rating should get at least 2%, a low rating at most 3%. */
-export const TOP_RATING_FLOOR = 0.02
-export const LOW_RATING_CAP = 0.03
-/** Robust outlier test within a rating: |0.6745 × (x − median) ÷ MAD| above this. */
-export const OUTLIER_Z = 3.5
+/*
+ * The guideline rules (rating 5 floor, rating 1-2 cap), the unusual-proposal test and the
+ * over-budget flags are settings of 'comp.merit.exceptions' and 'comp.merit.overBudget', read in
+ * `rules.ts`. Statistics take the anonymity minimum as `min`.
+ */
+
 /** MAD floor so a tightly clustered rating doesn't flag tiny differences (0.25 pts). */
 export const MAD_FLOOR = 0.0025
-/** Peer groups smaller than this get no outlier test. */
-export const OUTLIER_MIN_PEERS = 10
-/** A business unit or scope this far over budget (fraction points) is flagged. */
-export const OVER_BUDGET = 0.002
-/** This far over budget (fraction points) the flag becomes critical, at any level. */
-export const OVER_BUDGET_CRITICAL = 0.01
 
 /** One severity rule for overspend, so a business unit and a whole scope are judged alike. */
-export const overBudgetSeverity = (delta: number): Severity =>
-  delta >= OVER_BUDGET_CRITICAL - 1e-9 ? 'critical' : 'warning'
+export const overBudgetSeverity = (delta: number, critical = defaultRules().overBudget.critical): Severity =>
+  delta >= critical - 1e-9 ? 'critical' : 'warning'
+
+/** "Rating 5 below 2%", "Rating 1-2 above 3%": the guideline rules as the tables and readout name them. */
+export const topRatingRule = (x: Pick<ExceptionRules, 'topRatingFloor'>): string =>
+  `Rating 5 below ${settingPct(x.topRatingFloor)}`
+export const lowRatingRule = (x: Pick<ExceptionRules, 'lowRatingCap'>): string =>
+  `Rating 1-2 above ${settingPct(x.lowRatingCap)}`
 
 export interface SpendSummary {
   /** People with a merit proposal. */
@@ -58,7 +60,7 @@ export interface SpendSummary {
   members: CompPerson[]
 }
 
-export function meritSpend(people: readonly CompPerson[], s: CycleSettings): SpendSummary {
+export function meritSpend(people: readonly CompPerson[], s: CycleSettings, min = MIN_GROUP): SpendSummary {
   const eligible = people.filter((p) => p.merit != null)
   const priced = eligible.filter((p) => p.baseUsd != null)
   const base = sum(priced.map((p) => p.baseUsd!))
@@ -80,8 +82,8 @@ export function meritSpend(people: readonly CompPerson[], s: CycleSettings): Spe
     delta: spendPct == null ? null : shownGap(spendPct, s.meritBudget),
     overUsd: base > 0 ? spend - base * s.meritBudget : null,
     rated: rated.length,
-    guidelinePct: ratedBase > 0 && rated.length >= MIN_GROUP ? guided / ratedBase : null,
-    meanMerit: eligible.length >= MIN_GROUP ? sum(eligible.map((p) => p.merit!)) / eligible.length : null,
+    guidelinePct: ratedBase > 0 && rated.length >= min ? guided / ratedBase : null,
+    meanMerit: eligible.length >= min ? sum(eligible.map((p) => p.merit!)) / eligible.length : null,
     members: eligible,
   }
 }
@@ -99,16 +101,17 @@ export interface SpendRow {
   members: CompPerson[]
 }
 
-/** Merit spend per group (groups under 5 eligible people folded into Other). */
+/** Merit spend per group (groups under `min` eligible people folded into Other). */
 export function spendBy(
   people: readonly CompPerson[],
   key: (p: CompPerson) => string | null,
   s: CycleSettings,
+  min = MIN_GROUP,
 ): SpendRow[] {
   const eligible = people.filter((p) => p.merit != null)
-  return groupRows(eligible, key).map((g) => {
-    const m = meritSpend(g.rows, s)
-    const ok = m.priced >= MIN_GROUP
+  return groupRows(eligible, key, { min }).map((g) => {
+    const m = meritSpend(g.rows, s, min)
+    const ok = m.priced >= min
     return {
       group: g.label,
       n: g.rows.length,
@@ -221,14 +224,16 @@ export interface ExceptionRow {
 }
 
 /**
- * Proposals that break the guideline rules (rating 5 under 2%, rating 1-2 over 3%) plus robust
- * outliers within their rating. Promotion increases are reported but never counted as merit.
- * `peers` should come from the whole company so a filtered scope is judged against everyone.
+ * Proposals that break the guideline rules (rating 5 under the floor, rating 1-2 over the cap)
+ * plus robust outliers within their rating. Promotion increases are reported but never counted
+ * as merit. `peers` should come from the whole company so a filtered scope is judged against
+ * everyone.
  */
 export function guidelineExceptions(
   people: readonly CompPerson[],
   s: CycleSettings,
   peers: Map<RatingKey, PeerStat>,
+  x: ExceptionRules = defaultRules().exceptions,
 ): ExceptionRow[] {
   const out: ExceptionRow[] = []
   for (const p of people) {
@@ -236,18 +241,18 @@ export function guidelineExceptions(
     if (k == null || !isNum(p.merit)) continue
     const peer = peers.get(k)
     const z =
-      peer && peer.n >= OUTLIER_MIN_PEERS
+      peer && peer.n >= x.outlierMinPeers
         ? (0.6745 * (p.merit - peer.median)) / Math.max(peer.mad, MAD_FLOOR)
         : null
     let kind: ExceptionRow['kind'] | null = null
     let rule = ''
-    if (k === 5 && p.merit < TOP_RATING_FLOOR) {
+    if (k === 5 && p.merit < x.topRatingFloor) {
       kind = 'top-low'
-      rule = 'Rating 5 below 2%'
-    } else if (k <= 2 && p.merit > LOW_RATING_CAP) {
+      rule = topRatingRule(x)
+    } else if (k <= 2 && p.merit > x.lowRatingCap) {
       kind = 'low-high'
-      rule = 'Rating 1-2 above 3%'
-    } else if (z != null && Math.abs(z) > OUTLIER_Z) {
+      rule = lowRatingRule(x)
+    } else if (z != null && Math.abs(z) > x.outlierZ) {
       kind = 'outlier'
       rule = p.merit > peer!.median ? 'High for the rating' : 'Low for the rating'
     }
@@ -288,7 +293,10 @@ export interface PromotionRow {
   person: CompPerson
 }
 
-export function promotions(people: readonly CompPerson[]): {
+export function promotions(
+  people: readonly CompPerson[],
+  min = MIN_GROUP,
+): {
   rows: PromotionRow[]
   share: number | null
   median: number | null
@@ -310,8 +318,11 @@ export function promotions(people: readonly CompPerson[]): {
   const eligible = people.filter((p) => p.merit != null).length
   return {
     rows,
-    share: safeShare(rows.length, Math.max(eligible, rows.length)),
-    median: safeMedian(values(rows, (r) => r.promotion)),
+    share: safeShare(rows.length, Math.max(eligible, rows.length), min),
+    median: safeMedian(
+      values(rows, (r) => r.promotion),
+      min,
+    ),
   }
 }
 
@@ -329,14 +340,18 @@ export interface RewardsMixRow {
  * Share of target total rewards (base + target bonus + annual equity, all USD) by level.
  * Shares only: the amounts behind them stay inside the engine.
  */
-export function rewardsMix(people: readonly CompPerson[], hasEquity: boolean): RewardsMixRow[] {
+export function rewardsMix(
+  people: readonly CompPerson[],
+  hasEquity: boolean,
+  min = MIN_GROUP,
+): RewardsMixRow[] {
   const priced = people.filter((p) => p.baseUsd != null && p.targetBonusPct != null)
-  return groupRows(priced, (p) => p.level, { order: LEVELS }).map((g) => {
+  return groupRows(priced, (p) => p.level, { order: LEVELS, min }).map((g) => {
     const base = sum(g.rows.map((p) => p.baseUsd!))
     const bonus = sum(g.rows.map((p) => p.baseUsd! * p.targetBonusPct!))
     const equity = hasEquity ? sum(g.rows.map((p) => p.equityUsd ?? 0)) : 0
     const total = base + bonus + equity
-    const ok = g.rows.length >= 5 && total > 0
+    const ok = g.rows.length >= min && total > 0
     return {
       level: g.label,
       n: g.rows.length,

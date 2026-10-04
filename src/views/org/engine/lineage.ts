@@ -26,52 +26,18 @@ import {
 import type { DatasetKey } from '@/data/schema'
 import type { Filters } from '@/data/scope'
 import { COLOR_BY_LABELS, COLOR_BY_OPTIONS, type ColorBy } from './colorBy'
+import {
+  ACTIVE_USES,
+  COLOR_USES,
+  flagUses,
+  MANAGING_SINCE_USES,
+  OPEN_ROLE_USES,
+  REPORTING_USES,
+  REQ_CARD_USES,
+  refs,
+} from './uses'
 
-/** Who is on the chart: everyone active on the as-of date, one card per employee ID. */
-export const ACTIVE_USES = [
-  'employees.employeeId',
-  'employees.hireDate',
-  'employees.terminationDate',
-] as const satisfies readonly KnownFieldRef[]
-
-/** Reporting lines on top of that: spans, layers and the org under a leader. */
-export const REPORTING_USES = [
-  ...ACTIVE_USES,
-  'employees.managerId',
-] as const satisfies readonly KnownFieldRef[]
-
-/** "Managing since" for new-manager flags: the move from an individual contributor to a manager level. */
-export const MANAGING_SINCE_USES = [
-  'jobChanges.employeeId',
-  'jobChanges.effectiveDate',
-  'jobChanges.fromLevel',
-  'jobChanges.toLevel',
-] as const satisfies readonly KnownFieldRef[]
-
-/** Open requisitions counted under their hiring manager. */
-export const OPEN_ROLE_USES = [
-  'requisitions.reqId',
-  'requisitions.status',
-  'requisitions.hiringManagerId',
-  'requisitions.openedDate',
-] as const satisfies readonly KnownFieldRef[]
-
-/** Open-role cards on the chart also show the number of openings. */
-export const REQ_CARD_USES = [
-  ...OPEN_ROLE_USES,
-  'requisitions.openings',
-] as const satisfies readonly KnownFieldRef[]
-
-/** The field each color key encodes (tenure is measured from the hire date). */
-export const COLOR_USES: Record<ColorBy, readonly KnownFieldRef[]> = {
-  department: ['employees.department'],
-  businessUnit: ['employees.businessUnit'],
-  jobFunction: ['employees.jobFunction'],
-  location: ['employees.location'],
-  level: ['employees.level'],
-  tenure: ['employees.hireDate'],
-  none: [],
-}
+export * from './uses'
 
 type DimFilters = Pick<Filters, 'businessUnit' | 'department' | 'location' | 'level'>
 
@@ -89,9 +55,6 @@ export function filterUses(f: DimFilters): FieldRef[] {
     .map((k) => FILTER_USES[k])
 }
 
-/** The lists joined, each field once, in first-seen order. */
-export const refs = (...lists: readonly (readonly FieldRef[])[]): FieldRef[] => [...new Set(lists.flat())]
-
 /** What the numbers on screen depend on beyond the reporting lines. */
 export interface OrgLineage {
   /** The org starts below the top of the chart (leader filter or focus): reporting lines decide who is in it. */
@@ -101,10 +64,6 @@ export interface OrgLineage {
   /** New-manager flags read Job changes (otherwise the hire date). */
   jobChanges: boolean
 }
-
-/** Flags: spans and chains from the reporting lines, new hires and new managers from dates. */
-export const flagUses = (jobChanges: boolean): FieldRef[] =>
-  refs(REPORTING_USES, jobChanges ? MANAGING_SINCE_USES : [])
 
 export interface KeyFigureUses {
   people: FieldRef[]
@@ -147,9 +106,6 @@ export const flagTableUses = (l: OrgLineage): FieldRef[] =>
 /** The reorg sandbox chart: the org today with the scenario's moves, flags always on, no open roles. */
 export const sandboxUses = (l: OrgLineage & { colorBy: ColorBy }): FieldRef[] =>
   chartUses({ ...l, reqCards: false })
-
-/** The scenario's moves and span changes: who reported to whom before and after each step. */
-export const SCENARIO_USES: readonly FieldRef[] = REPORTING_USES
 
 /* ───────── layers held to the data standard ───────── */
 

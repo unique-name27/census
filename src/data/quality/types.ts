@@ -4,6 +4,7 @@
 import type { ApplyOptions, Confidence, ImportIssue, IssueCode, ParsedSheet } from '../import/types'
 import type { DatasetKey, ISODate } from '../schema'
 import type { FieldRef } from './fieldRef'
+import type { Freshness, QualityRules } from './rules'
 import type { Tier } from './tier'
 
 /* ───────────── versions ───────────── */
@@ -123,6 +124,11 @@ export interface FieldStats {
   coverage: number | null
   /** Values that were not recognized: blanked at import, or outside the field's vocabulary now. */
   invalid: number
+  /**
+   * Of `invalid`, the values the importer left blank or cleared: those rows count as blank too, so
+   * a count of distinct problem rows takes them once. Missing means 0.
+   */
+  invalidBlank?: number
   /** Values the importer filled with a default. */
   defaulted: number
   /** (invalid + defaulted) ÷ applicable rows; null when no row applies. */
@@ -178,6 +184,8 @@ export interface DatasetQuality {
   version: DatasetVersion | null
   /** Rows with an import error ÷ rows in the file; null when there is no import log. */
   issueRate: number | null
+  /** The freshness rule's result, as the tier judges it (the as-of date and the snapshot date it uses). */
+  freshness: Freshness
   rules: RuleResult[]
   /** What keeps it from the next tier, one plain phrase each (empty at gold). */
   missing: string[]
@@ -195,6 +203,8 @@ export interface Limiting {
 }
 
 export interface QualityIndex {
+  /** The thresholds this index was computed with (the metric dictionary's data quality rules). */
+  rules: QualityRules
   datasetTier(key: DatasetKey): Tier
   fieldTier(ref: FieldRef): Tier
   fieldStats(ref: FieldRef): FieldStats

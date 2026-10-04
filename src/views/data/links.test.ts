@@ -13,6 +13,14 @@ describe('parseDataTab', () => {
     expect(parseDataTab('mapping')).toEqual({ tab: 'mapping', dataset: null, panel: null })
   })
 
+  it('reads the Data quality and Metric definitions tabs, with their own addresses', () => {
+    expect(parseDataTab('quality')).toEqual({ tab: 'quality', dataset: null, panel: null })
+    expect(parseDataTab('metrics')).toEqual({ tab: 'metrics', dataset: null, panel: null })
+    expect(parseDataTab('metrics:comp')).toEqual({ tab: 'metrics', dataset: null, panel: null })
+    expect(parseDataTab('metrics/comp/merit/spend')).toEqual({ tab: 'metrics', dataset: null, panel: null })
+    expect(parseDataTab('metricsx')).toEqual({ tab: 'datasets', dataset: null, panel: null })
+  })
+
   it('reads a dataset with and without a panel', () => {
     expect(parseDataTab('candidates')).toEqual({ tab: 'datasets', dataset: 'candidates', panel: null })
     expect(parseDataTab('jobChanges-certify')).toEqual({
@@ -35,6 +43,12 @@ describe('parseDataTab', () => {
   it('maps tabs to routes', () => {
     expect(tabRoute('datasets')).toBe('')
     expect(tabRoute('mapping')).toBe('mapping')
-    expect(DATA_TABS.map((t) => t.label)).toEqual(['Datasets', 'Categories & mapping'])
+    expect(tabRoute('metrics')).toBe('metrics')
+    expect(DATA_TABS.map((t) => t.label)).toEqual([
+      'Datasets',
+      'Data quality',
+      'Metric definitions',
+      'Categories & mapping',
+    ])
   })
 })

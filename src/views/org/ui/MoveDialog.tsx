@@ -7,6 +7,7 @@ import { Button, Dialog, Segmented } from '@/components'
 import { type DrillScope, isWithin, type MoveMode, type OrgTree, rippleOf } from '../engine'
 import { PersonSearch } from './PersonSearch'
 import { RipplePreview } from './Ripple'
+import { useOrgRules } from './useOrgModel'
 
 export function MoveDialog({
   tree,
@@ -26,9 +27,10 @@ export function MoveDialog({
 }) {
   const [target, setTarget] = useState<string | null>(null)
   const [mode, setMode] = useState<MoveMode>(initialMode)
+  const rules = useOrgRules()
   const e = personId ? tree.people.get(personId) : undefined
   const ripple =
-    personId && target ? rippleOf(tree, { kind: 'move', personId, toManagerId: target, mode }) : null
+    personId && target ? rippleOf(tree, { kind: 'move', personId, toManagerId: target, mode }, rules) : null
   const close = () => {
     setTarget(null)
     onClose()

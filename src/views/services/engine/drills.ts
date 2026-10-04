@@ -6,8 +6,9 @@
  *
  * Privacy, on top of the panel's own rules:
  *  - in a small scope (fewer than 5 people behind the view's records) nothing drills;
- *  - a number drills only when the group it describes is behind at least MIN_GROUP people, so a
- *    list can't give away a rate hidden beside it; a hidden value ("—") never drills;
+ *  - a number drills only when the group it describes is behind at least the anonymity minimum
+ *    of people (`DrillScope.minGroup`), so a list can't give away a rate hidden beside it; a
+ *    hidden value ("—") never drills;
  *  - employee relations cases are never listed (counts and timeliness only): a drill over cases
  *    that include some says how many it leaves out, and one with nothing else doesn't drill.
  *
@@ -42,6 +43,8 @@ export interface DrillScope {
   scope: string
   /** Optional case columns present in the data; a missing one drops its drill column. */
   caseCols: Pick<CaseColumns, 'firstResponseAt' | 'resolvedAt'>
+  /** The anonymity minimum in force (a dictionary setting; MIN_GROUP when absent). */
+  minGroup?: number
 }
 
 /** "last 12 months", or the exact range for a custom window. */
@@ -54,6 +57,7 @@ export function drillScope(
   ctx: Pick<AnalyticsContext, 'filters' | 'window' | 'asOf' | 'scopeLabel'>,
   caseCols: DrillScope['caseCols'],
   small: boolean,
+  minGroup = MIN_GROUP,
 ): DrillScope {
   return {
     on: !small,
@@ -62,6 +66,7 @@ export function drillScope(
     asOf: ctx.asOf,
     scope: ctx.scopeLabel,
     caseCols,
+    minGroup,
   }
 }
 
@@ -86,10 +91,11 @@ function peopleOf(rows: readonly Personal[]): number {
 
 /**
  * Whether a number over this group may open its records: the scope is not small and the group
- * is behind at least MIN_GROUP people. Cheap to call on every render (cached per array).
+ * is behind at least the anonymity minimum of people. Cheap to call on every render (cached per
+ * array).
  */
 export function canDrill(s: DrillScope, group: readonly Personal[] | null | undefined): boolean {
-  return s.on && !!group?.length && peopleOf(group) >= MIN_GROUP
+  return s.on && !!group?.length && peopleOf(group) >= (s.minGroup ?? MIN_GROUP)
 }
 
 /** Rows matching `pred` first, each part keeping its order (sort is stable). */

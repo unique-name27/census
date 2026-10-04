@@ -8,14 +8,7 @@ import { drill, openPerson } from '@/drill'
 import { formatDate } from '@/lib/dates'
 import { fmt } from '@/lib/format'
 import { MeritGuideline } from '../charts/MeritGuideline'
-import {
-  DEF_COMPA,
-  DEF_DIFFERENTIATION,
-  DEF_LATEST_RATING,
-  DEF_POSITION,
-  guidelineDefinition,
-  RATING_DOT_COLUMNS,
-} from '../columns'
+import { RATING_DOT_COLUMNS } from '../columns'
 import {
   bonusColumns,
   differentiationColumns,
@@ -23,21 +16,24 @@ import {
   matrixColumns,
   meritRatingColumns,
 } from '../drillColumns'
+import { FIGURE_METRIC } from '../engine/definitions'
 import { bonusDrill, differentiationDrill, equityDrill, matrixDrill, meritRatingDrill } from '../engine/drill'
 import type { CompModel } from '../engine/model'
-import { DIFFERENTIATION_FLOOR, type DifferentiationRow, RATING_ORDER } from '../engine/performance'
+import { type DifferentiationRow, RATING_ORDER } from '../engine/performance'
 import { POSITIONS } from '../engine/population'
 import { asOfNote, emptyIf, MISSING, note } from '../shared'
 
 const RATING_TOP_DOWN = RATING_ORDER.slice().reverse()
-const flatTone = (d: DifferentiationRow) =>
-  d.ratio != null && d.ratio < DIFFERENTIATION_FLOOR ? 'warning' : 'default'
+/** Departments under the differentiation floor ('comp.merit.differentiation') are marked. */
+const flatTone = (floor: number) => (d: DifferentiationRow) =>
+  d.ratio != null && d.ratio < floor ? 'warning' : 'default'
 /** Person rows open that person's card. */
 const personRow = (r: { id: string }) => openPerson(r.id)
 
 export function Performance({ m }: { m: CompModel }) {
   const p = m.performance
-  const s = m.settings
+  const floor = m.rules.differentiation.floor
+  const min = fmt(m.rules.minGroup, 'int')
   const asOf = formatDate(m.asOf)
   const noReviews = m.pop.has.reviews ? null : MISSING.reviews
   const noMerit = noReviews ?? (m.pop.has.merit ? null : MISSING.merit)
@@ -53,11 +49,12 @@ export function Performance({ m }: { m: CompModel }) {
         <Figure
           id="comp-compa-by-rating"
           uses={m.uses['comp-compa-by-rating']}
+          metric={FIGURE_METRIC['comp-compa-by-rating']}
           title="Compa-ratio by rating"
           subtitle={`One dot per person, tick at the median, as of ${asOf}`}
           data={p.ratingDots}
           columns={RATING_DOT_COLUMNS}
-          definitions={[DEF_COMPA, DEF_LATEST_RATING]}
+          definitions={m.definitions['comp-compa-by-rating']}
           note={note(m, p.ratingDots.length)}
           span={6}
           empty={emptyIf(p.ratingDots, noReviews, 'Nobody in this scope has a rating.')}
@@ -79,11 +76,12 @@ export function Performance({ m }: { m: CompModel }) {
         <Figure
           id="comp-merit-by-rating"
           uses={m.uses['comp-merit-by-rating']}
+          metric={FIGURE_METRIC['comp-merit-by-rating']}
           title="Merit by rating against the guideline"
           subtitle="Mean proposed merit % by rating, with the guideline for each rating marked, this cycle"
           data={p.meritByRating}
           columns={meritRatingColumns(m)}
-          definitions={[guidelineDefinition(s), DEF_LATEST_RATING]}
+          definitions={m.definitions['comp-merit-by-rating']}
           note={note(m, meritN, 'proposals')}
           span={6}
           empty={emptyIf(p.meritByRating, noMerit, 'No rated merit proposals in this scope.')}
@@ -104,16 +102,17 @@ export function Performance({ m }: { m: CompModel }) {
         <Figure
           id="comp-merit-matrix"
           uses={m.uses['comp-merit-matrix']}
+          metric={FIGURE_METRIC['comp-merit-matrix']}
           title="Merit matrix"
           subtitle="Mean merit minus the guideline, by rating and range position; blue above guideline, red below"
           data={p.matrix}
           columns={matrixColumns(m)}
-          definitions={[guidelineDefinition(s), DEF_POSITION, DEF_LATEST_RATING]}
+          definitions={m.definitions['comp-merit-matrix']}
           note={`${note(
             m,
             p.matrix.reduce((a, c) => a + c.n, 0),
             'proposals',
-          )} · cells under 5 people are hidden`}
+          )} · cells under ${min} people are hidden`}
           span={7}
           empty={emptyIf(
             p.matrix,
@@ -138,12 +137,13 @@ export function Performance({ m }: { m: CompModel }) {
         <Figure
           id="comp-differentiation-by-department"
           uses={m.uses['comp-differentiation-by-department']}
+          metric={FIGURE_METRIC['comp-differentiation-by-department']}
           title="Differentiation by department"
           subtitle="Mean merit for ratings 4-5 ÷ mean merit for rating 3, lowest first"
           data={p.byDepartment}
           columns={differentiationColumns(m)}
-          definitions={[DEF_DIFFERENTIATION, DEF_LATEST_RATING]}
-          note={`Company ${fmt(p.companyDifferentiation.ratio, 'times')} · needs 5 people on each side · ${asOfNote(m)}`}
+          definitions={m.definitions['comp-differentiation-by-department']}
+          note={`Company ${fmt(p.companyDifferentiation.ratio, 'times')} · needs ${min} people on each side · ${asOfNote(m)}`}
           span={5}
           empty={emptyIf(p.byDepartment, noMerit, 'No rated merit proposals in this scope.')}
         >
@@ -153,10 +153,10 @@ export function Performance({ m }: { m: CompModel }) {
             value="ratio"
             format="times"
             sort="asc"
-            ref={{ value: DIFFERENTIATION_FLOOR, label: `Floor ${fmt(DIFFERENTIATION_FLOOR, 'times')}` }}
-            tone={flatTone}
+            ref={{ value: floor, label: `Floor ${fmt(floor, 'times')}` }}
+            tone={flatTone(floor)}
             rowHeight={26}
-            nullNote="Fewer than 5 people rated 3 or rated 4-5"
+            nullNote={`Fewer than ${min} people rated 3 or rated 4-5`}
             onSelect={(d) => drill(differentiationDrill(m, d, d.group, null))}
           />
         </Figure>
@@ -169,20 +169,12 @@ export function Performance({ m }: { m: CompModel }) {
         <Figure
           id="comp-bonus-by-rating"
           uses={m.uses['comp-bonus-by-rating']}
+          metric={FIGURE_METRIC['comp-bonus-by-rating']}
           title="Bonus payout by rating"
           subtitle={`Mean last payout as a share of target, by ${m.pop.annualCycle ?? 'annual'} rating`}
           data={p.bonus}
           columns={bonusColumns(m)}
-          definitions={[
-            {
-              term: 'Payout of target',
-              text: 'Last bonus paid divided by the target bonus. 100% is paid at target. People hired after the last payout have none.',
-            },
-            {
-              term: 'Annual rating',
-              text: 'The rating from the latest annual cycle, the one the payout followed.',
-            },
-          ]}
+          definitions={m.definitions['comp-bonus-by-rating']}
           note={note(
             m,
             p.bonus.reduce((a, r) => a + r.n, 0),
@@ -207,18 +199,12 @@ export function Performance({ m }: { m: CompModel }) {
         <Figure
           id="comp-equity-by-rating"
           uses={m.uses['comp-equity-by-rating']}
+          metric={FIGURE_METRIC['comp-equity-by-rating']}
           title="Equity by rating"
           subtitle="Median annual equity as a share of base salary, both in USD"
           data={p.equity}
           columns={equityColumns(m)}
-          definitions={[
-            {
-              term: 'Equity share',
-              text: 'Annualized equity grant value divided by base salary, both in US dollars.',
-              formula: 'annualEquityUsd ÷ (base × fxToUsd)',
-            },
-            DEF_LATEST_RATING,
-          ]}
+          definitions={m.definitions['comp-equity-by-rating']}
           note={note(
             m,
             p.equity.reduce((a, r) => a + r.n, 0),

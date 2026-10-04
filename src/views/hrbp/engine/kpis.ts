@@ -1,19 +1,21 @@
 /**
  * Overview KPI tiles. Rates compare with the company when an org filter is active ("vs
  * company") and with the prior window otherwise. Delta color uses the earlier HRBP
- * dashboard's materiality floor: |Δ| ≥ 2% of the reference + 0.15 pts.
+ * dashboard's materiality floor: |Δ| ≥ 2% of the reference + 0.15 pts (the "Material change"
+ * settings). Each tile names its metric dictionary entry and takes its definition from there.
  *
  * Exit rates are null (never 0) when no Employees row has a termination date: an active-only
  * roster export says nothing about who left.
  */
 import type { Kpi } from '@/components/types'
-import { type Employee, type JobChange, MIN_GROUP } from '@/data/schema'
+import type { Employee, JobChange } from '@/data/schema'
 import type { Window } from '@/data/scope'
 import { drillSpec } from '@/drill/types'
 import { addDays, addMonths, formatDate } from '@/lib/dates'
-import { activeAt, attrition, exitsIn, headcountAt, hiresIn, inWindow, type RateResult } from '@/lib/people'
-import { type CohortSummary, cohortSummary, firstYearCohort } from './attrition'
-import { count, isMaterialGap, NO_HISTORY, NO_LEAVERS, type Prep, priorLabel, quarterBlocks } from './base'
+import { inWindow, isEmployee, type RateResult } from '@/lib/people'
+import { ID } from '../metrics'
+import { type CohortSummary, cohortSummary, firstYearCohort, groupOptions } from './attrition'
+import { count, NO_HISTORY, NO_LEAVERS, type Prep, priorLabel, quarterBlocks } from './base'
 import {
   changesSpec,
   employeesOnSpec,
@@ -29,18 +31,19 @@ import {
   WORKER_HIDE,
 } from './drill'
 import { tagKpis } from './drillUses'
-import {
-  ATTRITION,
-  FIRST_YEAR,
-  HEADCOUNT,
-  HIRES,
-  type Lineage,
-  PROMOTION_RATE,
-  REGRETTED,
-  VOLUNTARY,
-} from './lineage'
+import { ATTRITION, FIRST_YEAR, HEADCOUNT, HIRES, type Lineage, PROMOTION_RATE, VOLUNTARY } from './lineage'
 import { type MovementModel, promotionComparison } from './movement'
-import { annualRate, exitsByGroup, leftInFirstYear } from './rates'
+import {
+  activeAt,
+  attrition,
+  type Counts,
+  exitsIn,
+  headcountAt,
+  hiresIn,
+  type RateOptions,
+  regrettedBy,
+} from './population'
+import { exitsByGroup } from './rates'
 
 export { priorLabel } from './base'
 
@@ -67,7 +70,7 @@ export interface KpiRecords {
   exits: Employee[]
   voluntary: Employee[]
   regretted: Employee[]
-  /** The first-year cohort's leavers (left within 365 days of hire). */
+  /** The first-year cohort's leavers (left within the first-year window of hire, 365 days by default). */
   firstYear: Employee[]
 }
 
@@ -94,13 +97,24 @@ const avgText = (avg: number) => Math.round(avg).toLocaleString('en-US')
 type ExitKind = 'all' | 'voluntary' | 'regretted'
 
 /** Employee exits of one kind in a window (the events of `attrition`). */
-export function exitsOf(emps: readonly Employee[], w: Window, kind: ExitKind): Employee[] {
-  return exitsIn(emps, w).filter(
-    (e) =>
-      kind === 'all' ||
-      (e.terminationType === 'Voluntary' && (kind === 'voluntary' || e.regrettable === true)),
+export function exitsOf(
+  emps: readonly Employee[],
+  w: Window,
+  kind: ExitKind,
+  counts: Counts = isEmployee,
+  isRegretted: (e: Employee) => boolean = regrettedBy('voluntaryFlagged'),
+): Employee[] {
+  return exitsIn(emps, w, counts).filter(
+    (e) => kind === 'all' || (kind === 'voluntary' ? e.terminationType === 'Voluntary' : isRegretted(e)),
   )
 }
+
+/** The rate settings in force, for `attrition`. */
+export const rateOptions = (p: Prep): RateOptions => ({
+  counts: p.counts,
+  annualize: p.set.annualize,
+  regretted: p.set.regretted,
+})
 
 /** Promotion events in a window. */
 const promotionsIn = (changes: readonly JobChange[], w: Window): JobChange[] =>
@@ -132,7 +146,11 @@ export function promotionsComparisonSpec(p: Prep, movement: MovementModel) {
 
 /** First-year attrition at asOf, null when no row has a termination date. */
 export function firstYearSummary(p: Prep, emps = p.emps, asOf = p.asOf): CohortSummary {
-  const s = cohortSummary(emps, asOf)
+  const s = cohortSummary(emps, asOf, {
+    counts: p.counts,
+    leftFirstYear: p.leftFirstYear,
+    minGroup: p.set.minGroup,
+  })
   return p.has.terminationDate ? s : { ...s, rate: null }
 }
 
@@ -142,25 +160,28 @@ export function computeKpis(p: Prep, movement: MovementModel): KpiModel {
   const compareLabel = vsCompany ? 'vs company' : priorLabel(ctx.filters.period, window.months)
   const left = p.has.terminationDate
   const typed = left && p.has.terminationType
+  const { counts, set } = p
+  const minGroup = set.minGroup
+  const annualized = set.annualize ? ', annualized' : ''
   const blocks = quarterBlocks(asOf, 8)
-  const qGroups = blocks.map((b) => exitsByGroup(emps, b, () => 'all').get('all'))
+  const qGroups = blocks.map((b) => exitsByGroup(emps, b, () => 'all', undefined, groupOptions(p)).get('all'))
 
   const yearAgo = addDays(p.t12.start, -1)
-  const active = activeAt(emps, asOf)
+  const active = activeAt(emps, asOf, counts)
   const headcount = active.length
-  const headcountYearAgo = left ? headcountAt(emps, yearAgo) : null
-  const hireList = hiresIn(emps, window)
+  const headcountYearAgo = left ? headcountAt(emps, yearAgo, counts) : null
+  const hireList = hiresIn(emps, window, counts)
   const hires = hireList.length
-  const priorHires = hiresIn(emps, prior).length
-  const exits = exitsIn(emps, window)
+  const priorHires = hiresIn(emps, prior, counts).length
+  const exits = exitsIn(emps, window, counts)
   const voluntaryExits = exits.filter((e) => e.terminationType === 'Voluntary')
   const records: KpiRecords = {
     active,
     hires: hireList,
     exits,
     voluntary: voluntaryExits,
-    regretted: voluntaryExits.filter((e) => e.regrettable === true),
-    firstYear: firstYearCohort(emps, asOf).filter(leftInFirstYear),
+    regretted: exits.filter(p.isRegretted),
+    firstYear: firstYearCohort(emps, asOf, counts).filter(p.leftFirstYear),
   }
   const period = periodName(p)
   const scope = scopePart(p)
@@ -170,11 +191,12 @@ export function computeKpis(p: Prep, movement: MovementModel): KpiModel {
     ? { emps: companyEmps, window, part: 'whole company', subtitle: `${window.label} · Whole company` }
     : { emps, window: prior, part: 'prior period', subtitle: scopeLine(p, prior.label) }
 
+  const opts = rateOptions(p)
   const rate = (kind: ExitKind) => {
-    const own = attrition(emps, window, kind)
-    const ok = kind === 'all' ? left : typed && (kind !== 'regretted' || p.has.regrettable)
+    const own = attrition(emps, window, kind, opts)
+    const ok = kind === 'all' ? left : kind === 'regretted' ? p.regrettedReady : typed
     const value = ok ? own.rate : null
-    const refResult = attrition(cmp.emps, cmp.window, kind)
+    const refResult = attrition(cmp.emps, cmp.window, kind, opts)
     return { own: { ...own, rate: value }, ref: ok ? refResult.rate : null, refResult, kind }
   }
   const all = rate('all')
@@ -183,16 +205,16 @@ export function computeKpis(p: Prep, movement: MovementModel): KpiModel {
 
   const rateKpi = (
     id: string,
+    metricId: string,
     label: string,
     r: { own: RateResult; ref: number | null; refResult: RateResult; kind: ExitKind },
     spark: (number | null)[],
-    definition: string,
     missing: string,
     noun: [string, string],
     leavers: { title: string; rows: Employee[] },
     lineage: Lineage,
   ): Kpi => {
-    const suppressed = r.own.avgHeadcount > 0 && r.own.avgHeadcount < MIN_GROUP
+    const suppressed = r.own.avgHeadcount > 0 && r.own.avgHeadcount < minGroup
     const value = suppressed ? null : r.own.rate
     const delta = value != null && r.ref != null ? value - r.ref : null
     // The leavers in the rate's numerator; nothing behind a hidden or missing rate.
@@ -201,7 +223,7 @@ export function computeKpis(p: Prep, movement: MovementModel): KpiModel {
         ? undefined
         : () =>
             leaversSpec(p, titled(leavers.title, scope, period), leavers.rows, {
-              note: rateNote(r.own.events, noun, r.own.avgHeadcount, window.months),
+              note: rateNote(r.own.events, noun, r.own.avgHeadcount, window.months, set.annualize),
             })
     return {
       drill,
@@ -210,36 +232,48 @@ export function computeKpis(p: Prep, movement: MovementModel): KpiModel {
         delta == null
           ? undefined
           : () =>
-              leaversSpec(p, titled(leavers.title, cmp.part), exitsOf(cmp.emps, cmp.window, r.kind), {
-                subtitle: cmp.subtitle,
-                note: rateNote(r.refResult.events, noun, r.refResult.avgHeadcount, cmp.window.months),
-              }),
+              leaversSpec(
+                p,
+                titled(leavers.title, cmp.part),
+                exitsOf(cmp.emps, cmp.window, r.kind, counts, p.isRegretted),
+                {
+                  subtitle: cmp.subtitle,
+                  note: rateNote(
+                    r.refResult.events,
+                    noun,
+                    r.refResult.avgHeadcount,
+                    cmp.window.months,
+                    set.annualize,
+                  ),
+                },
+              ),
       // "57 exits over an average headcount of 304": the 57 exits.
       noteDrill: drill,
       id,
+      metricId,
       label,
       value,
       format: 'pct',
       delta,
       deltaLabel: compareLabel,
       goodDirection: 'down',
-      deltaMaterial: isMaterialGap(delta, r.ref),
+      deltaMaterial: p.material(delta, r.ref),
       spark,
       note:
         value == null && !suppressed
           ? left
             ? missing
             : NO_LEAVERS
-          : `${count(r.own.events, noun[0], noun[1])} over an average headcount of ${avgText(r.own.avgHeadcount)}, annualized`,
+          : `${count(r.own.events, noun[0], noun[1])} over an average headcount of ${avgText(r.own.avgHeadcount)}${annualized}`,
       suppressed,
       tab: 'attrition',
-      definition,
+      definition: p.text(metricId),
       uses: p.uses(lineage),
     }
   }
 
   const sparkRate = (pick: (g: NonNullable<(typeof qGroups)[number]>) => number, enabled: boolean) =>
-    qGroups.map((g, i) => (enabled && g ? annualRate(pick(g), g.avgHeadcount, blocks[i]) : null))
+    qGroups.map((g, i) => (enabled && g ? p.rate(pick(g), g.avgHeadcount, blocks[i]) : null))
 
   // The cohort is defined on the as-of date, not on the window: compare with the cohort a year
   // earlier in every period (the prior window of a 3-month period is only 3 months back).
@@ -247,88 +281,96 @@ export function computeKpis(p: Prep, movement: MovementModel): KpiModel {
   const fyRefEmps = vsCompany ? companyEmps : emps
   const fyRefAsOf = vsCompany ? asOf : addMonths(asOf, -12)
   const fyRef = firstYearSummary(p, fyRefEmps, fyRefAsOf).rate
-  const fySuppressed = firstYear.cohort > 0 && firstYear.cohort < MIN_GROUP
+  const fySuppressed = firstYear.cohort > 0 && firstYear.cohort < minGroup
   const fyDelta = firstYear.rate != null && fyRef != null ? firstYear.rate - fyRef : null
 
   const promo = movement.promotions
   const promoRef = vsCompany ? movement.companyPromotions.rate : movement.priorPromotions.rate
   const promoDelta = promo.rate != null && promoRef != null ? promo.rate - promoRef : null
-  const promoSuppressed = promo.avgHeadcount > 0 && promo.avgHeadcount < MIN_GROUP
+  const promoSuppressed = promo.avgHeadcount > 0 && promo.avgHeadcount < minGroup
 
+  // Workers left out of headcount: contractors and interns, or only interns when contractors count.
   const contingent = p.people.filter(
-    (e) =>
-      e.employmentType !== 'Employee' &&
-      e.hireDate <= asOf &&
-      (!e.terminationDate || e.terminationDate > asOf),
+    (e) => !counts(e) && e.hireDate <= asOf && (!e.terminationDate || e.terminationDate > asOf),
   )
+  const withContractors = set.countContractors
+  const contingentNote = (n: number) =>
+    withContractors
+      ? n === 1
+        ? 'Plus 1 intern'
+        : `Plus ${n.toLocaleString('en-US')} interns`
+      : n === 1
+        ? 'Plus 1 contractor or intern'
+        : `Plus ${n.toLocaleString('en-US')} contractors and interns`
 
   const kpis: Kpi[] = [
     {
       id: 'headcount',
+      metricId: ID.headcount,
       label: 'Headcount',
       value: headcount,
       format: 'int',
       delta: headcountYearAgo == null ? null : headcount - headcountYearAgo,
       deltaLabel: 'vs 12 months earlier',
       goodDirection: null,
-      spark: left ? blocks.map((b) => headcountAt(emps, b.end)) : undefined,
-      note: !left
-        ? NO_HISTORY
-        : contingent.length
-          ? contingent.length === 1
-            ? 'Plus 1 contractor or intern'
-            : `Plus ${contingent.length.toLocaleString('en-US')} contractors and interns`
-          : undefined,
+      spark: left ? blocks.map((b) => headcountAt(emps, b.end, counts)) : undefined,
+      note: !left ? NO_HISTORY : contingent.length ? contingentNote(contingent.length) : undefined,
       tab: 'workforce',
-      definition: `Employees active on ${formatDate(asOf)}. Contractors and interns are counted separately.`,
+      definition: p.text(ID.headcount),
       drill: () => employeesOnSpec(p, asOf, { rows: active }),
       deltaDrill:
         headcountYearAgo == null
           ? undefined
           : () =>
               employeesOnSpec(p, yearAgo, {
-                note: `Employees active 12 months earlier, shown with their current record. The comparison for the ${count(headcount, 'employee', 'employees')} on ${formatDate(asOf)}.`,
+                note: withContractors
+                  ? `Employees and contractors active 12 months earlier, shown with their current record. The comparison for the ${count(headcount, 'person', 'people')} on ${formatDate(asOf)}.`
+                  : `Employees active 12 months earlier, shown with their current record. The comparison for the ${count(headcount, 'employee', 'employees')} on ${formatDate(asOf)}.`,
               }),
       noteDrill:
         left && contingent.length
           ? () =>
               drillSpec({
                 kind: 'employees',
-                title: titled('Contractors and interns', scope),
+                title: titled(withContractors ? 'Interns' : 'Contractors and interns', scope),
                 subtitle: scopeLine(p, `As of ${formatDate(asOf)}`),
                 rows: contingent,
                 hide: WORKER_HIDE,
-                note: 'Active contractors and interns. Headcount counts employees only.',
+                note: withContractors
+                  ? 'Active interns. Headcount counts employees and contractors.'
+                  : 'Active contractors and interns. Headcount counts employees only.',
               })
           : undefined,
       uses: p.uses(HEADCOUNT),
     },
     {
       id: 'hires',
+      metricId: ID.hires,
       label: 'Hires',
       value: hires,
       format: 'int',
       delta: hires - priorHires,
       deltaLabel: priorLabel(ctx.filters.period, window.months),
       goodDirection: null,
-      spark: blocks.map((b) => hiresIn(emps, b).length),
+      spark: blocks.map((b) => hiresIn(emps, b, counts).length),
       note: `Started ${window.label}`,
       tab: 'workforce',
-      definition:
-        'Employees who started in the period (hire date in the Employees data). Contractors and interns are not included. Recruiting counts offers accepted by the accept date instead, so the two numbers can differ.',
+      definition: p.text(ID.hires),
       drill: () => hiresSpec(p, titled('Hires', scope, period), hireList),
       deltaDrill: priorHires
         ? () =>
-            hiresSpec(p, titled('Hires', scope, 'prior period'), hiresIn(emps, prior), { when: prior.label })
+            hiresSpec(p, titled('Hires', scope, 'prior period'), hiresIn(emps, prior, counts), {
+              when: prior.label,
+            })
         : undefined,
       uses: p.uses(HIRES),
     },
     rateKpi(
       'attrition',
+      ID.attrition,
       'Attrition',
       all,
       sparkRate((g) => g.exits, left),
-      'All employee exits in the period ÷ average headcount (mean of month-end snapshots), annualized.',
       'No headcount in this period',
       ['exit', 'exits'],
       { title: 'Leavers', rows: records.exits },
@@ -336,10 +378,10 @@ export function computeKpis(p: Prep, movement: MovementModel): KpiModel {
     ),
     rateKpi(
       'voluntary',
+      ID.voluntary,
       'Voluntary attrition',
       vol,
       sparkRate((g) => g.voluntary, typed),
-      'Voluntary exits in the period ÷ average headcount, annualized.',
       'Add Termination type to Employees to see this',
       ['voluntary exit', 'voluntary exits'],
       { title: 'Voluntary leavers', rows: records.voluntary },
@@ -347,17 +389,18 @@ export function computeKpis(p: Prep, movement: MovementModel): KpiModel {
     ),
     rateKpi(
       'regretted',
+      ID.regretted,
       'Regretted attrition',
       reg,
-      sparkRate((g) => g.regretted, typed && p.has.regrettable),
-      'Voluntary exits marked regrettable ÷ average headcount, annualized.',
+      sparkRate((g) => g.regretted, p.regrettedReady),
       'Add Regrettable to Employees to see this',
       ['regretted exit', 'regretted exits'],
       { title: 'Regretted leavers', rows: records.regretted },
-      REGRETTED,
+      p.lin.regretted,
     ),
     {
       id: 'first-year',
+      metricId: ID.firstYear,
       label: 'First-year attrition',
       drill:
         fySuppressed || firstYear.rate == null
@@ -376,7 +419,7 @@ export function computeKpis(p: Prep, movement: MovementModel): KpiModel {
               return firstYearSpec(
                 p,
                 titled('Left within their first year', vsCompany ? 'whole company' : 'a year earlier'),
-                firstYearCohort(fyRefEmps, fyRefAsOf).filter(leftInFirstYear),
+                firstYearCohort(fyRefEmps, fyRefAsOf, counts).filter(p.leftFirstYear),
                 { size: s.cohort, from: addDays(s.from, 1), to: s.to },
                 vsCompany ? 'Whole company' : ctx.scopeLabel,
               )
@@ -390,12 +433,12 @@ export function computeKpis(p: Prep, movement: MovementModel): KpiModel {
                 kind: 'employees',
                 title: titled('Hired 12 to 24 months ago', scope),
                 subtitle: `Hired ${formatDate(addDays(firstYear.from, 1))} to ${formatDate(firstYear.to)} · ${ctx.scopeLabel}`,
-                rows: firstYearCohort(emps, asOf),
+                rows: firstYearCohort(emps, asOf, counts),
                 hide: ['employmentType'],
-                note: `${count(firstYear.leavers, 'person', 'people')} of these ${count(firstYear.cohort, 'employee', 'employees')} left within 365 days of their hire date.`,
+                note: `${count(firstYear.leavers, 'person', 'people')} of these ${count(firstYear.cohort, 'employee', 'employees')} left within ${count(set.firstYearDays, 'day', 'days')} of their hire date.`,
                 extra: {
                   columns: [{ key: 'leftFirstYear', label: 'Left within first year' }],
-                  values: (e) => ({ leftFirstYear: leftInFirstYear(e) ? 'Yes' : 'No' }),
+                  values: (e) => ({ leftFirstYear: p.leftFirstYear(e) ? 'Yes' : 'No' }),
                 },
               }),
       value: fySuppressed ? null : firstYear.rate,
@@ -403,18 +446,18 @@ export function computeKpis(p: Prep, movement: MovementModel): KpiModel {
       delta: fySuppressed ? null : fyDelta,
       deltaLabel: vsCompany ? 'vs company' : 'vs a year earlier',
       goodDirection: 'down',
-      deltaMaterial: isMaterialGap(fyDelta, fyRef),
+      deltaMaterial: p.material(fyDelta, fyRef),
       note: left
         ? `Cohort n = ${firstYear.cohort.toLocaleString('en-US')} hired ${formatDate(addDays(firstYear.from, 1))} to ${formatDate(firstYear.to)}`
         : NO_LEAVERS,
       suppressed: fySuppressed,
       tab: 'attrition',
-      definition:
-        'Of employees hired 12 to 24 months ago, the share who left within 365 days of their hire date.',
+      definition: p.text(ID.firstYear),
       uses: p.uses(FIRST_YEAR),
     },
     {
       id: 'promotion-rate',
+      metricId: ID.promotionRate,
       label: 'Promotion rate',
       drill:
         promoSuppressed || promo.rate == null
@@ -437,15 +480,14 @@ export function computeKpis(p: Prep, movement: MovementModel): KpiModel {
       delta: promoSuppressed ? null : promoDelta,
       deltaLabel: vsCompany ? 'vs company' : movement.priorLabel,
       goodDirection: null,
-      deltaMaterial: isMaterialGap(promoDelta, promoRef),
+      deltaMaterial: p.material(promoDelta, promoRef),
       spark: movement.byQuarter.map((q) => q.rate),
       note: p.has.jobChanges
         ? `${count(promo.promotions, 'promotion', 'promotions')} over an average headcount of ${avgText(promo.avgHeadcount)}`
         : 'Upload Job changes to see this',
       suppressed: promoSuppressed,
       tab: 'movement',
-      definition:
-        'Promotion events in the period from Job changes ÷ average headcount. Not annualized, because promotions come in cycles.',
+      definition: p.text(ID.promotionRate),
       uses: p.uses(PROMOTION_RATE),
     },
   ]

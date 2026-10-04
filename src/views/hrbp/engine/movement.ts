@@ -8,12 +8,14 @@
  * months just before it.
  */
 import type { Employee, ISODate, JobChange } from '@/data/schema'
-import { LEVELS, MIN_GROUP } from '@/data/schema'
+import { LEVELS } from '@/data/schema'
 import type { Window } from '@/data/scope'
 import { daysBetween } from '@/lib/dates'
-import { activeAt, avgHeadcount, inWindow } from '@/lib/people'
+import { inWindow, isEmployee } from '@/lib/people'
 import { type Prep, priorLabel, quarterBlocks, yearEarlier } from './base'
+import { activeAt, avgHeadcount, type Counts } from './population'
 import { exitsByGroup } from './rates'
+import { defaultSettings } from './settings'
 import { NO_LEVEL } from './workforce'
 
 export const MOVE_TYPES = ['Promotion', 'Transfer', 'Lateral move', 'Demotion'] as const
@@ -113,26 +115,31 @@ export const SINCE_BANDS = [
   'Never promoted',
 ] as const
 
-/** Events ÷ average headcount, not annualized; null under the anonymity floor. */
-export function shareOf(events: number, avg: number): number | null {
-  return avg >= MIN_GROUP ? events / avg : null
+/** Events ÷ average headcount, not annualized; null under the anonymity minimum. */
+export function shareOf(events: number, avg: number, minGroup = defaultSettings().minGroup): number | null {
+  return avg >= minGroup ? events / avg : null
 }
 
 /**
  * Promotion events in the window ÷ average headcount (not annualized). Null without a Job
- * changes dataset or below an average headcount of 5.
+ * changes dataset or below the anonymity minimum (an average headcount of 5).
  */
 export function promotionRate(
   emps: readonly Employee[],
   changes: readonly JobChange[],
   w: Window,
   hasJobChanges: boolean,
+  opts: { counts?: Counts; minGroup?: number } = {},
 ): PromotionRate {
-  const avg = avgHeadcount(emps, w)
+  const avg = avgHeadcount(emps, w, opts.counts ?? isEmployee)
   const promotions = changes.filter(
     (c) => c.changeType === 'Promotion' && inWindow(c.effectiveDate, w),
   ).length
-  return { rate: hasJobChanges ? shareOf(promotions, avg) : null, promotions, avgHeadcount: avg }
+  return {
+    rate: hasJobChanges ? shareOf(promotions, avg, opts.minGroup) : null,
+    promotions,
+    avgHeadcount: avg,
+  }
 }
 
 /**
@@ -158,23 +165,26 @@ export function sinceBand(years: number | null): (typeof SINCE_BANDS)[number] {
 }
 
 export function computeMovement(p: Prep): MovementModel {
-  const { emps, window, asOf, changes, ctx } = p
+  const { emps, window, asOf, changes, ctx, counts } = p
   const has = p.has.jobChanges
+  const minGroup = p.set.minGroup
+  const share = (events: number, avg: number) => shareOf(events, avg, minGroup)
+  const rateOpts = { counts, minGroup }
   const byId = ctx.org.byId
   const inWin = changes.filter((c) => inWindow(c.effectiveDate, window))
   const promos = inWin.filter((c) => c.changeType === 'Promotion')
 
   const byQuarter: PromotionQuarterRow[] = quarterBlocks(asOf, 8).map((b) => {
     const records = changes.filter((c) => c.changeType === 'Promotion' && inWindow(c.effectiveDate, b))
-    const avg = avgHeadcount(emps, b)
+    const avg = avgHeadcount(emps, b, counts)
     return {
       quarter: b.label,
       start: b.start,
       end: b.end,
       promotions: records.length,
       avgHeadcount: avg,
-      rate: has ? shareOf(records.length, avg) : null,
-      records: avg >= MIN_GROUP ? records : [],
+      rate: has ? share(records.length, avg) : null,
+      records: avg >= minGroup ? records : [],
     }
   })
 
@@ -184,6 +194,7 @@ export function computeMovement(p: Prep): MovementModel {
     window,
     (e) => e.level ?? NO_LEVEL,
     (e, d) => p.history.levelAt(e, d) ?? NO_LEVEL,
+    { counts },
   )
   const promosByLevel = new Map<string, JobChange[]>()
   for (const c of promos) {
@@ -202,8 +213,8 @@ export function computeMovement(p: Prep): MovementModel {
         level,
         promotions: records.length,
         avgHeadcount: avg,
-        rate: has ? shareOf(records.length, avg) : null,
-        records: avg >= MIN_GROUP ? records : [],
+        rate: has ? share(records.length, avg) : null,
+        records: avg >= minGroup ? records : [],
       }
     })
 
@@ -232,7 +243,7 @@ export function computeMovement(p: Prep): MovementModel {
       },
     ])
 
-  const active = activeAt(emps, asOf)
+  const active = activeAt(emps, asOf, counts)
   const sinceGroups = new Map<string, Employee[]>()
   for (const e of active) {
     const band = sinceBand(yearsSincePromotion(p, e))
@@ -273,7 +284,7 @@ export function computeMovement(p: Prep): MovementModel {
       .filter((c) => c.changeType !== 'Demotion')
       .map((c) => c.employeeId),
   )
-  const own = promotionRate(emps, changes, window, has)
+  const own = promotionRate(emps, changes, window, has, rateOpts)
   const avg = own.avgHeadcount
   const comparison = promotionComparison(p)
   const ofType = (t: MoveType) => inWin.filter((c) => c.changeType === t)
@@ -289,13 +300,15 @@ export function computeMovement(p: Prep): MovementModel {
   }
   return {
     promotions: own,
-    companyPromotions: ctx.isCompany ? own : promotionRate(p.companyEmps, p.companyChanges, window, has),
-    priorPromotions: promotionRate(emps, changes, comparison.window, has),
+    companyPromotions: ctx.isCompany
+      ? own
+      : promotionRate(p.companyEmps, p.companyChanges, window, has, rateOpts),
+    priorPromotions: promotionRate(emps, changes, comparison.window, has, rateOpts),
     priorLabel: comparison.label,
     transfers: records.transfers.length,
     lateral: records.lateral.length,
     demotions: records.demotions.length,
-    mobility: { rate: has ? shareOf(moverIds.size, avg) : null, movers: moverIds.size },
+    mobility: { rate: has ? share(moverIds.size, avg) : null, movers: moverIds.size },
     byQuarter,
     byLevel,
     byDepartment,

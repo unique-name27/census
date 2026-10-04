@@ -1,12 +1,14 @@
 /**
  * Group-level exit rates in one pass, using the shared definitions from `@/lib/people`:
  * events in the window ÷ mean month-end headcount (snapshotDates), annualized by
- * 12 ÷ window.months, suppressed below MIN_GROUP average headcount.
+ * 12 ÷ window.months, suppressed below the anonymity minimum. The population, the annualizing
+ * and what counts as regretted follow the People stats settings (`./settings`).
  */
-import { type Employee, MIN_GROUP } from '@/data/schema'
+import type { Employee } from '@/data/schema'
 import type { Window } from '@/data/scope'
-import { daysBetween } from '@/lib/dates'
 import { inWindow, isActiveAt, isEmployee, snapshotDates } from '@/lib/people'
+import { type Counts, leftWithin, regrettedBy, turnover } from './population'
+import { defaultSettings, type HrbpSettings } from './settings'
 
 export interface GroupExits {
   key: string
@@ -19,10 +21,25 @@ export interface GroupExits {
   leavers: Employee[]
 }
 
-/** Annualized rate, or null below the anonymity floor or with no headcount. */
-export function annualRate(events: number, avgHeadcount: number, w: Pick<Window, 'months'>): number | null {
-  if (!(avgHeadcount >= MIN_GROUP) || !(w.months > 0)) return null
-  return (events / avgHeadcount) * (12 / w.months)
+/**
+ * Annualized rate (or not, when the setting is off), or null below the anonymity minimum or with
+ * no headcount.
+ */
+export function annualRate(
+  events: number,
+  avgHeadcount: number,
+  w: Pick<Window, 'months'>,
+  s: Pick<HrbpSettings, 'minGroup' | 'annualize'> = defaultSettings(),
+): number | null {
+  if (!(avgHeadcount >= s.minGroup) || !(w.months > 0)) return null
+  return turnover(events, avgHeadcount, w, s.annualize)
+}
+
+export interface GroupOptions {
+  /** Who counts (default employees only). */
+  counts?: Counts
+  /** What counts as regretted (default voluntary and flagged regrettable). */
+  isRegretted?: (e: Employee) => boolean
 }
 
 /**
@@ -34,7 +51,10 @@ export function exitsByGroup(
   w: Window,
   key: (e: Employee) => string | null,
   keyAt?: (e: Employee, d: string) => string | null,
+  opts: GroupOptions = {},
 ): Map<string, GroupExits> {
+  const counts = opts.counts ?? isEmployee
+  const isRegretted = opts.isRegretted ?? regrettedBy('voluntaryFlagged')
   const pts = snapshotDates(w)
   const out = new Map<string, GroupExits>()
   const get = (k: string) => {
@@ -46,7 +66,7 @@ export function exitsByGroup(
     return g
   }
   for (const e of employees) {
-    if (!isEmployee(e)) continue
+    if (!counts(e)) continue
     const k = key(e)
     for (const d of pts) {
       if (!isActiveAt(e, d)) continue
@@ -57,17 +77,19 @@ export function exitsByGroup(
       const g = get(k)
       g.exits++
       g.leavers.push(e)
-      if (e.terminationType === 'Voluntary') {
-        g.voluntary++
-        if (e.regrettable === true) g.regretted++
-      } else if (e.terminationType === 'Involuntary') g.involuntary++
+      if (e.terminationType === 'Voluntary') g.voluntary++
+      else if (e.terminationType === 'Involuntary') g.involuntary++
+      if (isRegretted(e)) g.regretted++
     }
   }
   for (const g of out.values()) g.avgHeadcount /= pts.length
   return out
 }
 
-/** First-year attrition for a cohort list (hired 12-24 months before asOf), matching `firstYearAttrition`. */
+/**
+ * Left within the first-year window of their hire date (365 days by default), matching
+ * `firstYearAttrition`. Inside the engine use `Prep.leftFirstYear`, which follows the setting.
+ */
 export function leftInFirstYear(e: Employee): boolean {
-  return !!e.terminationDate && daysBetween(e.hireDate, e.terminationDate) < 365
+  return leftWithin(defaultSettings().firstYearDays)(e)
 }

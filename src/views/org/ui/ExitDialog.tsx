@@ -1,8 +1,9 @@
 /**
  * Exit simulation (the old tool's ExitSimModal, without invented numbers): if this person left,
  * where their team would go, what that does to their manager's span, and who among their direct
- * reports could step up (rated 4 or 5 in the latest review cycle). Every count lists its people;
- * each possible successor opens their person card.
+ * reports could step up (rated 4 or 5 in the latest review cycle by default; the lowest rating
+ * listed and the wide-span warning are settings in the metric dictionary). Every count lists its
+ * people; each possible successor opens their person card.
  */
 import { Button, Dialog, StatusPill } from '@/components'
 import { RATING_LABELS } from '@/data/schema'
@@ -12,12 +13,13 @@ import {
   type DrillScope,
   directsDrill,
   exitImpact,
+  narrowSpanLabel,
   type OrgModel,
   type OrgTree,
   orgDrill,
   peopleDrill,
+  ratingsFrom,
   scopeLine,
-  WIDE_SPAN,
 } from '../engine'
 
 export function ExitDialog({
@@ -38,7 +40,9 @@ export function ExitDialog({
   onAddToScenario?: (id: string) => void
 }) {
   const e = id ? tree.people.get(id) : undefined
-  const x = e && id ? exitImpact(tree, id, model.reviews) : null
+  const { rules } = model
+  const x = e && id ? exitImpact(tree, id, model.reviews, rules) : null
+  const rated = x ? ratingsFrom(x.minRating) : ''
   const name = (pid: string | null) => (pid ? (tree.people.get(pid)?.name ?? pid) : '')
   const sub = scopeLine(scope)
   const list = (ids: readonly string[], title: string, note?: string) => () =>
@@ -107,8 +111,10 @@ export function ExitDialog({
                   </strong>{' '}
                   direct reports
                 </span>
-                {x.wideAfter && <StatusPill severity="warning" label={`At or above ${WIDE_SPAN}`} />}
-                {x.managerSpan.after === 1 && <StatusPill severity="info" label="Span of 1" />}
+                {x.wideAfter && <StatusPill severity="warning" label={`At or above ${x.wideSpan}`} />}
+                {x.managerSpan.after >= 1 && x.managerSpan.after <= rules.narrowSpan && (
+                  <StatusPill severity="info" label={narrowSpanLabel(rules)} />
+                )}
               </div>
             )}
             {x.peers > 0 && (
@@ -127,7 +133,9 @@ export function ExitDialog({
               {x.cycle ? (
                 x.backfills.length ? (
                   <>
-                    <p className="mb-2 text-ink-2">Direct reports rated 4 or 5 in {x.cycle}.</p>
+                    <p className="mb-2 text-ink-2">
+                      Direct reports rated {rated} in {x.cycle}.
+                    </p>
                     <ul className="divide-y divide-rule rounded-control shadow-[0_0_0_1px_var(--rule)]">
                       {x.backfills.map((b) => {
                         const r = tree.people.get(b.id)!
@@ -155,7 +163,9 @@ export function ExitDialog({
                     </ul>
                   </>
                 ) : (
-                  <p className="text-ink-2">No direct report was rated 4 or 5 in {x.cycle}.</p>
+                  <p className="text-ink-2">
+                    No direct report was rated {rated} in {x.cycle}.
+                  </p>
                 )
               ) : (
                 <p className="text-ink-2">

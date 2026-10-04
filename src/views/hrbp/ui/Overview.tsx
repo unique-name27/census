@@ -12,7 +12,7 @@ import { employeesOnSpec } from '../engine/drill'
 import { FIGURE, PROMOTION_RATE } from '../engine/lineage'
 import { SCORE_METRICS, type ScoreMetric, type ScoreRow } from '../engine/scorecard'
 import { LAST_YEAR, YEAR_BEFORE } from '../engine/workforce'
-import { DEF } from './defs'
+import { ANONYMITY_ID, ID } from './defs'
 import { drillWhen } from './drill'
 import { rescope } from './model'
 import { ScorecardTable } from './ScorecardTable'
@@ -57,7 +57,8 @@ export function Overview({ m }: { m: HrbpModel }) {
   const scorecard = (
     <Figure
       id="hrbp-scorecard"
-      uses={p.uses(FIGURE.scorecard(card.dim, withPromotions))}
+      metric={ID.scorecard}
+      uses={p.uses(FIGURE.scorecard(card.dim, withPromotions, p.set.regretted))}
       title="Sub-org scorecard"
       subtitle={`${
         ctx.filters.leaderId ? 'Each direct report’s organization' : card.rowsLabel
@@ -100,15 +101,18 @@ export function Overview({ m }: { m: HrbpModel }) {
         { key: 'avgSpan', label: 'Avg span', format: 'num1', drill: scoreCol('avgSpan') },
         { key: 'offCompany', label: 'Materially off the company', format: 'text' },
       ]}
-      definitions={[
-        DEF.voluntary,
-        DEF.regretted,
-        DEF.firstYear,
-        ...(withPromotions ? [DEF.promotionRate] : []),
-        DEF.span,
-        DEF.suppressed,
-      ]}
-      note={`Orgs under 5 employees are folded into Other · as of ${asOf}${
+      definitions={p.defs(
+        ID.headcount,
+        ID.netChange,
+        ID.voluntary,
+        ID.regretted,
+        ID.firstYear,
+        ...(withPromotions ? [ID.promotionRate] : []),
+        ID.meanSpan,
+        ID.scorecard,
+        ANONYMITY_ID,
+      )}
+      note={`Orgs under ${p.set.minGroup} employees are folded into Other · as of ${asOf}${
         withPromotions
           ? ''
           : ` · promotion rate not shown: ${BELOW_STANDARD_TEXT[ctx.standard].toLowerCase()}`
@@ -119,6 +123,7 @@ export function Overview({ m }: { m: HrbpModel }) {
     >
       <ScorecardTable
         rows={card.rows}
+        rule={card.rule}
         onPick={(row) => {
           if (row.filter) rescope(ctx, row.filter)
         }}
@@ -139,6 +144,7 @@ export function Overview({ m }: { m: HrbpModel }) {
       <div className="col-span-full flex min-w-0 flex-col gap-4 lg:col-span-8">
         <Figure
           id="hrbp-headcount-trend"
+          metric={ID.headcount}
           uses={p.uses(FIGURE.headcountTrend)}
           title="Headcount over time"
           subtitle={`Employees at each month end, ${yearAgo} to ${asOf}, with the year before in gray on the same months`}
@@ -153,8 +159,12 @@ export function Overview({ m }: { m: HrbpModel }) {
             },
             { key: 'period', label: 'Period', format: 'text' },
           ]}
-          definitions={[DEF.headcount]}
-          note={`${last ? last.headcount.toLocaleString('en-US') : 0} employees on ${asOf} · contractors and interns excluded`}
+          definitions={p.defs(ID.headcount)}
+          note={`${last ? last.headcount.toLocaleString('en-US') : 0} employees on ${asOf} · ${
+            p.set.countContractors
+              ? 'contractors included, interns excluded'
+              : 'contractors and interns excluded'
+          }`}
           empty={
             !m.prep.has.terminationDate
               ? `${NO_HISTORY}.`
@@ -178,6 +188,7 @@ export function Overview({ m }: { m: HrbpModel }) {
         <Grid>
           <Figure
             id="hrbp-hires-exits"
+            metric={ID.hires}
             uses={p.uses(FIGURE.hiresExits)}
             title="Hires and exits by month"
             subtitle={`Employees hired and employees who left, ${wf.flows[0] ? formatDate(`${wf.flows[0].month}-01`) : ''} to ${asOf}`}
@@ -192,13 +203,7 @@ export function Overview({ m }: { m: HrbpModel }) {
                 drill: (r) => drillWhen(r.records.length > 0, () => flowSpec(p, r)),
               },
             ]}
-            definitions={[
-              {
-                term: 'Hire',
-                text: 'An employee who started in the month (hire date in the Employees data). Recruiting counts offers accepted by the accept date instead.',
-              },
-              { term: 'Exit', text: 'An employee whose termination date falls in the month.' },
-            ]}
+            definitions={p.defs(ID.hires, ID.exits)}
             note={`${hires.toLocaleString('en-US')} hires, ${exits.toLocaleString('en-US')} exits, net ${signed(hires - exits)} · as of ${asOf}`}
             span={showBridge ? 7 : 12}
             empty={flowsTotal ? null : 'No hires or exits in the last 12 months.'}
@@ -218,6 +223,7 @@ export function Overview({ m }: { m: HrbpModel }) {
           {showBridge && (
             <Figure
               id="hrbp-headcount-bridge"
+              metric={ID.bridge}
               uses={p.uses(FIGURE.bridge)}
               title="Headcount bridge"
               subtitle="From headcount 12 months ago to today"
@@ -231,13 +237,7 @@ export function Overview({ m }: { m: HrbpModel }) {
                   drill: (r) => drillWhen(r.records.length > 0, () => bridgeSpec(p, r)),
                 },
               ]}
-              definitions={[
-                DEF.headcount,
-                {
-                  term: 'Other changes',
-                  text: 'Changes that are neither hires nor exits in this scope, such as contractor conversions, rehires or people whose records moved in or out of the selected org.',
-                },
-              ]}
+              definitions={p.defs(ID.headcount, ID.bridge)}
               note={`As of ${asOf}`}
               span={5}
               tableOnly

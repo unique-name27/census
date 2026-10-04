@@ -2,7 +2,7 @@
  * Sources and offers: source effectiveness, applications by source by month, offer acceptance
  * (overall, by location, by quarter), why offers were declined and why candidates left.
  */
-import { MIN_GROUP, STAGES } from '@/data/schema'
+import { STAGES } from '@/data/schema'
 import type { Window } from '@/data/scope'
 import {
   addDays,
@@ -16,7 +16,11 @@ import {
 } from '@/lib/dates'
 import { median } from '@/lib/stats'
 import { inWin } from './prepare'
+import { defaultSettings } from './settings'
 import { type App, HIRED } from './types'
+
+/** The anonymity minimum by default (the engine passes the value in force). */
+const minGroupDefault = (): number => defaultSettings().minGroup
 
 /* ───────── offers ───────── */
 
@@ -60,7 +64,7 @@ export interface QuarterAcceptance {
   label: string
   /** Last day of the quarter (or the window end for the quarter in progress). */
   end: string
-  /** Null with the rate under 5 resolved offers, so the counts can't give the hidden rate away. */
+  /** Null under the anonymity minimum of resolved offers, so the counts can't give the hidden rate away. */
   rate: number | null
   hired: number | null
   declined: number | null
@@ -69,12 +73,17 @@ export interface QuarterAcceptance {
   apps: App[]
 }
 
-export function acceptanceByQuarter(apps: readonly App[], end: string, n = 8): QuarterAcceptance[] {
+export function acceptanceByQuarter(
+  apps: readonly App[],
+  end: string,
+  n = 8,
+  minGroup: number = minGroupDefault(),
+): QuarterAcceptance[] {
   return quarterWindows(end, n).map((q) => {
     const list = resolvedOffers(apps, q)
     const acc = acceptance(list)
     const offers = acc.hired + acc.declined
-    const show = offers >= MIN_GROUP
+    const show = offers >= minGroup
     return {
       quarter: q.key,
       label: q.key.replace(/^(\d{4}) (Q\d)$/, '$2 $1'),
@@ -90,7 +99,7 @@ export function acceptanceByQuarter(apps: readonly App[], end: string, n = 8): Q
 
 export interface GroupAcceptance {
   group: string
-  /** Null under 5 resolved offers (hidden to protect anonymity). */
+  /** Null under the anonymity minimum of resolved offers (hidden to protect anonymity). */
   rate: number | null
   /** Null with the rate, so the counts can't give the hidden rate away. */
   hired: number | null
@@ -101,11 +110,15 @@ export interface GroupAcceptance {
 }
 
 /**
- * Offer acceptance per group, largest first. Groups under 5 resolved offers fold into one
- * "Other (k)" row (a single small group keeps its name, since folding it hides nothing); any row
- * still under 5 shows only its offer count.
+ * Offer acceptance per group, largest first. Groups under the anonymity minimum of resolved offers
+ * (5 by default) fold into one "Other (k)" row (a single small group keeps its name, since folding
+ * it hides nothing); any row still under it shows only its offer count.
  */
-export function acceptanceBy(offers: readonly App[], key: (a: App) => string | null): GroupAcceptance[] {
+export function acceptanceBy(
+  offers: readonly App[],
+  key: (a: App) => string | null,
+  minGroup: number = minGroupDefault(),
+): GroupAcceptance[] {
   const m = new Map<string, App[]>()
   for (const a of offers) {
     const k = key(a) || 'Not set'
@@ -116,15 +129,15 @@ export function acceptanceBy(offers: readonly App[], key: (a: App) => string | n
   const resolved = (list: readonly App[]) =>
     list.filter((a) => a.outcome === 'Hired' || a.outcome === 'Declined')
   const groups = [...m].map(([group, list]) => ({ group, list: resolved(list) })).filter((g) => g.list.length)
-  const small = groups.filter((g) => g.list.length < MIN_GROUP)
+  const small = groups.filter((g) => g.list.length < minGroup)
   const fold = small.length > 1
-  const kept = fold ? groups.filter((g) => g.list.length >= MIN_GROUP) : groups
+  const kept = fold ? groups.filter((g) => g.list.length >= minGroup) : groups
   const rows = kept.sort((a, b) => b.list.length - a.list.length || a.group.localeCompare(b.group))
   if (fold) rows.push({ group: `Other (${small.length})`, list: small.flatMap((g) => g.list) })
   return rows.map(({ group, list }) => {
     const acc = acceptance(list)
     const n = acc.hired + acc.declined
-    const show = n >= MIN_GROUP
+    const show = n >= minGroup
     return {
       group,
       rate: show ? acc.rate : null,
@@ -178,7 +191,7 @@ export interface SourceRow {
   hireRate: number | null
   offerAcceptance: number | null
   offers: number
-  /** Null under 5 hires (each is a person's outcome). */
+  /** Null under the anonymity minimum of hires (each is a person's outcome). */
   medianTimeToHire: number | null
   priorApplications: number
   /** Applications vs the prior window (−0.48 = 48% fewer). */
@@ -188,7 +201,12 @@ export interface SourceRow {
   priorApps: App[]
 }
 
-export function sourceRows(current: readonly App[], prior: readonly App[]): SourceRow[] {
+/** Source effectiveness; rates and medians under the anonymity minimum (5 by default) are null. */
+export function sourceRows(
+  current: readonly App[],
+  prior: readonly App[],
+  minGroup: number = minGroupDefault(),
+): SourceRow[] {
   const by = new Map<string, App[]>()
   for (const a of current) {
     const arr = by.get(a.source)
@@ -215,10 +233,10 @@ export function sourceRows(current: readonly App[], prior: readonly App[]): Sour
         applications: list.length,
         share: total ? list.length / total : 0,
         hires: hired.length,
-        hireRate: list.length >= MIN_GROUP ? hired.length / list.length : null,
-        offerAcceptance: offers >= MIN_GROUP ? acc.rate : null,
+        hireRate: list.length >= minGroup ? hired.length / list.length : null,
+        offerAcceptance: offers >= minGroup ? acc.rate : null,
         offers,
-        medianTimeToHire: hired.length >= MIN_GROUP ? median(hired.map(daysToHire)) : null,
+        medianTimeToHire: hired.length >= minGroup ? median(hired.map(daysToHire)) : null,
         priorApplications: p,
         change: p > 0 ? list.length / p - 1 : null,
         apps: list,

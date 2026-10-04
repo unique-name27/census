@@ -14,6 +14,7 @@
 import type { FieldRef, KnownFieldRef } from '@/data/quality'
 import type { DatasetKey } from '@/data/schema'
 import type { Filters } from '@/data/scope'
+import type { RegrettedRule } from '../metrics'
 
 type Ref = KnownFieldRef
 
@@ -102,6 +103,18 @@ export const FIRST_YEAR = PAST_HEADCOUNT
 export const REASON = need('employees.terminationReason')
 /** Regretted leavers as a list (no rate): voluntary exits marked regrettable. */
 export const REGRETTED_EXITS = all(need('employees.regrettable'), EXIT_TYPE, EXITS)
+/** Regretted attrition when any exit marked regrettable counts: termination type is not read. */
+export const REGRETTED_ANY = all(need('employees.regrettable'), ATTRITION)
+/** Regretted leavers as a list when any exit marked regrettable counts. */
+export const REGRETTED_EXITS_ANY = all(need('employees.regrettable'), EXITS)
+
+/** Regretted attrition under the setting in force (what counts as regretted). */
+export const regrettedLineage = (rule: RegrettedRule = 'voluntaryFlagged'): Lineage =>
+  rule === 'anyFlagged' ? REGRETTED_ANY : REGRETTED
+
+/** Regretted leavers under the setting in force. */
+export const regrettedExitsLineage = (rule: RegrettedRule = 'voluntaryFlagged'): Lineage =>
+  rule === 'anyFlagged' ? REGRETTED_EXITS_ANY : REGRETTED_EXITS
 
 export const BUSINESS_UNIT = need('employees.businessUnit')
 export const DEPARTMENT = need('employees.department')
@@ -199,14 +212,14 @@ const SCORE_GROUP: Record<ScoreDim, Lineage> = {
 export const FIGURE = {
   /* overview */
   /** The promotion column shows only when Job changes meet the data standard. */
-  scorecard: (dim: ScoreDim, withPromotions = true) =>
+  scorecard: (dim: ScoreDim, withPromotions = true, rule: RegrettedRule = 'voluntaryFlagged') =>
     all(
       SCORE_GROUP[dim],
       HEADCOUNT,
       ORG,
       ifPresent(PAST_HEADCOUNT),
       ifPresent(VOLUNTARY),
-      ifPresent(REGRETTED),
+      ifPresent(regrettedLineage(rule)),
       withPromotions ? ifPresent(PROMOTION_RATE) : NONE,
     ),
   headcountTrend: PAST_HEADCOUNT,
@@ -227,7 +240,7 @@ export const FIGURE = {
 
   /* attrition */
   attritionByQuarter: all(ATTRITION, ifPresent(EXIT_TYPE)),
-  regrettedByQuarter: REGRETTED,
+  regrettedByQuarter: (rule: RegrettedRule = 'voluntaryFlagged') => regrettedLineage(rule),
   exitReasons: all(EXITS, EXIT_TYPE, REASON),
   attritionByGroup: (dim: 'department' | 'location') =>
     all(ATTRITION, dim === 'department' ? DEPARTMENT_AT : LOCATION, ifPresent(EXIT_TYPE)),
@@ -235,9 +248,9 @@ export const FIGURE = {
   attritionByLevel: all(ATTRITION, LEVEL_AT, ifPresent(EXIT_TYPE)),
   exitsByRating: all(EXITS, LAST_RATING, ifPresent(EXIT_TYPE)),
   /** The reason column shows only when exit reasons meet the data standard. */
-  regrettedLeavers: (withReason: boolean) =>
+  regrettedLeavers: (withReason: boolean, rule: RegrettedRule = 'voluntaryFlagged') =>
     all(
-      REGRETTED_EXITS,
+      regrettedExitsLineage(rule),
       TENURE,
       ...[NAME, DEPARTMENT, LOCATION, LEVEL, MANAGER, LAST_RATING].map(ifPresent),
       withReason ? ifPresent(REASON) : NONE,
@@ -260,11 +273,12 @@ export const FIGURE = {
   /* org design */
   spanOfControl: ORG,
   layersByBusinessUnit: all(ORG, BUSINESS_UNIT),
-  managers: all(
-    ORG,
-    MANAGER_SINCE,
-    // Level flags executives; regretted exits fill their own column.
-    ...[NAME, JOB_TITLE, DEPARTMENT, LOCATION, LEVEL, REGRETTED_EXITS].map(ifPresent),
-  ),
+  managers: (rule: RegrettedRule = 'voluntaryFlagged') =>
+    all(
+      ORG,
+      MANAGER_SINCE,
+      // Level flags executives; regretted exits fill their own column.
+      ...[NAME, JOB_TITLE, DEPARTMENT, LOCATION, LEVEL, regrettedExitsLineage(rule)].map(ifPresent),
+    ),
   singleReportChains: all(ORG, ...[NAME, JOB_TITLE, DEPARTMENT].map(ifPresent)),
 } as const

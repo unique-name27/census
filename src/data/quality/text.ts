@@ -42,6 +42,12 @@ export function pctAgainst(share: number, threshold: number, side: 'min' | 'max'
   return `${(tenths / 10).toFixed(1)}%`
 }
 
+/** A threshold as a percent, never rounded past 0.01 pts: "95%", "97.5%", "0.5%". */
+export function limitText(share: number): string {
+  if (!Number.isFinite(share)) return '—'
+  return `${+(share * 100).toFixed(2)}%`
+}
+
 /** A share with one decimal for thresholds near 2%: "4.1%". */
 export function pct1(share: number): string {
   if (!Number.isFinite(share)) return '—'

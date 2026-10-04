@@ -2,7 +2,8 @@
  * The quality index: the tier of every dataset and field, the rule results behind them and a
  * plain-English explanation of each.
  *
- * Rules (docs/DATA-TIERS.md):
+ * Rules (docs/DATA-TIERS.md), with the default thresholds; the metric dictionary can change them
+ * (`QualityOptions.rules`, from `src/metrics/quality.ts` through the analytics context):
  * - none: the dataset has no rows, or the field is blank in every row;
  * - silver: mapping confirmed, no blocking issues, at most 2% of rows with an import error, and
  *   at most 2% of rows with a reference that does not resolve;
@@ -23,15 +24,26 @@ import { ERROR_CODES, INVALID_CODES, rowKeyOf } from './importSummary'
 import {
   CONTROL_METRICS,
   checkReferences,
+  DEFAULT_QUALITY_RULES,
   datesOutOfOrder,
   duplicateRows,
   type Freshness,
   freshness,
-  MAX_UNRESOLVED_SHARE,
+  type QualityRules,
   reconciles,
   SNAPSHOT_FRESHNESS,
 } from './rules'
-import { byWho, capFirst, intText, midSentence, pct1, pctAgainst, rowsText, shortDate } from './text'
+import {
+  byWho,
+  capFirst,
+  intText,
+  limitText,
+  midSentence,
+  pct1,
+  pctAgainst,
+  rowsText,
+  shortDate,
+} from './text'
 import { TIER_LABEL, type Tier, tierRank } from './tier'
 import type {
   DatasetQuality,
@@ -44,12 +56,9 @@ import type {
 } from './types'
 import { isUnrecognized } from './vocab'
 
-/** Silver needs a field filled for at least this share of the rows it applies to. */
-export const MIN_COVERAGE = 0.95
-/** Silver allows at most this share of values not recognized or defaulted. */
-export const MAX_PROBLEM_SHARE = 0.02
-/** Silver allows at most this share of rows with an import error. */
-export const MAX_ISSUE_RATE = 0.02
+export type { QualityRules } from './rules'
+/** The default thresholds (the quality rules in force may differ; see `QualityRules`). */
+export { MAX_ISSUE_RATE, MAX_PROBLEM_SHARE, MIN_COVERAGE } from './rules'
 
 export type VersionMap = Partial<Record<DatasetKey, DatasetVersion | null>>
 export type IssueMap = Partial<Record<DatasetKey, readonly ImportIssue[]>>
@@ -73,6 +82,11 @@ export interface QualityOptions {
   /** The as-of date for freshness and control totals; defaults to the latest date in the data. */
   asOf?: ISODate
   reference?: ReferenceEffect | null
+  /**
+   * The thresholds in force (`qualityRulesOf(ctx.metrics)`); the defaults when not given. Pass the
+   * same object for the same values so the index is reused.
+   */
+  rules?: QualityRules
 }
 
 type Row = Record<string, unknown>
@@ -81,12 +95,13 @@ interface DatasetEval {
   tier: Tier
   rules: RuleResult[]
   issueRate: number | null
+  freshness: Freshness
 }
 
-/** The import error share in words: one decimal, "<0.1%" for a handful, exact near the 2% limit. */
-function issueShare(rate: number): string {
+/** The import error share in words: one decimal, "<0.1%" for a handful, exact near the limit. */
+function issueShare(rate: number, limit: number): string {
   if (rate > 0 && rate < 0.0005) return '<0.1%'
-  return Math.abs(rate - MAX_ISSUE_RATE) < 0.01 ? pctAgainst(rate, MAX_ISSUE_RATE, 'max') : pct1(rate)
+  return Math.abs(rate - limit) < 0.01 ? pctAgainst(rate, limit, 'max') : pct1(rate)
 }
 
 /**
@@ -96,18 +111,20 @@ function issueShare(rate: number): string {
  */
 export function fieldShortfall(
   s: Pick<FieldStats, 'label' | 'coverage' | 'problemRate' | 'blankOk' | 'scope'>,
+  rules: Pick<QualityRules, 'minCoverage' | 'maxProblemShare'> = DEFAULT_QUALITY_RULES,
 ): { kind: 'coverage' | 'values'; text: string } | null {
-  if (!s.blankOk && s.coverage != null && s.coverage < MIN_COVERAGE) {
+  const { minCoverage, maxProblemShare } = rules
+  if (!s.blankOk && s.coverage != null && s.coverage < minCoverage) {
     const scope = s.scope ? ` for ${midSentence(s.scope)}` : ''
     return {
       kind: 'coverage',
-      text: `${s.label} is ${pctAgainst(s.coverage, MIN_COVERAGE, 'min')} filled${scope}; silver needs 95%.`,
+      text: `${s.label} is ${pctAgainst(s.coverage, minCoverage, 'min')} filled${scope}; silver needs ${limitText(minCoverage)}.`,
     }
   }
-  if (s.problemRate != null && s.problemRate > MAX_PROBLEM_SHARE)
+  if (s.problemRate != null && s.problemRate > maxProblemShare)
     return {
       kind: 'values',
-      text: `${pctAgainst(s.problemRate, MAX_PROBLEM_SHARE, 'max')} of ${midSentence(s.label)} values are not recognized or defaulted; silver allows 2%.`,
+      text: `${pctAgainst(s.problemRate, maxProblemShare, 'max')} of ${midSentence(s.label)} values are not recognized or defaulted; silver allows ${limitText(maxProblemShare)}.`,
     }
   return null
 }
@@ -117,7 +134,9 @@ const SNAPSHOT_FRESHNESS_WHATS = new Set(Object.values(SNAPSHOT_FRESHNESS).map((
 /**
  * Of two fields at the same tier, whether `a` explains that tier better than `b`: a field with a
  * cap reason first, then the lowest fill (blanks that are normal do not count), then the most
- * values not recognized or defaulted. On a full tie the field declared first stays.
+ * values not recognized or defaulted, then a field whose blanks are a gap over one whose blanks
+ * are normal (its raw fill would read as missing data). On a full tie the field declared first
+ * stays.
  */
 export function explainsBetter(
   a: Pick<FieldStats, 'capReason' | 'coverage' | 'problemRate' | 'blankOk'>,
@@ -126,7 +145,9 @@ export function explainsBetter(
   if (!!a.capReason !== !!b.capReason) return !!a.capReason
   const fill = (s: typeof a) => (s.blankOk ? 1 : (s.coverage ?? 1))
   if (fill(a) !== fill(b)) return fill(a) < fill(b)
-  return (a.problemRate ?? 0) > (b.problemRate ?? 0)
+  const problems = (s: typeof a) => s.problemRate ?? 0
+  if (problems(a) !== problems(b)) return problems(a) > problems(b)
+  return !a.blankOk && b.blankOk
 }
 
 const SILVER_ORDER: RuleResult['id'][] = [
@@ -157,6 +178,7 @@ interface MemoEntry {
   issues: IssueMap | undefined
   asOf: ISODate | undefined
   reference: ReferenceEffect | null | undefined
+  rules: QualityRules | undefined
   index: QualityIndex
 }
 const memo = new WeakMap<Datasets, MemoEntry[]>()
@@ -178,11 +200,19 @@ export function computeQuality(
       e.versions === versions &&
       e.issues === importIssues &&
       e.asOf === opts.asOf &&
-      e.reference === opts.reference,
+      e.reference === opts.reference &&
+      e.rules === opts.rules,
   )
   if (hit) return hit.index
   const index = buildIndex(datasets, versions, importIssues, opts)
-  list.unshift({ versions, issues: importIssues, asOf: opts.asOf, reference: opts.reference, index })
+  list.unshift({
+    versions,
+    issues: importIssues,
+    asOf: opts.asOf,
+    reference: opts.reference,
+    rules: opts.rules,
+    index,
+  })
   if (list.length > MEMO_SIZE) list.length = MEMO_SIZE
   memo.set(datasets, list)
   return index
@@ -194,6 +224,8 @@ function buildIndex(
   importIssues: IssueMap | undefined,
   opts: QualityOptions,
 ): QualityIndex {
+  const R = opts.rules ?? DEFAULT_QUALITY_RULES
+  const limit = limitText(R.maxProblemShare)
   let asOfCache: ISODate | null = opts.asOf ?? null
   const asOf = () => {
     asOfCache ??= resolveAsOf(data, todayISO())
@@ -251,7 +283,12 @@ function buildIndex(
     const rules: RuleResult[] = []
     if (!rows.length) {
       rules.push(rule('has-rows', 'Rows loaded', 'silver', false, `${label(key)} has no rows loaded.`))
-      const out: DatasetEval = { tier: 'none', rules, issueRate: null }
+      const out: DatasetEval = {
+        tier: 'none',
+        rules,
+        issueRate: null,
+        freshness: freshness(key, rows, asOf(), null, R.freshDays[key]),
+      }
       datasetEvals.set(key, out)
       return out
     }
@@ -288,18 +325,18 @@ function buildIndex(
     const rowsIn = v?.issues.rowsIn ?? 0
     const errors = v?.issues.rowsWithErrors ?? 0
     const issueRate = v && rowsIn > 0 ? errors / rowsIn : null
-    const rateOk = issueRate == null || issueRate <= MAX_ISSUE_RATE
+    const rateOk = issueRate == null || issueRate <= R.maxProblemShare
     rules.push(
       rule(
         'issue-rate',
-        'Issue rate within 2%',
+        `Issue rate within ${limit}`,
         'silver',
         rateOk,
         issueRate == null
           ? 'No import errors are logged.'
           : errors === 0
             ? `No rows had an import error (${intText(rowsIn)} read).`
-            : `${issueShare(issueRate)} of rows (${intText(errors)} of ${intText(rowsIn)}) had an import error; 2% is allowed.`,
+            : `${issueShare(issueRate, R.maxProblemShare)} of rows (${intText(errors)} of ${intText(rowsIn)}) had an import error; ${limit} is allowed.`,
         rateOk ? [] : issueRows(key, (i) => i.row > 0 && ERROR_CODES.has(i.code)),
         errors,
       ),
@@ -313,7 +350,7 @@ function buildIndex(
     else {
       const target = label(refs.link.target)
       const share = refs.withRef ? refs.rows.length / refs.withRef : 0
-      const pass = refs.withRef === 0 || (!refs.targetEmpty && share <= MAX_UNRESOLVED_SHARE)
+      const pass = refs.withRef === 0 || (!refs.targetEmpty && share <= R.maxProblemShare)
       rules.push(
         rule(
           'references',
@@ -324,7 +361,7 @@ function buildIndex(
             ? `${target} has no rows, so references to it can't be checked.`
             : refs.rows.length === 0
               ? `Every reference to ${target} resolves.`
-              : `${pctAgainst(share, MAX_UNRESOLVED_SHARE, 'max')} of rows (${intText(refs.rows.length)}) refer to records that are not in ${target}${pass ? ', within the 2% allowed' : ''}.`,
+              : `${pctAgainst(share, R.maxProblemShare, 'max')} of rows (${intText(refs.rows.length)}) refer to records that are not in ${target}${pass ? `, within the ${limit} allowed` : ''}.`,
           refs.rows,
         ),
       )
@@ -349,7 +386,7 @@ function buildIndex(
     const totals = certified ? (cert.controlTotals ?? []) : []
     const failing = totals.filter((t) => {
       const actual = CONTROL_METRICS[t.metric]?.compute(data, key, cert?.asOf ?? asOf()) ?? null
-      return !reconciles(t, actual)
+      return !reconciles(t, actual, R.tolerance)
     })
     rules.push(
       rule(
@@ -372,12 +409,17 @@ function buildIndex(
     const snapshot = SNAPSHOT_FRESHNESS[key]
       ? (v?.importedAt?.slice(0, 10) ?? (v?.source === 'sample' ? dataAsOf() : null))
       : null
-    const fresh = freshness(key, rows, asOf(), snapshot)
+    const fresh = freshness(key, rows, asOf(), snapshot, R.freshDays[key])
     rules.push(rule('fresh', 'Fresh', 'gold', fresh.fresh, freshDetail(fresh)))
 
     const silver = rules.filter((r) => r.gate === 'silver').every((r) => r.pass)
     const gold = silver && rules.filter((r) => r.gate === 'gold').every((r) => r.pass)
-    const out: DatasetEval = { tier: gold ? 'gold' : silver ? 'silver' : 'bronze', rules, issueRate }
+    const out: DatasetEval = {
+      tier: gold ? 'gold' : silver ? 'silver' : 'bronze',
+      rules,
+      issueRate,
+      freshness: fresh,
+    }
     datasetEvals.set(key, out)
     return out
   }
@@ -463,7 +505,15 @@ function buildIndex(
         filled++
         if (isUnrecognized(ref, val)) unrecognized++
       }
-      const invalid = unrecognized + (v?.issues.invalidByField[f.key] ?? 0)
+      const logged = v?.issues.invalidByField[f.key] ?? 0
+      const invalid = unrecognized + logged
+      // The importer left those values blank, so their rows count as blank too: exactly, from the
+      // import log when it is loaded, otherwise as many as there are blanks.
+      const invalidBlank = !logged
+        ? 0
+        : importIssues?.[key]?.length
+          ? blankLogged(key, f.key, rows, applies)
+          : Math.min(applicable - filled, logged)
       const defaulted = Math.min(filled, v?.issues.defaultedByField[f.key] ?? 0)
       const coverage = applicable ? filled / applicable : null
       const problemRate = applicable ? Math.min(1, (invalid + defaulted) / applicable) : null
@@ -474,13 +524,10 @@ function buildIndex(
       const remapped = opts.reference?.changes[ref] ?? 0
       if (dsTier === 'none' || filledAnywhere === 0) tier = 'none'
       else if (tierRank(dsTier) >= tierRank('silver')) {
-        const short = fieldShortfall({
-          label: f.label,
-          coverage,
-          problemRate,
-          blankOk,
-          scope: rule?.scope ?? null,
-        })
+        const short = fieldShortfall(
+          { label: f.label, coverage, problemRate, blankOk, scope: rule?.scope ?? null },
+          R,
+        )
         if (short) {
           capReason = short.text
           capKind = short.kind
@@ -505,6 +552,7 @@ function buildIndex(
         blank: applicable - filled,
         coverage,
         invalid,
+        invalidBlank,
         defaulted,
         problemRate,
         scope: rule?.scope ?? null,
@@ -517,6 +565,21 @@ function buildIndex(
     }
     fieldCache.set(key, out)
     return out
+  }
+
+  /** Blank rows the field applies to that the import log names as holding a value not recognized. */
+  function blankLogged(
+    key: DatasetKey,
+    field: string,
+    rows: readonly Row[],
+    applies: ((row: object) => boolean) | null,
+  ): number {
+    let n = 0
+    for (const i of issueRows(key, (x) => x.field === field && INVALID_CODES.has(x.code) && x.row > 0)) {
+      const r = rows[i]
+      if (r && (!applies || applies(r)) && !isFilled(r[field])) n++
+    }
+    return n
   }
 
   function unknownField(ref: string): FieldStats {
@@ -602,10 +665,10 @@ function buildIndex(
     if (s.capReason) parts.push(s.capReason)
     else if (s.coverage != null) {
       const scope = s.scope ? ` for ${midSentence(s.scope)}` : ''
-      parts.push(`${fieldLabel} is ${pctAgainst(s.coverage, MIN_COVERAGE, 'min')} filled${scope}.`)
+      parts.push(`${fieldLabel} is ${pctAgainst(s.coverage, R.minCoverage, 'min')} filled${scope}.`)
       if (s.problemRate != null && s.invalid + s.defaulted > 0)
         parts.push(
-          `${pctAgainst(s.problemRate, MAX_PROBLEM_SHARE, 'max')} of values are not recognized or defaulted.`,
+          `${pctAgainst(s.problemRate, R.maxProblemShare, 'max')} of values are not recognized or defaulted.`,
         )
     }
     // A remap after certification is already the cap reason, with who made it.
@@ -678,6 +741,7 @@ function buildIndex(
   }
 
   const index: QualityIndex = {
+    rules: R,
     datasetTier: (key) => evalDataset(key).tier,
     fieldTier: (ref) => fieldStats(ref).tier,
     fieldStats,
@@ -708,6 +772,7 @@ function buildIndex(
         rows: rowsOf(key).length,
         version: versionOf(key),
         issueRate: ev.issueRate,
+        freshness: ev.freshness,
         rules: index.checks(key),
         missing: next ? ev.rules.filter((r) => r.gate === next && !r.pass).map((r) => r.label) : [],
       }

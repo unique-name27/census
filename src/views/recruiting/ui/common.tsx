@@ -1,11 +1,26 @@
 /**
  * Shared bits for the Recruiting tabs: empty-state wording, notes and the "no data yet" sheet.
  */
+import type { Definition } from '@/charts'
 import { Button, EmptyState, goTo, IconFilter, IconUpload } from '@/components'
 import { useAnalytics } from '@/data/context'
 import { useCensus } from '@/data/store'
 import type { DrillSpec } from '@/drill'
 import { formatDate } from '@/lib/dates'
+import type { RecruitingBase } from '../engine/base'
+import { type MetricDefinitionOptions, metricDefinition } from '../engine/definitions'
+import type { RecruitingMetricId } from '../metrics'
+
+/**
+ * A figure's definition row from the metric dictionary: your wording when you changed it, with
+ * the settings in force. Figures pass the same id as `metric`.
+ */
+export const defOf = (b: RecruitingBase, id: RecruitingMetricId, o?: MetricDefinitionOptions): Definition =>
+  metricDefinition(b.metrics, id, o)
+
+/** What time to fill spans, for subtitles: "opened to offer accepted" (the default clock). */
+export const ttfSpan = (b: RecruitingBase): string =>
+  b.settings.ttfEnd === 'start' ? 'opened to start date (or offer accepted)' : 'opened to offer accepted'
 
 /**
  * A 4- or 5-column figure paired with a 7- or 8-column one takes the full row on tablets too
@@ -21,7 +36,8 @@ export const asOfNote = (asOf: string): string => `as of ${formatDate(asOf)}`
 
 /**
  * The drill for a number, only when there are records behind it: a table cell or chart mark with
- * none (0, or hidden under 5) gets no drill, so it never looks clickable and opens nothing.
+ * none (0, or hidden under the anonymity minimum) gets no drill, so it never looks clickable and
+ * opens nothing.
  */
 export function drillIf(
   n: number | boolean | null | undefined,

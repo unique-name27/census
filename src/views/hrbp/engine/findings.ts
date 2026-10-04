@@ -3,6 +3,9 @@
  * rules dropped; flight risk and promotion readiness live in Talent), with the bugs fixed:
  * regretted exits are counted per manager (not all exits), growth compares true headcount at
  * both dates (not survivors), and every lookup is indexed.
+ *
+ * Each rule is a metric dictionary entry (`ID.*` in `../metrics`) whose thresholds are settings
+ * read through `p.set`; the defaults are the thresholds of the earlier dashboard.
  */
 import type { Finding, FindingPerson, Severity } from '@/components/types'
 import type { Employee } from '@/data/schema'
@@ -10,13 +13,15 @@ import { employeeMatcher } from '@/data/scope'
 import { addDays, daysBetween, formatDate } from '@/lib/dates'
 import { type Dimension, decomposeRate } from '@/lib/decompose'
 import { fmt } from '@/lib/format'
-import { exitsIn, inWindow, isActiveAt } from '@/lib/people'
+import { inWindow, isActiveAt } from '@/lib/people'
+import { ID } from '../metrics'
 import {
   type AttritionModel,
   cohortSummary,
   exitsByDepartment,
   firstYearCohort,
   type GroupRateRow,
+  groupOptions,
 } from './attrition'
 import { buildHistory, count, listJoin, nameList, type Prep, possessive, quoted, trailing } from './base'
 import {
@@ -50,11 +55,10 @@ import {
   ORG,
   PAST_HEADCOUNT,
   REASON,
-  REGRETTED_EXITS,
   VOLUNTARY,
 } from './lineage'
 import type { OrgModel } from './org'
-import { annualRate, leftInFirstYear } from './rates'
+import { exitsIn } from './population'
 import type { WorkforceModel } from './workforce'
 
 interface Ranked extends Finding {
@@ -70,6 +74,11 @@ export const MAX_PEOPLE = 100
 
 const pct = (v: number) => fmt(v, 'pct')
 const pts = (v: number) => `${fmt(Math.abs(v) * 100, 'num1')} pts`
+/** A threshold in points, as few decimals as it needs: "3 pts", "2.5 pts". */
+const ptsPlain = (v: number) => `${+(Math.abs(v) * 100).toFixed(1)} pts`
+/** "a year" for the default first-year window, else "180 days". */
+const firstYearPhrase = (p: Prep) =>
+  p.set.firstYearDays === 365 ? 'a year' : count(p.set.firstYearDays, 'day', 'days')
 
 /**
  * Exit reasons are cited (in details and people notes) only when their data meets the data
@@ -98,6 +107,17 @@ function topReasons(list: readonly Employee[], n = 2): { reason: string; count: 
     .slice(0, n)
 }
 
+/**
+ * The next step on above-company voluntary attrition: review the top exit reasons with `who` when
+ * the finding can cite them, else only the stay conversations, so it never points at reasons the
+ * data standard keeps off the page.
+ */
+function stayAction(p: Prep, who: string, teams: string): string {
+  return citesReasons(p)
+    ? `Review the top exit reasons with ${who} and hold stay conversations in the most affected teams.`
+    : `Hold stay conversations in ${teams}.`
+}
+
 function reasonClause(p: Prep, list: readonly Employee[]): string {
   if (!citesReasons(p)) return ''
   const top = topReasons(list).filter((r) => r.count >= 2)
@@ -108,16 +128,17 @@ function reasonClause(p: Prep, list: readonly Employee[]): string {
 /* ───────── 1. regretted exits clustered under a manager ───────── */
 
 function regrettedClusters(p: Prep): Ranked | null {
-  if (!p.has.terminationType || !p.has.regrettable) return null
+  const { minExits, criticalExits } = p.set.regrettedCluster
+  if (!p.regrettedReady) return null
   const byMgr = new Map<string, Employee[]>()
-  for (const e of exitsIn(p.emps, p.t12)) {
-    if (e.terminationType !== 'Voluntary' || e.regrettable !== true || !e.managerId) continue
+  for (const e of exitsIn(p.emps, p.t12, p.counts)) {
+    if (!p.isRegretted(e) || !e.managerId) continue
     const arr = byMgr.get(e.managerId)
     if (arr) arr.push(e)
     else byMgr.set(e.managerId, [e])
   }
   const teams = [...byMgr.entries()]
-    .filter(([, list]) => list.length >= 2)
+    .filter(([, list]) => list.length >= minExits)
     .map(([managerId, list]) => ({ managerId, name: p.name(managerId), list }))
     .sort((a, b) => b.list.length - a.list.length || a.name.localeCompare(b.name))
   if (!teams.length) return null
@@ -132,7 +153,7 @@ function regrettedClusters(p: Prep): Ranked | null {
       ? `The most common reason given was ${quoted(reason.reason)} (${reason.count} of ${top.list.length}).`
       : `They left between ${formatDate(dates[0])} and ${formatDate(dates.at(-1))}.`,
     others.length
-      ? `${count(others.length, 'other manager', 'other managers')} also had 2 or more: ${nameList(
+      ? `${count(others.length, 'other manager', 'other managers')} also had ${minExits} or more: ${nameList(
           others.map((t) => `${t.name} (${t.list.length})`),
           4,
         )}.`
@@ -142,7 +163,8 @@ function regrettedClusters(p: Prep): Ranked | null {
     .join(' ')
   return {
     id: 'hrbp-regretted-cluster',
-    severity: top.list.length >= 3 ? 'critical' : 'warning',
+    metricId: ID.regrettedCluster,
+    severity: top.list.length >= criticalExits ? 'critical' : 'warning',
     title: `${possessive(top.name)} team${where} had ${top.list.length} regretted exits in the last 12 months`,
     detail,
     action: `Hold stay conversations with the rest of ${possessive(top.name)} team this month.`,
@@ -154,7 +176,7 @@ function regrettedClusters(p: Prep): Ranked | null {
       }),
     filter: mgr ? { leaderId: top.managerId } : undefined,
     tab: 'attrition',
-    uses: p.uses(REGRETTED_EXITS, MANAGER, reasonLineage(p), ifPresent(all(DEPARTMENT, LOCATION))),
+    uses: p.uses(p.lin.regrettedExits, MANAGER, reasonLineage(p), ifPresent(all(DEPARTMENT, LOCATION))),
     impact: top.list.length * 2,
   }
 }
@@ -195,24 +217,34 @@ const DIMS: Record<'department' | 'location' | 'level' | 'businessUnit', Dimensi
 }
 
 function attritionVsCompany(p: Prep, kpi: KpiModel, att: AttritionModel): Ranked[] {
+  const { gap, minAvgHeadcount, minExits, criticalRatio, criticalExits } = p.set.voluntaryAbove
   const company = kpi.companyVol
   if (company == null || !p.has.terminationType) return []
   const out: Ranked[] = []
   const phrase = windowPhrase(p)
+  const annualize = p.set.annualize
 
-  if (!p.ctx.isCompany && kpi.vol.rate != null && kpi.vol.avgHeadcount >= 10) {
+  if (!p.ctx.isCompany && kpi.vol.rate != null && kpi.vol.avgHeadcount >= minAvgHeadcount) {
     const diff = kpi.vol.rate - company
     const leavers = kpi.records.voluntary
     const vol = kpi.vol
     const drill = () =>
       leaversSpec(p, titled('Voluntary leavers', p.ctx.scopeLabel, periodName(p)), leavers, {
-        note: rateNote(vol.events, ['voluntary exit', 'voluntary exits'], vol.avgHeadcount, p.window.months),
+        note: rateNote(
+          vol.events,
+          ['voluntary exit', 'voluntary exits'],
+          vol.avgHeadcount,
+          p.window.months,
+          annualize,
+        ),
       })
-    if (diff >= 0.03) {
+    if (diff >= gap) {
       const conc = concentration(p, p.emps, [DIMS.department, DIMS.location, DIMS.level], leavers.length)
       out.push({
         id: 'hrbp-voluntary-scope',
-        severity: kpi.vol.rate >= company * 1.75 && leavers.length >= 10 ? 'critical' : 'warning',
+        metricId: ID.voluntaryAbove,
+        severity:
+          kpi.vol.rate >= company * criticalRatio && leavers.length >= criticalExits ? 'critical' : 'warning',
         title: `Voluntary attrition in ${p.ctx.scopeLabel} is ${pct(kpi.vol.rate)}, ${pts(diff)} above the company`,
         detail: [
           `${count(leavers.length, 'voluntary exit', 'voluntary exits')} in ${phrase}${reasonClause(p, leavers)}.`,
@@ -220,9 +252,13 @@ function attritionVsCompany(p: Prep, kpi: KpiModel, att: AttritionModel): Ranked
         ]
           .filter(Boolean)
           .join(' '),
-        action: `Review the top exit reasons with ${
-          p.ctx.filters.leaderId ? p.name(p.ctx.filters.leaderId) : `the ${p.ctx.scopeLabel} leaders`
-        } and hold stay conversations in the most affected teams.`,
+        action: p.ctx.filters.leaderId
+          ? stayAction(
+              p,
+              p.name(p.ctx.filters.leaderId),
+              `the most affected teams under ${p.name(p.ctx.filters.leaderId)}`,
+            )
+          : stayAction(p, `the ${p.ctx.scopeLabel} leaders`, `the most affected ${p.ctx.scopeLabel} teams`),
         people: people(leavers, (e) => leaverNote(e, p)),
         drill,
         tab: 'attrition',
@@ -235,9 +271,10 @@ function attritionVsCompany(p: Prep, kpi: KpiModel, att: AttritionModel): Ranked
         ),
         impact: diff * kpi.vol.avgHeadcount,
       })
-    } else if (diff <= -0.03) {
+    } else if (diff <= -gap) {
       out.push({
         id: 'hrbp-voluntary-good',
+        metricId: ID.voluntaryAbove,
         severity: 'good',
         title: `Voluntary attrition in ${p.ctx.scopeLabel} is ${pct(kpi.vol.rate)}, ${pts(diff)} below the company`,
         detail: `${count(leavers.length, 'voluntary exit', 'voluntary exits')} in ${phrase}, against ${pct(company)} for the company.`,
@@ -262,8 +299,9 @@ function attritionVsCompany(p: Prep, kpi: KpiModel, att: AttritionModel): Ranked
       p.emps.filter((e) => e.location !== loc),
       p.window,
       p.history.deptAt,
+      groupOptions(p),
     ).get(dept)
-    const rate = rest ? annualRate(rest.voluntary, rest.avgHeadcount, p.window) : null
+    const rate = rest ? p.rate(rest.voluntary, rest.avgHeadcount, p.window) : null
     return { location: loc, rate, exits: rest?.voluntary ?? 0 }
   }
 
@@ -273,19 +311,19 @@ function attritionVsCompany(p: Prep, kpi: KpiModel, att: AttritionModel): Ranked
       .filter(
         (r) =>
           r.voluntaryRate != null &&
-          r.avgHeadcount >= 10 &&
-          r.voluntary >= 3 &&
-          r.voluntaryRate - company >= 0.03,
+          r.avgHeadcount >= minAvgHeadcount &&
+          r.voluntary >= minExits &&
+          r.voluntaryRate - company >= gap,
       )
       .map((r) => ({ ...r, excess: ((r.voluntaryRate as number) - company) * r.avgHeadcount }))
       .sort((a, b) => b.excess - a.excess)
     for (const top of hits) {
       const rate = top.voluntaryRate as number
       const list = p.emps.filter((e) => (key === 'location' ? e.location : e.department) === top.group)
-      const leavers = exitsIn(list, p.window).filter((e) => e.terminationType === 'Voluntary')
+      const leavers = exitsIn(list, p.window, p.counts).filter((e) => e.terminationType === 'Voluntary')
       const outside = key === 'department' ? outsideFlagged(top.group, leavers) : undefined
-      // Explained by the flagged location: outside it the department sits within 3 pts of the company.
-      if (outside && (outside.rate == null || outside.rate - company < 0.03)) continue
+      // Explained by the flagged location: outside it the department sits within the gap (3 pts) of the company.
+      if (outside && (outside.rate == null || outside.rate - company < gap)) continue
       const within = key === 'location' ? [DIMS.department, DIMS.level] : [DIMS.location, DIMS.level]
       const also = hits.filter((h) => h !== top).map((h) => h.group)
       const second =
@@ -293,13 +331,15 @@ function attritionVsCompany(p: Prep, kpi: KpiModel, att: AttritionModel): Ranked
           ? `Outside ${outside.location} it is ${pct(outside.rate)}, ${pts(outside.rate - company)} above the company.`
           : concentration(p, list, within, leavers.length) ||
             (also.length
-              ? `${listJoin(also.slice(0, 3))} ${also.length === 1 ? 'is' : 'are'} also 3 pts or more above.`
+              ? `${listJoin(also.slice(0, 3))} ${also.length === 1 ? 'is' : 'are'} also ${ptsPlain(gap)} or more above.`
               : '')
       const judged =
         outside?.rate != null ? { rate: outside.rate, n: outside.exits } : { rate, n: leavers.length }
       out.push({
         id: `hrbp-voluntary-${key}`,
-        severity: judged.rate >= company * 1.75 && judged.n >= 10 ? 'critical' : 'warning',
+        metricId: ID.voluntaryAbove,
+        severity:
+          judged.rate >= company * criticalRatio && judged.n >= criticalExits ? 'critical' : 'warning',
         title: `Voluntary attrition in ${top.group} is ${pct(rate)}, ${pts(rate - company)} above the company`,
         detail: [
           `${count(leavers.length, 'voluntary exit', 'voluntary exits')} in ${phrase}${reasonClause(p, leavers)}.`,
@@ -307,7 +347,7 @@ function attritionVsCompany(p: Prep, kpi: KpiModel, att: AttritionModel): Ranked
         ]
           .filter(Boolean)
           .join(' '),
-        action: `Review the top exit reasons with the ${top.group} leaders and hold stay conversations in the most affected teams.`,
+        action: stayAction(p, `the ${top.group} leaders`, `the most affected ${top.group} teams`),
         people: people(leavers, (e) => leaverNote(e, p)),
         drill: () =>
           leaversSpec(p, titled('Voluntary leavers', top.group, periodName(p)), leavers, {
@@ -316,6 +356,7 @@ function attritionVsCompany(p: Prep, kpi: KpiModel, att: AttritionModel): Ranked
               ['voluntary exit', 'voluntary exits'],
               top.avgHeadcount,
               p.window.months,
+              annualize,
             ),
           }),
         filter: key === 'location' ? { location: [top.group] } : { department: [top.group] },
@@ -354,22 +395,29 @@ function mostIn(list: readonly Employee[], dim: Dimension<Employee>): string {
 }
 
 function firstYear(p: Prep, kpi: KpiModel): Ranked | null {
+  const { threshold, minHires, minLeavers } = p.set.firstYearHigh
   if (!p.has.terminationDate) return null
+  const minGroup = p.set.minGroup
   const fy = kpi.firstYear
   const range = `${formatDate(addDays(fy.from, 1))} to ${formatDate(fy.to)}`
-  const cohort = firstYearCohort(p.emps, p.asOf)
-  if (fy.rate != null && fy.cohort >= 5 && fy.rate > 0.2) {
-    const leavers = cohort.filter(leftInFirstYear)
-    const company = p.ctx.isCompany ? null : cohortSummary(p.companyEmps, p.asOf).rate
+  const measured = `Measured on people hired ${range} who left within ${firstYearPhrase(p)} of starting.`
+  const cohort = firstYearCohort(p.emps, p.asOf, p.counts)
+  if (fy.rate != null && fy.cohort >= minGroup && fy.rate > threshold) {
+    const leavers = cohort.filter(p.leftFirstYear)
+    const company = p.ctx.isCompany
+      ? null
+      : cohortSummary(p.companyEmps, p.asOf, { counts: p.counts, leftFirstYear: p.leftFirstYear, minGroup })
+          .rate
     return {
       id: 'hrbp-first-year',
+      metricId: ID.firstYearHigh,
       severity: 'warning',
       title: p.ctx.isCompany
         ? `First-year attrition is ${pct(fy.rate)} (${fy.leavers} of ${fy.cohort} hires)`
         : `First-year attrition in ${p.ctx.scopeLabel} is ${pct(fy.rate)} (${fy.leavers} of ${fy.cohort} hires)${
             company != null ? `, against ${pct(company)} for the company` : ''
           }`,
-      detail: `Measured on people hired ${range} who left within a year of starting.${mostIn(leavers, DIMS.department)}`,
+      detail: `${measured}${mostIn(leavers, DIMS.department)}`,
       action: `Review onboarding and the first 90 days with the hiring managers in ${p.ctx.scopeLabel}.`,
       people: people(leavers, (e) => leaverNote(e, p)),
       drill: () =>
@@ -402,16 +450,16 @@ function firstYear(p: Prep, kpi: KpiModel): Ranked | null {
       else groups.set(k, [e])
     }
     if (groups.size < 2) continue
-    const totalLeavers = cohort.filter(leftInFirstYear).length
+    const totalLeavers = cohort.filter(p.leftFirstYear).length
     const hits = [...groups.entries()]
       .map(([group, list]) => {
-        const leavers = list.filter(leftInFirstYear)
+        const leavers = list.filter(p.leftFirstYear)
         const rest = cohort.length - list.length
         const restRate = rest > 0 ? (totalLeavers - leavers.length) / rest : null
         const excess = leavers.length - list.length * (fy.rate ?? 0)
         return { group, list, leavers, rate: leavers.length / list.length, restRate, excess }
       })
-      .filter((g) => g.list.length >= 10 && g.leavers.length >= 3 && g.rate > 0.2)
+      .filter((g) => g.list.length >= minHires && g.leavers.length >= minLeavers && g.rate > threshold)
       .sort((a, b) => b.excess - a.excess)
     const top = hits[0]
     if (!top) continue
@@ -424,11 +472,12 @@ function firstYear(p: Prep, kpi: KpiModel): Ranked | null {
     const conc = mostIn(top.leavers, sub)
     return {
       id: 'hrbp-first-year',
+      metricId: ID.firstYearHigh,
       severity: 'warning',
       title: `First-year attrition in ${top.group} is ${pct(top.rate)} (${top.leavers.length} of ${top.list.length} hires)${
         top.restRate != null ? `, against ${pct(top.restRate)} elsewhere` : ''
       }`,
-      detail: `Measured on people hired ${range} who left within a year of starting.${conc}`,
+      detail: `${measured}${conc}`,
       action: `Review onboarding and the first 90 days with the ${top.group} hiring managers.`,
       people: people(top.leavers, (e) => leaverNote(e, p)),
       drill: () =>
@@ -451,16 +500,20 @@ function firstYear(p: Prep, kpi: KpiModel): Ranked | null {
 /* ───────── 4-7. org design ───────── */
 
 function spanOutliers(p: Prep, org: OrgModel): Ranked | null {
-  const wide = org.managers.filter((m) => m.directs >= 12)
-  const narrow = org.managers.filter((m) => m.directs === 1)
+  const { wide: wideAt, narrow: narrowAt } = p.set.spanOutliers
+  const wide = org.managers.filter((m) => m.directs >= wideAt)
+  const narrow = org.managers.filter((m) => m.directs <= narrowAt)
   if (!wide.length && !narrow.length) return null
   const have = (n: number) => (n === 1 ? 'manager has' : 'managers have')
+  const single = narrowAt === 1
+  const wideWords = `${wideAt} or more direct reports`
+  const narrowWords = single ? 'a single direct report' : `${narrowAt} or fewer direct reports`
   const title =
     wide.length && narrow.length
-      ? `${wide.length} ${have(wide.length)} 12 or more direct reports and ${narrow.length} ${narrow.length === 1 ? 'has' : 'have'} only one`
+      ? `${wide.length} ${have(wide.length)} ${wideWords} and ${narrow.length} ${narrow.length === 1 ? 'has' : 'have'} ${single ? 'only one' : `${narrowAt} or fewer`}`
       : wide.length
-        ? `${wide.length} ${have(wide.length)} 12 or more direct reports`
-        : `${narrow.length} ${have(narrow.length)} a single direct report`
+        ? `${wide.length} ${have(wide.length)} ${wideWords}`
+        : `${narrow.length} ${have(narrow.length)} ${narrowWords}`
   const sentences: string[] = []
   if (wide.length) {
     const items = wide.map((m, i) => (i === 0 ? `${m.name} has ${m.directs}` : `${m.name} ${m.directs}`))
@@ -468,22 +521,26 @@ function spanOutliers(p: Prep, org: OrgModel): Ranked | null {
   }
   if (narrow.length)
     sentences.push(
-      `Single-report layers: ${nameList(
+      `${single ? 'Single-report layers' : `Managers with ${narrowWords}`}: ${nameList(
         narrow.map((m) => m.name),
         5,
       )}.`,
     )
+  const layers = single ? 'single-report layers' : 'small teams'
   return {
     id: 'hrbp-span-outliers',
+    metricId: ID.spanOutliers,
     severity: 'info',
     title,
     detail: sentences.join(' '),
     action:
       wide.length && narrow.length
-        ? 'Review whether the wide teams need a team lead and whether the single-report layers can be merged.'
+        ? `Review whether the wide teams need a team lead and whether the ${layers} can be merged.`
         : wide.length
           ? 'Review whether each of these teams needs a team lead or a split.'
-          : 'Review whether each single-report layer is still needed or can be merged.',
+          : single
+            ? 'Review whether each single-report layer is still needed or can be merged.'
+            : 'Review whether each of these small teams is still needed or can be merged.',
     people: [...wide, ...narrow].slice(0, MAX_PEOPLE).map((m) => ({
       id: m.managerId,
       name: m.name,
@@ -493,10 +550,10 @@ function spanOutliers(p: Prep, org: OrgModel): Ranked | null {
       managersSpec(
         p,
         wide.length && narrow.length
-          ? 'Managers with 12 or more direct reports or only one'
+          ? `Managers with ${wideWords} or ${single ? 'only one' : `${narrowAt} or fewer`}`
           : wide.length
-            ? 'Managers with 12 or more direct reports'
-            : 'Managers with a single direct report',
+            ? `Managers with ${wideWords}`
+            : `Managers with ${narrowWords}`,
         [...wide, ...narrow],
       ),
     tab: 'org',
@@ -506,21 +563,24 @@ function spanOutliers(p: Prep, org: OrgModel): Ranked | null {
 }
 
 function newManagers(p: Prep, org: OrgModel): Ranked | null {
-  const list = org.managers.filter((m) => m.newManager && m.directs >= 5)
+  const { minTeam, warnTeam } = p.set.newManagers
+  const list = org.managers.filter((m) => m.newManager && m.directs >= minTeam)
   if (!list.length) return null
   const top = list[0]
-  const months = Math.max(1, Math.round(daysBetween(top.managerSince, p.asOf) / 30.436875))
+  const managed = Math.max(1, Math.round(daysBetween(top.managerSince, p.asOf) / 30.436875))
+  const newMeans = `New means hired or promoted into a manager level in the last ${count(p.set.newManagerMonths, 'month', 'months')}.`
   const title =
     list.length === 1
-      ? `${top.name} has managed for ${count(months, 'month', 'months')} and leads ${top.directs} direct reports`
-      : `${list.length} new managers lead teams of 5 or more, ${top.name} with ${top.directs} direct reports`
+      ? `${top.name} has managed for ${count(managed, 'month', 'months')} and leads ${top.directs} direct reports`
+      : `${list.length} new managers lead teams of ${minTeam} or more, ${top.name} with ${top.directs} direct reports`
   const rest = list.slice(1)
   return {
     id: 'hrbp-new-managers',
-    severity: list.some((m) => m.directs >= 8) ? 'warning' : 'info',
+    metricId: ID.newManagers,
+    severity: list.some((m) => m.directs >= warnTeam) ? 'warning' : 'info',
     title,
     detail: [
-      'New means hired or promoted into a manager level in the last 12 months.',
+      newMeans,
       rest.length
         ? `The others: ${nameList(
             rest.map((m) => `${m.name} (${m.directs})`),
@@ -537,14 +597,14 @@ function newManagers(p: Prep, org: OrgModel): Ranked | null {
       note: `${m.directs} direct reports · managing since ${formatDate(m.managerSince)}`,
     })),
     drill: () =>
-      managersSpec(p, 'New managers leading 5 or more direct reports', list, {
-        note: 'New means hired or promoted into a manager level in the last 12 months.',
+      managersSpec(p, `New managers leading ${minTeam} or more direct reports`, list, {
+        note: newMeans,
         extra: {
           columns: [{ key: 'managerSince', label: 'Managing since', format: 'date' }],
           values: (m) => ({ managerSince: m.managerSince }),
         },
       }),
-    filter: top.directs >= 8 ? { leaderId: top.managerId } : undefined,
+    filter: top.directs >= warnTeam ? { leaderId: top.managerId } : undefined,
     tab: 'org',
     uses: p.uses(ORG, MANAGER_SINCE),
     impact: top.directs,
@@ -556,11 +616,12 @@ function singleReportChains(p: Prep, org: OrgModel): Ranked | null {
   const [first, ...rest] = org.chains
   return {
     id: 'hrbp-single-report-chains',
+    metricId: ID.chains,
     severity: 'warning',
     title:
       org.chains.length === 1
         ? `${first.manager} has a single direct report who leads ${first.below} people`
-        : `${org.chains.length} managers have a single direct report who leads 5 or more people`,
+        : `${org.chains.length} managers have a single direct report who leads ${p.set.chainMinBelow} or more people`,
     detail: [
       `${possessive(first.manager)} only report, ${first.report}, has ${first.below} people below them.`,
       rest.length
@@ -585,11 +646,12 @@ function singleReportChains(p: Prep, org: OrgModel): Ranked | null {
   }
 }
 
-/** Managers whose only direct report leads 5 or more people, with that report and their reach. */
+/** Managers whose only direct report leads 5 or more people (the setting), with that report and their reach. */
 export function chainsSpec(p: Prep, org: OrgModel) {
   const chainBy = new Map(org.chains.map((c) => [c.managerId, c]))
   const managers = org.managers.filter((m) => chainBy.has(m.managerId))
-  return managersSpec(p, 'Managers with a single direct report who leads 5 or more people', managers, {
+  const title = `Managers with a single direct report who leads ${p.set.chainMinBelow} or more people`
+  return managersSpec(p, title, managers, {
     extra: {
       columns: [
         { key: 'onlyReport', label: 'Only direct report', format: 'text' },
@@ -604,23 +666,25 @@ export function chainsSpec(p: Prep, org: OrgModel) {
 }
 
 function orgDepth(p: Prep, org: OrgModel): Ranked | null {
+  // The deep-chain layer is the Org chart's: people below it sit in a deep reporting chain.
+  const { deepChain, warnLayers } = p.set.orgDepth
   const deep = org.deep.people
   if (!deep.length) return null
   return {
     id: 'hrbp-org-depth',
-    severity: org.deep.maxDepth > 9 ? 'warning' : 'info',
-    title: `${count(deep.length, 'person sits', 'people sit')} more than 7 levels below the top of ${p.ctx.scopeLabel}`,
-    detail: `The deepest reporting chain has ${org.deep.maxDepth + 1} layers.`,
-    action:
-      'Map the reporting chains past layer 7 and look for layers that can be merged at the next reorganization.',
+    metricId: ID.orgDepth,
+    severity: org.deep.maxDepth + 1 >= warnLayers ? 'warning' : 'info',
+    title: `${count(deep.length, 'person sits', 'people sit')} below layer ${deepChain} of ${p.ctx.scopeLabel}`,
+    detail: `Layer 1 is the top of the group. The deepest reporting chain has ${org.deep.maxDepth + 1} layers.`,
+    action: `Map the reporting chains below layer ${deepChain} and look for layers that can be merged at the next reorganization.`,
     people: people(deep, (e) => `${e.jobTitle} · ${e.department}`),
     drill: () =>
       layeredSpec(
         p,
-        titled('People more than 7 levels below the top', p.ctx.scopeLabel),
+        titled(`People below layer ${deepChain}`, p.ctx.scopeLabel),
         deep,
         org.layerOf,
-        'Layer 1 is the top of the group; these people sit on layer 9 or deeper.',
+        `Layer 1 is the top of the group; these people sit on layer ${deepChain + 1} or deeper.`,
       ),
     tab: 'org',
     uses: p.uses(ORG),
@@ -689,26 +753,28 @@ export function departmentGrowth(p: Prep): {
       const beforeIds = before.get(dept) ?? new Set<string>()
       return { dept, now: people.length, before: beforeIds.size, people, beforeIds }
     })
-    .filter((g) => g.before >= 5)
+    .filter((g) => g.before >= p.set.minGroup)
     .map((g) => ({ ...g, growth: (g.now - g.before) / g.before }))
     .sort((a, b) => b.growth - a.growth)
 }
 
 function rapidGrowth(p: Prep): Ranked | null {
+  const threshold = p.set.rapidGrowth
   if (!p.has.terminationDate) return null
   const since = addDays(trailing(p.asOf, 6).start, -1)
-  const grown = departmentGrowth(p).filter((g) => g.growth >= 0.35)
+  const grown = departmentGrowth(p).filter((g) => g.growth >= threshold)
   const top = grown[0]
   if (!top) return null
   const rest = grown.slice(1)
   return {
     id: 'hrbp-rapid-growth',
+    metricId: ID.rapidGrowth,
     severity: 'info',
     title: `${top.dept} grew ${fmt(top.growth, 'pct0')} in 6 months, from ${top.before} to ${top.now} people`,
     detail: [
       `Headcount on ${formatDate(since)} against ${formatDate(p.asOf)}.`,
       rest.length
-        ? `Also growing 35% or more: ${nameList(
+        ? `Also growing ${fmt(threshold, 'pct0')} or more: ${nameList(
             rest.map((g) => g.dept),
             4,
           )}.`
@@ -736,6 +802,7 @@ function rapidGrowth(p: Prep): Ranked | null {
 }
 
 function newHireConcentration(p: Prep): Ranked | null {
+  const { share, minTeam, warnShare } = p.set.newHires
   const since = trailing(p.asOf, 6).start
   const teams = new Map<string, { size: number; hires: Employee[] }>()
   for (const e of p.emps) {
@@ -746,7 +813,7 @@ function newHireConcentration(p: Prep): Ranked | null {
     teams.set(e.managerId, t)
   }
   const flagged = [...teams.entries()]
-    .filter(([, t]) => t.size >= 5 && t.hires.length / t.size >= 0.5)
+    .filter(([, t]) => t.size >= minTeam && t.hires.length / t.size >= share)
     .map(([managerId, t]) => ({
       managerId,
       name: p.name(managerId),
@@ -759,13 +826,16 @@ function newHireConcentration(p: Prep): Ranked | null {
   if (!flagged.length) return null
   const top = flagged[0]
   const list = flagged.map((t) => `${possessive(t.name)} team ${t.recent} of ${t.size}`)
+  const atLeast =
+    share === 0.5 ? 'at least half their people' : `at least ${fmt(share, 'pct0')} of their people`
   return {
     id: 'hrbp-new-hire-concentration',
-    severity: flagged.some((t) => t.share >= 0.65) ? 'warning' : 'info',
+    metricId: ID.newHires,
+    severity: flagged.some((t) => t.share >= warnShare) ? 'warning' : 'info',
     title:
       flagged.length === 1
         ? `${top.recent} of ${possessive(top.name)} ${top.size} direct reports were hired in the last 6 months`
-        : `${flagged.length} teams have at least half their people hired in the last 6 months`,
+        : `${flagged.length} teams have ${atLeast} hired in the last 6 months`,
     detail: `New hires since ${formatDate(since)}: ${nameList(list, 5)}.`,
     action:
       "Pair each new hire with an experienced buddy and keep these managers' other commitments light this quarter.",
@@ -779,7 +849,9 @@ function newHireConcentration(p: Prep): Ranked | null {
         p,
         flagged.length === 1
           ? `Recent hires on ${possessive(top.name)} team`
-          : 'Recent hires on teams that are at least half new',
+          : share === 0.5
+            ? 'Recent hires on teams that are at least half new'
+            : `Recent hires on teams that are at least ${fmt(share, 'pct0')} new`,
         flagged.flatMap((t) => t.hires),
         {
           when: `Hired ${formatDate(since)} to ${formatDate(p.asOf)}`,
@@ -796,11 +868,12 @@ function newHireConcentration(p: Prep): Ranked | null {
 }
 
 function unevenGrowth(p: Prep, wf: WorkforceModel): Ranked | null {
+  const { minGrowth, minAdded } = p.set.unevenGrowth
   if (!p.has.terminationDate) return null
   const rows = wf.growth.filter((g) => g.growth != null)
   if (rows.length < 2) return null
   const top = rows[0]
-  if ((top.growth ?? 0) < 0.1 || top.change < 10) return null
+  if ((top.growth ?? 0) < minGrowth || top.change < minAdded) return null
   const byBu = new Set(p.emps.map((e) => e.businessUnit)).size > 1
   const net = wf.growth.reduce((a, g) => a + g.change, 0)
   const where = p.ctx.isCompany ? 'the company' : p.ctx.scopeLabel
@@ -812,6 +885,7 @@ function unevenGrowth(p: Prep, wf: WorkforceModel): Ranked | null {
   const flat = rows.find((g) => g !== top && Math.abs(g.growth ?? 1) < 0.01 && g.now >= 20)
   return {
     id: 'hrbp-uneven-growth',
+    metricId: ID.unevenGrowth,
     severity: 'info',
     title: `${top.group} grew ${pct(top.growth as number)} in 12 months, from ${top.yearAgo.toLocaleString('en-US')} to ${top.now.toLocaleString('en-US')} people`,
     detail: [share, flat ? `${flat.group} was flat at ${flat.now.toLocaleString('en-US')}.` : '']

@@ -12,9 +12,11 @@
  * the figure does not depend on them.
  */
 import type { KnownFieldRef } from '@/data/quality'
-import { SERVICE_LEVELS, type ServiceLevelId } from './catalog'
+// Runtime imports stay limited to './catalog' (plain data): the view's metric registry
+// (../metrics.ts) builds each metric's `uses` from these groups and must not pull in the engine.
+import { LEVEL_CLOCKS, SERVICE_LEVELS, type ServiceLevelId } from './catalog'
 import type { CaseColumns } from './facts'
-import { LEVEL_CLOCKS, type LevelRow, type ProcessRow } from './levels'
+import type { LevelRow, ProcessRow } from './levels'
 
 export type Refs = readonly KnownFieldRef[]
 

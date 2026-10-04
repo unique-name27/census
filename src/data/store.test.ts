@@ -225,18 +225,13 @@ describe('store', () => {
     st().setShowPay(true)
     expect(st().setToolLink('lattice', 'javascript:alert(1)')).toBe(false)
     expect(st().setToolLink('lattice', 'lattice.example.com')).toBe(true)
-    st().setCompCycle({
-      meritBudgetPct: 0.04,
-      healthyBand: [0.85, 1.15],
-      guideline: { 5: 0.07, 4: 0.05, 3: 0.03, 2: 0.01, 1: 0 },
-    })
     const saved = JSON.parse(storage.getItem('census:settings')!)
     expect(saved).toMatchObject({
       textSize: 'lg',
       dataStandard: 'gold',
       tools: { lattice: 'https://lattice.example.com/' },
-      compCycle: { meritBudgetPct: 0.04 },
     })
+    expect(saved).not.toHaveProperty('compCycle')
     expect(saved).not.toHaveProperty('showPay')
     expect(storage.getItem('census:showPay')).toBeNull()
 
@@ -324,5 +319,118 @@ describe('sample seed', () => {
     expect(st().data.candidates).toHaveLength(7)
     expect(st().versions.candidates.versionId).toBe('sample-candidates-raw')
     S.setSampleSeed(null)
+  })
+})
+
+describe('metric dictionary', () => {
+  const C = { budget: 'comp.merit.spend', band: 'comp.compa.inBand' }
+  let S: Store
+  const st = () => S.useCensus.getState()
+  beforeEach(async () => {
+    idb.clear()
+    storage.m.clear()
+    S = await freshStore()
+    await st().init()
+  })
+
+  it('edits, undoes and resets definitions, keeps them in census:metrics, and reads them back after a reload', async () => {
+    expect(st().metrics).toEqual({ overrides: {}, log: [] })
+    const bad = st().editMetric({ metricId: C.budget, field: 'params.meritBudget', value: 0.5 })
+    expect(bad).toEqual({ ok: false, error: 'Merit budget: enter a value from 0% to 20%.' })
+    const r = st().editMetric({ metricId: C.budget, field: 'params.meritBudget', value: 0.04 }, 'Jamie')
+    expect(r.ok && r.change).toMatchObject({ from: 0.035, to: 0.04, by: 'Jamie', kind: 'edit' })
+    expect(st().compCycle.meritBudgetPct).toBe(0.04)
+    expect(JSON.parse(storage.getItem('census:metrics')!).overrides).toEqual({
+      [C.budget]: { text: {}, params: { meritBudget: 0.04 } },
+    })
+    st().editMetric({ metricId: 'privacy.anonymity', field: 'params.minGroup', value: 7 })
+    expect(st().editMetric({ metricId: 'privacy.anonymity', field: 'params.minGroup', value: 4 }).ok).toBe(
+      false,
+    )
+
+    S = await freshStore()
+    expect(st().metrics.overrides[C.budget].params.meritBudget).toBe(0.04)
+    expect(st().compCycle.meritBudgetPct).toBe(0.04)
+
+    expect(st().undoMetricChange()).toBe(true) // the anonymity minimum, the latest change
+    expect(st().metrics.overrides['privacy.anonymity']).toBeUndefined()
+    st().resetMetric(C.budget, 'Jamie')
+    expect(st().metrics.overrides).toEqual({})
+    expect(st().compCycle.meritBudgetPct).toBe(0.035)
+    expect(st().metrics.log.map((c) => c.kind)).toEqual(['reset', 'undo', 'edit', 'edit'])
+    st().editMetrics([
+      { metricId: C.budget, field: 'params.meritBudget', value: 0.03 },
+      { metricId: C.band, field: 'params.healthyBand', value: [0.85, 1.15] },
+    ])
+    expect(st().compCycle).toMatchObject({ meritBudgetPct: 0.03, healthyBand: [0.85, 1.15] })
+    st().resetAllMetrics()
+    expect(st().metrics.overrides).toEqual({})
+    expect(st().undoMetricChange('missing')).toBe(false)
+  })
+
+  it('moves the Settings comp cycle into the dictionary once, and setCompCycle writes the dictionary', async () => {
+    storage.setItem(
+      'census:settings',
+      JSON.stringify({
+        theme: 'dark',
+        compCycle: { meritBudgetPct: 0.045, healthyBand: [0.9, 1.1], guideline: {} },
+      }),
+    )
+    S = await freshStore()
+    expect(st().theme).toBe('dark')
+    expect(st().compCycle.meritBudgetPct).toBe(0.045)
+    expect(st().metrics.log[0]).toMatchObject({ kind: 'migration', metricId: C.budget })
+    // Saving Settings drops the old copy; the dictionary keeps the value.
+    st().setTheme('light')
+    expect(JSON.parse(storage.getItem('census:settings')!)).not.toHaveProperty('compCycle')
+    S = await freshStore()
+    expect(st().compCycle.meritBudgetPct).toBe(0.045)
+    expect(st().metrics.log).toHaveLength(1)
+
+    st().setCompCycle({ ...st().compCycle, healthyBand: [0.8, 1.2] })
+    expect(st().metrics.overrides[C.band].params.healthyBand).toEqual([0.8, 1.2])
+    st().resetCompCycle()
+    expect(st().metrics.overrides).toEqual({})
+  })
+
+  it('travels in the settings file, and an older file with a comp cycle lands in the dictionary', async () => {
+    st().editMetric({ metricId: C.budget, field: 'params.meritBudget', value: 0.04 })
+    const text = await S.exportSettings().text()
+    expect(JSON.parse(text).metrics.overrides[C.budget]).toBeDefined()
+    st().resetAllMetrics()
+    const r = S.importSettings(text)
+    expect(r.ok && r.metrics?.summary).toBe('Changed 1 value in 1 metric.')
+    expect(st().compCycle.meritBudgetPct).toBe(0.04)
+
+    const old = S.importSettings({
+      kind: 'census-settings',
+      version: 1,
+      settings: { compCycle: { meritBudgetPct: 0.05 } },
+    })
+    expect(old.ok && old.applied).toEqual([])
+    expect(old.ok && old.metrics?.changed.map((c) => c.kind)).toEqual(['import'])
+    expect(st().compCycle.meritBudgetPct).toBe(0.05)
+  })
+
+  it('imports an edited Metric dictionary workbook and uses the tolerance rule for new control totals', async () => {
+    const { buildDictionaryWorkbook } = await import('@/metrics/excel')
+    const { metricsApi } = await import('@/metrics/api')
+    const wb = await buildDictionaryWorkbook(metricsApi(st().metrics))
+    const ws = wb.getWorksheet('Settings')!
+    ws.eachRow((row) => {
+      if (row.getCell(1).value === 'quality.rules.controlTolerance') row.getCell(8).value = 0.01
+    })
+    const r = await st().importMetricDictionary((await wb.xlsx.writeBuffer()) as ArrayBuffer, 'Jamie')
+    expect(r.ok && r.report.summary).toBe('Changed 1 value in 1 metric.')
+    const cert = st().certify('employees', {
+      by: 'HRIS team',
+      controlTotals: [{ label: 'Rows', metric: 'rows', expected: 1, tolerance: Number.NaN }],
+    })
+    expect(cert?.controlTotals?.[0].tolerance).toBe(0.01)
+    expect((await st().importMetricDictionary(new Uint8Array([1]))).ok).toBe(false)
+
+    await S.clearDevice()
+    expect(st().metrics).toEqual({ overrides: {}, log: [] })
+    expect(storage.getItem('census:metrics')).toBeNull()
   })
 })

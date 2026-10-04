@@ -1,6 +1,8 @@
 /**
  * The head of a view: name, the scope / window / as-of line with where the data came from (left
- * out for a view that reads no datasets), the view's own controls, Export, and underline sub-tabs.
+ * out for a view that reads no datasets), the view's own controls, the "Show data quality" switch,
+ * Export, and underline sub-tabs. With the switch on, a strip under the tabs names the datasets
+ * the view reads with their tiers.
  */
 import { type KeyboardEvent, useRef } from 'react'
 import { goTo } from '@/components/navigation'
@@ -9,6 +11,7 @@ import { useAnalytics } from '@/data/context'
 import { formatDate } from '@/lib/dates'
 import { fmt } from '@/lib/format'
 import { AI_AGENTS_HASH, openAgents, useAgentLink } from '@/views/ai/link'
+import { QualityDatasetStrip, QualityLensSwitch } from '@/views/data/quality-overview/DatasetStrip'
 import type { ViewDef } from '@/views/types'
 import { ExportMenu } from './ExportMenu'
 import { datasetNote } from './exportMeta'
@@ -140,12 +143,16 @@ export function ViewHeader({ view, tab }: { view: ViewDef; tab: string }) {
         </div>
         <div className="flex max-w-full min-w-0 flex-wrap items-center gap-2">
           {Actions && <Actions />}
+          {/* The quality lens: tier, limiting field and rows left out on every number. */}
+          {view.datasets.length > 0 && <QualityLensSwitch />}
           <ExportMenu view={view} tab={tab} />
         </div>
       </div>
       <div className={cx('mt-4 border-b border-rule', view.tabs.length < 2 && 'mt-5')}>
         {view.tabs.length > 1 && <SubTabs view={view} active={tab} />}
       </div>
+      {/* While the lens is on: the datasets this view reads, with their tiers. */}
+      <QualityDatasetStrip datasets={view.datasets} />
     </div>
   )
 }

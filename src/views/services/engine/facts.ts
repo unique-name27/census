@@ -14,12 +14,14 @@ import {
   type HrCase,
   type HrTransaction,
   type ISODate,
+  MIN_GROUP,
   type Region,
   siteByLocation,
   type TerminationType,
 } from '@/data/schema'
 import type { Window } from '@/data/scope'
 import { dateOf, daysBetween, hoursBetween, ms } from '@/lib/dates'
+import { type CaseTargets, defaultSettings } from './settings'
 import { share } from './util'
 
 /* ───────────── cases ───────────── */
@@ -85,6 +87,18 @@ export const asOfEnd = (asOf: ISODate): number => ms(asOf) + 86_400_000 - 60_000
 const validTarget = (v: number | null | undefined): number | null =>
   typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : null
 
+/**
+ * The target a case is judged against: its category's target in force (a dictionary setting),
+ * unless the file gives the case a different target of its own than the standard one for its
+ * category. With the settings at their defaults this is the case's own target, falling back to
+ * the category default, as before targets became settings.
+ */
+function targetOf(own: number | null | undefined, standard: number | undefined, inForce: number | undefined) {
+  const v = validTarget(own)
+  if (v != null && v !== standard) return v
+  return inForce ?? v ?? standard ?? null
+}
+
 function weekdayOf(d: ISODate): number {
   const wd = new Date(ms(d)).getUTCDay()
   return (wd + 6) % 7
@@ -111,15 +125,32 @@ export function caseColumns(cases: readonly HrCase[]): CaseColumns {
   }
 }
 
-export function caseFacts(cases: readonly HrCase[], asOf: ISODate, cols: CaseColumns): CaseFact[] {
+/**
+ * One fact per case opened by the as-of date. `targets` are the category targets in force
+ * (calendar hours, from the metric dictionary); they default to the registered defaults.
+ */
+export function caseFacts(
+  cases: readonly HrCase[],
+  asOf: ISODate,
+  cols: CaseColumns,
+  targets: CaseTargets = defaultSettings().caseTargets,
+): CaseFact[] {
   const end = asOfEnd(asOf)
   const out: CaseFact[] = []
   for (const c of cases) {
     const openedMs = ms(c.openedAt)
     if (!Number.isFinite(openedMs) || openedMs > end) continue
     const meta = caseCategoryByName.get(c.category)
-    const responseTarget = validTarget(c.responseTargetHours) ?? meta?.responseHours ?? null
-    const resolutionTarget = validTarget(c.resolutionTargetHours) ?? meta?.resolutionHours ?? null
+    const responseTarget = targetOf(
+      c.responseTargetHours,
+      meta?.responseHours,
+      targets.response.get(c.category),
+    )
+    const resolutionTarget = targetOf(
+      c.resolutionTargetHours,
+      meta?.resolutionHours,
+      targets.resolution.get(c.category),
+    )
     const happened = (ts: string | null | undefined) => {
       const t = ms(ts)
       return Number.isFinite(t) && t <= end && t >= openedMs ? (ts as string) : null
@@ -276,7 +307,7 @@ export const dueIn = (facts: readonly TxFact[], w: Pick<Window, 'start' | 'end'>
 
 /** On time, late (completed late or open past due) and the share on time, over the judged items. */
 export interface OnTime {
-  /** On time ÷ (on time + late); null below MIN_GROUP items or people. */
+  /** On time ÷ (on time + late); null below the anonymity minimum of items or people. */
   rate: number | null
   n: number
   onTime: number
@@ -284,8 +315,11 @@ export interface OnTime {
   people: number
 }
 
-/** On time ÷ (on time + late + overdue). Pending items (not yet due) are left out. */
-export function onTimeRate(facts: readonly TxFact[]): OnTime {
+/**
+ * On time ÷ (on time + late + overdue). Pending items (not yet due) are left out. The rate is
+ * null below `min` items or people (the anonymity minimum in force).
+ */
+export function onTimeRate(facts: readonly TxFact[], min = MIN_GROUP): OnTime {
   let ok = 0
   let late = 0
   const people = new Set<string>()
@@ -296,5 +330,5 @@ export function onTimeRate(facts: readonly TxFact[]): OnTime {
     people.add(f.person)
   }
   const n = ok + late
-  return { rate: share(ok, n, people.size).rate, n, onTime: ok, late, people: people.size }
+  return { rate: share(ok, n, people.size, min).rate, n, onTime: ok, late, people: people.size }
 }

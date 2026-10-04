@@ -11,16 +11,9 @@ import { formatDate } from '@/lib/dates'
 import { fmt } from '@/lib/format'
 import { Dumbbell } from '../charts/Dumbbell'
 import { PositionStrip } from '../charts/PositionStrip'
-import {
-  DEF_COMPA,
-  DEF_COMPRESSION,
-  DEF_FX,
-  DEF_PENETRATION,
-  DEF_POPULATION,
-  DEF_POSITION,
-  TENURE_DOT_COLUMNS,
-} from '../columns'
+import { TENURE_DOT_COLUMNS } from '../columns'
 import { compressionColumns, outsideColumns, penetrationColumns } from '../drillColumns'
+import { FIGURE_METRIC } from '../engine/definitions'
 import { compressionDrill, penetrationDrill } from '../engine/drill'
 import type { CompModel } from '../engine/model'
 import { type OutsideRangeRow, TENURE_ORDER } from '../engine/ranges'
@@ -28,7 +21,11 @@ import { asOfNote, emptyIf, MISSING, note } from '../shared'
 
 const COMPRESSION_SHOWN = 20
 
-const gapTone = (r: OutsideRangeRow): Severity => (r.gapPct >= 0.1 ? 'critical' : 'warning')
+/** Increases to minimum this large or larger ('comp.position.increaseToMin') are marked critical. */
+const gapTone =
+  (largeGap: number) =>
+  (r: OutsideRangeRow): Severity =>
+    r.gapPct >= largeGap ? 'critical' : 'warning'
 /** Person rows open that person's card. */
 const personRow = (r: { id: string }) => openPerson(r.id)
 
@@ -43,6 +40,7 @@ export function Ranges({ m }: { m: CompModel }) {
   // Recent promotions come from Job changes: below the data standard the column drops out.
   const belowColumns = outsideColumns(m, 'below').filter((c) => m.promotionsShown || c.key !== 'promoted')
   const promoted = m.promotionsShown ? '' : ` · promotions not shown: ${m.belowStandard.toLowerCase()}`
+  const sides = fmt(m.rules.compression.minGroup, 'int')
 
   return (
     <div>
@@ -53,11 +51,12 @@ export function Ranges({ m }: { m: CompModel }) {
         <Figure
           id="comp-penetration-by-level"
           uses={m.uses['comp-penetration-by-level']}
+          metric={FIGURE_METRIC['comp-penetration-by-level']}
           title="Range penetration by level"
           subtitle="Box from the 25th to the 75th percentile, line from the 10th to the 90th, tick at the median"
           data={r.penetration}
           columns={penetrationColumns(m)}
-          definitions={[DEF_PENETRATION, DEF_POPULATION]}
+          definitions={m.definitions['comp-penetration-by-level']}
           note={note(
             m,
             r.penetration.reduce((a, x) => a + x.n, 0),
@@ -81,11 +80,12 @@ export function Ranges({ m }: { m: CompModel }) {
         <Figure
           id="comp-compa-by-tenure"
           uses={m.uses['comp-compa-by-tenure']}
+          metric={FIGURE_METRIC['comp-compa-by-tenure']}
           title="Compa-ratio by tenure"
           subtitle={`One mark per person, tick at the median; shape shows range position, as of ${asOf}`}
           data={r.tenure}
           columns={TENURE_DOT_COLUMNS}
-          definitions={[DEF_COMPA, DEF_POSITION]}
+          definitions={m.definitions['comp-compa-by-tenure']}
           note={note(m, r.tenure.length)}
           span={5}
           empty={emptyIf(r.tenure, null, 'No compa-ratios in this scope.')}
@@ -107,40 +107,31 @@ export function Ranges({ m }: { m: CompModel }) {
         <Figure
           id="comp-below-minimum"
           uses={m.uses['comp-below-minimum']}
+          metric={FIGURE_METRIC['comp-below-minimum']}
           title="Below range minimum"
           subtitle={`Largest gap first, as of ${asOf}`}
           data={r.below}
           columns={belowColumns}
-          definitions={[
-            DEF_POSITION,
-            {
-              term: 'Increase to minimum',
-              text: 'The raise that brings base salary up to the range minimum.',
-              formula: '(rangeMin − base) ÷ base',
-            },
-            DEF_FX,
-          ]}
+          definitions={m.definitions['comp-below-minimum']}
           note={`${note(m, r.below.length, 'people', m.showPay)}${cost}${promoted}`}
           tableOnly
-          table={{ rowTone: gapTone, search: 'Search people', maxRows: 12, onRowClick: personRow }}
+          table={{
+            rowTone: gapTone(m.rules.increaseToMin.largeGap),
+            search: 'Search people',
+            maxRows: 12,
+            onRowClick: personRow,
+          }}
           empty={emptyIf(r.below, noRanges, 'Nobody in this scope is paid below range minimum.')}
         />
         <Figure
           id="comp-above-maximum"
           uses={m.uses['comp-above-maximum']}
+          metric={FIGURE_METRIC['comp-above-maximum']}
           title="Above range maximum"
           subtitle={`Largest overage first, as of ${asOf}`}
           data={r.above}
           columns={outsideColumns(m, 'above')}
-          definitions={[
-            DEF_POSITION,
-            {
-              term: 'Over maximum',
-              text: 'How far base salary sits above the range maximum.',
-              formula: '(base − rangeMax) ÷ rangeMax',
-            },
-            DEF_FX,
-          ]}
+          definitions={m.definitions['comp-above-maximum']}
           note={note(m, r.above.length, 'people', m.showPay)}
           tableOnly
           table={{ search: 'Search people', maxRows: 12, onRowClick: personRow }}
@@ -155,16 +146,17 @@ export function Ranges({ m }: { m: CompModel }) {
         <Figure
           id="comp-compression"
           uses={m.uses['comp-compression']}
+          metric={FIGURE_METRIC['comp-compression']}
           title="New hires vs incumbents"
           subtitle={`Median compa-ratio by department and level, hired in the last 12 months vs before, as of ${asOf}`}
           data={r.compression}
           columns={compressionColumns(m)}
-          definitions={[DEF_COMPRESSION, DEF_COMPA]}
-          note={`${fmt(r.compression.length, 'int')} department and level pairs with 5 or more people on each side${r.compression.length > COMPRESSION_SHOWN ? `; the chart shows the ${COMPRESSION_SHOWN} largest gaps and the table has them all` : ''} · ${asOfNote(m)}`}
+          definitions={m.definitions['comp-compression']}
+          note={`${fmt(r.compression.length, 'int')} department and level pairs with ${sides} or more people on each side${r.compression.length > COMPRESSION_SHOWN ? `; the chart shows the ${COMPRESSION_SHOWN} largest gaps and the table has them all` : ''} · ${asOfNote(m)}`}
           empty={emptyIf(
             r.compression,
             null,
-            'No department and level has 5 or more new hires and incumbents.',
+            `No department and level has ${sides} or more new hires and incumbents.`,
           )}
         >
           <Dumbbell

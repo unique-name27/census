@@ -14,9 +14,11 @@ import type { RecruitingBase } from '../engine/base'
 import { activeDrill, candidateDrill, queueOwnerDrill } from '../engine/drills'
 import { FIGURE_USES } from '../engine/lineage'
 import { ownerNote } from '../engine/messages'
+import { FIGURE_METRICS } from '../engine/metricLinks'
 import { type QueueGroup, type QueueRow, queueRows } from '../engine/pipeline'
+import { RM } from '../metrics'
 import { useRecruitingUi } from '../state'
-import { TABLET_FULL } from './common'
+import { defOf, TABLET_FULL } from './common'
 
 /**
  * The queue table: owner, candidate, req, stage, days and the next step. The state label
@@ -199,6 +201,7 @@ export function ActionQueue({ base: b, groups }: { base: RecruitingBase; groups:
       <Figure
         id="recruiting-action-queue"
         uses={FIGURE_USES['recruiting-action-queue']}
+        metric={FIGURE_METRICS['recruiting-action-queue']}
         title="Action queue"
         subtitle={`Active candidates who lack a next step (past the usual time) on ${formatDate(asOf)}, by owner of the next action`}
         data={shown}
@@ -220,10 +223,7 @@ export function ActionQueue({ base: b, groups }: { base: RecruitingBase; groups:
               : null
         }
         definitions={[
-          {
-            term: 'Lacks a next step',
-            text: 'Nothing scheduled and past 1.5× the usual days for the stage (red past 2.5×), interview feedback pending more than 2 days (red past 5), or an offer out more than 5 days (red past 10).',
-          },
+          defOf(b, RM.lackingNextStep, { term: 'Lacks a next step' }),
           {
             term: 'Owner',
             text: 'Interview decisions go to the hiring manager, scheduling to the coordinator, new applications and offers to the recruiter. The recruiter is the fallback.',

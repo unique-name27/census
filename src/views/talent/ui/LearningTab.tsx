@@ -5,8 +5,11 @@ import { useAnalytics } from '@/data/context'
 import { drill, openPerson } from '@/drill'
 import { formatDate } from '@/lib/dates'
 import { fmt, plural } from '@/lib/format'
+import { targetStatus } from '@/metrics/api'
 import type { TalentModel } from '../engine'
-import { type CourseRow, ON_TIME_TARGET, type OverdueCell } from '../engine/learning'
+import type { CourseRow, OverdueCell } from '../engine/learning'
+import { FIGURE_METRIC, TALENT_METRIC as M } from '../engine/settings'
+import { targetWords } from '../engine/wording'
 import {
   completionColumns,
   courseColumns,
@@ -14,7 +17,7 @@ import {
   overdueCellColumns,
   TRAINING_OVERDUE_COLUMNS,
 } from './columns'
-import { DEF } from './defs'
+import { defsFor, TERM } from './defs'
 
 type Dim = 'department' | 'location'
 
@@ -47,9 +50,13 @@ export function LearningTab({ m }: { m: TalentModel }) {
 
   const period = ctx.window.label
   const cells = dim === 'department' ? l.overdueByDepartment : l.overdueByLocation
-  // Calm emphasis: courses short of the target in the series color, the rest in gray.
+  const { minGroup, onTimeTarget: target } = m.settings
+  // Calm emphasis: courses short of the target in the series color, the rest in gray (every
+  // course in the series color when there is no target).
+  const shortOf = (rate: number) => !target || targetStatus(rate, target) === 'missed'
   const tone = (d: CourseRow) =>
-    d.onTimeRate != null && d.onTimeRate < ON_TIME_TARGET ? ('default' as const) : ('deemph' as const)
+    d.onTimeRate != null && shortOf(d.onTimeRate) ? ('default' as const) : ('deemph' as const)
+  const targetText = target ? `Target ${targetWords(target)}` : null
   const totalOverdue = l.overdue.length
   const noDue = l.hasDueDates ? null : 'Upload Learning with due dates to measure on-time completion.'
 
@@ -62,12 +69,13 @@ export function LearningTab({ m }: { m: TalentModel }) {
         <Figure
           id="talent-training-on-time-by-course"
           uses={m.uses['talent-training-on-time-by-course']}
+          metric={FIGURE_METRIC['talent-training-on-time-by-course']}
           title="Required training on time by course"
           subtitle={`Share of assignments due ${period} completed by the due date`}
           data={l.byCourse}
           columns={courseColumns(m.drill)}
-          definitions={[DEF.required, DEF.onTime]}
-          note={`${plural(l.current.due, 'assignment')} due · ${fmt(l.current.rate, 'pct')} on time overall · target 95%`}
+          definitions={defsFor(ctx.metrics, [M.requiredOnTime], [TERM.required])}
+          note={`${plural(l.current.due, 'assignment')} due · ${fmt(l.current.rate, 'pct')} on time overall${targetText ? ` · ${targetText.toLowerCase()}` : ''}`}
           span={6}
           empty={noDue ?? (l.byCourse.length ? null : 'No required assignments were due in this period.')}
         >
@@ -77,7 +85,7 @@ export function LearningTab({ m }: { m: TalentModel }) {
             value="onTimeRate"
             format="pct"
             sort="asc"
-            ref={{ value: ON_TIME_TARGET, label: 'Target 95%' }}
+            ref={target && targetText ? { value: target.value, label: targetText } : undefined}
             tone={tone}
             secondary={(d) => `n = ${fmt(d.due)}`}
             onSelect={(d) => drill(d.onTimeRate != null ? m.drill.onTime(d.course, 'onTime') : null)}
@@ -87,11 +95,12 @@ export function LearningTab({ m }: { m: TalentModel }) {
         <Figure
           id="talent-completions-by-month"
           uses={m.uses['talent-completions-by-month']}
+          metric={FIGURE_METRIC['talent-completions-by-month']}
           title="Completions by month"
           subtitle={`Courses completed each month, required and optional, ${period}`}
           data={l.completions}
           columns={completionColumns(m.drill)}
-          definitions={[DEF.required]}
+          definitions={defsFor(ctx.metrics, [M.completions], [TERM.required])}
           note={`${plural(
             l.completions.reduce((s, r) => s + r.completions, 0),
             'completion',
@@ -124,12 +133,13 @@ export function LearningTab({ m }: { m: TalentModel }) {
         <Figure
           id="talent-overdue-by-course"
           uses={m.uses['talent-overdue-by-course']}
+          metric={FIGURE_METRIC['talent-overdue-by-course']}
           title={`Overdue by course and ${dim}`}
           subtitle={`Share of past-due assignments not completed, as of ${asOf}`}
           data={cells}
           columns={overdueCellColumns(dim === 'department' ? 'Department' : 'Location', m.drill, dim)}
-          definitions={[DEF.overdue]}
-          note={`${plural(totalOverdue, 'assignment')} overdue · cells under 5 assignments are hidden, counts included`}
+          definitions={defsFor(ctx.metrics, [M.overdue])}
+          note={`${plural(totalOverdue, 'assignment')} overdue · cells under ${minGroup} assignments are hidden, counts included`}
           span={12}
           actions={
             <Segmented<Dim>
@@ -164,11 +174,12 @@ export function LearningTab({ m }: { m: TalentModel }) {
         <Figure
           id="talent-overdue-assignments"
           uses={m.uses['talent-overdue-assignments']}
+          metric={FIGURE_METRIC['talent-overdue-assignments']}
           title="Overdue assignments"
           subtitle={`Required, not completed and past due, as of ${asOf}`}
           data={l.overdue}
           columns={TRAINING_OVERDUE_COLUMNS}
-          definitions={[DEF.overdue]}
+          definitions={defsFor(ctx.metrics, [M.overdue])}
           note={`${plural(totalOverdue, 'assignment')} for ${plural(new Set(l.overdue.map((o) => o.employeeId)).size, 'employee')}${
             l.otherWorkersOverdue
               ? ` · ${plural(l.otherWorkersOverdue, 'assignment')} of contractors and interns also overdue, not listed`
@@ -187,12 +198,13 @@ export function LearningTab({ m }: { m: TalentModel }) {
         <Figure
           id="talent-learning-hours"
           uses={m.uses['talent-learning-hours']}
+          metric={FIGURE_METRIC['talent-learning-hours']}
           title="Learning hours per employee"
           subtitle={`Hours from courses completed ${period}, by business unit`}
           data={l.hours}
           columns={hoursColumns(m.drill)}
-          definitions={[DEF.hours]}
-          note="Employees only · units under 5 people are hidden"
+          definitions={defsFor(ctx.metrics, [M.hours])}
+          note={`Employees only · units under ${minGroup} people are hidden`}
           span={4}
           className="self-start"
           empty={

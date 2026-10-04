@@ -48,10 +48,10 @@ source of truth for:
     - empty-funnel age (30 days)
   - **HR ops:**
     - response and resolution targets by case category (from the schema defaults)
-    - SLA target (90%) and transactions on-time target (98%)
+    - SLA target (90%) and transactions on-time target (98%), kept as those metrics' own targets (the Target field), which the status marks and readout are calculated with
     - backlog age threshold (14 days)
   - **Talent:**
-    - high performer = rating ≥ 4
+    - high performer = rating ≥ 4 (the Org chart exit simulation reads it too)
     - rating guideline distribution
     - flight-risk band cut-offs (top 10% / next 25%)
     - required training target (95%)
@@ -62,7 +62,7 @@ source of truth for:
     - compression minimum group size
 
     These move here from Settings > Compensation cycle, so each one has one home; that Settings section and the comp header button now open this dictionary filtered to Compensation.
-  - **Org chart:** span outliers (1 and 12+), new manager window (12 months), deep chain (7 layers).
+  - **Org chart:** span outliers (1 and 12+), new manager window (12 months), deep chain (7 layers). People stats reads these here rather than keeping its own copies.
   - **Data quality rules:**
     - silver fill threshold (95%)
     - allowed problem rate (2%)
@@ -98,9 +98,10 @@ Three layers, from quick glance to full detail:
 2. **The quality lens:** a "Show data quality" switch in the view header, remembered per browser. When on, every KPI, figure and finding shows:
    - its tier and the field limiting it
    - rows used vs rows left out, and what was excluded
-   - any changed definition marked "Definition changed"
 
    The view header also shows a strip of the datasets this view uses with their tiers. Off by default, so the dashboard stays clean for meetings.
+
+   A changed definition is the exception: every KPI, figure and finding whose metric differs from its defaults carries a quiet "Definition changed" mark, lens on or off, just as exports always carry the "Definitions changed" stamp. A number calculated differently from the standard one should never reach a meeting unmarked.
 3. **The Data quality tab** (`#data.quality`, new in the Data room): the quality story for the whole dashboard.
    - **Dataset × tier summary:** each dataset's tier, version, mapping status, certification, freshness and issue rate.
    - **Field quality matrix:** datasets × their fields as a heatmap of fill rate. Cells drill to the blank or invalid rows.

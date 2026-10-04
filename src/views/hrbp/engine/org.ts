@@ -7,9 +7,11 @@
  */
 import type { Employee, ISODate } from '@/data/schema'
 import { addMonths, daysBetween } from '@/lib/dates'
-import { directReports, exitsIn, isActiveAt } from '@/lib/people'
+import { directReports, isActiveAt } from '@/lib/people'
 import { median } from '@/lib/stats'
 import { activeWorkers, type Prep } from './base'
+import { exitsIn } from './population'
+import { defaultSettings, type HrbpSettings } from './settings'
 
 export type ManagerFlag = 'Overloaded' | 'Heavy' | 'Light' | 'New' | 'Healthy'
 
@@ -48,6 +50,8 @@ export interface SpanBucketRow {
   bucket: string
   managers: number
   share: number
+  /** Every span in the bucket is a span outlier (the "Span outliers" settings): the chart marks it. */
+  outlier: boolean
   /** The managers behind `managers`. */
   records: ManagerRow[]
 }
@@ -70,8 +74,10 @@ export interface OrgModel {
   layers: number | null
   layersByBu: LayerRow[]
   chains: ChainRow[]
-  /** People more than 7 levels below the top of the scope. */
+  /** People below the deep-chain layer (7 by default, the Org chart's setting); the top is layer 1. */
   deep: { people: Employee[]; maxDepth: number }
+  /** The flag thresholds in force, for the manager table's filters. */
+  flags: Readonly<HrbpSettings['managerFlag']>
   activeWorkers: number
   /** Active workers who manage nobody: the numerator of the manager ratio. */
   individuals: Employee[]
@@ -84,6 +90,26 @@ export interface OrgModel {
 }
 
 export const SPAN_BUCKETS = ['1', '2', '3-5', '6-8', '9-11', '12+'] as const
+
+/** The spans each bucket holds, lowest and highest. */
+const BUCKET_RANGE: Record<(typeof SPAN_BUCKETS)[number], readonly [number, number]> = {
+  '1': [1, 1],
+  '2': [2, 2],
+  '3-5': [3, 5],
+  '6-8': [6, 8],
+  '9-11': [9, 11],
+  '12+': [12, Number.POSITIVE_INFINITY],
+}
+
+/** Every span in the bucket is wide (at or above `wide`) or narrow (at or below `narrow`). */
+export function isOutlierBucket(
+  bucket: (typeof SPAN_BUCKETS)[number],
+  outliers: HrbpSettings['spanOutliers'] = defaultSettings().spanOutliers,
+): boolean {
+  const [lo, hi] = BUCKET_RANGE[bucket]
+  return lo >= outliers.wide || hi <= outliers.narrow
+}
+
 export function spanBucket(n: number): (typeof SPAN_BUCKETS)[number] {
   if (n <= 1) return '1'
   if (n === 2) return '2'
@@ -94,14 +120,20 @@ export function spanBucket(n: number): (typeof SPAN_BUCKETS)[number] {
 }
 
 /**
- * Span flags for line managers. Executives (E levels) lead leadership teams whose size is set by
- * the org design, so they are flagged only when new.
+ * Span flags for line managers (the "Manager flag" settings: Overloaded at 12, Heavy at 9, Light
+ * under 3 by default). Executives (E levels) lead leadership teams whose size is set by the org
+ * design, so they are flagged only when new.
  */
-export function managerFlag(directs: number, isNew: boolean, level?: string | null): ManagerFlag {
+export function managerFlag(
+  directs: number,
+  isNew: boolean,
+  level?: string | null,
+  flags: HrbpSettings['managerFlag'] = defaultSettings().managerFlag,
+): ManagerFlag {
   if (level?.startsWith('E')) return isNew ? 'New' : 'Healthy'
-  if (directs >= 12) return 'Overloaded'
-  if (directs >= 9) return 'Heavy'
-  if (directs < 3) return 'Light'
+  if (directs >= flags.overloaded) return 'Overloaded'
+  if (directs >= flags.heavy) return 'Heavy'
+  if (directs < flags.light) return 'Light'
   if (isNew) return 'New'
   return 'Healthy'
 }
@@ -178,11 +210,13 @@ export function computeOrg(p: Prep): OrgModel {
   const active = activeWorkers(people, asOf)
   const children = activeChildren(active, asOf)
   const below = subtreeSizer(children)
-  const yearAgo = addMonths(asOf, -12)
+  // New managers started managing inside the "New manager" window (12 months by default).
+  const newSince = addMonths(asOf, -p.set.newManagerMonths)
+  const flags = { ...p.set.managerFlag }
 
   const regretted = new Map<string, Employee[]>()
-  for (const e of exitsIn(p.emps, t12)) {
-    if (e.terminationType !== 'Voluntary' || e.regrettable !== true || !e.managerId) continue
+  for (const e of exitsIn(p.emps, t12, p.counts)) {
+    if (!p.isRegretted(e) || !e.managerId) continue
     const arr = regretted.get(e.managerId)
     if (arr) arr.push(e)
     else regretted.set(e.managerId, [e])
@@ -194,7 +228,7 @@ export function computeOrg(p: Prep): OrgModel {
     const m = byId.get(id)
     if (!m) continue
     const since = managerSince(m, p.history.becameManager(id))
-    const isNew = since > yearAgo
+    const isNew = since > newSince
     managers.push({
       managerId: id,
       name: m.name,
@@ -207,7 +241,7 @@ export function computeOrg(p: Prep): OrgModel {
       managerSince: since,
       newManager: isNew,
       regretted12: regretted.get(id)?.length ?? 0,
-      flag: managerFlag(kids.length, isNew, m.level),
+      flag: managerFlag(kids.length, isNew, m.level, flags),
       employee: m,
       reports: kids,
       regrettedLeavers: regretted.get(id) ?? [],
@@ -216,6 +250,7 @@ export function computeOrg(p: Prep): OrgModel {
   managers.sort((a, b) => b.directs - a.directs || b.totalOrg - a.totalOrg || a.name.localeCompare(b.name))
 
   const spans = managers.map((m) => m.directs)
+  const outliers = { ...p.set.spanOutliers }
   const byBucket = new Map<string, ManagerRow[]>()
   for (const m of managers) {
     const k = spanBucket(m.directs)
@@ -229,11 +264,14 @@ export function computeOrg(p: Prep): OrgModel {
       bucket,
       managers: records.length,
       share: spans.length ? records.length / spans.length : 0,
+      outlier: isOutlierBucket(bucket, outliers),
       records,
     }
   })
 
   const depth = depthOf(active)
+  // Below the deep-chain layer (layer 1 is the top), as the Org chart counts it.
+  const deepChain = p.set.orgDepth.deepChain
   let maxDepth = -1
   const deepPeople: Employee[] = []
   const layerOf = new Map<string, number>()
@@ -241,7 +279,7 @@ export function computeOrg(p: Prep): OrgModel {
     const d = depth(e)
     layerOf.set(e.employeeId, d + 1)
     if (d > maxDepth) maxDepth = d
-    if (d > 7) deepPeople.push(e)
+    if (d + 1 > deepChain) deepPeople.push(e)
   }
 
   const buDepth = depthOf(active, (a, b) => a.businessUnit === b.businessUnit)
@@ -258,12 +296,13 @@ export function computeOrg(p: Prep): OrgModel {
   }
 
   const chains: ChainRow[] = []
+  const minBelow = p.set.chainMinBelow
   for (const [id, kids] of children) {
     if (kids.length !== 1) continue
     const m = byId.get(id)
     const r = kids[0]
     const n = below(r.employeeId)
-    if (!m || n < 5) continue
+    if (!m || n < minBelow) continue
     chains.push({
       managerId: id,
       manager: m.name,
@@ -289,6 +328,7 @@ export function computeOrg(p: Prep): OrgModel {
       .sort((a, b) => b.layers - a.layers || b.people - a.people),
     chains,
     deep: { people: deepPeople, maxDepth: Math.max(0, maxDepth) },
+    flags,
     activeWorkers: active.length,
     individuals: active.filter((e) => !children.has(e.employeeId)),
     layerOf,

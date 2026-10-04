@@ -7,12 +7,14 @@ import { LEVELS, MIN_GROUP } from '@/data/schema'
 import { TENURE_BANDS } from '@/lib/people'
 import { behind, groupRows, safeMedian, safeQuantile, safeShare, values } from './groups'
 import type { CompPerson, Position } from './population'
+import { defaultRules } from './rules'
 import type { CycleSettings } from './settings'
 
-/** Compression is flagged when new hires sit this far above incumbents (compa-ratio points). */
-export const COMPRESSION_GAP = 0.05
-/** A readout finding needs at least this many people on each side (charts show cells from 5). */
-export const COMPRESSION_FINDING_MIN = 10
+/*
+ * Statistics take the anonymity minimum as `min` (the model passes the one in force; MIN_GROUP,
+ * its floor, is only the default for direct calls). Compression thresholds are settings of
+ * 'comp.compression.gap'.
+ */
 
 export const inBand = (p: CompPerson, s: CycleSettings): boolean =>
   p.compa != null && p.compa >= s.bandLow && p.compa <= s.bandHigh
@@ -39,10 +41,10 @@ export const POSITION_FIELD: Record<Position, keyof Omit<PositionMixRow, 'group'
   'Above maximum': 'above',
 }
 
-function mixRow(group: string, rows: readonly CompPerson[]): PositionMixRow {
+function mixRow(group: string, rows: readonly CompPerson[], min: number): PositionMixRow {
   const placed = rows.filter((p) => p.position != null)
   const count = (pos: Position) => placed.filter((p) => p.position === pos).length
-  const share = (pos: Position) => safeShare(count(pos), placed.length)
+  const share = (pos: Position) => safeShare(count(pos), placed.length, min)
   return {
     group,
     n: placed.length,
@@ -52,7 +54,7 @@ function mixRow(group: string, rows: readonly CompPerson[]): PositionMixRow {
     q3: share('Q3'),
     q4: share('Q4'),
     above: share('Above maximum'),
-    members: behind(placed, placed.length),
+    members: behind(placed, placed.length, min),
   }
 }
 
@@ -61,13 +63,14 @@ export function positionMix(
   people: readonly CompPerson[],
   key: (p: CompPerson) => string | null,
   order?: readonly string[],
+  min = MIN_GROUP,
 ): PositionMixRow[] {
   const placed = people.filter((p) => p.position != null)
-  return groupRows(placed, key, { order }).map((g) => mixRow(g.label, g.rows))
+  return groupRows(placed, key, { order, min }).map((g) => mixRow(g.label, g.rows, min))
 }
 
-export function positionTotal(people: readonly CompPerson[], label = 'All'): PositionMixRow {
-  return mixRow(label, people)
+export function positionTotal(people: readonly CompPerson[], label = 'All', min = MIN_GROUP): PositionMixRow {
+  return mixRow(label, people, min)
 }
 
 export interface CompaGroupRow {
@@ -87,18 +90,23 @@ export interface CompaGroupRow {
   members: CompPerson[]
 }
 
-export function compaRow(group: string, rows: readonly CompPerson[], s: CycleSettings): CompaGroupRow {
+export function compaRow(
+  group: string,
+  rows: readonly CompPerson[],
+  s: CycleSettings,
+  min = MIN_GROUP,
+): CompaGroupRow {
   const xs = values(rows, (p) => p.compa)
   return {
     group,
     n: xs.length,
-    median: safeMedian(xs),
-    p25: safeQuantile(xs, 0.25),
-    p75: safeQuantile(xs, 0.75),
-    inBand: safeShare(rows.filter((p) => inBand(p, s)).length, xs.length),
+    median: safeMedian(xs, min),
+    p25: safeQuantile(xs, 0.25, min),
+    p75: safeQuantile(xs, 0.75, min),
+    inBand: safeShare(rows.filter((p) => inBand(p, s)).length, xs.length, min),
     belowMin: rows.filter((p) => p.position === 'Below minimum').length,
     aboveMax: rows.filter((p) => p.position === 'Above maximum').length,
-    members: behind(rows, xs.length),
+    members: behind(rows, xs.length, min),
   }
 }
 
@@ -107,9 +115,10 @@ export function compaBy(
   key: (p: CompPerson) => string | null,
   s: CycleSettings,
   order?: readonly string[],
+  min = MIN_GROUP,
 ): CompaGroupRow[] {
   const valued = people.filter((p) => p.compa != null)
-  return groupRows(valued, key, { order }).map((g) => compaRow(g.label, g.rows, s))
+  return groupRows(valued, key, { order, min }).map((g) => compaRow(g.label, g.rows, s, min))
 }
 
 export interface PenetrationRow {
@@ -125,22 +134,22 @@ export interface PenetrationRow {
 }
 
 /** Range penetration quartiles by level, in level order. */
-export function penetrationByLevel(people: readonly CompPerson[]): PenetrationRow[] {
+export function penetrationByLevel(people: readonly CompPerson[], min = MIN_GROUP): PenetrationRow[] {
   return groupRows(
     people.filter((p) => p.penetration != null),
     (p) => p.level,
-    { order: LEVELS },
+    { order: LEVELS, min },
   ).map((g) => {
     const xs = values(g.rows, (p) => p.penetration)
     return {
       level: g.label,
       n: xs.length,
-      p10: safeQuantile(xs, 0.1),
-      q1: safeQuantile(xs, 0.25),
-      median: safeMedian(xs),
-      q3: safeQuantile(xs, 0.75),
-      p90: safeQuantile(xs, 0.9),
-      members: behind(g.rows, xs.length),
+      p10: safeQuantile(xs, 0.1, min),
+      q1: safeQuantile(xs, 0.25, min),
+      median: safeMedian(xs, min),
+      q3: safeQuantile(xs, 0.75, min),
+      p90: safeQuantile(xs, 0.9, min),
+      members: behind(g.rows, xs.length, min),
     }
   })
 }
@@ -256,9 +265,14 @@ export interface CompressionRow {
 
 /**
  * New hires (last 12 months) vs incumbents at the same department and level, where both sides
- * have at least `minN` people. Largest gap first.
+ * have at least `minN` people (the compression setting, never below the anonymity minimum). A
+ * gap of `gap` compa-ratio points or more is flagged. Largest gap first.
  */
-export function compression(people: readonly CompPerson[], minN = MIN_GROUP): CompressionRow[] {
+export function compression(
+  people: readonly CompPerson[],
+  minN = defaultRules().compression.minGroup,
+  gap = defaultRules().compression.gap,
+): CompressionRow[] {
   const cells = new Map<
     string,
     { department: string; level: string; hires: CompPerson[]; inc: CompPerson[] }
@@ -284,7 +298,7 @@ export function compression(people: readonly CompPerson[], minN = MIN_GROUP): Co
       values(c.inc, (p) => p.compa),
       minN,
     )!
-    const gap = newMedian - incMedian
+    const diff = newMedian - incMedian
     out.push({
       group: `${c.department} · ${c.level}`,
       department: c.department,
@@ -293,10 +307,10 @@ export function compression(people: readonly CompPerson[], minN = MIN_GROUP): Co
       newMedian,
       incN: c.inc.length,
       incMedian,
-      gap,
+      gap: diff,
       low: Math.min(newMedian, incMedian),
       high: Math.max(newMedian, incMedian),
-      flagged: gap >= COMPRESSION_GAP - 1e-9,
+      flagged: diff >= gap - 1e-9,
       hires: c.hires,
       incumbents: c.inc,
     })

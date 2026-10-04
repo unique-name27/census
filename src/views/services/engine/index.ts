@@ -1,13 +1,17 @@
 /**
  * HR ops engine: one pure function of the analytics context that returns everything
  * the view draws. The UI calls it inside useMemo keyed on the context.
+ *
+ * Every target and threshold comes from the metric dictionary (`ctx.metrics`), read once into
+ * `settings` (engine/settings.ts), so an edited setting recomputes the whole view.
  */
 import type { Finding, Kpi } from '@/components/types'
 import type { AnalyticsContext } from '@/data/context'
-import { CASE_OPEN_STATUSES, MIN_GROUP } from '@/data/schema'
+import { CASE_OPEN_STATUSES } from '@/data/schema'
 import type { Window } from '@/data/scope'
 import { dateOf, monthsBetween } from '@/lib/dates'
 import type { Headline } from '@/views/types'
+import { M } from '../metrics'
 import {
   type AgedCaseRow,
   type AgedPrivateRow,
@@ -48,6 +52,7 @@ import { buildFindings } from './findings'
 import { buildKpis, type CaseSummary, caseSummary, openAt } from './kpis'
 import { type LevelRow, type ProcessRow, processCoverage, scorecard } from './levels'
 import { figureUses, lineage, type Refs, type ServicesFigureId } from './lineage'
+import { type ServicesSettings, servicesSettings } from './settings'
 import {
   type FinalPayRow,
   finalPayByJurisdiction,
@@ -73,8 +78,10 @@ export interface ServicesModel {
   hasTx: boolean
   /** Distinct people behind the scoped cases and transactions. */
   people: number
+  /** The targets and thresholds in force, from the metric dictionary. */
+  settings: ServicesSettings
   /**
-   * Fewer than MIN_GROUP people in scope: row-level lists and detail exports are withheld and
+   * Fewer people in scope than the anonymity minimum: row-level lists and detail exports are withheld and
    * every rate is hidden (each rate also checks its own people), so a small team or a handful of
    * executives can't be read case by case.
    */
@@ -122,28 +129,30 @@ export interface ServicesModel {
 
 export function compute(ctx: AnalyticsContext): ServicesModel {
   const { asOf, window, prior } = ctx
+  const settings = servicesSettings(ctx.metrics)
+  const min = settings.minGroup
   // Column presence is a property of the dataset, not of the scope.
   const caseCols = caseColumns(ctx.all.cases)
   const txCols = txColumns(ctx.all.transactions)
-  const cases = caseFacts(ctx.data.cases, asOf, caseCols)
+  const cases = caseFacts(ctx.data.cases, asOf, caseCols, settings.caseTargets)
   const tx = txFacts(ctx.data.transactions, asOf, ctx.org.byId)
   const hasCases = cases.length > 0
   const hasTx = tx.length > 0
   const people = peopleIn([...cases, ...tx])
-  const small = (hasCases || hasTx) && people < MIN_GROUP
-  const scope = drillScope(ctx, caseCols, small)
+  const small = (hasCases || hasTx) && people < min
+  const scope = drillScope(ctx, caseCols, small, min)
   const months = trailingMonths(asOf, 24)
-  const slaMonths = slaByMonth(cases, months)
+  const slaMonths = slaByMonth(cases, months, min)
   const last12 = slaMonths.slice(-12)
-  const categories = byCategory(cases, window)
-  const channels = byChannel(cases, window)
-  const reopen = reopenEscalate(cases, window)
-  const finalPay = finalPayByJurisdiction(tx, window)
-  const newHireSites = newHireBySite(tx, window)
-  const newHireRegions = newHireByRegion(tx, window)
+  const categories = byCategory(cases, window, min)
+  const channels = byChannel(cases, window, min)
+  const reopen = reopenEscalate(cases, window, min)
+  const finalPay = finalPayByJurisdiction(tx, window, min)
+  const newHireSites = newHireBySite(tx, window, min)
+  const newHireRegions = newHireByRegion(tx, window, min)
   const windowMonths = monthsBetween(window.start, window.end)
   const backlogFacts = openAt(cases, asOf)
-  const txMonths = onTimeByMonth(tx, months)
+  const txMonths = onTimeByMonth(tx, months, min)
   const L = lineage(caseCols)
 
   const kpis = buildKpis({
@@ -162,6 +171,8 @@ export function compute(ctx: AnalyticsContext): ServicesModel {
     sparkTx: txMonths.slice(-12).map((m) => m.rate),
     scope,
     lineage: L,
+    settings,
+    metrics: ctx.metrics,
   })
 
   const findings = tagFindings(
@@ -180,10 +191,11 @@ export function compute(ctx: AnalyticsContext): ServicesModel {
       small,
       scope,
       lineage: L,
+      settings,
     }),
   )
 
-  const aged = small ? [] : agedCases(cases, 14)
+  const aged = small ? [] : agedCases(cases, settings.agedDays)
   const levels = scorecard({
     cases,
     tx,
@@ -192,8 +204,9 @@ export function compute(ctx: AnalyticsContext): ServicesModel {
     hasResolved: caseCols.resolvedAt,
     hasResponse: caseCols.firstResponseAt,
     hasDue: txCols.dueDate,
+    settings,
   })
-  const processes = processCoverage(cases, tx, window)
+  const processes = processCoverage(cases, tx, window, min)
 
   return {
     asOf,
@@ -201,37 +214,38 @@ export function compute(ctx: AnalyticsContext): ServicesModel {
     hasCases,
     hasTx,
     people,
+    settings,
     small,
     scope,
     caseCols,
     txCols,
     cases,
     tx,
-    summary: caseSummary(cases, window),
+    summary: caseSummary(cases, window, min),
     kpis,
     findings,
     months,
     windowMonths,
-    opened: openedByMonth(cases, months),
+    opened: openedByMonth(cases, months, 5, min),
     slaMonths,
     categories,
     backlog: backlogByAge(cases),
     backlogTotal: backlogFacts.length,
     aged,
-    agedPrivate: agedPrivate(cases, 14),
-    resolve: caseCols.resolvedAt ? timeToResolve(cases, window) : [],
-    arrivals: arrivals(cases, window),
+    agedPrivate: agedPrivate(cases, settings.agedDays, min),
+    resolve: caseCols.resolvedAt ? timeToResolve(cases, window, min, settings.caseTargets.resolution) : [],
+    arrivals: arrivals(cases, window, min),
     channels,
     reopen,
-    teams: teamWorkload(cases, window, caseCols.tier),
-    types: onTimeByType(tx, window),
+    teams: teamWorkload(cases, window, caseCols.tier, min),
+    types: onTimeByType(tx, window, min),
     finalPay,
     newHireSites,
     newHireRegions,
-    timing: timingBins(tx, window),
+    timing: timingBins(tx, window, min),
     txMonths,
-    retro: retroByMonth(tx, windowMonths),
-    retroSummary: retroSummary(tx, window),
+    retro: retroByMonth(tx, windowMonths, min),
+    retroSummary: retroSummary(tx, window, min),
     levels,
     processes,
     uses: figureUses(L, {
@@ -244,8 +258,8 @@ export function compute(ctx: AnalyticsContext): ServicesModel {
   }
 }
 
-function retroSummary(tx: readonly TxFact[], window: Window): ServicesModel['retroSummary'] {
-  const r = retroShare(tx, window)
+function retroSummary(tx: readonly TxFact[], window: Window, min: number): ServicesModel['retroSummary'] {
+  const r = retroShare(tx, window, min)
   return { rate: r.rate, retro: r.rate == null ? null : r.retro, n: r.n }
 }
 
@@ -256,7 +270,8 @@ export function headline(ctx: AnalyticsContext): Headline {
   const cases = ctx.data.cases
   // The same fields as the Open backlog tile: by resolved time, or by status without one.
   const uses = lineage({ resolvedAt: cases.some((c) => !!c.resolvedAt) }).open
-  if (!cases.length) return { value: '—', label: 'open cases', uses }
+  const metricId = M.backlog
+  if (!cases.length) return { value: '—', label: 'open cases', uses, metricId }
   const months = trailingMonths(ctx.asOf, 8)
   const index = new Map(months.map((m, i) => [m, i]))
   const counts = months.map(() => 0)
@@ -274,5 +289,6 @@ export function headline(ctx: AnalyticsContext): Headline {
     label: open === 1 ? 'open case' : 'open cases',
     spark: counts,
     uses,
+    metricId,
   }
 }

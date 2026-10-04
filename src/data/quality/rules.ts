@@ -34,6 +34,13 @@ export const LINKS: Partial<Record<DatasetKey, Link>> = {
 /** Most rows may hold an unresolved reference before the check fails (2%). */
 export const MAX_UNRESOLVED_SHARE = 0.02
 
+/** Silver needs a field filled for at least this share of the rows it applies to. */
+export const MIN_COVERAGE = 0.95
+/** Silver allows at most this share of values not recognized or defaulted. */
+export const MAX_PROBLEM_SHARE = 0.02
+/** Silver allows at most this share of rows with an import error. */
+export const MAX_ISSUE_RATE = 0.02
+
 export interface RefCheck {
   link: Link
   /** Rows holding at least one reference. */
@@ -164,18 +171,22 @@ export function freshness(
   asOf: ISODate,
   /** The date a snapshot dataset describes (see `SNAPSHOT_FRESHNESS`); null when unknown. */
   snapshot: ISODate | null = null,
+  /** The limit in days, from the quality rules; the dataset's default when not given. */
+  limitDays?: number,
 ): Freshness {
   const rule = FRESHNESS[key]
   if (!rule) {
     const snap = SNAPSHOT_FRESHNESS[key]
     if (!snap) return { latest: null, ageDays: null, maxDays: null, what: null, fresh: true }
+    const maxDays = validDays(limitDays) ?? snap.maxDays
     if (!snapshot || snapshot.length < 10)
-      return { latest: null, ageDays: null, maxDays: snap.maxDays, what: snap.what, fresh: false }
+      return { latest: null, ageDays: null, maxDays, what: snap.what, fresh: false }
     const latest = snapshot.slice(0, 10)
     // A snapshot taken after the as-of date is current for it.
     const ageDays = Math.max(0, daysBetween(latest, asOf))
-    return { latest, ageDays, maxDays: snap.maxDays, what: snap.what, fresh: ageDays <= snap.maxDays }
+    return { latest, ageDays, maxDays, what: snap.what, fresh: ageDays <= maxDays }
   }
+  const maxDays = validDays(limitDays) ?? rule.maxDays
   let latest = ''
   for (const r of rows as readonly Row[])
     for (const f of rule.fields) {
@@ -184,10 +195,13 @@ export function freshness(
       const d = v.slice(0, 10)
       if (d <= asOf && d > latest) latest = d
     }
-  if (!latest) return { latest: null, ageDays: null, maxDays: rule.maxDays, what: rule.what, fresh: false }
+  if (!latest) return { latest: null, ageDays: null, maxDays, what: rule.what, fresh: false }
   const ageDays = daysBetween(latest, asOf)
-  return { latest, ageDays, maxDays: rule.maxDays, what: rule.what, fresh: ageDays <= rule.maxDays }
+  return { latest, ageDays, maxDays, what: rule.what, fresh: ageDays <= maxDays }
 }
+
+const validDays = (d: number | undefined): number | null =>
+  typeof d === 'number' && Number.isFinite(d) && d > 0 ? d : null
 
 /* ───────────── control totals ───────────── */
 
@@ -309,13 +323,51 @@ export function computeControlTotal(
   return m.compute(data, key, asOf)
 }
 
-/** True when `actual` is within the control total's tolerance of what was expected. */
+/**
+ * True when `actual` is within the control total's tolerance of what was expected. A total that
+ * states no valid tolerance of its own uses `fallback` (the quality rules' tolerance).
+ */
 export function reconciles(
   total: Pick<ControlTotal, 'expected' | 'tolerance'>,
   actual: number | null,
+  fallback: number = DEFAULT_TOLERANCE,
 ): boolean {
   if (actual == null || !Number.isFinite(actual)) return false
-  const tol = Number.isFinite(total.tolerance) && total.tolerance >= 0 ? total.tolerance : DEFAULT_TOLERANCE
+  const tol = Number.isFinite(total.tolerance) && total.tolerance >= 0 ? total.tolerance : fallback
   if (total.expected === 0) return actual === 0
   return Math.abs(actual - total.expected) <= tol * Math.abs(total.expected) + 1e-9
+}
+
+/* ───────────── the rules, as settings ───────────── */
+
+/**
+ * The thresholds the tier rules use. The defaults are the constants above; the metric dictionary
+ * (Data quality rules, `src/metrics/quality.ts`) can change them, and the analytics context passes
+ * the values in force to `computeQuality`.
+ */
+export interface QualityRules {
+  /** Silver needs a field filled for at least this share of the rows it applies to (0.95). */
+  minCoverage: number
+  /**
+   * Silver allows at most this share of values not recognized or defaulted, of rows with an
+   * import error, and of rows whose references don't resolve (0.02).
+   */
+  maxProblemShare: number
+  /** Allowed difference for a control total that doesn't state its own, and the default for new ones (0.005). */
+  tolerance: number
+  /** Most days from the latest event (or the pay extract) to the as-of date, per dataset. */
+  freshDays: Partial<Record<DatasetKey, number>>
+}
+
+/** Every dataset's freshness limit in days, from `FRESHNESS` and `SNAPSHOT_FRESHNESS`. */
+export const DEFAULT_FRESH_DAYS: Partial<Record<DatasetKey, number>> = Object.fromEntries([
+  ...Object.entries(FRESHNESS).map(([k, r]) => [k, r!.maxDays]),
+  ...Object.entries(SNAPSHOT_FRESHNESS).map(([k, r]) => [k, r!.maxDays]),
+])
+
+export const DEFAULT_QUALITY_RULES: QualityRules = {
+  minCoverage: MIN_COVERAGE,
+  maxProblemShare: MAX_PROBLEM_SHARE,
+  tolerance: DEFAULT_TOLERANCE,
+  freshDays: DEFAULT_FRESH_DAYS,
 }

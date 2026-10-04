@@ -4,7 +4,7 @@
  */
 import type { Column } from '@/charts/types'
 import type { Employee } from '@/data/schema'
-import { FLAG_LABELS, type Flag, type FlagKind } from './flags'
+import { FLAG_KINDS, type Flag, type FlagKind } from './flags'
 import { describeAction, type ScenarioAction } from './scenario'
 import { COMPANY_ROOT, type OrgTree } from './tree'
 
@@ -61,7 +61,7 @@ export function personRow(tree: OrgTree, e: Employee, flags?: readonly Flag[]): 
     hireDate: e.hireDate,
     directs: tree.directs.get(e.employeeId) ?? 0,
     totalOrg: tree.total.get(e.employeeId) ?? 0,
-    flags: (flags ?? []).map((f) => FLAG_LABELS[f.kind]).join('; '),
+    flags: (flags ?? []).map((f) => f.name).join('; '),
   }
 }
 
@@ -106,8 +106,6 @@ export const FLAG_COLUMNS: Column<FlagRow>[] = [
   { key: 'detail', label: 'Detail' },
 ]
 
-const FLAG_ORDER = Object.keys(FLAG_LABELS)
-
 /** One row per (person, flag) among `ids`, for the kinds asked for. */
 export function flagRows(
   tree: OrgTree,
@@ -122,7 +120,7 @@ export function flagRows(
     for (const f of flags.get(id) ?? []) {
       if (!kinds.has(f.kind)) continue
       out.push({
-        rank: FLAG_ORDER.indexOf(f.kind),
+        rank: FLAG_KINDS.indexOf(f.kind),
         row: {
           kind: f.kind,
           employeeId: id,
@@ -130,7 +128,7 @@ export function flagRows(
           jobTitle: e.jobTitle,
           department: e.department,
           location: e.location,
-          flag: FLAG_LABELS[f.kind],
+          flag: f.name,
           detail: f.detail,
           directs: tree.directs.get(id) ?? 0,
           totalOrg: tree.total.get(id) ?? 0,

@@ -7,9 +7,16 @@
  * which lasts for the session only and is never written anywhere. Older keys (`census:theme`,
  * `census:tools`, `census:comp-cycle-settings`, `census:asOf`) are read when no settings are
  * saved yet, and removed the first time settings are saved.
+ *
+ * The compensation cycle (merit budget, healthy band, merit guideline) moved to the metric
+ * dictionary as settings of the Compensation metrics (`src/metrics/compCycle.ts`). Settings no
+ * longer saves it; `src/metrics/persist.ts` reads the old value once to carry it over, and a
+ * settings file that still holds one is applied to the dictionary by the store.
  */
 import { normalizeUrl } from '@/app/tools'
 import { todayISO } from '@/lib/dates'
+import type { MetricsFileSection } from '@/metrics/imports'
+import type { MetricImportReport } from '@/metrics/types'
 import { type DataStandard, DEFAULT_STANDARD, isDataStandard } from './quality/tier'
 import type { ISODate } from './schema'
 
@@ -29,7 +36,7 @@ export const TEXT_SIZE_SCALE: Record<TextSize, number> = { sm: 0.9286, md: 1, lg
 export const THEME_LABEL: Record<ThemePref, string> = { system: 'System', light: 'Light', dark: 'Dark' }
 export const MOTION_LABEL: Record<MotionPref, string> = { system: 'Follow system', reduce: 'Reduce motion' }
 
-/* ───────────── compensation cycle ───────────── */
+/* ───────────── compensation cycle (now in the metric dictionary) ───────────── */
 
 export type RatingKey = 1 | 2 | 3 | 4 | 5
 export const RATING_KEYS: readonly RatingKey[] = [5, 4, 3, 2, 1]
@@ -137,7 +144,12 @@ export interface Settings {
   dataStandard: DataStandard
   /** Reporting date override; null uses the latest date in the data. */
   asOfOverride: ISODate | null
-  compCycle: CompCycleSettings
+  /**
+   * @deprecated The compensation cycle lives in the metric dictionary (`ctx.metrics`, see
+   * `src/metrics/compCycle.ts`). Never saved or sanitized here; the store keeps a read-only
+   * mirror for older callers.
+   */
+  compCycle?: CompCycleSettings
   tools: ToolLinks
 }
 
@@ -147,7 +159,6 @@ export const DEFAULT_SETTINGS: Settings = {
   motion: 'system',
   dataStandard: DEFAULT_STANDARD,
   asOfOverride: null,
-  compCycle: DEFAULT_COMP_CYCLE,
   tools: {},
 }
 
@@ -213,7 +224,6 @@ export function sanitizeSettings(raw: unknown, today: ISODate = todayISO()): Set
     motion: MOTIONS.includes(r.motion as MotionPref) ? (r.motion as MotionPref) : DEFAULT_SETTINGS.motion,
     dataStandard: isDataStandard(r.dataStandard) ? r.dataStandard : DEFAULT_SETTINGS.dataStandard,
     asOfOverride: isReportingDate(r.asOfOverride, today) ? r.asOfOverride : null,
-    compCycle: sanitizeCompCycle(r.compCycle),
     tools: sanitizeTools(r.tools),
   }
 }
@@ -253,10 +263,10 @@ export function loadSettings(storage: StorageLike | null = storageOrNull()): Set
   if (!storage) return { ...DEFAULT_SETTINGS }
   const saved = readJson(storage, SETTINGS_KEY)
   if (saved && typeof saved === 'object') return sanitizeSettings(saved)
+  // The old comp cycle key is read by the metric dictionary (src/metrics/persist.ts).
   return sanitizeSettings({
     theme: readJson(storage, LEGACY_KEYS.theme),
     tools: readJson(storage, LEGACY_KEYS.tools),
-    compCycle: readJson(storage, LEGACY_KEYS.compCycle),
     asOfOverride: readJson(storage, LEGACY_KEYS.asOf),
   })
 }
@@ -285,7 +295,6 @@ export const pickSettings = (s: Settings): Settings => ({
   motion: s.motion,
   dataStandard: s.dataStandard,
   asOfOverride: s.asOfOverride,
-  compCycle: s.compCycle,
   tools: s.tools,
 })
 
@@ -299,17 +308,20 @@ export interface SettingsFile {
   version: number
   exportedAt: string
   settings: Settings
+  /** The metric dictionary: your wording, targets and settings, with the change log. */
+  metrics?: MetricsFileSection
 }
 
-export const settingsFileName = (today: ISODate): string => `Census settings ${today}.json`
+export const settingsFileName = (today: ISODate): string => `census-settings-${today}.json`
 
-/** The settings as a downloadable JSON file. Pay amounts are never in it. */
-export function settingsBlob(s: Settings, now = new Date()): Blob {
+/** The settings (and the metric dictionary, when given) as a downloadable JSON file. Pay amounts are never in it. */
+export function settingsBlob(s: Settings, now = new Date(), metrics?: MetricsFileSection): Blob {
   const file: SettingsFile = {
     kind: SETTINGS_FILE_KIND,
     version: SETTINGS_FILE_VERSION,
     exportedAt: now.toISOString(),
     settings: pickSettings(s),
+    ...(metrics ? { metrics } : {}),
   }
   return new Blob([JSON.stringify(file, null, 2)], { type: 'application/json' })
 }
@@ -319,18 +331,26 @@ export type ImportSettingsResult =
       ok: true
       settings: Settings /** Settings the file held that were valid. */
       applied: (keyof Settings)[]
+      /** The file's metric dictionary section, for the store to apply (`importMetricsSection`). */
+      metricsSection?: unknown
+      /** Cycle values from a file saved before the dictionary; the store moves them into the comp metrics. */
+      compCycle?: CompCycleSettings
+      /** What the store changed in the metric dictionary (set by the store's `importSettings`). */
+      metrics?: MetricImportReport
     }
   | { ok: false; error: string }
 
 /**
  * Read a settings file (its text or parsed JSON). Fields that are missing or invalid keep their
- * current values: the comp cycle merges field by field and tool links link by link. A file that
- * is not a Census settings file is refused.
+ * current values, and tool links merge link by link. The metric dictionary section and an older
+ * file's compensation cycle are handed back for the store to apply to the dictionary (the cycle
+ * merges field by field over `currentCycle`). A file that is not a Census settings file is refused.
  */
 export function parseSettingsFile(
   input: unknown,
   current: Settings,
   today: ISODate = todayISO(),
+  currentCycle: CompCycleSettings = current.compCycle ?? DEFAULT_COMP_CYCLE,
 ): ImportSettingsResult {
   let data = input
   if (typeof input === 'string') {
@@ -361,16 +381,23 @@ export function parseSettingsFile(
   take('motion', clean.motion === raw.motion)
   take('dataStandard', clean.dataStandard === raw.dataStandard)
   take('asOfOverride', raw.asOfOverride === null || clean.asOfOverride === raw.asOfOverride)
-  const cycle = compCycleParts(raw.compCycle)
-  if (hasParts(cycle)) {
-    next.compCycle = sanitizeCompCycle(raw.compCycle, current.compCycle)
-    applied.push('compCycle')
-  }
   const tools = sanitizeTools(raw.tools)
   if (Object.keys(tools).length) {
     next.tools = { ...current.tools, ...tools }
     applied.push('tools')
   }
-  if (!applied.length) return { ok: false, error: 'The file holds no settings Census can use.' }
-  return { ok: true, settings: next, applied }
+  const cycle = hasParts(compCycleParts(raw.compCycle))
+    ? sanitizeCompCycle(raw.compCycle, currentCycle)
+    : undefined
+  const metricsSection = d.metrics && typeof d.metrics === 'object' ? d.metrics : undefined
+  if (!applied.length && !cycle && !metricsSection)
+    return { ok: false, error: 'The file holds no settings Census can use.' }
+  delete next.compCycle
+  return {
+    ok: true,
+    settings: next,
+    applied,
+    ...(metricsSection ? { metricsSection } : {}),
+    ...(cycle ? { compCycle: cycle } : {}),
+  }
 }

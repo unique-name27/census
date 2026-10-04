@@ -10,7 +10,7 @@ import { settingsFileName } from '@/data/settings'
 import { clearDevice, exportSettings, importSettings } from '@/data/store'
 import { todayISO } from '@/lib/dates'
 import { downloadBlob } from '@/lib/export/download'
-import { importedText } from './model'
+import { importDescription } from './model'
 import { Field, SettingsBlock } from './ui'
 
 function ClearEverything() {
@@ -37,7 +37,7 @@ function ClearEverything() {
     return (
       <Field
         label="Clear everything on this device"
-        hint="Deletes uploads, mappings, certifications and settings that Census stored in this browser, then starts over on the sample data."
+        hint="Deletes uploads, mappings, certifications, metric definition changes and settings that Census stored in this browser, then starts over on the sample data."
       >
         <Button
           icon={<IconReset />}
@@ -61,8 +61,8 @@ function ClearEverything() {
         Clear everything Census stored in this browser?
       </p>
       <p id={`${confirmId}-body`} className="mt-1 max-w-[60ch] text-[13px] leading-snug text-ink-2">
-        Uploaded files, mappings, certifications and settings are deleted from this device. This can't be
-        undone. Export your settings first if you want to keep them.
+        Uploaded files, mappings, certifications, metric definition changes and settings are deleted from this
+        device. This can't be undone. Export your settings first if you want to keep them.
       </p>
       <div className="mt-3 flex flex-wrap gap-2">
         <Button variant="primary" disabled={busy} onClick={() => void clear()}>
@@ -92,7 +92,8 @@ export function DeviceSection() {
       return
     }
     const r = importSettings(text)
-    if (r.ok) toast('Settings imported', { tone: 'good', description: importedText(r.applied) })
+    if (r.ok)
+      toast('Settings imported', { tone: 'good', description: importDescription(r.applied, r.metrics) })
     else toast('Settings not imported', { tone: 'critical', description: r.error })
   }
   return (
@@ -102,7 +103,7 @@ export function DeviceSection() {
     >
       <Field
         label="Settings file"
-        hint="Move your settings to another browser or computer. The file holds display, data, compensation cycle and tool link settings; it never holds pay amounts or data."
+        hint="Move your settings to another browser or computer. The file holds display, data and tool link settings and your metric definitions (wording, targets and calculation settings, with their change log); it never holds pay amounts or data."
       >
         <Button icon={<IconDownload />} onClick={onExport}>
           Export settings

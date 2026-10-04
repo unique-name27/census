@@ -14,7 +14,7 @@ import {
   type MonthCategoryRow,
   type MonthSlaRow,
 } from '../engine/cases'
-import { RESOLUTION_SLA_TARGET, TRANSACTION_ON_TIME_TARGET } from '../engine/catalog'
+import { servicesDefinitions } from '../engine/definitions'
 import {
   caseDrill,
   drillWhen,
@@ -28,11 +28,13 @@ import {
   responseDrill,
   txOutcomeDrill,
 } from '../engine/drills'
+import { pctWords } from '../engine/settings'
 import type { TxMonthRow } from '../engine/transactions'
-import { asOfNote, count, DEF, NeedData, NO_CASES, period, rateTone, titled, useProcessHref } from './shared'
+import { FIGURE_METRIC } from '../metrics'
+import { asOfNote, count, NeedData, NO_CASES, period, rateTone, titled, useProcessHref } from './shared'
 
-const hiddenMonths = (what: string) =>
-  `Every month has fewer than 5 ${what} or 5 people behind it, so monthly rates are hidden to protect anonymity.`
+const hiddenMonths = (what: string, k: number) =>
+  `Every month has fewer than ${k} ${what} or ${k} people behind it, so monthly rates are hidden to protect anonymity.`
 
 /**
  * A value-axis floor one 5-pt step under the lowest value (or the target), so the line uses the
@@ -49,6 +51,10 @@ const seriesWords = (series: string): string | null =>
 
 export function Overview({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext }) {
   const s = m.scope
+  const cfg = m.settings
+  const D = servicesDefinitions(ctx.metrics, cfg)
+  const slaTarget = cfg.resolutionTarget
+  const txTarget = cfg.onTimeTarget
   const processHref = useProcessHref()
   const per = period(ctx)
   const firstMonth = formatMonth(`${m.months[0]}-01`)
@@ -144,17 +150,14 @@ export function Overview({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext }
     <Figure
       id="services-tx-on-time-by-month"
       uses={m.uses['services-tx-on-time-by-month']}
+      metric={FIGURE_METRIC['services-tx-on-time-by-month']}
       span={m.hasCases ? 6 : 12}
       title="Transactions on time by month"
       subtitle={`Share of HR transactions due each month that were completed by their due date, ${firstMonth} to ${lastMonth}`}
       data={m.txMonths}
       columns={txColumns}
-      definitions={[DEF.onTime, DEF.anonymity]}
-      note={asOfNote(
-        m.asOf,
-        count(txTotal, 'transaction'),
-        `target ${fmt(TRANSACTION_ON_TIME_TARGET, 'pct0')}`,
-      )}
+      definitions={[D.onTime, D.anonymity]}
+      note={asOfNote(m.asOf, count(txTotal, 'transaction'), `target ${pctWords(txTarget)}`)}
       empty={
         !m.hasTx
           ? 'Upload HR transactions to see this.'
@@ -162,7 +165,7 @@ export function Overview({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext }
             ? 'Upload HR transactions with a due date column to see this.'
             : txValues.length
               ? null
-              : hiddenMonths('transactions')
+              : hiddenMonths('transactions', cfg.minGroup)
       }
     >
       <Lines
@@ -170,11 +173,8 @@ export function Overview({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext }
         x="month"
         y="rate"
         format="pct"
-        ref={{
-          value: TRANSACTION_ON_TIME_TARGET,
-          label: `target ${fmt(TRANSACTION_ON_TIME_TARGET, 'pct0')}`,
-        }}
-        yDomain={[floorFor(txValues, TRANSACTION_ON_TIME_TARGET), 1]}
+        ref={{ value: txTarget, label: `target ${pctWords(txTarget)}` }}
+        yDomain={[floorFor(txValues, txTarget), 1]}
         xTicks="quarter"
         height={240}
         onSelect={(d) => drill(txMonth(d))}
@@ -269,6 +269,7 @@ export function Overview({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext }
           <Figure
             id="services-cases-by-month"
             uses={m.uses['services-cases-by-month']}
+            metric={FIGURE_METRIC['services-cases-by-month']}
             span={12}
             title="Cases opened by month"
             subtitle={`Cases opened per month by category, the five largest plus Other, ${firstMonth} to ${lastMonth}`}
@@ -283,13 +284,7 @@ export function Overview({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext }
                 drill: (r: MonthCategoryRow) => drillWhen(s, r.records, segmentCases(r)),
               },
             ]}
-            definitions={[
-              { term: 'Cases opened', text: 'Cases by the month of their opened date, every channel.' },
-              {
-                term: 'Other',
-                text: 'Every category outside the five with the most cases over these 24 months, and any category behind fewer than 5 people.',
-              },
-            ]}
+            definitions={[D.opened, D.otherCategories]}
             note={asOfNote(m.asOf, count(m.cases.filter((f) => m.months.includes(f.month)).length, 'case'))}
           >
             <Columns
@@ -310,15 +305,16 @@ export function Overview({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext }
             <Figure
               id="services-sla-by-month"
               uses={m.uses['services-sla-by-month']}
+              metric={FIGURE_METRIC['services-sla-by-month']}
               span={6}
               title="Resolution SLA by month"
               subtitle={`Share of cases opened each month that were resolved within target, ${firstMonth} to ${lastMonth}`}
               data={m.slaMonths}
               columns={slaColumns}
-              definitions={[DEF.resolutionSla, DEF.responseSla, DEF.anonymity]}
+              definitions={[D.resolutionSla, D.responseSla, D.anonymity]}
               note={asOfNote(
                 m.asOf,
-                `target ${fmt(RESOLUTION_SLA_TARGET, 'pct0')}`,
+                `target ${pctWords(slaTarget)}`,
                 'the latest month still has cases inside their target',
               )}
               empty={
@@ -326,7 +322,7 @@ export function Overview({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext }
                   ? 'Upload HR cases with a resolved time to see this.'
                   : slaValues.length
                     ? null
-                    : hiddenMonths('cases')
+                    : hiddenMonths('cases', cfg.minGroup)
               }
             >
               <Lines
@@ -334,11 +330,8 @@ export function Overview({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext }
                 x="month"
                 y="slaRate"
                 format="pct"
-                ref={{
-                  value: RESOLUTION_SLA_TARGET,
-                  label: `target ${fmt(RESOLUTION_SLA_TARGET, 'pct0')}`,
-                }}
-                yDomain={[floorFor(slaValues, RESOLUTION_SLA_TARGET), 1]}
+                ref={{ value: slaTarget, label: `target ${pctWords(slaTarget)}` }}
+                yDomain={[floorFor(slaValues, slaTarget), 1]}
                 xTicks="quarter"
                 height={240}
                 onSelect={(d) => drill(slaMonth(d))}
@@ -347,19 +340,13 @@ export function Overview({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext }
             <Figure
               id="services-cases-by-category"
               uses={m.uses['services-cases-by-category']}
+              metric={FIGURE_METRIC['services-cases-by-category']}
               span={6}
               title="Cases by category"
               subtitle={`Cases opened in the ${per}, with the share that met the resolution SLA`}
               data={m.categories}
               columns={categoryColumns}
-              definitions={[
-                DEF.resolutionSla,
-                {
-                  term: 'Status mark',
-                  text: `Shown beside the count when the category's resolution SLA is under the ${fmt(RESOLUTION_SLA_TARGET, 'pct0')} target: warning under target, critical 10 pts or more under it (the same marks as on the Cases tab).`,
-                },
-                DEF.anonymity,
-              ]}
+              definitions={[D.opened, D.resolutionSla, D.statusMark, D.anonymity]}
               note={asOfNote(m.asOf, count(m.summary.opened, 'case'))}
             >
               <BarList
@@ -367,13 +354,14 @@ export function Overview({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext }
                 label="category"
                 value="cases"
                 secondary={(d) => (d.slaRate == null ? null : `SLA ${fmt(d.slaRate, 'pct0')}`)}
-                glyphTone={(d) => rateTone(d.slaRate, RESOLUTION_SLA_TARGET)}
+                glyphTone={(d) => rateTone(d.slaRate, slaTarget)}
                 onSelect={(d) => drill(categoryCases(d))}
               />
             </Figure>
             <Figure
               id="services-backlog-by-age"
               uses={m.uses['services-backlog-by-age']}
+              metric={FIGURE_METRIC['services-backlog-by-age']}
               span={6}
               title="Open backlog by age"
               subtitle="Cases open at the as-of date, by days since they were opened and by status"
@@ -388,7 +376,7 @@ export function Overview({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext }
                   drill: (r: BacklogRow) => drillWhen(s, r.records, backlogCell(r)),
                 },
               ]}
-              definitions={[DEF.backlog]}
+              definitions={[D.backlog]}
               note={asOfNote(m.asOf, count(m.backlogTotal, 'open case'))}
               empty={m.backlogTotal ? null : 'No open cases at the as-of date.'}
             >

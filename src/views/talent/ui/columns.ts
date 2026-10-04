@@ -79,18 +79,20 @@ export const distributionColumns = (d: TalentDrills): Column<DistributionRow>[] 
   { key: 'gap', label: 'Gap to guideline', format: 'pts' },
 ]
 
+/** `range` names the high ratings in the labels: "4-5" at the default high performer rating. */
 export const highShareColumns = (
   groupLabel: string,
   d?: TalentDrills,
   dim?: HighShareDim,
+  range = '4-5',
 ): Column<HighShareRow>[] => {
   const open = (part: 'rated' | 'high') =>
     d && dim ? { drill: (r: HighShareRow) => d.highShare(dim, r, part) } : {}
   return [
     { key: 'group', label: groupLabel },
     { key: 'rated', label: 'People rated', format: 'int', ...open('rated') },
-    { key: 'high', label: 'Rated 4-5', format: 'int', ...open('high') },
-    { key: 'share', label: 'Share rated 4-5', format: 'pct', ...open('high') },
+    { key: 'high', label: `Rated ${range}`, format: 'int', ...open('high') },
+    { key: 'share', label: `Share rated ${range}`, format: 'pct', ...open('high') },
   ]
 }
 

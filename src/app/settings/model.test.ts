@@ -1,53 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_COMP_CYCLE } from '@/data/settings'
 import { DEFAULT_TOOLS, mergeTools } from '../tools'
-import {
-  importedText,
-  parseCompDraft,
-  sameCompCycle,
-  toCompDraft,
-  toolChanges,
-  toolErrors,
-  toToolDraft,
-} from './model'
-
-describe('compensation cycle form', () => {
-  it('fills the form in percent and reads it back as fractions', () => {
-    const draft = toCompDraft(DEFAULT_COMP_CYCLE)
-    expect(draft).toEqual({
-      budget: '3.5',
-      low: '0.90',
-      high: '1.10',
-      guideline: { 5: '6', 4: '4.5', 3: '3', 2: '1', 1: '0' },
-    })
-    const back = parseCompDraft(draft)
-    expect(back.ok && sameCompCycle(back.settings, DEFAULT_COMP_CYCLE)).toBe(true)
-  })
-
-  it('names the first problem and its field', () => {
-    const d = toCompDraft(DEFAULT_COMP_CYCLE)
-    expect(parseCompDraft({ ...d, budget: '25' })).toEqual({
-      ok: false,
-      error: 'Merit budget must be between 0% and 20%.',
-      field: 'budget',
-    })
-    expect(parseCompDraft({ ...d, budget: '' })).toMatchObject({ ok: false, field: 'budget' })
-    expect(parseCompDraft({ ...d, low: '1.2', high: '1.1' })).toMatchObject({
-      ok: false,
-      error: 'The low end of the band must be below the high end.',
-    })
-    expect(parseCompDraft({ ...d, high: '2' })).toMatchObject({ ok: false, field: 'high' })
-    expect(parseCompDraft({ ...d, guideline: { ...d.guideline, 4: '31' } })).toMatchObject({
-      ok: false,
-      field: 'g4',
-      error: 'The guideline for rating 4 must be between 0% and 30%.',
-    })
-  })
-
-  it('compares settings field by field', () => {
-    expect(sameCompCycle(DEFAULT_COMP_CYCLE, { ...DEFAULT_COMP_CYCLE, healthyBand: [0.9, 1.15] })).toBe(false)
-  })
-})
+import { importDescription, importedText, toolChanges, toolErrors, toToolDraft } from './model'
 
 describe('related tools form', () => {
   const tools = mergeTools({})
@@ -83,5 +36,29 @@ describe('settings import wording', () => {
       'Applied the theme, text size and data standard from the file.',
     )
     expect(importedText([])).toBe('Nothing in the file could be applied.')
+  })
+})
+
+describe('settings import wording with the metric dictionary', () => {
+  const report = (changed: number, rejected = 0) => ({
+    changed: Array.from({ length: changed }, () => ({}) as never),
+    rejected: Array.from({ length: rejected }, () => ({}) as never),
+    unknown: [],
+    summary: changed ? `Changed ${changed} values in 1 metric.` : 'Nothing changed.',
+  })
+
+  it('adds what changed in the dictionary after the settings', () => {
+    expect(importDescription(['theme'], report(2))).toBe(
+      'Applied the theme from the file. Metric definitions: Changed 2 values in 1 metric.',
+    )
+  })
+
+  it('says when the dictionary already matched, and leaves the settings line out when none applied', () => {
+    expect(importDescription([], report(0))).toBe('The metric definitions already matched the file.')
+    expect(importDescription([], report(0, 1))).toBe('Metric definitions: Nothing changed.')
+  })
+
+  it('reads as before for a file without a dictionary', () => {
+    expect(importDescription(['tools'])).toBe('Applied the tool links from the file.')
   })
 })

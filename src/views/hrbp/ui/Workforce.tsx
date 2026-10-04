@@ -21,7 +21,7 @@ import {
 } from '../engine/buckets'
 import { FIGURE } from '../engine/lineage'
 import { CONTINGENT, type CountRow, type GrowthRow } from '../engine/workforce'
-import { DEF } from './defs'
+import { ID } from './defs'
 import { drillWhen } from './drill'
 import { EngineeringStat } from './EngineeringStat'
 
@@ -46,8 +46,6 @@ function countCols(p: Prep, dim: CountDim, label: string): Column<CountRow>[] {
 
 /** Departments shown before the rest fold into "Other". Above the sample's 22, so every department shows. */
 const DEPARTMENTS_SHOWN = 25
-/** The engineering share reference tick: the middle of a common reference range of 60 to 70%. */
-const ENGINEERING_REFERENCE = 0.65
 
 type MixDim = 'location' | 'businessUnit'
 
@@ -86,16 +84,21 @@ export function Workforce({ m }: { m: HrbpModel }) {
     <>
       <Section
         title="Where people are"
-        dek={`Active employees on ${asOf} by department, site, level and tenure. Contractors and interns appear in their own chart only.`}
+        dek={`Active employees on ${asOf} by department, site, level and tenure. ${
+          p.set.countContractors
+            ? 'Contractors count as employees here; interns appear in their own chart only.'
+            : 'Contractors and interns appear in their own chart only.'
+        }`}
       >
         <Figure
           id="hrbp-hc-department"
+          metric={ID.headcount}
           uses={p.uses(FIGURE.byDepartment)}
           title="Headcount by department"
           subtitle={`Employees on ${asOf}${departments > DEPARTMENTS_SHOWN ? `, largest ${DEPARTMENTS_SHOWN} departments` : ''}`}
           data={wf.byDepartment}
           columns={countCols(p, 'department', 'Department')}
-          definitions={[DEF.headcount]}
+          definitions={p.defs(ID.headcount, ID.share)}
           note={`${note} · ${departments} departments`}
           span={6}
           empty={none}
@@ -113,12 +116,13 @@ export function Workforce({ m }: { m: HrbpModel }) {
         <div className="col-span-full flex min-w-0 flex-col gap-4 md:col-span-6">
           <Figure
             id="hrbp-hc-location"
+            metric={ID.headcount}
             uses={p.uses(FIGURE.byLocation)}
             title="Headcount by location"
             subtitle={`Employees on ${asOf} by work site`}
             data={wf.byLocation}
             columns={countCols(p, 'location', 'Location')}
-            definitions={[DEF.headcount]}
+            definitions={p.defs(ID.headcount, ID.share)}
             note={note}
             empty={none}
           >
@@ -134,13 +138,14 @@ export function Workforce({ m }: { m: HrbpModel }) {
           </Figure>
           <Figure
             id="hrbp-hc-level"
+            metric={ID.headcount}
             uses={p.uses(FIGURE.byLevel)}
             title="Headcount by level"
             subtitle={`Employees on ${asOf}, L1 to E3`}
             data={wf.byLevel}
             columns={countCols(p, 'level', 'Level')}
             definitions={[
-              DEF.headcount,
+              ...p.defs(ID.headcount, ID.share),
               {
                 term: 'Levels',
                 text: 'L1 to L6 are individual levels, M1 and M2 manager and director, E1 to E3 executive.',
@@ -161,14 +166,13 @@ export function Workforce({ m }: { m: HrbpModel }) {
         </div>
         <Figure
           id="hrbp-tenure"
+          metric={ID.tenure}
           uses={p.uses(FIGURE.tenure)}
           title="Tenure"
           subtitle={`Employees on ${asOf} by years since hire`}
           data={wf.tenure}
           columns={countCols(p, 'tenure', 'Tenure')}
-          definitions={[
-            { term: 'Tenure', text: 'Years from hire date to the as-of date (365.25 days a year).' },
-          ]}
+          definitions={p.defs(ID.tenure)}
           note={`${note}${wf.avgTenure != null ? ` · average ${fmt(wf.avgTenure, 'years')}` : ''}`}
           span={5}
           empty={none}
@@ -184,6 +188,7 @@ export function Workforce({ m }: { m: HrbpModel }) {
         </Figure>
         <Figure
           id="hrbp-worker-mix"
+          metric={ID.contingent}
           uses={p.uses(FIGURE.workerMix(mixDim))}
           title="Contractors and interns"
           subtitle={`Active contractors and interns on ${asOf} by ${mixDim === 'location' ? 'site' : 'business unit'}`}
@@ -204,12 +209,7 @@ export function Workforce({ m }: { m: HrbpModel }) {
               drill: (r) => drillWhen(r.records.length > 0, () => mixSpec(p, r)),
             },
           ]}
-          definitions={[
-            {
-              term: 'Worker type',
-              text: 'Employment type on the roster. Only employees count in headcount and rates; the table also lists employees so each group’s mix is complete.',
-            },
-          ]}
+          definitions={p.defs(ID.contingent)}
           note={`${contingentTotal.toLocaleString('en-US')} contractors and interns in ${withContingent} of ${mixGroups} ${
             mixGroups === 1 ? mixNoun[0] : mixNoun[1]
           } · as of ${asOf}`}
@@ -246,6 +246,7 @@ export function Workforce({ m }: { m: HrbpModel }) {
       >
         <Figure
           id="hrbp-growth"
+          metric={ID.growth}
           uses={p.uses(FIGURE.growth(growthBy === 'department' ? 'department' : 'businessUnit'))}
           title={`Growth by ${growthBy}`}
           subtitle={`Change in employees from 12 months ago to ${asOf}`}
@@ -261,14 +262,7 @@ export function Workforce({ m }: { m: HrbpModel }) {
             { key: 'change', label: 'Change', format: 'int', drill: growthCell('change') },
             { key: 'growth', label: 'Growth', format: 'pct', drill: growthCell('growth') },
           ]}
-          definitions={[
-            DEF.headcount,
-            {
-              term: 'Growth',
-              text: 'Change in headcount as a share of headcount 12 months ago. Hidden when the base is under 5.',
-              formula: '(today − 12 months ago) ÷ 12 months ago',
-            },
-          ]}
+          definitions={p.defs(ID.headcount, ID.growth)}
           note={
             wf.growth.some((g) => (g.growth ?? 0) < 0) ? `${note} · bars left of the zero line shrank` : note
           }
@@ -294,6 +288,7 @@ export function Workforce({ m }: { m: HrbpModel }) {
         </Figure>
         <Figure
           id="hrbp-engineering-share"
+          metric={ID.engineering}
           uses={p.uses(FIGURE.engineeringShare)}
           title="Engineering share"
           subtitle={`Employees in engineering departments on ${asOf}`}
@@ -314,22 +309,19 @@ export function Workforce({ m }: { m: HrbpModel }) {
             },
           ]}
           definitions={[
-            {
-              term: 'Engineering',
-              text: 'Departments in architecture, design, verification, validation, physical design, analog and mixed-signal, DFT, firmware, software, hardware, and test and product engineering.',
-            },
+            ...p.defs(ID.engineering),
             {
               term: 'Reference',
-              text: 'The tick marks 65%, the middle of a common reference range of 60 to 70%. It is a reference, not a target.',
+              text: `The tick marks ${fmt(eng.reference, 'pct0')}. The default, 65%, is the middle of a common reference range of 60% to 70%. It is a reference, not a target.`,
             },
           ]}
           note={`${eng.engineering.toLocaleString('en-US')} of ${eng.total.toLocaleString('en-US')} employees · as of ${asOf}`}
           span={4}
-          empty={eng.share == null ? 'Fewer than 5 employees in this scope.' : null}
+          empty={eng.share == null ? `Fewer than ${p.set.minGroup} employees in this scope.` : null}
         >
           {eng.share != null && (
             <>
-              <EngineeringStat share={eng.share} reference={ENGINEERING_REFERENCE} />
+              <EngineeringStat share={eng.share} reference={eng.reference} />
               {/* The counts behind the share, each opening its people. */}
               <p className="mt-2 text-[13px] text-ink-2">
                 <Drill

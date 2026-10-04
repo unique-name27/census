@@ -1,15 +1,15 @@
 /**
  * Facts for the detail panel and the exit simulation. Pure functions of the tree, the roster
- * (for leavers) and the reviews index.
+ * (for leavers), the reviews index and the settings in force (`OrgRules`).
  *
- * Team averages over fewer than MIN_GROUP people are null (shown "—", hidden to protect
- * anonymity). Exit counts are counts, not rates.
+ * Team averages over fewer people than the anonymity minimum (5, or higher when raised) are null
+ * (shown "—", hidden to protect anonymity). Exit counts are counts, not rates.
  */
-import { type Employee, type ISODate, MIN_GROUP, type Potential } from '@/data/schema'
+import type { Employee, ISODate, Potential } from '@/data/schema'
 import { addMonths } from '@/lib/dates'
 import { latestCycle, type ReviewIndex, reviewAt, tenureYears } from '@/lib/people'
 import { mean } from '@/lib/stats'
-import { WIDE_SPAN } from './flags'
+import { defaultOrgRules, type OrgRules } from './rules'
 import { chainTo, type OrgTree, subtreeOf } from './tree'
 
 export interface RatingFact {
@@ -40,14 +40,16 @@ export function ratingOf(idx: ReviewIndex, id: string, asOf: ISODate): RatingFac
 export interface TeamStats {
   directs: number
   totalOrg: number
-  /** Mean tenure of the whole org below (years), null under MIN_GROUP. */
+  /** Mean tenure of the whole org below (years), null under the anonymity minimum. */
   avgTenure: number | null
   /** Contractors and interns among direct reports. */
   contingentDirects: number
-  /** Voluntary regretted exits of people who reported to this person, last 12 months. */
+  /** Voluntary regretted exits of people who reported to this person, over the exits window (12 months by default). */
   regrettedExits12: number
-  /** All exits of people who reported to this person, last 12 months. */
+  /** All exits of people who reported to this person, over the exits window (12 months by default). */
   exits12: number
+  /** The exits window in months. */
+  exitMonths: number
   /** Open requisitions where this person is the hiring manager. */
   openReqs: number
   /** The records behind each number, for drill-down (same order as shown). */
@@ -55,7 +57,7 @@ export interface TeamStats {
     directs: string[]
     /** Everyone below the person. */
     org: string[]
-    /** The people the average tenure is measured over; empty when it is hidden (n < 5). */
+    /** The people the average tenure is measured over; empty when it is hidden (under the anonymity minimum). */
     tenure: string[]
     contingent: string[]
   }
@@ -69,9 +71,10 @@ export function teamStats(
   id: string,
   employees: readonly Employee[],
   openReqs = 0,
+  rules: OrgRules = defaultOrgRules(),
 ): TeamStats {
   const asOf = tree.asOf
-  const from = addMonths(asOf, -12)
+  const from = addMonths(asOf, -rules.exitMonths)
   const exits: Employee[] = []
   const regretted: Employee[] = []
   for (const e of employees) {
@@ -84,7 +87,7 @@ export function teamStats(
   const tenures = org.map((x) => tenureYears(tree.people.get(x)!, asOf))
   const kids = [...(tree.children.get(id) ?? [])]
   const contingent = kids.filter((k) => tree.people.get(k)?.employmentType !== 'Employee')
-  const shown = org.length >= MIN_GROUP
+  const shown = org.length >= rules.minGroup
   return {
     directs: kids.length,
     totalOrg: tree.total.get(id) ?? 0,
@@ -92,6 +95,7 @@ export function teamStats(
     contingentDirects: contingent.length,
     regrettedExits12: regretted.length,
     exits12: exits.length,
+    exitMonths: rules.exitMonths,
     openReqs,
     ids: { directs: kids, org, tenure: shown ? org : [], contingent },
     exits,
@@ -114,8 +118,10 @@ export interface ExitImpact {
   orgSize: number
   /** Manager's direct reports before and after the reports roll up. */
   managerSpan: { before: number; after: number } | null
-  /** The manager would end up at or above the wide-span line. */
+  /** The manager would end up at or above the wide-span setting. */
   wideAfter: boolean
+  /** That setting, for the warning. */
+  wideSpan: number
   /** Peers (the manager's other direct reports) who lose a teammate. */
   peers: number
   peerIds: string[]
@@ -123,7 +129,9 @@ export interface ExitImpact {
   managerTeamAfter: string[]
   /** The latest review cycle on or before the as-of date. */
   cycle: string | null
-  /** Direct reports rated 4 or 5 in that cycle, best first. */
+  /** The lowest rating listed (4 by default, a setting). */
+  minRating: number
+  /** Direct reports rated at least `minRating` in that cycle (4 or 5 by default), best first. */
   backfills: BackfillCandidate[]
   /** Direct reports with no rating in that cycle. */
   unrated: number
@@ -131,7 +139,12 @@ export interface ExitImpact {
 }
 
 /** What happens if `id` leaves: their reports roll up to their manager. */
-export function exitImpact(tree: OrgTree, id: string, reviews: ReviewIndex): ExitImpact {
+export function exitImpact(
+  tree: OrgTree,
+  id: string,
+  reviews: ReviewIndex,
+  rules: OrgRules = defaultOrgRules(),
+): ExitImpact {
   const managerId = tree.parent.get(id) ?? null
   const directs = [...(tree.children.get(id) ?? [])]
   const mgrTeam = managerId ? (tree.children.get(managerId) ?? []) : []
@@ -147,7 +160,7 @@ export function exitImpact(tree: OrgTree, id: string, reviews: ReviewIndex): Exi
       unratedIds.push(d)
       continue
     }
-    if (r.rating >= 4) {
+    if (r.rating >= rules.backfillRating) {
       backfills.push({
         id: d,
         rating: r.rating,
@@ -168,11 +181,13 @@ export function exitImpact(tree: OrgTree, id: string, reviews: ReviewIndex): Exi
     directs,
     orgSize: tree.total.get(id) ?? 0,
     managerSpan: managerId ? { before: mgrDirects, after } : null,
-    wideAfter: !!managerId && after >= WIDE_SPAN,
+    wideAfter: !!managerId && after >= rules.wideSpan,
+    wideSpan: rules.wideSpan,
     peers: peerIds.length,
     peerIds,
     managerTeamAfter: managerId ? [...peerIds, ...directs] : [],
     cycle: cyc?.cycle ?? null,
+    minRating: rules.backfillRating,
     backfills,
     unrated: unratedIds.length,
     unratedIds,

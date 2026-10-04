@@ -3,10 +3,12 @@
  * stats, the latest rating and potential when reviews exist, and the next steps (focus this org,
  * open the same org in People stats or Talent, simulate an exit, make a slide, and in the
  * sandbox, move the person). Every team figure opens the people behind it, and "Person card"
- * opens everything Census knows about the person.
+ * opens everything Census knows about the person. Hovering a team figure shows its definition from
+ * the metric dictionary; the exits window and the anonymity minimum are the settings in force.
  */
 import { type ReactNode, useState } from 'react'
 import { Button, goTo, IconButton, IconChevronRight, IconClose, IconExternal, StatusPill } from '@/components'
+import { useAnalytics } from '@/data/context'
 import type { Employee, Requisition } from '@/data/schema'
 import { RATING_LABELS } from '@/data/schema'
 import { useCensus } from '@/data/store'
@@ -17,9 +19,11 @@ import { tenureYears } from '@/lib/people'
 import {
   chainNames,
   type DrillScope,
+  defText,
   directsDrill,
   type Flag,
   leaversDrill,
+  monthsText,
   type OrgModel,
   type OrgTree,
   orgDrill,
@@ -28,6 +32,7 @@ import {
   scopeLine,
   teamStats,
 } from '../engine'
+import { ORG_METRIC } from '../metrics'
 
 export interface DetailPanelProps {
   model: OrgModel
@@ -49,6 +54,7 @@ export interface DetailPanelProps {
 export function DetailPanel(p: DetailPanelProps) {
   const [allReports, setAllReports] = useState(false)
   const setFilters = useCensus((s) => s.setFilters)
+  const { metrics } = useAnalytics()
   const e = p.tree.people.get(p.id)
   if (!e) return null
   const t = p.tree
@@ -59,7 +65,9 @@ export function DetailPanel(p: DetailPanelProps) {
   const flags: readonly Flag[] = p.model.flags.get(p.id) ?? []
   const chain = chainNames(t, p.id).slice(0, -1)
   const isManager = directs.length > 0
-  const stats = isManager ? teamStats(t, p.id, p.employees, p.model.reqs.get(p.id)?.length ?? 0) : null
+  const { rules } = p.model
+  const stats = isManager ? teamStats(t, p.id, p.employees, p.model.reqs.get(p.id)?.length ?? 0, rules) : null
+  const months = monthsText(rules.exitMonths)
   const rating = p.model.reviews.cycles.length ? ratingOf(p.model.reviews, p.id, asOf) : null
   const shown = allReports ? directs : directs.slice(0, 8)
 
@@ -89,8 +97,8 @@ export function DetailPanel(p: DetailPanelProps) {
         title: `Contractors and interns reporting to ${e.name}`,
         subtitle: scopeLine(sc),
       }),
-    exits: () => leaversDrill(e.name, stats.exits, false, sc),
-    regretted: () => leaversDrill(e.name, stats.regretted, true, sc),
+    exits: () => leaversDrill(e.name, stats.exits, false, sc, stats.exitMonths),
+    regretted: () => leaversDrill(e.name, stats.regretted, true, sc, stats.exitMonths),
     reqs: reqRows.length
       ? () =>
           drillSpec({
@@ -192,38 +200,54 @@ export function DetailPanel(p: DetailPanelProps) {
           <section className="mt-4">
             <h4 className="eyebrow mb-1.5">Team</h4>
             <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-control bg-rule">
-              <Stat label="Direct reports" value={fmt(stats.directs, 'int')} drill={drills.directs} />
-              <Stat label="Total org" value={fmt(stats.totalOrg, 'int')} drill={drills.org} />
+              <Stat
+                label="Direct reports"
+                value={fmt(stats.directs, 'int')}
+                title={defText(metrics, ORG_METRIC.directReports)}
+                drill={drills.directs}
+              />
+              <Stat
+                label="Total org"
+                value={fmt(stats.totalOrg, 'int')}
+                title={defText(metrics, ORG_METRIC.totalOrg)}
+                drill={drills.org}
+              />
               <Stat
                 label="Average tenure"
                 value={stats.avgTenure == null ? DASH : fmt(stats.avgTenure, 'years')}
                 title={
                   stats.avgTenure == null
-                    ? 'Hidden to protect anonymity (n < 5)'
-                    : 'Mean tenure of everyone in the org'
+                    ? `Hidden to protect anonymity (n < ${rules.minGroup})`
+                    : defText(metrics, ORG_METRIC.teamTenure)
                 }
                 drill={drills.tenure}
               />
               <Stat
                 label="Contractors, interns"
                 value={fmt(stats.contingentDirects, 'int')}
-                title="Among direct reports"
+                title={defText(metrics, ORG_METRIC.teamContingent)}
                 drill={stats.contingentDirects ? drills.contingent : null}
               />
               <Stat
-                label="Exits, 12 months"
+                label={`Exits, ${months}`}
                 value={fmt(stats.exits12, 'int')}
-                title="People who left while reporting to them"
+                title={defText(metrics, ORG_METRIC.teamExits)}
                 drill={stats.exits12 ? drills.exits : null}
               />
               <Stat
-                label="Regretted, 12 months"
+                label={`Regretted, ${months}`}
                 value={fmt(stats.regrettedExits12, 'int')}
+                title={defText(metrics, ORG_METRIC.teamRegretted)}
                 drill={stats.regrettedExits12 ? drills.regretted : null}
               />
               {/* Like the open-role cards, left out when Requisitions is below the data standard. */}
               {stats.openReqs > 0 && p.model.gates.reqCards.ok && (
-                <Stat label="Open roles" value={fmt(stats.openReqs, 'int')} drill={drills.reqs} />
+                <Stat
+                  label="Open roles"
+                  value={fmt(stats.openReqs, 'int')}
+                  title={defText(metrics, ORG_METRIC.openRoles)}
+                  drill={drills.reqs}
+                />
               )}
             </dl>
           </section>

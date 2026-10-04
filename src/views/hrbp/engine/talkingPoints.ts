@@ -7,10 +7,8 @@
  * counted, as the tiles hide their numbers.
  */
 import { type DataStandard, type FieldRef, meetsStandard, STANDARD_LABEL } from '@/data/quality'
-import { MIN_GROUP } from '@/data/schema'
 import { addDays, formatDate } from '@/lib/dates'
 import { fmt } from '@/lib/format'
-import { exitsIn } from '@/lib/people'
 import type { HrbpModel } from '.'
 import { count, possessive, quoted } from './base'
 import { windowPhrase } from './kpis'
@@ -26,17 +24,21 @@ import {
   PAST_HEADCOUNT,
   PROMOTION_RATE,
   REASON,
-  REGRETTED,
   VOLUNTARY,
 } from './lineage'
+import { exitsIn } from './population'
 
 const n = (v: number) => v.toLocaleString('en-US')
 
-/** The manager with the most regretted exits in the window, if any manager has 2 or more. */
+/**
+ * The manager with the most regretted exits in the window, if any manager has as many as the
+ * readout's regretted cluster needs (2 by default).
+ */
 export function topRegrettedManager(m: HrbpModel): { name: string; count: number } | null {
+  const p = m.prep
   const by = new Map<string, number>()
-  for (const e of exitsIn(m.prep.emps, m.prep.window)) {
-    if (e.terminationType !== 'Voluntary' || e.regrettable !== true || !e.managerId) continue
+  for (const e of exitsIn(p.emps, p.window, p.counts)) {
+    if (!p.isRegretted(e) || !e.managerId) continue
     by.set(e.managerId, (by.get(e.managerId) ?? 0) + 1)
   }
   let best: { id: string; count: number } | null = null
@@ -44,7 +46,9 @@ export function topRegrettedManager(m: HrbpModel): { name: string; count: number
     if (!best || c > best.count || (c === best.count && m.prep.name(id) < m.prep.name(best.id)))
       best = { id, count: c }
   }
-  return best && best.count >= 2 ? { name: m.prep.name(best.id), count: best.count } : null
+  return best && best.count >= p.set.regrettedCluster.minExits
+    ? { name: m.prep.name(best.id), count: best.count }
+    : null
 }
 
 /** Why points were left out, by data standard. */
@@ -65,6 +69,7 @@ export function talkingPoints(m: HrbpModel): string {
   const scope = p.ctx.scopeLabel
   const vsCompany = !p.ctx.isCompany
   const phrase = windowPhrase(p)
+  const minGroup = p.set.minGroup
   const points: Point[] = []
   const add = (text: string, ...lineage: Lineage[]) => points.push({ text, uses: p.uses(...lineage) })
   const shown = (uses: readonly FieldRef[] | undefined) =>
@@ -88,18 +93,21 @@ export function talkingPoints(m: HrbpModel): string {
     )
   }
 
-  if (kpi.all.avgHeadcount > 0 && kpi.all.avgHeadcount < MIN_GROUP) {
-    add('Rates are hidden to protect anonymity: this scope averages fewer than 5 employees.', ATTRITION)
+  if (kpi.all.avgHeadcount > 0 && kpi.all.avgHeadcount < minGroup) {
+    add(
+      `Rates are hidden to protect anonymity: this scope averages fewer than ${minGroup} employees.`,
+      ATTRITION,
+    )
   }
 
-  if (kpi.vol.rate != null && kpi.vol.avgHeadcount >= MIN_GROUP) {
+  if (kpi.vol.rate != null && kpi.vol.avgHeadcount >= minGroup) {
     const vs =
       vsCompany && kpi.companyVol != null ? ` against ${fmt(kpi.companyVol, 'pct')} for the company` : ''
     // A reason given by one person, or in a group under 5 leavers, could point to who said it.
     // Reasons below the data standard are not cited; the rate still is.
     const top = p.meets(REASON) ? attrition.reasons[0] : undefined
     const reason =
-      top && top.exits >= 2 && attrition.voluntaryExits >= MIN_GROUP
+      top && top.exits >= 2 && attrition.voluntaryExits >= minGroup
         ? `. The top reason given was ${quoted(top.reason)} (${top.exits} of ${attrition.voluntaryExits} voluntary exits)`
         : ''
     add(
@@ -109,7 +117,7 @@ export function talkingPoints(m: HrbpModel): string {
     )
   }
 
-  if (kpi.regretted.rate != null && kpi.regretted.avgHeadcount >= MIN_GROUP) {
+  if (kpi.regretted.rate != null && kpi.regretted.avgHeadcount >= minGroup) {
     const regretted = kpi.regretted.events
     const mgr = topRegrettedManager(m)
     const exits = count(regretted, 'regretted exit', 'regretted exits')
@@ -119,7 +127,7 @@ export function talkingPoints(m: HrbpModel): string {
         : mgr
           ? `${exits} over ${phrase}. The largest group, ${mgr.count} of ${n(regretted)}, left ${possessive(mgr.name)} team.`
           : `${exits} over ${phrase}, no more than one from any manager's team.`,
-      REGRETTED,
+      p.lin.regretted,
       ifPresent(MANAGER),
     )
   }
@@ -133,7 +141,7 @@ export function talkingPoints(m: HrbpModel): string {
   }
 
   const promo = movement.promotions
-  if (promo.rate != null && promo.avgHeadcount >= MIN_GROUP) {
+  if (promo.rate != null && promo.avgHeadcount >= minGroup) {
     const vs =
       vsCompany && movement.companyPromotions.rate != null
         ? ` against ${fmt(movement.companyPromotions.rate, 'pct')} for the company`

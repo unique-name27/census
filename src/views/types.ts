@@ -12,6 +12,8 @@ export interface ViewTab {
 export interface Headline {
   value: string
   label: string
+  /** The metric dictionary entry the number comes from. */
+  metricId?: string
   spark?: (number | null)[]
   /**
    * The fields the number (and its spark) is computed from. The folder tab gates it on the data

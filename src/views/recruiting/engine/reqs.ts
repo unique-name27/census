@@ -4,15 +4,19 @@
  */
 import type { Severity } from '@/components/types'
 import type { ISODate, Requisition } from '@/data/schema'
-import { MIN_GROUP } from '@/data/schema'
 import type { Window } from '@/data/scope'
 import { addMonths, daysBetween, monthKey, monthStart, monthsBetween } from '@/lib/dates'
 import { median } from '@/lib/stats'
 import { inWin, isOpenAt } from './prepare'
+import { defaultSettings } from './settings'
 import type { ActiveItem, App } from './types'
 
-/** Days an open req may go with nobody past the screen before it reads as an empty funnel. */
-export const EMPTY_FUNNEL_DAYS = 30
+/**
+ * The registered default empty-funnel age (30 days): an open req with nobody past the screen for
+ * longer reads as an empty funnel. The engine reads the value in force from the dictionary
+ * (`b.settings.emptyFunnelDays`); this constant is the default only.
+ */
+export const EMPTY_FUNNEL_DAYS: number = defaultSettings().emptyFunnelDays
 
 const UNASSIGNED = 'Unassigned'
 
@@ -46,7 +50,7 @@ export interface ReqFacts {
   open: Requisition[]
   onHold: Requisition[]
   rows: OpenReqRow[]
-  /** Open longer than 30 days with no candidate ever past the screen. */
+  /** Open longer than the empty-funnel age with no candidate ever past the screen. */
   emptyFunnel: OpenReqRow[]
   /** False when candidates are missing or mostly don't match a req, so funnel health can't be read. */
   funnelChecked: boolean
@@ -59,7 +63,8 @@ export const NOT_CHECKED = 'Not checked'
  * Open reqs on the as-of date with their active pipeline and health. Open means open ON that date
  * (`isOpenAt`), so an as-of date in the past counts reqs that have since been filled or cancelled.
  * Pass `checkFunnel: false` when the candidates can't be trusted to describe the reqs (none loaded,
- * or most match no req ID): every old req would otherwise read as an empty funnel.
+ * or most match no req ID): every old req would otherwise read as an empty funnel. `emptyDays` is
+ * the empty-funnel age in force.
  */
 export function reqFacts(
   reqs: readonly Requisition[],
@@ -67,6 +72,7 @@ export function reqFacts(
   actives: readonly ActiveItem[],
   asOf: ISODate,
   checkFunnel = true,
+  emptyDays: number = defaultSettings().emptyFunnelDays,
 ): ReqFacts {
   const open = reqs.filter((r) => isOpenAt(r, asOf))
   const onHold = reqs.filter((r) => r.status === 'On hold' && r.openedDate <= asOf)
@@ -87,7 +93,7 @@ export function reqFacts(
       if (x.tier) lacking++
     }
     const daysOpen = reqAge(r, asOf)
-    const empty = checkFunnel && daysOpen > EMPTY_FUNNEL_DAYS && !pastScreen.has(r.reqId)
+    const empty = checkFunnel && daysOpen > emptyDays && !pastScreen.has(r.reqId)
     const health = empty
       ? 'Empty funnel'
       : lacking
@@ -134,29 +140,40 @@ export function filledIn(reqs: readonly Requisition[], w: Pick<Window, 'start' |
   return reqs.filter((r) => r.status !== 'Cancelled' && inWin(r.filledDate, w) && r.openedDate)
 }
 
+/** Days from opened to the offer accepted (filled date): time to fill with the default clock. */
 export const ttfDays = (r: Requisition): number => Math.max(0, daysBetween(r.openedDate, r.filledDate!))
 
 /** Days a req has been open on `asOf`. */
 export const reqAge = (r: Requisition, asOf: ISODate): number => Math.max(0, daysBetween(r.openedDate, asOf))
 
-export function medianTtf(reqs: readonly Requisition[]): number | null {
-  return median(reqs.map(ttfDays))
+/** Median time to fill; `days` is the clock in force (`b.ttf`), offer accepted by default. */
+export function medianTtf(
+  reqs: readonly Requisition[],
+  days: (r: Requisition) => number = ttfDays,
+): number | null {
+  return median(reqs.map(days))
 }
 
 export interface TtfRow {
   group: string
   days: number | null
   reqs: number
-  /** The filled reqs measured; empty when the median is hidden (fewer than 5), so it never drills. */
+  /** The filled reqs measured; empty when the median is hidden (under the anonymity minimum), so it never drills. */
   filled: Requisition[]
 }
 
-/** Median time to fill per group; groups with fewer than 5 filled reqs show no median. */
+/**
+ * Median time to fill per group; groups under the anonymity minimum (5 by default) show no
+ * median. `o.days` is the clock in force.
+ */
 export function ttfBy(
   filled: readonly Requisition[],
   key: (r: Requisition) => string | null | undefined,
   order?: readonly string[],
+  o: { days?: (r: Requisition) => number; minGroup?: number } = {},
 ): TtfRow[] {
+  const days = o.days ?? ttfDays
+  const minGroup = o.minGroup ?? defaultSettings().minGroup
   const m = new Map<string, Requisition[]>()
   for (const r of filled) {
     const k = key(r) || 'Not set'
@@ -165,10 +182,10 @@ export function ttfBy(
     else m.set(k, [r])
   }
   const rows: TtfRow[] = [...m].map(([group, list]) => {
-    const shown = list.length >= MIN_GROUP
+    const shown = list.length >= minGroup
     return {
       group,
-      days: shown ? median(list.map(ttfDays)) : null,
+      days: shown ? median(list.map(days)) : null,
       reqs: list.length,
       filled: shown ? list : [],
     }
@@ -265,19 +282,18 @@ export interface RecruiterLoad {
   teamMedianActive: number | null
 }
 
-/** A recruiter's load or wait above this multiple of the team median is flagged. */
-export const LOAD_FLAG_RATIO = 1.5
-
 /**
  * Open reqs, active candidates, hires and waiting per recruiter. Flags a heavy load (open reqs or
- * active candidates above 1.5× the team median) and long waits (median days waiting above 1.5×
- * the team median). Team medians are over named recruiters.
+ * active candidates above the flag factor times the team median, 1.5× by default) and long waits
+ * (median days waiting above the flag factor times the team median). Team medians are over named
+ * recruiters.
  */
 export function recruiterLoad(
   open: readonly Requisition[],
   actives: readonly ActiveItem[],
   apps: readonly App[],
   w: Pick<Window, 'start' | 'end'>,
+  flagFactor: number = defaultSettings().recruiterFlagFactor,
 ): RecruiterLoad {
   const rows = new Map<
     string,
@@ -323,7 +339,7 @@ export function recruiterLoad(
   const team = median(medians)
   const teamOpen = median(named.map((e) => e.open))
   const teamActive = median(named.map((e) => e.active))
-  const above = (v: number, m: number | null) => m != null && m > 0 && v > LOAD_FLAG_RATIO * m
+  const above = (v: number, m: number | null) => m != null && m > 0 && v > flagFactor * m
   const out = [...rows].map(([recruiter, e]) => {
     const m = median(e.waits)
     const heavy = recruiter !== UNASSIGNED && (above(e.open, teamOpen) || above(e.active, teamActive))

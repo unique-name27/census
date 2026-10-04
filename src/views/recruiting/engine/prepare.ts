@@ -7,10 +7,8 @@ import type { Candidate, ISODate, Requisition } from '@/data/schema'
 import { STAGE_DATE_FIELD, STAGES, stageIndex } from '@/data/schema'
 import { daysBetween } from '@/lib/dates'
 import { median } from '@/lib/stats'
+import { defaultSettings, type NormRules } from './settings'
 import { type App, type Coverage, HIRED, LAST_OPEN_STAGE, type Norms, type Outcome } from './types'
-
-export const DEFAULT_NORM_DAYS = 14
-export const MIN_NORM_SAMPLES = 5
 
 const EXIT_STATUSES = new Set<string>(['Rejected', 'Withdrawn', 'Declined'])
 
@@ -140,8 +138,11 @@ export function transitionDays(a: App, i: number): number | null {
   return d >= 0 ? d : null
 }
 
-/** Historical median days from each stage to the next, over every application in the data. */
-export function stageNorms(apps: readonly App[]): Norms {
+/**
+ * Historical median days from each stage to the next, over every application in the data. A stage
+ * with fewer completed steps than `rules.minSteps` (5 by default) takes `rules.fallbackDays` (14).
+ */
+export function stageNorms(apps: readonly App[], rules: NormRules = defaultSettings().norms): Norms {
   const days: number[] = []
   const samples: number[] = []
   for (let i = 0; i < LAST_OPEN_STAGE + 1; i++) {
@@ -151,7 +152,7 @@ export function stageNorms(apps: readonly App[]): Norms {
       if (d != null) xs.push(d)
     }
     samples.push(xs.length)
-    days.push(xs.length >= MIN_NORM_SAMPLES ? (median(xs) ?? DEFAULT_NORM_DAYS) : DEFAULT_NORM_DAYS)
+    days.push(xs.length >= rules.minSteps ? (median(xs) ?? rules.fallbackDays) : rules.fallbackDays)
   }
   return { days, samples }
 }

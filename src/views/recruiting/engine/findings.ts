@@ -4,6 +4,9 @@
  * slow time to fill and one good finding. Each names where it concentrates with the shared
  * decomposition, and related flags merge into one story (as the original tool did), so the
  * readout stays at six findings or fewer.
+ *
+ * Every rule's thresholds are dictionary settings (`b.settings`, see `../metrics.ts`), and each
+ * finding carries the id of the rule it comes from (`metricId`).
  */
 import type { Finding, FindingPerson, Severity } from '@/components/types'
 import type { Requisition } from '@/data/schema'
@@ -30,7 +33,7 @@ import {
   APP_DIM,
   appDimUses,
   COHORT,
-  FILLED_REQ,
+  filledUses,
   NEXT_STEP,
   OPEN_REQ,
   OUTCOME,
@@ -42,15 +45,17 @@ import {
   STAGE_REACHED,
   uses,
 } from './lineage'
+import { FINDING_METRICS, type RecruitingFindingId } from './metricLinks'
 import { breakdownParts, inQueue, joinAnd } from './nextStep'
 import { inWin } from './prepare'
-import { EMPTY_FUNNEL_DAYS, ttfDays } from './reqs'
+import { defaultSettings } from './settings'
 import { acceptance, quarterWindows, resolvedOffers, sourceRows } from './sources'
 import type { ActiveItem, App } from './types'
 
 export const MAX_FINDINGS = 6
 
 interface Scored extends Finding {
+  id: RecruitingFindingId
   score: number
 }
 
@@ -142,38 +147,44 @@ function person(x: ActiveItem, note: string): FindingPerson {
 
 /* ───────── bottleneck ───────── */
 
-/** A step must run at least this many days slower than the comparison to count as a bottleneck. */
-const MIN_GAP_DAYS = 5
-/** A segment bottleneck is critical only over at least this many completed transitions. */
-export const MIN_CRITICAL_TRANSITIONS = 10
+/**
+ * The registered default: a bottleneck in one segment is critical only over at least this many
+ * completed transitions. The rule reads the value in force (`b.settings.bottleneck`).
+ */
+export const MIN_CRITICAL_TRANSITIONS: number = defaultSettings().bottleneck.minCriticalSteps
+
+const monthsWords = (n: number) => (n === 1 ? 'the last month' : `the last ${n0(n)} months`)
 
 function recentWindow(b: RecruitingBase): { start: string; end: string; words: string } {
-  const threeMonths = addDays(addMonths(b.window.end, -3), 1)
-  const start = threeMonths > b.window.start ? threeMonths : b.window.start
+  const months = b.settings.bottleneck.recentMonths
+  const recentStart = addDays(addMonths(b.window.end, -months), 1)
+  const start = recentStart > b.window.start ? recentStart : b.window.start
   return {
     start,
     end: b.window.end,
-    words: start === threeMonths ? 'the last 3 months' : `the ${b.windowWords}`,
+    words: start === recentStart ? monthsWords(months) : `the ${b.windowWords}`,
   }
 }
 
 function bottleneck(b: RecruitingBase): Scored | null {
+  const rule = b.settings.bottleneck
   const recent = recentWindow(b)
   const events = transitionsIn(b.apps, recent)
   const byT = TRANSITIONS.map((_, i) => events.filter((e) => e.i === i))
-  const meds = byT.map((list) => (list.length >= 10 ? median(list.map((e) => e.days)) : null))
+  const meds = byT.map((list) => (list.length >= rule.minSteps ? median(list.map((e) => e.days)) : null))
   const before = { start: addMonths(recent.start, -6), end: addDays(recent.start, -1) }
 
-  // Where does one transition run at least twice as slow as everywhere else?
+  // Where does one transition run at least the bottleneck factor slower than everywhere else?
+  // (A relative deviation above factor − 1 is a median above factor × the comparison.)
   let seg: { i: number; s: Segment } | null = null
   for (let i = 0; i < byT.length; i++) {
-    if (byT[i].length < 10) continue
+    if (byT[i].length < rule.minSteps) continue
     const found = decomposeMedian(
       byT[i],
       dims((e) => e.app, ['department', 'location', 'level', 'hiringManager', 'recruiter']),
       (e) => e.days,
-      { minDev: 1, minAffected: 5, top: 3 },
-    ).filter((s) => !s.small && s.segValue - s.compValue >= MIN_GAP_DAYS)
+      { minDev: rule.factor - 1, minAffected: b.settings.minGroup, top: 3 },
+    ).filter((s) => !s.small && s.segValue - s.compValue >= rule.minGapDays)
     if (found[0] && (!seg || found[0].impact > seg.s.impact)) seg = { i, s: found[0] }
   }
   // Or the whole step against the other steps (the original tool's rule).
@@ -184,7 +195,7 @@ function bottleneck(b: RecruitingBase): Scored | null {
     if (m == null || others.length < 2) continue
     const om = median(others) ?? 0
     const ratio = m / Math.max(om, 0.5)
-    if (m > 2 * om && m - om >= MIN_GAP_DAYS && (!stage || ratio > stage.ratio))
+    if (m > rule.factor * om && m - om >= rule.minGapDays && (!stage || ratio > stage.ratio))
       stage = { i, ratio, m, others: om }
   }
   if (!seg && !stage) return null
@@ -206,7 +217,7 @@ function bottleneck(b: RecruitingBase): Scored | null {
   )
   const ratio = seg ? seg.s.segValue / Math.max(seg.s.compValue, 0.5) : stage!.ratio
   // A segment median over a handful of transitions is a hint, not an alarm.
-  const solid = !seg || seg.s.affected >= MIN_CRITICAL_TRANSITIONS
+  const solid = !seg || seg.s.affected >= rule.minCriticalSteps
   const stageWord = STAGE_AT[i]
   const title = seg
     ? `${step} is the bottleneck ${where(seg.s)}: median ${days(seg.s.segValue)} vs ${days(seg.s.compValue)} elsewhere over ${recent.words}.`
@@ -222,7 +233,7 @@ function bottleneck(b: RecruitingBase): Scored | null {
       : ''
   return {
     id: 'rec-bottleneck',
-    severity: ratio >= 3 && solid ? 'critical' : 'warning',
+    severity: ratio >= rule.criticalFactor && solid ? 'critical' : 'warning',
     title,
     detail: [waitText, prevText].filter(Boolean).join(' ') || undefined,
     action: `Resolve the ${lower(step)} bottleneck.${seg ? ` ${startWith(seg.s)}` : ''}`,
@@ -266,10 +277,12 @@ function lacksNextStep(b: RecruitingBase): Scored | null {
     .filter(([, k]) => k >= Math.max(3, 0.2 * decisions))
   const topShare = top.reduce((s, [, k]) => s + k, 0) / Math.max(1, decisions)
   const concentrated = decisions >= 6 && top.length > 0 && topShare >= 0.5
+  // Segments smaller than the anonymity minimum are never named.
   const seg = decomposeRate(
     b.actives,
     dims((x: ActiveItem) => x.app, FILTERABLE),
     (x) => x.tier != null,
+    { minPopulation: b.settings.minGroup },
   ).find((s) => !s.small)
 
   const title = decisions
@@ -297,7 +310,10 @@ function lacksNextStep(b: RecruitingBase): Scored | null {
     .sort((x, y) => (x.tier === y.tier ? y.days - x.days : x.tier === 'red' ? -1 : 1))
   return {
     id: 'rec-lacking-next-step',
-    severity: n >= Math.max(8, 0.25 * b.actives.length) ? 'critical' : 'warning',
+    severity:
+      n >= Math.max(b.settings.lackingCritical.count, b.settings.lackingCritical.share * b.actives.length)
+        ? 'critical'
+        : 'warning',
     title,
     detail: [parts, conc].filter(Boolean).join(' '),
     action,
@@ -317,10 +333,17 @@ function lacksNextStep(b: RecruitingBase): Scored | null {
 
 /* ───────── offers ───────── */
 
+/** Offers out longer than the offer wait (a setting of lacking a next step), longest first. */
 function offersWaiting(b: RecruitingBase): { items: ActiveItem[]; oldest: number } | null {
-  const items = b.actives.filter((x) => x.state === 'offer-out' && x.days > 5).sort((x, y) => y.days - x.days)
-  return items.length >= 2 ? { items, oldest: items[0].days } : null
+  const wait = b.settings.aging.offerWatchDays
+  const items = b.actives
+    .filter((x) => x.state === 'offer-out' && x.days > wait)
+    .sort((x, y) => y.days - x.days)
+  return items.length >= b.settings.offersWaitingMin && items.length ? { items, oldest: items[0].days } : null
 }
+
+/** "5 days", "1 day". */
+const dayWords = (n: number) => plural(n, 'day')
 
 export interface AcceptanceDrop {
   /** 'quarter' when the latest quarter fell vs the one before; 'period' when the window fell vs the prior. */
@@ -335,18 +358,21 @@ export interface AcceptanceDrop {
 }
 
 /**
- * Has offer acceptance fallen 5 pts or more (10+ offers each side)? The latest quarter against the
- * quarter before comes first; otherwise the window against the prior window.
+ * Has offer acceptance fallen by the drop to flag (5 pts by default) with enough offers each side
+ * (10)? The latest quarter against the quarter before comes first; otherwise the window against
+ * the prior window.
  */
 export function acceptanceDrop(b: RecruitingBase): AcceptanceDrop | null {
   if (!b.cov.hasDeclined) return null
+  const rule = b.settings.acceptanceDrop
   const [q0, q1] = quarterWindows(b.window.end, 2)
   const cur = resolvedOffers(b.apps, q1)
   const prev = resolvedOffers(b.apps, q0)
   const a1 = acceptance(cur)
   const a0 = acceptance(prev)
-  const big = (x: typeof a1) => x.hired + x.declined >= 10
-  if (big(a1) && big(a0) && a0.rate! - a1.rate! >= 0.05) {
+  const big = (x: typeof a1) => x.hired + x.declined >= rule.minOffers
+  const fell = (before: number, now: number) => before - now >= rule.pts
+  if (big(a1) && big(a0) && fell(a0.rate!, a1.rate!)) {
     return {
       basis: 'quarter',
       window: { start: q1.start, end: q1.end },
@@ -359,7 +385,7 @@ export function acceptanceDrop(b: RecruitingBase): AcceptanceDrop | null {
   }
   const w1 = acceptance(b.offers)
   const w0 = acceptance(b.offersPrior)
-  if (big(w1) && big(w0) && w0.rate! - w1.rate! >= 0.05)
+  if (big(w1) && big(w0) && fell(w0.rate!, w1.rate!))
     return {
       basis: 'period',
       window: b.window,
@@ -380,6 +406,7 @@ function offerAcceptance(b: RecruitingBase, waiting: ReturnType<typeof offersWai
     period.offers,
     dims((a: App) => a, ['location', 'department', 'level', 'source', 'recruiter']),
     (a) => a.outcome === 'Declined',
+    { minPopulation: b.settings.minGroup },
   ).find((s) => !s.small)
   const inSeg = (a: App) => !seg || a[seg.dim as DimKey] === seg.value
   const segDeclines = period.offers.filter((a) => a.outcome === 'Declined' && inSeg(a))
@@ -401,12 +428,12 @@ function offerAcceptance(b: RecruitingBase, waiting: ReturnType<typeof offersWai
       ? `The top reasons for declining were ${joinAnd(topReasons)}.`
       : ''
   const waitText = waiting
-    ? `${plural(waiting.items.length, 'offer')} out today ${waiting.items.length === 1 ? 'has' : 'have'} waited more than 5 d for an answer, the oldest ${days(waiting.oldest)}.`
+    ? `${plural(waiting.items.length, 'offer')} out today ${waiting.items.length === 1 ? 'has' : 'have'} waited more than ${days(b.settings.aging.offerWatchDays)} for an answer, the oldest ${days(waiting.oldest)}.`
     : ''
   const segName = seg && FILTERABLE.includes(seg.dim as DimKey) ? `${seg.value} ` : ''
   return {
     id: 'rec-offer-acceptance',
-    severity: drop >= 0.1 ? 'critical' : 'warning',
+    severity: drop >= b.settings.acceptanceDrop.criticalPts ? 'critical' : 'warning',
     title: `Offer acceptance fell to ${pct0(period.now)} ${period.nowWords} from ${pct0(period.before)} ${period.beforeWords}${seg ? `, mostly ${where(seg)}` : ''}.`,
     detail: [segText, waitText].filter(Boolean).join(' ') || undefined,
     action: `Review ${segName}offer positioning and pay with the compensation team${waiting ? ', and follow up on the open offers this week' : ''}.`,
@@ -432,15 +459,16 @@ function offersWaitingFinding(
   for (const x of waiting.items) if (x.owner) byRecruiter.set(x.owner, (byRecruiter.get(x.owner) ?? 0) + 1)
   const top = [...byRecruiter].sort((a, c) => c[1] - a[1])[0]
   const n = waiting.items.length
+  const wait = dayWords(b.settings.aging.offerWatchDays)
   return {
     id: 'rec-offers-waiting',
-    severity: waiting.oldest > 10 ? 'critical' : 'warning',
-    title: `${plural(n, 'offer')} ${n === 1 ? 'has' : 'have'} waited more than 5 days for an answer, the oldest ${days(waiting.oldest)}.`,
+    severity: waiting.oldest > b.settings.aging.offerOverdueDays ? 'critical' : 'warning',
+    title: `${plural(n, 'offer')} ${n === 1 ? 'has' : 'have'} waited more than ${wait} for an answer, the oldest ${days(waiting.oldest)}.`,
     detail: top && top[1] >= 2 ? `${top[0]} has ${n0(top[1])} of them.` : undefined,
     action: 'Follow up with each candidate this week to answer any open questions.',
     people: waiting.items.map((x) => person(x, `${x.app.reqId} · offer out ${days(x.days)}`)),
     tab: 'pipeline',
-    drill: () => activeDrill(b, waiting.items, { title: 'Offers waiting more than 5 days for an answer' }),
+    drill: () => activeDrill(b, waiting.items, { title: `Offers waiting more than ${wait} for an answer` }),
     uses: uses(NEXT_STEP, top && top[1] >= 2 ? APP_DIM.recruiter : []),
     score: 75 + n,
   }
@@ -448,7 +476,10 @@ function offersWaitingFinding(
 
 /* ───────── requisitions ───────── */
 
-/** A group that fills slowly: median time to fill ≥ 1.5 × the scope's, over 5+ filled reqs. */
+/**
+ * A group that fills slowly: median time to fill at least the slow factor (1.5× by default) times
+ * the scope's, over at least the anonymity minimum of filled reqs.
+ */
 interface SlowGroup {
   dim: 'department' | 'level' | 'location'
   value: string
@@ -495,8 +526,8 @@ function emptyFunnel(
   const oldest = rows.reduce((a, r) => (r.daysOpen > a.daysOpen ? r : a), rows[0])
   // The department's time to fill against the whole company (never against itself).
   const deptFilled = concentrated ? b.filled.filter((r) => r.department === dept) : []
-  const deptTtf = deptFilled.length >= 5 ? median(deptFilled.map(ttfDays)) : null
-  const companyTtf = median(b.companyFilled.map(ttfDays))
+  const deptTtf = deptFilled.length >= b.settings.minGroup ? median(deptFilled.map(b.ttf)) : null
+  const companyTtf = median(b.companyFilled.map(b.ttf))
   const vsCompany = deptTtf != null && companyTtf != null && b.companyFilled.length > deptFilled.length
   // Merged with the slow time-to-fill story (company scope only, where "overall" is the company).
   const ttfText = vsCompany
@@ -524,7 +555,7 @@ function emptyFunnel(
           b,
           rows.map((r) => r.req),
           'Open reqs with nobody past the screen',
-          `Open more than ${EMPTY_FUNNEL_DAYS} days and no candidate has reached the hiring manager stage.`,
+          `Open more than ${dayWords(b.settings.emptyFunnelDays)} and no candidate has reached the hiring manager stage.`,
         ),
       // The title or detail names a req by its title; the funnel reads candidates through their req.
       uses: uses(
@@ -533,7 +564,7 @@ function emptyFunnel(
         STAGE_REACHED,
         ['requisitions.jobTitle'],
         concentrated ? ['requisitions.department', 'requisitions.priority'] : [],
-        vsCompany || slow ? FILLED_REQ : [],
+        vsCompany || slow ? filledUses(b.settings.ttfEnd) : [],
         vsCompany ? REQ_DIM.department : [],
         slow ? reqDimUses(slow.top.dim) : [],
       ),
@@ -549,9 +580,10 @@ const REQ_KEY: Record<'department' | 'level' | 'location', (r: Requisition) => s
 }
 
 function slowFill(b: RecruitingBase, skipDept: string | null): SlowFill | null {
+  const rule = b.settings.slowFill
   const filled = b.filled
-  if (filled.length < 10) return null
-  const overall = median(filled.map(ttfDays))
+  if (filled.length < rule.minFilled) return null
+  const overall = median(filled.map(b.ttf))
   if (overall == null || overall <= 0) return null
   const groups: SlowGroup[] = []
   for (const dim of ['department', 'level', 'location'] as const) {
@@ -559,13 +591,13 @@ function slowFill(b: RecruitingBase, skipDept: string | null): SlowFill | null {
     for (const r of filled) {
       const v = REQ_KEY[dim](r)
       if (!v) continue
-      m.set(v, [...(m.get(v) ?? []), ttfDays(r)])
+      m.set(v, [...(m.get(v) ?? []), b.ttf(r)])
     }
     if (m.size < 2) continue
     for (const [value, xs] of m) {
-      if (xs.length < 5) continue
+      if (xs.length < b.settings.minGroup) continue
       const d = median(xs)!
-      if (d < 1.5 * overall) continue
+      if (d < rule.factor * overall) continue
       groups.push({
         dim,
         value,
@@ -604,7 +636,7 @@ function slowTimeToFill(b: RecruitingBase, slow: SlowFill): Scored {
         b.filled.filter((r) => REQ_KEY[top.dim](r) === top.value),
         `Reqs filled, ${top.value}, ${b.windowWords}`,
       ),
-    uses: uses(FILLED_REQ, reqDimUses(top.dim), reqDimUses(second?.dim)),
+    uses: uses(filledUses(b.settings.ttfEnd), reqDimUses(top.dim), reqDimUses(second?.dim)),
     score: 65 + 10 * (ratio - 1),
   }
 }
@@ -629,17 +661,23 @@ function dataJoin(b: RecruitingBase): Scored | null {
 /* ───────── sources and exits ───────── */
 
 function sourceDryingUp(b: RecruitingBase): Scored | null {
-  const rows = sourceRows(b.cohort, b.priorCohort)
+  const rule = b.settings.dryingUp
+  const rows = sourceRows(b.cohort, b.priorCohort, b.settings.minGroup)
   const totalNow = b.cohort.length
   const totalPrior = b.priorCohort.length
   let pick: (typeof rows)[number] | null = null
   let othersChange = 0
   for (const r of rows) {
-    if (r.priorApplications < 30 || r.priorApplications < 0.05 * totalPrior || r.change == null) continue
-    if (r.change > -0.4) continue
+    if (
+      r.priorApplications < rule.minPrior ||
+      r.priorApplications < rule.minPriorShare * totalPrior ||
+      r.change == null
+    )
+      continue
+    if (r.change > -rule.drop) continue
     const restPrior = totalPrior - r.priorApplications
     const oc = restPrior > 0 ? (totalNow - r.applications) / restPrior - 1 : 0
-    if (r.change - oc > -0.2) continue
+    if (r.change - oc > -rule.gapPts) continue
     if (!pick || r.priorApplications - r.applications > pick.priorApplications - pick.applications) {
       pick = r
       othersChange = oc
@@ -662,17 +700,18 @@ function sourceDryingUp(b: RecruitingBase): Scored | null {
 }
 
 function withdrawalsRising(b: RecruitingBase): Scored | null {
+  const rule = b.settings.withdrawals
   const exits = (w: { start: string; end: string }) =>
     b.apps.filter((a) => (a.outcome === 'Rejected' || a.outcome === 'Withdrawn') && inWin(a.exitDate, w))
   const cur = exits(b.window)
   const prev = exits(b.prior)
-  if (cur.length < 10) return null
+  if (cur.length < rule.minExits) return null
   const wd = cur.filter((a) => a.outcome === 'Withdrawn')
   const share = wd.length / cur.length
   const prevShare =
-    prev.length >= 10 ? prev.filter((a) => a.outcome === 'Withdrawn').length / prev.length : null
-  const rising = prevShare != null && share - prevShare >= 0.05
-  if (share < 0.15 && !rising) return null
+    prev.length >= rule.minExits ? prev.filter((a) => a.outcome === 'Withdrawn').length / prev.length : null
+  const rising = prevShare != null && share - prevShare >= rule.risePts
+  if (share < rule.share && !rising) return null
   const byStage = new Map<number, number>()
   for (const a of wd) byStage.set(a.furthest, (byStage.get(a.furthest) ?? 0) + 1)
   const topStage = [...byStage].sort((a, c) => c[1] - a[1])[0]
@@ -704,17 +743,26 @@ function withdrawalsRising(b: RecruitingBase): Scored | null {
   }
 }
 
-/** Hire rates over shorter windows mostly measure how many applications are still open. */
-export const MIN_GOOD_SOURCE_MONTHS = 6
-
+/**
+ * The best source, when one hires at least the hire rate factor times the overall rate. Hire rates
+ * over periods shorter than the shortest period (6 months) mostly measure how many applications
+ * are still open, so none is named.
+ */
 function bestSource(b: RecruitingBase): Scored | null {
+  const rule = b.settings.bestSource
   const total = b.cohort.length
-  if (total < 30 || b.window.months < MIN_GOOD_SOURCE_MONTHS) return null
+  if (total < rule.minApplications || b.window.months < rule.minMonths) return null
   const hired = b.cohort.filter((a) => a.furthest === 5).length
   const overall = hired / total
   if (overall <= 0) return null
-  const best = sourceRows(b.cohort, b.priorCohort)
-    .filter((r) => r.applications >= 30 && r.hires >= 5 && r.hireRate != null && r.hireRate >= 1.5 * overall)
+  const best = sourceRows(b.cohort, b.priorCohort, b.settings.minGroup)
+    .filter(
+      (r) =>
+        r.applications >= rule.minApplications &&
+        r.hires >= rule.minHires &&
+        r.hireRate != null &&
+        r.hireRate >= rule.factor * overall,
+    )
     .sort((a, c) => (c.hireRate ?? 0) - (a.hireRate ?? 0))[0]
   if (!best || best.hireRate == null) return null
   return {
@@ -784,6 +832,7 @@ function toFinding(s: Scored): Finding {
   const { id, severity, title, detail, action, people, filter, tab, drill } = s
   return {
     id,
+    metricId: FINDING_METRICS[id],
     severity,
     title,
     detail,

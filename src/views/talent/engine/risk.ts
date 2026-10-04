@@ -12,9 +12,9 @@
  *    points. Points are rounded to 5 and add up to 100. With too little history (fewer than 20
  *    leavers or 100 people) the default points are used instead.
  * 3. Score = sum of strength × points, 0 to 100. Bands are relative to everyone scored: the high
- *    band is about the top 10% of scores and the medium band the next 25%. People with the same
- *    score always share a band, so each cut sits where the band's share comes closest to its
- *    target, and the actual shares are reported.
+ *    band is about the top 10% of scores and the medium band the next 25% (both are settings of
+ *    the risk bands metric). People with the same score always share a band, so each cut sits
+ *    where the band's share comes closest to its target, and the actual shares are reported.
  *
  * Back-test (out of time): everyone active 12 months before the as-of date is scored with points
  * learned only from month-ends whose 12-month outcome had ended by then (24 to 35 months back),
@@ -23,13 +23,21 @@
  *
  * Pure: no React, no DOM. Scores the whole company so a band means the same thing in every scope.
  */
-import type { CompRecord, Employee, ISODate, JobChange, Level } from '@/data/schema'
+import {
+  type CompRecord,
+  type Employee,
+  type ISODate,
+  type JobChange,
+  type Level,
+  MIN_GROUP,
+} from '@/data/schema'
 import type { Window } from '@/data/scope'
 import { addDays, addMonths, formatDate, monthEnd, ms } from '@/lib/dates'
 import { fmt } from '@/lib/format'
 import { inWindow, isActiveAt, isEmployee, type ReviewIndex, snapshotDates, tenureYears } from '@/lib/people'
 import { median } from '@/lib/stats'
 import { type FieldCoverage, normRating, reviewPair, trailing12, trailingMonths } from './base'
+import { DEFAULTS, highRatingText } from './settings'
 
 export type RiskBand = 'High' | 'Medium' | 'Low'
 export const RISK_BANDS: readonly RiskBand[] = ['Low', 'Medium', 'High']
@@ -71,7 +79,7 @@ export const FACTORS: readonly FactorDef[] = [
     key: 'deptAttrition',
     label: 'High department attrition',
     defaultPoints: 12,
-    text: 'Voluntary attrition in the department over the last 12 months is more than 2 pts above the company. Strength grows with the gap and is full at 10 pts. Departments with an average headcount under 10 are not compared.',
+    text: 'Voluntary attrition in the department over the last 12 months is more than 2 pts above the company, measured as on People stats (its population and annualizing settings). Strength grows with the gap and is full at 10 pts. Departments with an average headcount under 10 are not compared.',
   },
   {
     key: 'siteAttrition',
@@ -111,6 +119,13 @@ export const FACTORS: readonly FactorDef[] = [
   },
 ]
 export const factorDef = new Map(FACTORS.map((f) => [f.key, f]))
+
+/** A factor's definition for the datasheet, worded for the high performer rating in force. */
+export function factorText(key: FactorKey, highRating: number = DEFAULTS.highRating): string {
+  if (key === 'highNoPromo')
+    return `Latest rating of ${highRatingText(highRating)} and no promotion in the last 36 months.`
+  return factorDef.get(key)?.text ?? ''
+}
 const FACTOR_ORDER = new Map(FACTORS.map((f, i) => [f.key, i]))
 
 /** Fixed points for the factor that cannot be back-tested. */
@@ -130,9 +145,53 @@ const POINT_STEP = 5
 export const LEARN_OFFSETS = [12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23] as const
 /** Attrition-based factors need at least this many months of exit history before the date. */
 const MIN_HISTORY_MONTHS = 6
-/** Target share of everyone scored in the high band, and in the high and medium bands together. */
-export const HIGH_TARGET = 0.1
-export const MEDIUM_TARGET = 0.35
+/**
+ * Target shares of everyone scored: in the high band, and in the medium band below it. The
+ * engines read them from the risk bands metric; these are its defaults.
+ */
+export interface BandShares {
+  high: number
+  medium: number
+}
+export const DEFAULT_BAND_SHARES: BandShares = { high: DEFAULTS.highBand, medium: DEFAULTS.mediumBand }
+/** The default targets: the high band, and the high and medium bands together. */
+export const HIGH_TARGET = DEFAULT_BAND_SHARES.high
+export const MEDIUM_TARGET = DEFAULT_BAND_SHARES.high + DEFAULT_BAND_SHARES.medium
+
+/**
+ * How voluntary attrition is measured for the department and location factors: the People stats
+ * settings, so the rates quoted here are the ones People stats shows.
+ */
+export interface RateSettings {
+  /** Contractors count in the rate (People stats "Count contractors in headcount"). */
+  contractors: boolean
+  /** Rates are scaled by 12 ÷ window months (People stats "Annualize turnover rates"). */
+  annualize: boolean
+}
+export const DEFAULT_RATE_SETTINGS: RateSettings = { contractors: false, annualize: true }
+
+/** What the model reads from the metric dictionary. */
+export interface RiskSettings {
+  bands: BandShares
+  /** The lowest rating that counts as high (the "high rating, no recent promotion" factor). */
+  highRating: number
+  /** The anonymity minimum: back-test exit rates over fewer people are hidden. */
+  minGroup: number
+  /** How the attrition factors measure voluntary attrition (People stats settings). */
+  rates?: RateSettings
+}
+export const DEFAULT_RISK_SETTINGS: RiskSettings = {
+  bands: DEFAULT_BAND_SHARES,
+  highRating: DEFAULTS.highRating,
+  minGroup: MIN_GROUP,
+  rates: DEFAULT_RATE_SETTINGS,
+}
+
+/** A stable key of the settings, for caching a model per set of values. */
+export const riskSettingsKey = (s: RiskSettings): string => {
+  const r = s.rates ?? DEFAULT_RATE_SETTINGS
+  return `${s.bands.high}|${s.bands.medium}|${s.highRating}|${s.minGroup}|${r.contractors}|${r.annualize}`
+}
 
 export interface Signal {
   key: FactorKey
@@ -173,6 +232,10 @@ export interface SignalOptions {
   historyStart?: ISODate | null
   /** Write the plain reasons (default true); learning dates don't need them. */
   reasons?: boolean
+  /** The lowest rating that counts as high (default 4). */
+  highRating?: number
+  /** How voluntary attrition is measured (default: employees only, annualized). */
+  rates?: RateSettings
 }
 
 const DAY = 86_400_000
@@ -294,13 +357,16 @@ function firstAtOrAfter(pts: readonly ISODate[], d: ISODate): number {
 
 /**
  * Voluntary attrition over w for the company and per department and per location (groups with an
- * average headcount of at least 10). Same definition as `attrition(group, w, 'voluntary')`,
- * computed in one pass because the model needs it at many dates.
+ * average headcount of at least 10). Same definition as `attrition(group, w, 'voluntary')`, with
+ * the People stats settings for who counts and whether rates are annualized, computed in one pass
+ * because the model needs it at many dates.
  */
 export function voluntaryRates(
   employees: readonly Employee[],
   w: Window,
+  rates: RateSettings = DEFAULT_RATE_SETTINGS,
 ): { company: number | null; department: Map<string, number>; location: Map<string, number> } {
+  const counts = (e: Employee) => isEmployee(e) || (rates.contractors && e.employmentType === 'Contractor')
   const pts = snapshotDates(w)
   type Tally = { hc: number; exits: number; typed: number; voluntary: number }
   const tally = (): Tally => ({ hc: 0, exits: 0, typed: 0, voluntary: 0 })
@@ -316,7 +382,7 @@ export function voluntaryRates(
     return t
   }
   for (const e of employees) {
-    if (!isEmployee(e)) continue
+    if (!counts(e)) continue
     // Snapshots on which the person is active (hireDate <= d < terminationDate); pts are sorted.
     const hc = e.hireDate
       ? Math.max(
@@ -337,7 +403,7 @@ export function voluntaryRates(
   const rateOf = (t: Tally, minHeadcount: number) => {
     const avg = pts.length ? t.hc / pts.length : 0
     if (avg <= 0 || avg < minHeadcount || (t.exits > 0 && t.typed === 0)) return null
-    return (t.voluntary / avg) * (12 / w.months)
+    return rates.annualize ? (t.voluntary / avg) * (12 / w.months) : t.voluntary / avg
   }
   const groups = (m: Map<string, Tally>) => {
     const out = new Map<string, number>()
@@ -408,6 +474,7 @@ export function signalsAt(input: RiskInput, d: ISODate, opts: SignalOptions): Si
   if (!opts.useComp) turnOff('lowCompa', 'Pay history is not available for past dates')
   else if (!has.comp) turnOff('lowCompa', 'Compensation is not loaded')
   const isOff = new Set(off.map((o) => o.key))
+  const highRating = opts.highRating ?? DEFAULTS.highRating
   const sinceText = clipped ? `since ${formatDate(w.start)}` : 'in the last 12 months'
   /** Reasons are only written for scores people read; learning dates skip the text. */
   const why = (text: () => string) => (opts.reasons === false ? '' : text())
@@ -417,7 +484,8 @@ export function signalsAt(input: RiskInput, d: ISODate, opts: SignalOptions): Si
   const newMgrFrom = trailingMonths(d, 6).start
   const threeYearsAgo = addMonths(d, -36)
 
-  const rates = has.terminationType && !isOff.has('deptAttrition') ? voluntaryRates(employees, w) : null
+  const rates =
+    has.terminationType && !isOff.has('deptAttrition') ? voluntaryRates(employees, w, opts.rates) : null
   const company = rates?.company ?? null
   const deptRate = rates?.department ?? new Map<string, number>()
   const siteRate = rates?.location ?? new Map<string, number>()
@@ -493,7 +561,7 @@ export function signalsAt(input: RiskInput, d: ISODate, opts: SignalOptions): Si
     if (
       !isOff.has('highNoPromo') &&
       rating != null &&
-      rating >= 4 &&
+      rating >= highRating &&
       since <= threeYearsAgo &&
       !isExecutive(level)
     ) {
@@ -822,7 +890,11 @@ export interface BandCuts {
   mediumShare: number | null
 }
 
-export function scorePeople(people: readonly PersonSignals[], points: Points): Map<string, PersonRisk> {
+export function scorePeople(
+  people: readonly PersonSignals[],
+  points: Points,
+  shares: BandShares = DEFAULT_BAND_SHARES,
+): Map<string, PersonRisk> {
   const out = new Map<string, PersonRisk>()
   for (const p of people) {
     const factors: FactorHit[] = []
@@ -839,17 +911,19 @@ export function scorePeople(people: readonly PersonSignals[], points: Points): M
     )
     out.set(p.employeeId, { employeeId: p.employeeId, score, band: 'Low', factors })
   }
-  applyBands(out)
+  applyBands(out, shares)
   return out
 }
 
 /**
  * Cut scores for the bands. People with the same score always share a band, so each cut sits
  * where the band's share of everyone scored comes closest to its target: about 10% High, and
- * 35% High or Medium together (on a tie, the smaller band). The high band is never empty while
- * anyone scores above 0; a score of 0 is always Low.
+ * 35% High or Medium together at the default shares (on a tie, the smaller band). The high band
+ * is never empty while anyone scores above 0; a score of 0 is always Low.
  */
-export function bandCuts(scores: readonly number[]): BandCuts {
+export function bandCuts(scores: readonly number[], shares: BandShares = DEFAULT_BAND_SHARES): BandCuts {
+  const highTarget = shares.high
+  const mediumTarget = Math.min(1, shares.high + shares.medium)
   const n = scores.length
   const pos = scores.filter((s) => s > 0).sort((a, b) => b - a)
   if (!n || !pos.length)
@@ -870,9 +944,9 @@ export function bandCuts(scores: readonly number[]): BandCuts {
     }
     return best
   }
-  const hi = Math.max(0, closest(0, HIGH_TARGET, null))
+  const hi = Math.max(0, closest(0, highTarget, null))
   const highCount = steps[hi].c
-  const mi = closest(hi + 1, MEDIUM_TARGET, highCount)
+  const mi = closest(hi + 1, mediumTarget, highCount)
   const medCount = mi < 0 ? 0 : steps[mi].c - highCount
   return {
     cutHigh: steps[hi].v,
@@ -889,8 +963,11 @@ export function bandFor(score: number, cutHigh: number | null, cutMedium: number
   return 'Low'
 }
 
-function applyBands(scores: Map<string, PersonRisk>): BandCuts {
-  const cuts = bandCuts([...scores.values()].map((s) => s.score))
+function applyBands(scores: Map<string, PersonRisk>, shares: BandShares): BandCuts {
+  const cuts = bandCuts(
+    [...scores.values()].map((s) => s.score),
+    shares,
+  )
   for (const s of scores.values()) s.band = bandFor(s.score, cuts.cutHigh, cuts.cutMedium)
   return cuts
 }
@@ -964,8 +1041,17 @@ const isMonthEnd = (d: ISODate) => monthEnd(d) === d
 export const monthsBack = (d: ISODate, m: number): ISODate =>
   isMonthEnd(d) ? monthEnd(addMonths(d, -m)) : addMonths(d, -m)
 
-/** Score everyone today with points learned from the last two years, and back-test the approach out of time. */
-export function buildRiskModel(input: RiskInput, asOf: ISODate): RiskModel {
+/**
+ * Score everyone today with points learned from the last two years, and back-test the approach
+ * out of time. `settings` are the band shares, the high rating and the anonymity minimum in force.
+ */
+export function buildRiskModel(
+  input: RiskInput,
+  asOf: ISODate,
+  settings: RiskSettings = DEFAULT_RISK_SETTINGS,
+): RiskModel {
+  const { bands: shares, highRating, minGroup } = settings
+  const rates = settings.rates ?? DEFAULT_RATE_SETTINGS
   const historyStart = exitHistoryStart(input.employees)
   const exitKind: BackTest['exitKind'] = input.has.terminationType ? 'voluntary' : 'all'
   const byId = new Map(input.employees.map((e) => [e.employeeId, e]))
@@ -978,7 +1064,7 @@ export function buildRiskModel(input: RiskInput, asOf: ISODate): RiskModel {
   const pastSignals = (d: ISODate) => {
     let s = past.get(d)
     if (!s) {
-      s = signalsAt(input, d, { useComp: false, historyStart, reasons: false })
+      s = signalsAt(input, d, { useComp: false, historyStart, reasons: false, highRating, rates })
       past.set(d, s)
     }
     return s
@@ -993,25 +1079,31 @@ export function buildRiskModel(input: RiskInput, asOf: ISODate): RiskModel {
       }))
 
   // Today: points learned from the month-ends 12 to 23 months back.
-  const now = signalsAt(input, asOf, { useComp: true, historyStart })
+  const now = signalsAt(input, asOf, { useComp: true, historyStart, highRating, rates })
   const offNow = new Set(now.off.map((o) => o.key))
   const compaOn = !offNow.has('lowCompa')
   const today = learnPoints(samplesFor(asOf), offNow, { compaOn })
-  const scores = scorePeople(now.people, today.points)
-  const cuts = bandCuts([...scores.values()].map((s) => s.score))
+  const scores = scorePeople(now.people, today.points, shares)
+  const cuts = bandCuts(
+    [...scores.values()].map((s) => s.score),
+    shares,
+  )
 
   // Back-test: score everyone a year ago with points learned only from outcomes known by then.
   const d0 = monthsBack(asOf, 12)
   const then = pastSignals(d0)
   const offThen = new Set(then.off.map((o) => o.key))
   const earlier = learnPoints(samplesFor(d0), offThen, { compaOn: false })
-  const scored = scorePeople(then.people, earlier.points)
-  const cutsThen = bandCuts([...scored.values()].map((s) => s.score))
+  const scored = scorePeople(then.people, earlier.points, shares)
+  const cutsThen = bandCuts(
+    [...scored.values()].map((s) => s.score),
+    shares,
+  )
   const outcome = trailing12(asOf)
   const left = leftIn(outcome)
   const all = [...scored.values()]
   const leaverIds = new Set(all.filter((s) => left(s.employeeId)).map((s) => s.employeeId))
-  const rate = (k: number, n: number) => (n >= 5 ? k / n : null)
+  const rate = (k: number, n: number) => (n >= minGroup ? k / n : null)
   const bands: BackTestBand[] = RISK_BANDS.map((band) => {
     const inBand = all.filter((s) => s.band === band)
     const k = inBand.filter((s) => leaverIds.has(s.employeeId)).length

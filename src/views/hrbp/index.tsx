@@ -67,7 +67,13 @@ export const view: ViewDef = {
   View,
   headline: (ctx) => {
     const h = hrbpHeadline(ctx)
-    return { value: fmt(h.value, 'int'), label: 'employees', spark: h.spark, uses: h.uses }
+    return {
+      value: fmt(h.value, 'int'),
+      label: h.withContractors ? 'in headcount' : 'employees',
+      metricId: h.metricId,
+      spark: h.spark,
+      uses: h.uses,
+    }
   },
   datasets: [...HRBP_DATASETS],
   HeaderActions,

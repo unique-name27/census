@@ -9,6 +9,7 @@ import { drill } from '@/drill'
 import { daysBetween, formatDate } from '@/lib/dates'
 import { fmt, plural } from '@/lib/format'
 import { median } from '@/lib/stats'
+import { timesText } from '../engine/definitions'
 import {
   ageBinDrill,
   type RecruiterMeasure,
@@ -19,16 +20,25 @@ import {
   ttfGroupDrill,
 } from '../engine/drills'
 import { FIGURE_USES } from '../engine/lineage'
+import { FIGURE_METRICS } from '../engine/metricLinks'
 import {
-  EMPTY_FUNNEL_DAYS,
-  LOAD_FLAG_RATIO,
   type MonthReqRow,
   NOT_CHECKED,
   type OpenReqRow,
   type RecruiterRow,
   type TtfRow,
 } from '../engine/reqs'
-import { asOfNote, drillIf, NEED_REQS, NoRecruitingData, TABLET_FULL, windowText } from './common'
+import { RM } from '../metrics'
+import {
+  asOfNote,
+  defOf,
+  drillIf,
+  NEED_REQS,
+  NoRecruitingData,
+  TABLET_FULL,
+  ttfSpan,
+  windowText,
+} from './common'
 import { useRecruiting } from './hooks'
 
 /** Open req age bins: equal 15-day steps so bar heights compare. */
@@ -38,6 +48,8 @@ export function RequisitionsTab() {
   const m = useRecruiting()
   const b = m.base
   if (!b.apps.length && !b.reqs.length) return <NoRecruitingData />
+  const { minGroup, slowFill, recruiterFlagFactor, joinMinShare } = b.settings
+  const flagFactor = timesText(recruiterFlagFactor)
 
   const rows = b.req.rows
   const empties = b.req.emptyFunnel.length
@@ -94,6 +106,7 @@ export function RequisitionsTab() {
         <Figure
           id="recruiting-open-requisitions"
           uses={FIGURE_USES['recruiting-open-requisitions']}
+          metric={FIGURE_METRICS['recruiting-open-requisitions']}
           title="Open requisitions"
           subtitle={`Reqs open on ${formatDate(b.asOf)}, with active candidates per stage and health`}
           data={rows}
@@ -135,10 +148,7 @@ export function RequisitionsTab() {
           table={{ rowTone: (r) => r.severity, search: 'Search reqs, titles or people', maxRows: 15 }}
           empty={b.reqs.length ? (rows.length ? null : 'No open reqs on the as-of date.') : NEED_REQS}
           definitions={[
-            {
-              term: 'Empty funnel',
-              text: `Open more than ${EMPTY_FUNNEL_DAYS} days and no candidate has ever reached the hiring manager stage.`,
-            },
+            defOf(b, RM.emptyFunnel),
             {
               term: 'Lack a next step',
               text: 'Active candidates on the req who lack a next step, past the usual time for their stage (see the Pipeline tab).',
@@ -146,7 +156,7 @@ export function RequisitionsTab() {
             { term: 'Stage columns', text: 'Active candidates waiting at each stage on the as-of date.' },
             {
               term: NOT_CHECKED,
-              text: 'Funnel health needs candidates that match the req IDs. It is not checked when Candidates is empty or fewer than half its rows match a req.',
+              text: `Funnel health needs candidates that match the req IDs. It is not checked when Candidates is empty or fewer than ${fmt(joinMinShare, 'pct0')} of its rows match a req (a setting of Applications matching a req).`,
             },
           ]}
           note={[
@@ -168,6 +178,7 @@ export function RequisitionsTab() {
         <Figure
           id="recruiting-open-req-age"
           uses={FIGURE_USES['recruiting-open-req-age']}
+          metric={FIGURE_METRICS['recruiting-open-req-age']}
           title="Open req age"
           subtitle={`Days since each open req opened, ${formatDate(b.asOf)}`}
           data={ageRows}
@@ -183,10 +194,7 @@ export function RequisitionsTab() {
           className={TABLET_FULL}
           empty={b.reqs.length ? (rows.length ? null : 'No open reqs on the as-of date.') : NEED_REQS}
           definitions={[
-            {
-              term: 'Open req age',
-              text: 'As-of date minus the date the req opened, for reqs open on the as-of date.',
-            },
+            defOf(b, RM.reqAge),
             { term: 'On hold', text: 'Reqs on hold are left out and summarized in the note.' },
           ]}
           note={`${plural(rows.length, 'open req')} · median ${fmt(medianAge, 'days')}${onHoldAges.length ? ` · ${plural(onHoldAges.length, 'req')} on hold, median ${fmt(median(onHoldAges), 'days')} open` : ''}`}
@@ -214,6 +222,7 @@ export function RequisitionsTab() {
         <Figure
           id="recruiting-reqs-opened-filled"
           uses={FIGURE_USES['recruiting-reqs-opened-filled']}
+          metric={FIGURE_METRICS['recruiting-reqs-opened-filled']}
           title="Reqs opened and filled by month"
           subtitle={`Requisitions opened and filled per month, 12 months to ${formatDate(b.window.end)}`}
           data={m.openedFilled}
@@ -226,13 +235,7 @@ export function RequisitionsTab() {
           }
           span={7}
           empty={b.reqs.length ? null : NEED_REQS}
-          definitions={[
-            { term: 'Opened', text: 'Reqs by the month they opened.' },
-            {
-              term: 'Filled',
-              text: 'Reqs by the month their (last) offer was accepted. Cancelled reqs are not counted.',
-            },
-          ]}
+          definitions={[defOf(b, RM.openedFilled)]}
           note={asOfNote(b.asOf)}
         >
           <Columns
@@ -257,8 +260,9 @@ export function RequisitionsTab() {
         <Figure
           id="recruiting-time-to-fill-department"
           uses={FIGURE_USES['recruiting-time-to-fill-department']}
+          metric={FIGURE_METRICS['recruiting-time-to-fill-department']}
           title="Time to fill by department"
-          subtitle={`Median days from opened to offer accepted, reqs filled ${windowText(b.window)}`}
+          subtitle={`Median days from ${ttfSpan(b)}, reqs filled ${windowText(b.window)}`}
           data={m.ttfByDepartment}
           columns={
             [
@@ -279,11 +283,15 @@ export function RequisitionsTab() {
                   : 'No reqs filled in this period.'
           }
           definitions={[
-            {
+            defOf(b, RM.timeToFill, {
               term: 'Time to fill',
-              text: 'Days from the date the req opened to the date its offer was accepted. Departments with fewer than 5 filled reqs show no median.',
-              formula: 'filled date − opened date',
-            },
+              extra: `Departments with fewer than ${minGroup} filled reqs show no median.`,
+            }),
+            defOf(b, RM.slowFill, {
+              term: 'Amber',
+              formula: false,
+              extra: 'Amber bars mark the departments that fill slowly.',
+            }),
           ]}
           note={`${plural(b.filled.length, 'req')} filled · median ${fmt(m.ttf, 'days')} · ${asOfNote(b.asOf)}`}
         >
@@ -294,8 +302,10 @@ export function RequisitionsTab() {
             format="days"
             secondary={(d) => `${d.reqs} filled`}
             ref={m.ttf != null ? { value: m.ttf, label: `All ${fmt(m.ttf, 'days')}` } : undefined}
-            tone={(d) => (d.days != null && m.ttf != null && d.days >= 1.5 * m.ttf ? 'warning' : 'default')}
-            nullNote="Fewer than 5 reqs filled"
+            tone={(d) =>
+              d.days != null && m.ttf != null && d.days >= slowFill.factor * m.ttf ? 'warning' : 'default'
+            }
+            nullNote={`Fewer than ${minGroup} reqs filled`}
             onSelect={(d) => drill(deptDrill(d))}
             ariaLabel="Time to fill by department"
           />
@@ -303,6 +313,7 @@ export function RequisitionsTab() {
         <Figure
           id="recruiting-recruiter-load"
           uses={FIGURE_USES['recruiting-recruiter-load']}
+          metric={FIGURE_METRICS['recruiting-recruiter-load']}
           title="Recruiter load"
           subtitle={`Open reqs and active candidates on ${formatDate(b.asOf)}, offers accepted ${windowText(b.window)}`}
           data={m.recruiters}
@@ -348,6 +359,7 @@ export function RequisitionsTab() {
               : NEED_REQS
           }
           definitions={[
+            defOf(b, RM.recruiterLoad),
             { term: 'Active', text: 'Active candidates on the as-of date.' },
             {
               term: 'Offers accepted',
@@ -360,11 +372,11 @@ export function RequisitionsTab() {
             { term: 'Lacking', text: 'Active candidates who lack a next step (past the usual time).' },
             {
               term: 'Heavy load',
-              text: `Open reqs or active candidates more than ${LOAD_FLAG_RATIO}× the team median (${fmt(m.teamMedianOpen, 'int')} open reqs, ${fmt(m.teamMedianActive, 'int')} active candidates).`,
+              text: `Open reqs or active candidates more than ${flagFactor} the team median (${fmt(m.teamMedianOpen, 'int')} open reqs, ${fmt(m.teamMedianActive, 'int')} active candidates).`,
             },
             {
               term: 'Long waits',
-              text: `Median wait more than ${LOAD_FLAG_RATIO}× the team median (${fmt(m.teamMedianWait, 'days')}).`,
+              text: `Median wait more than ${flagFactor} the team median (${fmt(m.teamMedianWait, 'days')}).`,
             },
           ]}
           note={`${plural(m.recruiters.length, 'recruiter')} · ${fmt(flagged, 'int')} flagged · ${asOfNote(b.asOf)}`}

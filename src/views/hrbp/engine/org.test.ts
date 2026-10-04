@@ -102,12 +102,12 @@ describe('computeOrg', () => {
     expect(org.spanBuckets.find((b) => b.bucket === '1')!.managers).toBe(1)
   })
 
-  it('flags people more than 7 levels deep', () => {
+  it('flags people below layer 7, as the Org chart does', () => {
     const chain = [emp({ employeeId: 'D0' })]
     for (let i = 1; i <= 9; i++) chain.push(emp({ employeeId: `D${i}`, managerId: `D${i - 1}` }))
     const deep = computeOrg(prepOf({ employees: chain }))
     expect(deep.layers).toBe(10)
-    expect(deep.deep.people.map((e) => e.employeeId)).toEqual(['D8', 'D9'])
+    expect(deep.deep.people.map((e) => e.employeeId)).toEqual(['D7', 'D8', 'D9'])
     expect(deep.deep.maxDepth).toBe(9)
   })
 

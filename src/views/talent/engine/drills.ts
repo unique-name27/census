@@ -11,7 +11,6 @@
  * Pure: no React, no DOM.
  */
 import type { Employee, LearningRecord, Potential, Readiness, Review, SuccessionPlan } from '@/data/schema'
-import { MIN_GROUP } from '@/data/schema'
 import { type DrillExtra, type DrillSpec, drillSpec } from '@/drill/types'
 import { addMonths, daysBetween, formatDate, formatMonth } from '@/lib/dates'
 import { fmt, plural } from '@/lib/format'
@@ -22,6 +21,7 @@ import { cycleKey, type HighShareRow, type PerformanceResult, ratingLabel } from
 import type { OverdueResult } from './promotion'
 import { type RetentionResult, reasonsFor } from './retention'
 import { type EvidencePerson, type FactorKey, factorDef, type RiskBand, type RiskModel } from './risk'
+import { highRatingText, yearsText } from './settings'
 import type { BenchScope, Coverage, HipoGroupRow, RoleRow, SuccessionResult } from './succession'
 
 /** The records behind a number, gathered on click; null when there is nothing to open. */
@@ -48,11 +48,11 @@ export interface TalentDrills {
   /* Performance */
   /** Active employees rated in the latest cycle (the "Rated in latest cycle" numerator). */
   ratedActive(): TalentDrill
-  /** Everyone rated 4 or 5 in the latest cycle. */
+  /** Everyone rated at or above the high performer rating (4 or 5 by default) in the latest cycle. */
   highPerformers(): TalentDrill
   /** Everyone rated in the latest cycle, including people who have left since. */
   rated(): TalentDrill
-  /** Active people whose latest rating is 4 or 5, with their flight risk (key talent's denominator). */
+  /** Active high performers by their latest rating, with their flight risk (key talent's denominator). */
   activeHighPerformers(): TalentDrill
   /** Everyone at one rating (1-5) in the latest cycle. */
   rating(rating: number): TalentDrill
@@ -66,7 +66,7 @@ export interface TalentDrills {
     part: 'rated' | 'high',
     fold?: readonly HighShareRow[],
   ): TalentDrill
-  /** People rated 4 or 5 in one business unit (rating inflation and the guideline match). */
+  /** High performers in one business unit (rating inflation and the guideline match). */
   unitHigh(businessUnit: string): TalentDrill
   /** People rated in a business unit, or at one rating there (the rating mix). */
   mix(businessUnit: string, rating: number | null): TalentDrill
@@ -129,8 +129,6 @@ const SAME_HIDE = ['status', 'employmentType']
 /** Role lists show one plan row per role, so its own successor and readiness would mislead. */
 const ROLE_HIDE = ['successor', 'readiness']
 
-const HIGH = 4
-const isHigh = (r: Review) => (normRating(r.rating) ?? 0) >= HIGH
 const isHipo = (r: Review) => r.potential === 'High'
 const n = (v: number) => fmt(v, 'int')
 const join = (...parts: (string | null | undefined | false)[]) => parts.filter(Boolean).join(' · ')
@@ -178,6 +176,11 @@ export function buildDrills(x: DrillInputs): TalentDrills {
     risk,
   } = x
   const { ctx, asOf } = base
+  const { highRating, minGroup, promotionYears } = base.settings
+  /** At or above the high performer rating. */
+  const isHigh = (r: Review) => (normRating(r.rating) ?? 0) >= highRating
+  /** "4 or 5" at the default high performer rating. */
+  const hi = highRatingText(highRating)
   const scope = ctx.scopeLabel
   const asOfText = formatDate(asOf)
   const asOfSub = join(`As of ${asOfText}`, scope)
@@ -363,14 +366,14 @@ export function buildDrills(x: DrillInputs): TalentDrills {
       ),
 
     highPerformers: () => {
-      const rows = [...pr.byRating[3], ...pr.byRating[4]]
+      const rows = pr.byRating.filter((_, i) => i + 1 >= highRating).flat()
       return when(perf.highShare != null && rows.length > 0, () =>
         drillSpec({
           kind: 'reviews',
-          title: `Rated 4 or 5 in ${cycleName}`,
+          title: `Rated ${hi} in ${cycleName}`,
           subtitle: cycleSub,
           rows,
-          note: `Share = ${n(rows.length)} rated 4 or 5 ÷ ${n(perf.rated)} rated, including people who have left since.`,
+          note: `Share = ${n(rows.length)} rated ${hi} ÷ ${n(perf.rated)} rated, including people who have left since.`,
         }),
       )
     },
@@ -388,10 +391,10 @@ export function buildDrills(x: DrillInputs): TalentDrills {
 
     activeHighPerformers: () => {
       const rows = ret.highPerformerPeople
-      return when(rows.length >= MIN_GROUP, () =>
+      return when(rows.length >= minGroup, () =>
         drillSpec({
           kind: 'employees',
-          title: 'Active people rated 4 or 5',
+          title: `Active people rated ${hi}`,
           subtitle: asOfSub,
           rows,
           hide: SAME_HIDE,
@@ -403,7 +406,7 @@ export function buildDrills(x: DrillInputs): TalentDrills {
 
     rating: (rating) => {
       const rows = pr.byRating[rating - 1] ?? []
-      return when(perf.rated >= MIN_GROUP && rows.length > 0, () =>
+      return when(perf.rated >= minGroup && rows.length > 0, () =>
         drillSpec({
           kind: 'reviews',
           title: `Rated ${ratingLabel(rating)} in ${cycleName}`,
@@ -431,14 +434,14 @@ export function buildDrills(x: DrillInputs): TalentDrills {
       return when(rows.length > 0, () =>
         drillSpec({
           kind: 'reviews',
-          title: part === 'high' ? `Rated 4 or 5, ${where}` : `People rated, ${where}`,
+          title: part === 'high' ? `Rated ${hi}, ${where}` : `People rated, ${where}`,
           subtitle: cycleSub,
           rows,
           note:
             part === 'high'
-              ? `Share = ${n(rows.length)} rated 4 or 5 ÷ ${n(list.length)} rated.`
+              ? `Share = ${n(rows.length)} rated ${hi} ÷ ${n(list.length)} rated.`
               : other
-                ? `Groups with fewer people are combined so no number covers fewer than ${MIN_GROUP}.`
+                ? `Groups with fewer people are combined so no number covers fewer than ${minGroup}.`
                 : undefined,
         }),
       )
@@ -450,10 +453,10 @@ export function buildDrills(x: DrillInputs): TalentDrills {
       return when(rows.length > 0, () =>
         drillSpec({
           kind: 'reviews',
-          title: `Rated 4 or 5, ${businessUnit}`,
+          title: `Rated ${hi}, ${businessUnit}`,
           subtitle: cycleSub,
           rows,
-          note: `Share = ${n(rows.length)} rated 4 or 5 ÷ ${n(list.length)} rated.`,
+          note: `Share = ${n(rows.length)} rated ${hi} ÷ ${n(list.length)} rated.`,
         }),
       )
     },
@@ -694,7 +697,7 @@ export function buildDrills(x: DrillInputs): TalentDrills {
       const row = ret.bands.find((b) => b.band === band)
       const count = company ? null : (row?.people ?? 0)
       const shown = company ? row?.companyShare != null : row?.share != null
-      return when(total >= MIN_GROUP && shown && (count == null || count > 0), () => {
+      return when(total >= minGroup && shown && (count == null || count > 0), () => {
         const rows = company
           ? people([...risk.scores.values()].filter((s) => s.band === band).map((s) => s.employeeId))
           : ret.bandPeople[band]
@@ -719,7 +722,7 @@ export function buildDrills(x: DrillInputs): TalentDrills {
           rows: people(ret.keyTalent.map((k) => k.employeeId)),
           hide: SAME_HIDE,
           extra: riskExtra,
-          note: `Rated 4 or 5 and in the high flight-risk band: ${n(ret.keyTalent.length)} of ${n(ret.highPerformers)} active people rated 4 or 5.`,
+          note: `Rated ${hi} and in the high flight-risk band: ${n(ret.keyTalent.length)} of ${n(ret.highPerformers)} active people rated ${hi}.`,
         }),
       ),
 
@@ -730,7 +733,7 @@ export function buildDrills(x: DrillInputs): TalentDrills {
         return part === 'any' ? f.some((h) => h.key === key) : reasonsFor(f, common)[0]?.key === key
       })
       const label = factorDef.get(key)?.label ?? key
-      return when(high.length >= MIN_GROUP && rows.length > 0, () =>
+      return when(high.length >= minGroup && rows.length > 0, () =>
         drillSpec({
           kind: 'employees',
           title:
@@ -859,12 +862,12 @@ export function buildDrills(x: DrillInputs): TalentDrills {
       return when(r.available && list.length > 0, () =>
         drillSpec({
           kind: 'employees',
-          title: 'Regretted exits of people rated 4 or 5',
+          title: `Regretted exits of people rated ${hi}`,
           subtitle: join(period === 'current' ? ctx.window.label : ctx.prior.label, scope),
           rows: people(list.map((p) => p.employeeId)),
           hide: SAME_HIDE,
           extra: lastRatingExtra(new Map(list.map((p) => [p.employeeId, p.rating]))),
-          note: 'Voluntary exits marked regrettable whose last rating before leaving was 4 or 5.',
+          note: `Voluntary exits marked regrettable whose last rating before leaving was ${hi}.`,
         }),
       )
     },
@@ -874,7 +877,7 @@ export function buildDrills(x: DrillInputs): TalentDrills {
       return when(h.available && h.people.length > 0, () =>
         drillSpec({
           kind: 'employees',
-          title: 'High potentials rated 4 or 5 who resigned',
+          title: `High potentials rated ${hi} who resigned`,
           subtitle: join(h.window.label, scope),
           rows: people(h.people.map((p) => p.employeeId)),
           hide: SAME_HIDE,
@@ -910,7 +913,7 @@ export function buildDrills(x: DrillInputs): TalentDrills {
               }
             },
           },
-          note: `Rated 4 or 5 in ${c1?.cycle ?? 'both'} and ${c2?.cycle ?? 'annual cycles'}, at least 3 years here, no promotion in 36 months: ${n(rows.length)} of ${n(overdue.eligible)} eligible.`,
+          note: `Rated ${hi} in ${c1?.cycle ?? 'both'} and ${c2?.cycle ?? 'annual cycles'}, at least ${yearsText(promotionYears)} here, no promotion in ${plural(Math.round(promotionYears * 12), 'month')}: ${n(rows.length)} of ${n(overdue.eligible)} eligible.`,
         }),
       )
     },

@@ -3,6 +3,7 @@ import { useAnalytics } from '@/data/context'
 import { fmt } from '@/lib/format'
 import type { ViewDef } from '../types'
 import { filterUses, peopleManagers, REPORTING_USES, refs } from './engine'
+import { ORG_METRIC } from './metrics'
 import { ChartTab } from './ui/ChartTab'
 import { SandboxTab } from './ui/SandboxTab'
 
@@ -47,6 +48,7 @@ export const view: ViewDef = {
   headline: (ctx) => ({
     value: fmt(peopleManagers(ctx).managers, 'int'),
     label: 'people managers',
+    metricId: ORG_METRIC.managers,
     // The same fields as the People managers key figure.
     uses: refs(REPORTING_USES, filterUses(ctx.filters)),
   }),

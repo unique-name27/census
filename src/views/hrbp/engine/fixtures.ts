@@ -14,6 +14,7 @@ import {
 } from '@/data/schema'
 import { DEFAULT_FILTERS, type Filters } from '@/data/scope'
 import type { SourceMeta } from '@/data/store'
+import type { MetricsApi } from '@/metrics/types'
 import { type Prep, prepare } from './base'
 
 export const AS_OF: ISODate = '2026-09-30'
@@ -98,10 +99,12 @@ const sources = (kind: 'sample' | 'upload', data: Datasets) =>
     SourceMeta
   >
 
+/** A context over hand-built data; `metrics` changes the dictionary (defaults otherwise). */
 export function ctxOf(
   partial: Partial<Datasets>,
   filters: Partial<Filters> = {},
   asOf = AS_OF,
+  metrics?: MetricsApi,
 ): AnalyticsContext {
   const data = datasets(partial)
   return buildContext({
@@ -110,15 +113,20 @@ export function ctxOf(
     filters: { ...DEFAULT_FILTERS, ...filters },
     asOfOverride: asOf,
     showPay: false,
+    metrics,
   })
 }
 
-export const prepOf = (partial: Partial<Datasets>, filters: Partial<Filters> = {}, asOf = AS_OF): Prep =>
-  prepare(ctxOf(partial, filters, asOf))
+export const prepOf = (
+  partial: Partial<Datasets>,
+  filters: Partial<Filters> = {},
+  asOf = AS_OF,
+  metrics?: MetricsApi,
+): Prep => prepare(ctxOf(partial, filters, asOf, metrics))
 
 let sample: Datasets | null = null
-/** The generated sample company, built once per test file. */
-export function sampleCtx(filters: Partial<Filters> = {}): AnalyticsContext {
+/** The generated sample company, built once per test file; `metrics` changes the dictionary. */
+export function sampleCtx(filters: Partial<Filters> = {}, metrics?: MetricsApi): AnalyticsContext {
   sample ??= generateSample()
   return buildContext({
     data: sample,
@@ -126,5 +134,6 @@ export function sampleCtx(filters: Partial<Filters> = {}): AnalyticsContext {
     filters: { ...DEFAULT_FILTERS, ...filters },
     asOfOverride: null,
     showPay: false,
+    metrics,
   })
 }

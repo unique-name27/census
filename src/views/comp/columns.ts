@@ -1,10 +1,10 @@
 /**
  * Columns for every Compensation figure: what the table view shows and every export writes.
  * Amount columns are marked `pay: true` so they disappear unless pay amounts are switched on.
- * Module constants keep figure registrations stable across renders.
+ * Module constants keep figure registrations stable across renders. Figure definitions come from
+ * the metric dictionary (`engine/definitions.ts`).
  */
-import type { Column, Definition } from '@/charts'
-import { fmt } from '@/lib/format'
+import type { Column } from '@/charts'
 import type { Bin, ExceptionRow, PromotionRow, RewardsMixRow, SpendRow } from './engine/cycle'
 import type { JobMarketRow, MarketRow } from './engine/market'
 import type { PersonRow } from './engine/model'
@@ -25,7 +25,6 @@ import type {
   PositionMixRow,
   TenureDot,
 } from './engine/ranges'
-import type { CycleSettings } from './engine/settings'
 
 export const BIN_COLUMNS: Column<Bin<CompPerson>>[] = [
   { key: 'from', label: 'From', format: 'ratio' },
@@ -238,81 +237,3 @@ export const MIX_COLUMNS: Column<RewardsMixRow>[] = [
   { key: 'bonus', label: 'Target bonus', format: 'pct' },
   { key: 'equity', label: 'Equity', format: 'pct' },
 ]
-
-/* ───────── definitions ───────── */
-
-export const DEF_COMPA: Definition = {
-  term: 'Compa-ratio',
-  text: 'Base salary divided by the midpoint of the salary range for the job and location. 1.00 is paid at the midpoint.',
-  formula: 'baseSalary ÷ rangeMid',
-}
-export const DEF_PENETRATION: Definition = {
-  term: 'Range penetration',
-  text: 'How far into the range base salary sits: 0% at the minimum, 100% at the maximum. Not capped, so below 0% is under the minimum.',
-  formula: '(base − rangeMin) ÷ (rangeMax − rangeMin)',
-}
-export const DEF_POSITION: Definition = {
-  term: 'Range position',
-  text: 'Below minimum, the four quarters of the range (Q1 lowest to Q4 highest), or above maximum. Pay equal to the minimum or maximum counts as inside the range.',
-}
-export const DEF_MARKET: Definition = {
-  term: 'Market ratio',
-  text: 'Base salary divided by the market median (50th percentile) for the job. Below 1.00 is below market.',
-  formula: 'baseSalary ÷ marketP50',
-}
-export const DEF_MARKET_MID: Definition = {
-  term: 'Market median ÷ midpoint',
-  text: 'How the salary range tracks the market. Above 1.00 means the market pays more than the range midpoint.',
-  formula: 'marketP50 ÷ rangeMid',
-}
-export const DEF_POPULATION: Definition = {
-  term: 'Population',
-  text: 'Active employees on the as-of date who have a compensation record. Contractors and interns are not included. Groups under 5 people are hidden or folded into Other.',
-}
-export const DEF_LATEST_RATING: Definition = {
-  term: 'Latest rating',
-  text: 'The most recent performance rating on or before the as-of date, the one merit proposals are drafted against.',
-}
-export const DEF_DIFFERENTIATION: Definition = {
-  term: 'Pay for performance',
-  text: 'Mean merit for people rated 4-5 divided by mean merit for people rated 3, on each person’s latest rating. Below 1.15× means ratings make little difference to pay. Needs 5 people on each side.',
-  formula: 'mean(merit | rating 4-5) ÷ mean(merit | rating 3)',
-}
-export const DEF_COMPRESSION: Definition = {
-  term: 'Pay compression',
-  text: 'Median compa-ratio of people hired in the last 12 months against people already in the same department and level. Shown where both sides have 5 or more people; a gap of 0.05 or more with 10 or more on each side reaches the readout.',
-  formula: 'median(compa | new hires) − median(compa | incumbents)',
-}
-export const DEF_SPEND: Definition = {
-  term: 'Merit spend',
-  text: 'Proposed merit as a share of eligible base salary, both converted to USD. Eligible means the person has a merit proposal. Promotion increases are reported apart and never counted as merit.',
-  formula: 'Σ(base × fxToUsd × merit %) ÷ Σ(base × fxToUsd)',
-}
-export const DEF_FX: Definition = {
-  term: 'Currency',
-  text: 'Amounts are converted to US dollars with each row’s FX rate. Rows without a rate keep their ratios but are left out of USD totals.',
-}
-export const DEF_EXCEPTIONS: Definition = {
-  term: 'Guideline exception',
-  text: 'Rating 5 with merit under 2%, or rating 1-2 with merit over 3%. Proposals that break neither rule but sit far from the typical merit for the rating are listed as unusual. Distance from typical counts robust deviations from the median merit for the rating across the company: beyond 3.5 either way is unusual, and the sign says above or below.',
-  formula: 'distance = 0.6745 × (merit − median) ÷ MAD, within the rating',
-}
-
-export function bandDefinition(s: CycleSettings): Definition {
-  return {
-    term: 'Healthy band',
-    text: `Compa-ratio from ${fmt(s.bandLow, 'ratio')} to ${fmt(s.bandHigh, 'ratio')}, inclusive. Set it in Cycle settings.`,
-  }
-}
-
-export function guidelineDefinition(s: CycleSettings): Definition {
-  const g = s.guideline
-  return {
-    term: 'Merit guideline',
-    text: `Merit by rating from Cycle settings: 5 at ${fmt(g[5], 'pct')}, 4 at ${fmt(g[4], 'pct')}, 3 at ${fmt(g[3], 'pct')}, 2 at ${fmt(g[2], 'pct')}, 1 at ${fmt(g[1], 'pct')}.`,
-  }
-}
-
-export function budgetDefinition(s: CycleSettings): Definition {
-  return { term: 'Budget', text: `${fmt(s.meritBudget, 'pct2')} of eligible base, from Cycle settings.` }
-}

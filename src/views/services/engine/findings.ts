@@ -1,7 +1,10 @@
 /**
  * The readout: findings a people operations lead would raise, most severe first.
  *
- * Rules (thresholds in parentheses):
+ * Each rule is a metric in the dictionary (../metrics.ts, `M.spike` …) and every finding names
+ * it (`metricId`). The thresholds are that metric's settings, read once per context into
+ * `settings` (engine/settings.ts); the defaults are:
+ *
  *  - volume spike: a category's month at 1.8× or more of its trailing 6-month median (and at
  *    least 15 cases above it), skipping peaks that also happened in the same month a year earlier;
  *  - category resolution SLA under 80% (at least 20 cases), with the waiting-on-third-party share,
@@ -22,6 +25,7 @@ import { addMonths, formatDate, formatMonth, monthsBetween } from '@/lib/dates'
 import { type Dimension, decomposeRate, type Segment } from '@/lib/decompose'
 import { fmt, plural } from '@/lib/format'
 import { groupBy, median } from '@/lib/stats'
+import { M } from '../metrics'
 import {
   type CategoryRow,
   type ChannelRow,
@@ -32,7 +36,7 @@ import {
   resolutionSla,
   resolvedIn,
 } from './cases'
-import { ATLAS_PROCESSES, FINAL_PAY_RULES, RESOLUTION_SLA_TARGET } from './catalog'
+import { ATLAS_PROCESSES, FINAL_PAY_RULES } from './catalog'
 import {
   caseDrill,
   csatDrill,
@@ -47,6 +51,7 @@ import {
 } from './drills'
 import { type CaseFact, dueIn, onTimeRate, type TxFact } from './facts'
 import { type Lineage, union, when } from './lineage'
+import { pctWords, type ServicesSettings } from './settings'
 import { type FinalPayRow, retroCandidates, retroShare, type SiteRow } from './transactions'
 import { duration, isOther } from './util'
 
@@ -68,6 +73,8 @@ export interface FindingInputs {
   scope: DrillScope
   /** The fields behind each measure (engine/lineage.ts). */
   lineage: Lineage
+  /** Each rule's thresholds, the targets and the anonymity minimum in force. */
+  settings: ServicesSettings
 }
 
 interface Ranked extends Finding {
@@ -78,11 +85,6 @@ interface Ranked extends Finding {
 }
 
 const SEVERITY_ORDER: Record<Severity, number> = { critical: 0, warning: 1, info: 2, good: 3 }
-
-/** A region is raised on new hire readiness only when it trails the other regions by this much. */
-const REGION_GAP = 0.03
-/** A channel satisfaction gap needs this many responses on the channel and on the rest. */
-const CHANNEL_MIN_RESPONSES = 20
 
 const pct = (v: number | null) => fmt(v, 'pct')
 const x1 = (v: number) => `${v.toFixed(1)}×`
@@ -126,18 +128,24 @@ const segmentSentence = (s: Segment | null, what: string): string =>
     ? ` ${s.value} accounts for ${fmt(s.share, 'pct0')} of the ${what} (${fmt(s.segValue, 'pct0')} of its cases, against ${fmt(s.compValue, 'pct0')} elsewhere).`
     : ''
 
-/** Categories with at least 3 open cases older than 30 days: reported once, by the aged-backlog rule. */
+/**
+ * Categories with enough open cases past the aged-backlog age limit (3 older than 30 days by
+ * default): reported once, by the aged-backlog rule.
+ */
 function agedGroups(x: FindingInputs): Map<string, CaseFact[]> {
+  const { days, minCases } = x.settings.agedBacklog
   const groups = groupBy(
-    x.facts.filter((f) => f.open && (f.ageDays ?? 0) > 30),
+    x.facts.filter((f) => f.open && (f.ageDays ?? 0) > days),
     (f) => f.category,
   )
-  return new Map([...groups].filter(([, list]) => list.length >= 3))
+  return new Map([...groups].filter(([, list]) => list.length >= minCases))
 }
 
 /* ───────────── rules ───────────── */
 
 function volumeSpikes(x: FindingInputs): Ranked[] {
+  const cfg = x.settings.spike
+  const min = x.settings.minGroup
   const months = new Set(x.facts.map((f) => f.month))
   if (!months.size) return []
   const first = [...months].sort()[0]
@@ -150,16 +158,16 @@ function volumeSpikes(x: FindingInputs): Ranked[] {
     for (const m of windowMonths) {
       const count = counts.get(m) ?? 0
       const trailing: number[] = []
-      for (let i = 1; i <= 6; i++) {
+      for (let i = 1; i <= cfg.baselineMonths; i++) {
         const k = addMonths(`${m}-01`, -i).slice(0, 7)
         if (k >= first) trailing.push(counts.get(k) ?? 0)
       }
       if (trailing.length < 3) continue
       const base = median(trailing) ?? 0
-      if (base < 5 || count < 1.8 * base || count - base < 15) continue
+      if (base < cfg.minBase || count < cfg.factor * base || count - base < cfg.minExtra) continue
       // A peak that also happened a year earlier is seasonal (open enrollment, focal cycles).
       const lastYear = addMonths(`${m}-01`, -12).slice(0, 7)
-      if (lastYear >= first && (counts.get(lastYear) ?? 0) >= 1.5 * base) continue
+      if (lastYear >= first && (counts.get(lastYear) ?? 0) >= cfg.seasonalFactor * base) continue
       if (!best || count / base > best.count / best.base) best = { month: m, count, base }
     }
     if (!best) continue
@@ -167,11 +175,11 @@ function volumeSpikes(x: FindingInputs): Ranked[] {
     const inWindow = openedIn(x.facts, x.window).filter((f) => f.category === category)
     const spike = inWindow.filter((f) => f.month === month)
     const rest = inWindow.filter((f) => f.month !== month)
-    const slaSpike = resolutionSla(spike)
-    const slaRest = resolutionSla(rest)
+    const slaSpike = resolutionSla(spike, min)
+    const slaRest = resolutionSla(rest, min)
     const dropped =
       slaSpike.rate != null &&
-      (slaSpike.rate < 0.8 || (slaRest.rate != null && slaRest.rate - slaSpike.rate >= 0.1))
+      (slaSpike.rate < cfg.slaFloor || (slaRest.rate != null && slaRest.rate - slaSpike.rate >= cfg.slaDrop))
     const seg = concentration(inWindow, (f) => f.month === month, x.people)
     const monthRows = x.facts.filter((f) => f.category === category && f.month === month)
     const slaText =
@@ -182,6 +190,7 @@ function volumeSpikes(x: FindingInputs): Ranked[] {
           }.`
     out.push({
       id: `services-spike-${slug(category)}`,
+      metricId: M.spike,
       severity: dropped ? 'critical' : 'warning',
       title: `${category} cases rose to ${fmt(count, 'int')} in ${formatMonth(`${month}-01`)}, ${x1(count / base)} the usual ${fmt(base, 'int')} a month.`,
       detail: `${slaText.trim()}${segmentSentence(seg, 'cases that month')}`.trim() || undefined,
@@ -210,15 +219,17 @@ function volumeSpikes(x: FindingInputs): Ranked[] {
 }
 
 /**
- * Categories under 80% on resolution SLA. A category already raised by the aged-backlog rule or
- * by a volume spike (whose finding carries the SLA drop) is not raised again.
+ * Categories under the floor (80%) on resolution SLA. A category already raised by the aged-backlog
+ * rule or by a volume spike (whose finding carries the SLA drop) is not raised again.
  */
 function slowCategories(x: FindingInputs, raised: ReadonlySet<string>): Ranked[] {
+  const cfg = x.settings.slow
+  const slaTarget = x.settings.resolutionTarget
   const out: Ranked[] = []
   const openNow = x.facts.filter((f) => f.open)
   const aged = agedGroups(x)
   for (const r of x.categories) {
-    if (r.slaRate == null || r.slaN < 20 || r.slaRate >= 0.8 || !r.processId) continue
+    if (r.slaRate == null || r.slaN < cfg.minCases || r.slaRate >= cfg.floor || !r.processId) continue
     if (aged.has(r.category) || raised.has(r.category)) continue
     const open = openNow.filter((f) => f.category === r.category)
     const waiting = open.filter((f) => f.status === 'Waiting on third party')
@@ -243,8 +254,9 @@ function slowCategories(x: FindingInputs, raised: ReadonlySet<string>): Ranked[]
         : `Review ${stepsOf(r.processId)} with the ${r.team} team, starting with the cases that missed the target.`
     out.push({
       id: `services-sla-${slug(r.category)}`,
-      severity: r.slaRate < 0.7 ? 'critical' : 'warning',
-      title: `${r.category} met its resolution SLA on ${pct(r.slaRate)} of cases, against the ${fmt(RESOLUTION_SLA_TARGET, 'pct0')} target.`,
+      metricId: M.slow,
+      severity: r.slaRate < cfg.critical ? 'critical' : 'warning',
+      title: `${r.category} met its resolution SLA on ${pct(r.slaRate)} of cases, against the ${pctWords(slaTarget)} target.`,
       detail: twoSentences([
         {
           text: `${fmt(r.slaN - (r.slaMet ?? 0), 'int')} of ${fmt(r.slaN, 'int')} cases opened in the period missed it.`,
@@ -274,14 +286,16 @@ function slowCategories(x: FindingInputs, raised: ReadonlySet<string>): Ranked[]
 }
 
 function finalPayLate(x: FindingInputs): Ranked[] {
+  const cfg = x.settings.finalPay
+  const target = x.settings.levelTargets['of05-final-pay']
   const exits = dueIn(x.tx, x.window).filter((f) => f.type === 'Termination')
   return x.finalPay
     .filter(
       (r) =>
         r.rate != null &&
-        r.exits >= 5 &&
-        (r.late ?? 0) >= 2 &&
-        r.rate < 0.95 &&
+        r.exits >= cfg.minExits &&
+        (r.late ?? 0) >= cfg.minLate &&
+        r.rate < cfg.floor &&
         r.jurisdiction !== 'unknown' &&
         r.jurisdiction !== 'other',
     )
@@ -297,8 +311,9 @@ function finalPayLate(x: FindingInputs): Ranked[] {
       const sites = SITES.filter((s) => s.jurisdiction === r.jurisdiction).map((s) => s.location)
       return {
         id: `services-final-pay-${r.jurisdiction}`,
+        metricId: M.finalPayLate,
         severity: 'critical' as const,
-        title: `Final pay was on time for ${pct(r.rate)} of exits in ${r.name}, against a 100% target.`,
+        title: `Final pay was on time for ${pct(r.rate)} of exits in ${r.name}, against a ${pctWords(target)} target.`,
         detail: `${r.late} of ${r.exits} were paid after the deadline (${FINAL_PAY_RULES.get(r.jurisdiction)?.phrase ?? 'the due date in the file'})${by}.${split}`,
         action: `Review the OF-05 final pay steps for ${r.name} with the Payroll team.`,
         people: late.slice(0, 50).map(personOfTx),
@@ -315,24 +330,34 @@ function finalPayLate(x: FindingInputs): Ranked[] {
 }
 
 function newHireReadiness(x: FindingInputs): Ranked[] {
+  const cfg = x.settings.newHire
+  const target = pctWords(x.settings.levelTargets['on03-hire-day-minus-3'])
   const hires = dueIn(x.tx, x.window).filter((f) => f.type === 'New hire')
   const out: Ranked[] = []
   const flaggedRegions = new Set<string>()
   for (const r of x.newHireRegions) {
-    if (r.rate == null || r.starts < 5 || (r.late ?? 0) < 3 || r.rate >= 0.95 || r.region === '—') continue
+    // A shown rate already stands on at least the anonymity minimum of starts.
+    if (r.rate == null || (r.late ?? 0) < cfg.minLate || r.rate >= cfg.regionFloor || r.region === '—')
+      continue
     // The other regions, from the transactions themselves (their rows may be folded or hidden).
-    const restRate = onTimeRate(hires.filter((f) => f.region !== r.region)).rate
+    const restRate = onTimeRate(
+      hires.filter((f) => f.region !== r.region),
+      x.settings.minGroup,
+    ).rate
     // A region that matches or beats the others is not the problem: the gap must be real.
-    if (restRate != null && restRate - r.rate < REGION_GAP) continue
+    if (restRate != null && restRate - r.rate < cfg.regionGap) continue
     flaggedRegions.add(r.region)
-    const sites = x.newHireSites.filter((s) => s.region === r.region && s.rate != null && s.rate < 0.95)
+    const sites = x.newHireSites.filter(
+      (s) => s.region === r.region && s.rate != null && s.rate < cfg.regionFloor,
+    )
     const late = hires.filter(
       (f) => f.region === r.region && (f.outcome === 'late' || f.outcome === 'overdue'),
     )
     out.push({
       id: `services-new-hire-${slug(r.region)}`,
+      metricId: M.newHireGap,
       severity: 'warning',
-      title: `New hires in ${r.region} were ready by Day −3 for ${pct(r.rate)} of starts, against a 100% target.`,
+      title: `New hires in ${r.region} were ready by Day −3 for ${pct(r.rate)} of starts, against a ${target} target.`,
       detail: `${r.late} of ${r.starts} hires were entered after Day −3${
         restRate != null ? `, against ${pct(restRate)} ready in the other regions` : ''
       }.${sites.length ? ` By site: ${sites.map((s) => `${s.location} ${pct(s.rate)}`).join(', ')}.` : ''}`,
@@ -349,15 +374,22 @@ function newHireReadiness(x: FindingInputs): Ranked[] {
     })
   }
   for (const s of x.newHireSites) {
-    if (s.rate == null || s.starts < 10 || (s.late ?? 0) < 3 || s.rate >= 0.9) continue
+    if (
+      s.rate == null ||
+      s.starts < cfg.siteMinStarts ||
+      (s.late ?? 0) < cfg.minLate ||
+      s.rate >= cfg.siteFloor
+    )
+      continue
     if (flaggedRegions.has(s.region) || s.region === '—') continue
     const late = hires.filter(
       (f) => f.location === s.location && (f.outcome === 'late' || f.outcome === 'overdue'),
     )
     out.push({
       id: `services-new-hire-${slug(s.location)}`,
+      metricId: M.newHireGap,
       severity: 'warning',
-      title: `New hires in ${s.location} were ready by Day −3 for ${pct(s.rate)} of starts, against a 100% target.`,
+      title: `New hires in ${s.location} were ready by Day −3 for ${pct(s.rate)} of starts, against a ${target} target.`,
       detail: `${s.late} of ${s.starts} hires were entered after Day −3.`,
       action: `Review the ON-03 hire entry steps for ${s.location} with the People operations team.`,
       people: late.slice(0, 50).map(personOfTx),
@@ -375,18 +407,20 @@ function newHireReadiness(x: FindingInputs): Ranked[] {
 }
 
 function channelGap(x: FindingInputs): Ranked[] {
+  const cfg = x.settings.csatGap
   const scored = x.channels.filter((c) => c.csat != null)
   const out: Ranked[] = []
   for (const c of scored) {
-    if (c.responses < CHANNEL_MIN_RESPONSES || isOther(c.channel)) continue
+    if (c.responses < cfg.minResponses || isOther(c.channel)) continue
     const others = scored.filter((o) => o !== c)
     const n = others.reduce((a, o) => a + o.responses, 0)
-    if (!others.length || n < CHANNEL_MIN_RESPONSES) continue
+    if (!others.length || n < cfg.minResponses) continue
     const rest = others.reduce((a, o) => a + (o.csat as number) * o.responses, 0) / n
     const gap = rest - (c.csat as number)
-    if (gap < 0.5) continue
+    if (gap < cfg.gap) continue
     out.push({
       id: `services-csat-${slug(c.channel)}`,
+      metricId: M.csatGap,
       severity: 'warning',
       title: `${c.channel} cases score ${fmt(c.csat, 'num1')} out of 5 on satisfaction, ${fmt(gap, 'num1')} below the other channels.`,
       detail: `Based on ${plural(c.responses, `${c.channel.toLowerCase()} response`)} in the period. ${others.map((o) => `${o.channel} ${fmt(o.csat, 'num1')}`).join(', ')}.`,
@@ -403,18 +437,19 @@ function channelGap(x: FindingInputs): Ranked[] {
 }
 
 function reopenHotspots(x: FindingInputs): Ranked[] {
+  const cfg = x.settings.reopen
   const all = x.reopen.filter((r) => !isOther(r.category))
   // Company totals from the cases themselves (folded or hidden rows carry no counts).
   const judged = openedIn(x.facts, x.window).filter((f) => f.resolved != null && f.reopened != null)
   const resolved = judged.length
   const reopened = judged.filter((f) => f.reopened).length
-  if (resolved < 20) return []
+  if (resolved < cfg.minResolved) return []
   const company = reopened / resolved
   const out: Ranked[] = []
   for (const r of all) {
     if (r.reopenRate == null || r.reopened == null) continue
-    if (r.resolved < 20 || r.reopened < 5 || company <= 0) continue
-    if (r.reopenRate < 2 * company) continue
+    if (r.resolved < cfg.minResolved || r.reopened < cfg.minReopens || company <= 0) continue
+    if (r.reopenRate < cfg.multiple * company) continue
     const restN = resolved - r.resolved
     const rest = restN > 0 ? (reopened - r.reopened) / restN : null
     const processId = x.categories.find((c) => c.category === r.category)?.processId ?? null
@@ -423,6 +458,7 @@ function reopenHotspots(x: FindingInputs): Ranked[] {
     const seg = concentration(inWindow, (f) => f.reopened === true, x.people)
     out.push({
       id: `services-reopen-${slug(r.category)}`,
+      metricId: M.reopenHotspot,
       severity: 'warning',
       title: `${r.category} cases were reopened ${pct(r.reopenRate)} of the time, ${x1(r.reopenRate / company)} the rate across all cases.`,
       detail: `${r.reopened} of ${r.resolved} resolved cases opened in the period came back${
@@ -442,7 +478,9 @@ function reopenHotspots(x: FindingInputs): Ranked[] {
 }
 
 function agedBacklog(x: FindingInputs): Ranked[] {
-  const anyAged = new Set(x.facts.filter((f) => f.open && (f.ageDays ?? 0) > 30).map((f) => f.category))
+  const days = x.settings.agedBacklog.days
+  const target = x.settings.resolutionTarget
+  const anyAged = new Set(x.facts.filter((f) => f.open && (f.ageDays ?? 0) > days).map((f) => f.category))
   const out: Ranked[] = []
   for (const [category, list] of agedGroups(x)) {
     const oldest = Math.max(...list.map((f) => f.ageDays ?? 0))
@@ -452,14 +490,15 @@ function agedBacklog(x: FindingInputs): Ranked[] {
       : 'No other category has open cases this old.'
     const row = x.categories.find((c) => c.category === category)
     const slaText =
-      row?.slaRate != null && row.slaRate < RESOLUTION_SLA_TARGET
+      row?.slaRate != null && row.slaRate < target
         ? `; resolution SLA for the category was ${pct(row.slaRate)} in the period`
         : ''
     const first = list[0]
     out.push({
       id: `services-aged-${slug(category)}`,
+      metricId: M.agedBacklog,
       severity: 'warning',
-      title: `${plural(list.length, `${category} case`, `${category} cases`)} have been open for more than 30 days, the oldest for ${fmt(oldest, 'days')}.`,
+      title: `${plural(list.length, `${category} case`, `${category} cases`)} ${list.length === 1 ? 'has' : 'have'} been open for more than ${plural(days, 'day')}, the oldest for ${fmt(oldest, 'days')}.`,
       detail: `By status: ${countWords(list.map((f) => f.status))}${slaText}. ${otherText}`,
       action: `Review each open ${first.processId ? `${first.processId} ` : ''}case with the ${first.team} team and agree a next step and date.`,
       tab: 'cases',
@@ -467,7 +506,7 @@ function agedBacklog(x: FindingInputs): Ranked[] {
       drill: drillWhen(
         x.scope,
         list,
-        () => openDrill(x.scope, list, `Cases open more than 30 days, ${category}`, true),
+        () => openDrill(x.scope, list, `Cases open more than ${plural(days, 'day')}, ${category}`, true),
         true,
       ),
       uses: union(x.lineage.open, x.lineage.category, when(slaText, x.lineage.resolutionSla)),
@@ -478,14 +517,18 @@ function agedBacklog(x: FindingInputs): Ranked[] {
 }
 
 function retroAdjustments(x: FindingInputs): Ranked[] {
-  const r = retroShare(x.tx, x.window)
-  if (r.rate == null || r.n < 20 || r.rate < 0.02) return []
+  const cfg = x.settings.retro
+  // The DS-01 ceiling is strict ("under 2%"): reaching it misses it.
+  const ceiling = x.settings.levelTargets['ds01-retro-share']
+  const r = retroShare(x.tx, x.window, x.settings.minGroup)
+  if (r.rate == null || r.n < cfg.minChanges || r.rate < ceiling) return []
   const changes = retroCandidates(dueIn(x.tx, x.window))
   return [
     {
       id: 'services-retro',
-      severity: r.rate >= 0.04 ? 'warning' : 'info',
-      title: `${pct(r.rate)} of job and pay changes missed the payroll cut-off and needed a retro adjustment, against a DS-01 target under 2%.`,
+      metricId: M.retroOver,
+      severity: r.rate >= cfg.warning ? 'warning' : 'info',
+      title: `${pct(r.rate)} of job and pay changes missed the payroll cut-off and needed a retro adjustment, against a DS-01 target under ${pctWords(ceiling)}.`,
       detail: `${r.retro} of ${r.n} changes due in the period. Each one means a correction on a later payslip.`,
       action: 'Review the DS-01 cut-off calendar with the HRIS and Payroll teams.',
       tab: 'transactions',
@@ -499,22 +542,33 @@ function retroAdjustments(x: FindingInputs): Ranked[] {
 }
 
 function strongest(x: FindingInputs): Ranked[] {
+  const cfg = x.settings.strongest
+  const target = x.settings.resolutionTarget
   const best = x.categories
     .filter(
-      (r) => r.slaRate != null && r.slaN >= 50 && r.slaRate >= 0.95 && !r.category.startsWith('Other ('),
+      (r) =>
+        r.slaRate != null &&
+        r.slaN >= cfg.minCases &&
+        r.slaRate >= cfg.floor &&
+        !r.category.startsWith('Other ('),
     )
     .sort((a, b) => (b.slaRate as number) - (a.slaRate as number))[0]
   if (!best) return []
   const p = best.processId ? ATLAS_PROCESSES.get(best.processId) : undefined
   const hours = duration(
-    medianHours(resolvedIn(x.facts, x.window).filter((f) => f.category === best.category)).hours,
+    medianHours(
+      resolvedIn(x.facts, x.window).filter((f) => f.category === best.category),
+      x.settings.minGroup,
+    ).hours,
   )
+  const gap = ((best.slaRate as number) - target) * 100
   return [
     {
       id: `services-good-${slug(best.category)}`,
+      metricId: M.strongest,
       severity: 'good',
       title: `${best.category} cases met the resolution SLA ${pct(best.slaRate)} of the time across ${fmt(best.slaN, 'int')} cases.`,
-      detail: `That is ${fmt(((best.slaRate as number) - RESOLUTION_SLA_TARGET) * 100, 'num1')} pts above the ${fmt(RESOLUTION_SLA_TARGET, 'pct0')} target${
+      detail: `That is ${fmt(Math.abs(gap), 'num1')} pts ${gap >= 0 ? 'above' : 'below'} the ${pctWords(target)} target${
         hours.value != null ? `, with a median time to resolve of ${fmt(hours.value, hours.format)}` : ''
       }.`,
       action: p

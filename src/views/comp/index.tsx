@@ -7,6 +7,7 @@ import type { ViewDef } from '../types'
 import { COMPA } from './engine/lineage'
 import { type CompModel, compaHeadline } from './engine/model'
 import { CompHeaderActions } from './HeaderActions'
+import { M } from './metrics'
 import { NoCompData, PayNotice, useCompModel } from './shared'
 import { Cycle } from './tabs/Cycle'
 import { Market } from './tabs/Market'
@@ -53,7 +54,12 @@ export const view: ViewDef = {
   label: 'Compensation',
   tabs: TABS,
   View,
-  headline: (ctx) => ({ value: fmt(compaHeadline(ctx), 'ratio'), label: 'median compa-ratio', uses: COMPA }),
+  headline: (ctx) => ({
+    value: fmt(compaHeadline(ctx), 'ratio'),
+    label: 'median compa-ratio',
+    metricId: M.compaMedian,
+    uses: COMPA,
+  }),
   datasets: ['comp', 'employees', 'reviews', 'jobChanges'],
   HeaderActions: CompHeaderActions,
 }

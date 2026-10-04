@@ -69,6 +69,8 @@ export interface RegisteredFigure {
    * no image. A preview shown on screen is never exported.
    */
   withheld?: boolean
+  /** The metric dictionary entry the figure shows (`Figure`'s `metric`). */
+  metric?: string
 }
 
 /** Context stamped on every export (header rows, file names, slide footers). */

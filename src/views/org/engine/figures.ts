@@ -5,6 +5,7 @@
 import { median } from '@/lib/stats'
 import { type Flag, STRUCTURAL } from './flags'
 import { type Layout, layoutTree, type ReqStub, SCREEN_SIZES, type VNode, visibleTree } from './layout'
+import { defaultOrgRules, type OrgRules } from './rules'
 import { COMPANY_ROOT, type OrgTree, subtreeOf } from './tree'
 
 export interface OrgKeyFigures {
@@ -20,6 +21,10 @@ export interface OrgKeyFigures {
   openReqIds: string[]
   /** Counted people with a structure flag (span, chain or new manager). */
   flagged: string[]
+  /** Counted people below the deep-chain layer, deepest first. */
+  deep: string[]
+  /** That layer (the deep-chain setting the figures were computed with). */
+  deepLayer: number
 }
 
 /** Layer of a person in the org under `rootId`: the top of that org is layer 1. */
@@ -33,17 +38,21 @@ export function orgKeyFigures(
     tree: OrgTree
     flags: ReadonlyMap<string, readonly Flag[]>
     reqs: ReadonlyMap<string, readonly ReqStub[]>
+    /** The settings in force (the deep-chain layer); the defaults without it. */
+    rules?: OrgRules
   },
   rootId: string,
   matches: ((id: string) => boolean) | null,
 ): OrgKeyFigures {
   const { tree } = m
+  const deepAfter = (m.rules ?? defaultOrgRules()).deepChain
   const layer = layerIn(tree, rootId)
   const people: string[] = []
   const managers: string[] = []
   const spans: number[] = []
   const openReqIds: string[] = []
   const flagged: string[] = []
+  const deep: { id: string; layer: number }[] = []
   let layers = 0
   for (const id of subtreeOf(tree, rootId)) {
     if (!tree.people.has(id) || (matches && !matches(id))) continue
@@ -53,11 +62,23 @@ export function orgKeyFigures(
       managers.push(id)
       spans.push(n)
     }
-    layers = Math.max(layers, layer(id))
+    const at = layer(id)
+    layers = Math.max(layers, at)
+    if (at > deepAfter) deep.push({ id, layer: at })
     for (const r of m.reqs.get(id) ?? []) openReqIds.push(r.reqId)
     if (m.flags.get(id)?.some((f) => STRUCTURAL.has(f.kind))) flagged.push(id)
   }
-  return { people, managers, medianSpan: median(spans), layers, openReqIds, flagged }
+  deep.sort((a, b) => b.layer - a.layer)
+  return {
+    people,
+    managers,
+    medianSpan: median(spans),
+    layers,
+    openReqIds,
+    flagged,
+    deep: deep.map((d) => d.id),
+    deepLayer: deepAfter,
+  }
 }
 
 /** People at one layer of the org under `rootId` (layer 1 is its top). */

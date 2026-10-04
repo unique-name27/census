@@ -1,12 +1,12 @@
 /**
  * KPI tiles of the Movement and Org design tabs, built in the engine like the Overview strip so
- * each carries its lineage (`uses`) and opens the records behind it.
+ * each carries its lineage (`uses`), its metric dictionary entry (and its definition from there)
+ * and opens the records behind it.
  */
 import type { Kpi } from '@/components/types'
-import { MIN_GROUP } from '@/data/schema'
-import { activeWorkers, count, isMaterialGap, type Prep } from './base'
+import { ID } from '../metrics'
+import { activeWorkers, count, type Prep } from './base'
 import { movementTileSpec, orgTileSpec } from './buckets'
-import { DEF } from './defs'
 import { changesSpec, managersSpec, scopePart, titled, workersSpec } from './drill'
 import { tagKpis } from './drillUses'
 import { promotionsComparisonSpec } from './kpis'
@@ -22,7 +22,7 @@ export function movementKpis(p: Prep, mv: MovementModel): Kpi[] {
   const window = ctx.window.label
   const ref = ctx.isCompany ? mv.priorPromotions.rate : mv.companyPromotions.rate
   const delta = mv.promotions.rate != null && ref != null ? mv.promotions.rate - ref : null
-  const promoSuppressed = mv.promotions.avgHeadcount > 0 && mv.promotions.avgHeadcount < MIN_GROUP
+  const promoSuppressed = mv.promotions.avgHeadcount > 0 && mv.promotions.avgHeadcount < p.set.minGroup
   const mobilitySuppressed = mv.mobility.rate == null && mv.promotions.avgHeadcount > 0
   const tile = (t: MovementTile, has: boolean) => (has ? () => movementTileSpec(p, mv, t) : undefined)
   const moves = p.uses(MOVES)
@@ -31,6 +31,7 @@ export function movementKpis(p: Prep, mv: MovementModel): Kpi[] {
   const kpis: Kpi[] = [
     {
       id: 'promotions',
+      metricId: ID.promotions,
       label: 'Promotions',
       value: mv.promotions.promotions,
       format: 'int',
@@ -38,7 +39,7 @@ export function movementKpis(p: Prep, mv: MovementModel): Kpi[] {
       deltaLabel: mv.priorLabel,
       goodDirection: null,
       note: window,
-      definition: 'Promotion events in the period. A person promoted twice counts twice.',
+      definition: p.text(ID.promotions),
       drill: tile('promotions', mv.records.promotions.length > 0),
       // The comparison window's promotions in this scope (always the scope's own history).
       deltaDrill: mv.priorPromotions.promotions
@@ -58,27 +59,29 @@ export function movementKpis(p: Prep, mv: MovementModel): Kpi[] {
     },
     {
       id: 'promotion-rate',
+      metricId: ID.promotionRate,
       label: 'Promotion rate',
       value: mv.promotions.rate,
       format: 'pct',
       delta,
       deltaLabel: ctx.isCompany ? mv.priorLabel : 'vs company',
       goodDirection: null,
-      deltaMaterial: isMaterialGap(delta, ref),
+      deltaMaterial: p.material(delta, ref),
       note: `Over an average headcount of ${Math.round(mv.promotions.avgHeadcount).toLocaleString('en-US')}`,
       suppressed: promoSuppressed,
-      definition: DEF.promotionRate.text,
+      definition: p.text(ID.promotionRate),
       drill: tile('promotionRate', !promoSuppressed && mv.promotions.rate != null),
       deltaDrill: promoSuppressed || delta == null ? undefined : () => promotionsComparisonSpec(p, mv),
       uses: rate,
     },
     {
       id: 'moves',
+      metricId: ID.moves,
       label: 'Transfers and lateral moves',
       value: mv.transfers + mv.lateral,
       format: 'int',
       note: `${count(mv.transfers, 'transfer', 'transfers')}, ${count(mv.lateral, 'lateral move', 'lateral moves')}`,
-      definition: 'Transfer and Lateral move events in the period.',
+      definition: p.text(ID.moves),
       drill: tile('moves', mv.transfers + mv.lateral > 0),
       // "90 transfers, 32 lateral moves": the same events, split in the panel's note.
       noteDrill: tile('moves', mv.transfers + mv.lateral > 0),
@@ -86,12 +89,13 @@ export function movementKpis(p: Prep, mv: MovementModel): Kpi[] {
     },
     {
       id: 'mobility',
+      metricId: ID.mobility,
       label: 'Internal mobility',
       value: mv.mobility.rate,
       format: 'pct',
       note: `${count(mv.mobility.movers, 'person', 'people')} moved at least once`,
       suppressed: mobilitySuppressed,
-      definition: DEF.mobility.text,
+      definition: p.text(ID.mobility),
       drill: tile('mobility', !mobilitySuppressed && mv.mobility.rate != null),
       // "256 people moved at least once": those people.
       noteDrill: tile('mobility', !mobilitySuppressed && mv.mobility.rate != null),
@@ -101,11 +105,12 @@ export function movementKpis(p: Prep, mv: MovementModel): Kpi[] {
   if (mv.demotions) {
     kpis.push({
       id: 'demotions',
+      metricId: ID.demotions,
       label: 'Demotions',
       value: mv.demotions,
       format: 'int',
       note: window,
-      definition: 'Demotion events in the period.',
+      definition: p.text(ID.demotions),
       drill: tile('demotions', true),
       uses: moves,
     })
@@ -121,11 +126,12 @@ export function orgKpis(p: Prep, org: OrgModel): Kpi[] {
   return tagKpis([
     {
       id: 'managers',
+      metricId: ID.managers,
       label: 'Managers',
       value: org.managers.length,
       format: 'int',
       note: `${org.activeWorkers.toLocaleString('en-US')} active workers`,
-      definition: 'Active people in scope with at least one active direct report.',
+      definition: p.text(ID.managers),
       drill: tile('managers', hasManagers),
       // "1,560 active workers": everyone active in scope, every worker type.
       noteDrill: org.activeWorkers
@@ -141,16 +147,18 @@ export function orgKpis(p: Prep, org: OrgModel): Kpi[] {
     },
     {
       id: 'mean-span',
+      metricId: ID.meanSpan,
       label: 'Mean span',
       value: org.meanSpan,
       format: 'num1',
       note: 'Direct reports per manager',
-      definition: DEF.span.text,
+      definition: p.text(ID.meanSpan),
       drill: tile('meanSpan', hasManagers),
       uses,
     },
     {
       id: 'median-span',
+      metricId: ID.medianSpan,
       label: 'Median span',
       value: org.medianSpan,
       format: 'num1',
@@ -158,7 +166,7 @@ export function orgKpis(p: Prep, org: OrgModel): Kpi[] {
         org.medianSpan != null
           ? `Half of managers have ${Math.ceil(org.medianSpan)} or more direct reports`
           : 'Direct reports per manager',
-      definition: DEF.span.text,
+      definition: p.text(ID.medianSpan),
       drill: tile('medianSpan', hasManagers),
       // "Half of managers have 6 or more direct reports": those managers.
       noteDrill:
@@ -177,21 +185,23 @@ export function orgKpis(p: Prep, org: OrgModel): Kpi[] {
     },
     {
       id: 'manager-ratio',
+      metricId: ID.managerRatio,
       label: 'Manager ratio',
       value: org.managerRatio,
       format: 'num1',
       note: 'Individual contributors per manager',
-      definition: 'Active workers who manage nobody, divided by the number of managers.',
+      definition: p.text(ID.managerRatio),
       drill: tile('managerRatio', org.managerRatio != null && org.individuals.length > 0),
       uses,
     },
     {
       id: 'layers',
+      metricId: ID.layers,
       label: 'Layers',
       value: org.layers,
       format: 'int',
       note: 'From the top of this scope',
-      definition: DEF.layers.text,
+      definition: p.text(ID.layers),
       drill: tile('layers', org.layers != null),
       uses,
     },

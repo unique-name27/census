@@ -3,6 +3,7 @@
 import { LEVELS } from '@/data/schema'
 import type { PeriodPreset } from '@/data/scope'
 import { DASH, fmt, isNum, MINUS } from '@/lib/format'
+import { formatParamNumber } from '@/metrics/params'
 
 /**
  * "+0.81 pts": a gap between two percentages at two decimals, for merit spend against a budget
@@ -69,3 +70,9 @@ export function people(n: number): string {
 
 /** "is" / "are" agreement for counts. */
 export const isAre = (n: number): string => (n === 1 ? 'is' : 'are')
+
+/** A setting's share as the dictionary shows it, trimmed: "2%", "2.5%", "0.25%". */
+export const settingPct = (v: number): string => formatParamNumber(v, { type: 'percent' })
+
+/** A setting's points, trimmed: "3 pts", "0.2 pts". */
+export const settingPts = (v: number): string => formatParamNumber(v, { type: 'percent', format: 'pts' })

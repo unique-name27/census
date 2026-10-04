@@ -10,6 +10,7 @@ export {
   visibleColumns,
 } from './columns'
 export { csvField, csvPreamble, downloadCsv, guardFormula, toCsv } from './csv'
+export { definitionsChanged, definitionsLine, definitionsLineFor, setDefinitionsSource } from './definitions'
 export { downloadBlob, MIME } from './download'
 export {
   type ComposedSvg,

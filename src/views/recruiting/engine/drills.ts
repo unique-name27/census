@@ -21,6 +21,7 @@ import { daysBetween, formatDate, formatMonth, quarterStart } from '@/lib/dates'
 import { fmt, plural } from '@/lib/format'
 import { median } from '@/lib/stats'
 import type { RecruitingBase } from './base'
+import { timesText as times } from './definitions'
 import {
   type FlowKind,
   flowMembers,
@@ -31,7 +32,7 @@ import {
 } from './flow'
 import { TIER_WORD } from './pipeline'
 import { isOpenAt } from './prepare'
-import { type OpenReqRow, reqAge, ttfDays } from './reqs'
+import { type OpenReqRow, reqAge } from './reqs'
 import { acceptance, daysToHire } from './sources'
 import { type ActiveItem, type App, HIRED, LAST_OPEN_STAGE, type Outcome } from './types'
 
@@ -233,11 +234,19 @@ function employeeExtra(links: ReadonlyMap<App, string>): AppExtra {
   }
 }
 
-/** Days to fill, replacing the standard "Days open" (the same number for a filled req). */
-export const ttfExtra: ReqExtra = {
-  columns: [{ key: 'daysToFill', label: 'Days to fill', format: 'days' }],
-  values: (r) => ({ daysToFill: r.filledDate ? ttfDays(r) : null }),
+/** Days to fill with the clock in force, replacing the standard "Days open". */
+export function ttfExtra(b: RecruitingBase): ReqExtra {
+  return {
+    columns: [{ key: 'daysToFill', label: 'Days to fill', format: 'days' }],
+    values: (r) => ({ daysToFill: r.filledDate ? b.ttf(r) : null }),
+  }
 }
+
+/** Where the time-to-fill clock stops, for drill notes. */
+export const ttfEndWords = (b: RecruitingBase): string =>
+  b.settings.ttfEnd === 'start'
+    ? 'the hire’s start date (the date the offer was accepted where no start date is known)'
+    : 'the date the offer was accepted'
 
 /** Active candidates, those lacking a next step and the health of each open req. */
 export function reqPipelineExtra(b: RecruitingBase): ReqExtra {
@@ -381,12 +390,12 @@ export function filledReqsDrill(
   title: string,
   w: Span = b.window,
 ): DrillSpec<'requisitions'> | null {
-  const sorted = reqs.slice().sort((x, y) => ttfDays(y) - ttfDays(x))
+  const sorted = reqs.slice().sort((x, y) => b.ttf(y) - b.ttf(x))
   return reqDrill(sorted, {
     title,
     subtitle: windowSub(b, w),
-    note: `Median ${days(median(sorted.map(ttfDays)))} to fill over ${plural(sorted.length, 'req')}, from the opened date to the date the offer was accepted.`,
-    extras: [ttfExtra],
+    note: `Median ${days(median(sorted.map(b.ttf)))} to fill over ${plural(sorted.length, 'req')}, from the opened date to ${ttfEndWords(b)}.`,
+    extras: [ttfExtra(b)],
     hide: ['daysOpen'],
   })
 }
@@ -454,12 +463,13 @@ export function offerAcceptanceKpiDrill(b: RecruitingBase): DrillSpec<'candidate
 }
 
 export function lackingKpiDrill(b: RecruitingBase): DrillSpec<'candidates'> | null {
+  const a = b.settings.aging
   return activeDrill(
     b,
     b.actives.filter((x) => x.tier),
     {
       title: 'Candidates lacking a next step',
-      note: `Of ${plural(b.actives.length, 'active candidate')}: no step booked past 1.5× the usual days for the stage, a decision pending more than 2 days, or an offer out more than 5 days.`,
+      note: `Of ${plural(b.actives.length, 'active candidate')}: no step booked past ${times(a.watch)} the usual days for the stage, a decision pending more than ${plural(a.decisionWatchDays, 'day')}, an offer out more than ${plural(a.offerWatchDays, 'day')}, or a step booked more than ${times(a.farOut)} the usual days away.`,
     },
   )
 }

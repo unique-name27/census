@@ -1,10 +1,12 @@
 /**
  * Compensation header controls: the "Show pay amounts" switch (app-wide, store.showPay; Settings →
- * Privacy holds the same switch) and the "Cycle settings" button, which opens Settings at the
- * Compensation cycle section.
+ * Privacy holds the same switch) and the "Cycle settings" button. The merit budget, healthy band,
+ * merit guideline and every other Compensation threshold are settings in the metric dictionary,
+ * so the button opens Metric definitions filtered to Compensation (docs/METRICS.md).
  */
 import { Button, Switch } from '@/components'
-import { openSettings, useCensus } from '@/data/store'
+import { useCensus } from '@/data/store'
+import { openMetricDefinitions } from '@/views/data/metrics/open'
 
 export function CompHeaderActions() {
   const showPay = useCensus((s) => s.showPay)
@@ -24,9 +26,8 @@ export function CompHeaderActions() {
       <Button
         size="md"
         variant="secondary"
-        aria-label="Cycle settings"
-        aria-haspopup="dialog"
-        onClick={() => openSettings('compensation')}
+        aria-label="Cycle settings, in Metric definitions"
+        onClick={() => openMetricDefinitions({ view: 'comp' })}
       >
         <span className="max-sm:hidden">Cycle settings</span>
         <span className="sm:hidden">Settings</span>

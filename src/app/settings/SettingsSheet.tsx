@@ -106,8 +106,9 @@ export function SettingsSheet() {
             </BDialog.Close>
           </div>
           <BDialog.Description className="sr-only">
-            Display, data, privacy, compensation cycle, related tools and this device. Changes apply at once
-            and are saved in this browser, except pay amounts, which last for this session.
+            Display, data, privacy, compensation cycle (now in Metric definitions), related tools and this
+            device. Changes apply at once and are saved in this browser, except pay amounts, which last for
+            this session.
           </BDialog.Description>
           <SectionNav onGo={goToSection} />
           <div ref={bodyRef} className="min-h-0 flex-1 overflow-y-auto">

@@ -15,7 +15,7 @@ import {
   type ReopenRow,
   type ResolveRow,
 } from '../engine/cases'
-import { RESOLUTION_SLA_TARGET } from '../engine/catalog'
+import { servicesDefinitions } from '../engine/definitions'
 import {
   caseDrill,
   csatDrill,
@@ -32,16 +32,17 @@ import {
 } from '../engine/drills'
 import { withUses } from '../engine/drillUses'
 import type { CaseFact } from '../engine/facts'
+import { pctWords } from '../engine/settings'
 import { duration, isOther, WEEKDAYS } from '../engine/util'
+import { FIGURE_METRIC } from '../metrics'
 import {
   asOfNote,
   count,
-  DEF,
   NeedData,
   NO_CASES,
   period,
   rateTone,
-  SMALL_SCOPE,
+  smallScope,
   titled,
   useProcessHref,
 } from './shared'
@@ -93,6 +94,12 @@ export function CasesTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext }
   const processHref = useProcessHref()
   if (!m.hasCases) return <NeedData {...NO_CASES} />
   const s = m.scope
+  const cfg = m.settings
+  const k = cfg.minGroup
+  const D = servicesDefinitions(ctx.metrics, cfg)
+  const slaTarget = cfg.resolutionTarget
+  const agedDays = cfg.agedDays
+  const criticalDays = cfg.agedBacklog.days
   const per = period(ctx)
   const asOf = formatDate(m.asOf)
   const opened = openedIn(m.cases, m.window)
@@ -348,24 +355,14 @@ export function CasesTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext }
         <Figure
           id="services-sla-by-category"
           uses={m.uses['services-sla-by-category']}
+          metric={FIGURE_METRIC['services-sla-by-category']}
           span={6}
           title="Resolution SLA by category"
           subtitle={`Share of cases opened in the ${per} resolved within the category target, lowest first`}
           data={categories}
           columns={slaColumns}
-          definitions={[
-            DEF.resolutionSla,
-            {
-              term: 'Cases with an outcome',
-              text: 'Cases resolved, plus open cases already past their target. Open cases still inside their target have no outcome yet.',
-            },
-            DEF.anonymity,
-          ]}
-          note={asOfNote(
-            m.asOf,
-            count(m.summary.resolution.n, 'case'),
-            `target ${fmt(RESOLUTION_SLA_TARGET, 'pct0')}`,
-          )}
+          definitions={[D.resolutionSla, D.withOutcome, D.anonymity]}
+          note={asOfNote(m.asOf, count(m.summary.resolution.n, 'case'), `target ${pctWords(slaTarget)}`)}
           empty={m.caseCols.resolvedAt ? null : 'Upload HR cases with a resolved time to see this.'}
           detail={
             m.small ? undefined : { label: 'Cases', columns: CASE_DETAIL_COLUMNS, rows: caseDetail(opened) }
@@ -378,36 +375,29 @@ export function CasesTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext }
             format="pct"
             sort="none"
             domain={[0, 1]}
-            ref={{ value: RESOLUTION_SLA_TARGET, label: `Target ${fmt(RESOLUTION_SLA_TARGET, 'pct0')}` }}
+            ref={{ value: slaTarget, label: `Target ${pctWords(slaTarget)}` }}
             secondary={(d) => count(d.slaN, 'case')}
-            tone={(d) => rateTone(d.slaRate, RESOLUTION_SLA_TARGET)}
+            tone={(d) => rateTone(d.slaRate, slaTarget)}
             onSelect={(d) => drill(slaCategory(d))}
           />
         </Figure>
         <Figure
           id="services-time-to-resolve"
           uses={m.uses['services-time-to-resolve']}
+          metric={FIGURE_METRIC['services-time-to-resolve']}
           span={6}
           title="Time to resolve against target"
           subtitle={`Time from opened to resolved as a share of each category's resolution target (100% = on target), cases resolved in the ${per}`}
           data={m.resolve}
           columns={resolveColumns}
-          definitions={[
-            DEF.timeToResolve,
-            {
-              term: 'Share of target',
-              text: "Each case's time to resolve divided by its resolution target, so a 30-day employee relations case and a 2-day payroll case read on one axis. 100% is on target; past 100% missed it. The table view has the days.",
-              formula: '(resolvedAt − openedAt) ÷ resolution target',
-            },
-            DEF.anonymity,
-          ]}
+          definitions={[D.resolveVsTarget, D.timeToResolve, D.anonymity]}
           note={asOfNote(
             m.asOf,
             count(m.summary.medianHours.n, 'case resolved', 'cases resolved'),
             'bars: middle half, tick: median, line: 10th to 90th percentile',
           )}
           empty={
-            m.resolve.length ? null : 'No category had cases resolved for 5 or more people in this period.'
+            m.resolve.length ? null : `No category had cases resolved for ${k} or more people in this period.`
           }
         >
           <RangeBars
@@ -433,6 +423,7 @@ export function CasesTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext }
         <Figure
           id="services-arrivals"
           uses={m.uses['services-arrivals']}
+          metric={FIGURE_METRIC['services-arrivals']}
           span={8}
           title="When cases arrive"
           subtitle={`Cases opened in the ${per} by weekday and hour of the opened time`}
@@ -443,18 +434,13 @@ export function CasesTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext }
             { key: 'cases', label: 'Cases opened', format: 'int', drill: arrivalCell },
             { key: 'share', label: 'Share of cases', format: 'pct', drill: arrivalCell },
           ]}
-          definitions={[
-            {
-              term: 'Hour',
-              text: 'The hour of the opened timestamp as the help desk recorded it (local time of the system). Hours with no cases at either end are trimmed.',
-            },
-          ]}
+          definitions={[D.arrivals]}
           note={asOfNote(m.asOf, count(m.summary.opened, 'case'))}
           empty={
             !m.arrivals.length
               ? 'Upload HR cases with an opened time (date and hour) to see this.'
               : m.arrivals.every((r) => r.share == null)
-                ? 'Fewer than 5 people are behind these cases, so their arrival times are hidden to protect anonymity.'
+                ? `Fewer than ${k} people are behind these cases, so their arrival times are hidden to protect anonymity.`
                 : null
           }
         >
@@ -473,12 +459,13 @@ export function CasesTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext }
         <Figure
           id="services-csat-by-channel"
           uses={m.uses['services-csat-by-channel']}
+          metric={FIGURE_METRIC['services-csat-by-channel']}
           span={4}
           title="Satisfaction by channel"
           subtitle={`Mean score (1 to 5) on cases resolved in the ${per}`}
           data={m.channels}
           columns={channelColumns}
-          definitions={[DEF.csat, DEF.anonymity]}
+          definitions={[D.csat, D.anonymity]}
           note={asOfNote(m.asOf, count(m.summary.csat.n, 'response'))}
           empty={m.caseCols.csat ? null : 'Upload HR cases with a satisfaction column to see this.'}
         >
@@ -494,7 +481,7 @@ export function CasesTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext }
                 : { value: overallCsat, label: `All ${fmt(overallCsat, 'num1')}` }
             }
             secondary={(d) => count(d.responses, 'response')}
-            tone={(d) => (channelGap(d) >= 0.5 ? 'warning' : 'default')}
+            tone={(d) => (channelGap(d) >= cfg.csatGap.gap ? 'warning' : 'default')}
             onSelect={(d) => drill(channelCsat(d))}
           />
         </Figure>
@@ -507,12 +494,13 @@ export function CasesTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext }
         <Figure
           id="services-reopen-escalate"
           uses={m.uses['services-reopen-escalate']}
+          metric={FIGURE_METRIC['services-reopen-escalate']}
           span={12}
           title="Reopened and escalated by category"
           subtitle={`Cases opened in the ${per}: reopened after resolution, and escalated to a higher tier`}
           data={m.reopen}
           columns={reopenColumns}
-          definitions={[DEF.reopen, DEF.escalation, DEF.anonymity]}
+          definitions={[D.reopen, D.escalation, D.anonymity]}
           note={asOfNote(m.asOf, count(m.summary.opened, 'case'))}
           empty={
             m.caseCols.reopened || m.caseCols.escalated
@@ -535,12 +523,13 @@ export function CasesTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext }
         <Figure
           id="services-team-workload"
           uses={m.uses['services-team-workload']}
+          metric={FIGURE_METRIC['services-team-workload']}
           span={12}
           title="Team workload"
           subtitle={`Cases by owning team, ${per}; open count at the as-of date`}
           data={teams}
           columns={teamColumns}
-          definitions={[DEF.resolutionSla, DEF.timeToResolve, DEF.csat, DEF.firstContact, DEF.anonymity]}
+          definitions={[D.firstContact, D.resolutionSla, D.timeToResolve, D.csat, D.anonymity]}
           note={asOfNote(
             m.asOf,
             count(m.summary.opened, 'case'),
@@ -553,39 +542,34 @@ export function CasesTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext }
 
       <Section
         title="Aging cases"
-        dek="Every case still open more than 14 days after it was opened, oldest first. Past 30 days is marked critical. Employee relations cases are counted, never listed."
+        dek={`Every case still open more than ${count(agedDays, 'day')} after it was opened, oldest first. Past ${count(criticalDays, 'day')} is marked critical. Employee relations cases are counted, never listed.`}
       >
         <Figure
           id="services-aged-cases"
           uses={m.uses['services-aged-cases']}
+          metric={FIGURE_METRIC['services-aged-cases']}
           span={12}
-          title="Cases open longer than 14 days"
+          title={`Cases open longer than ${count(agedDays, 'day')}`}
           subtitle="Open at the as-of date, with the days past the category resolution target"
           data={m.aged}
           columns={agedColumns}
-          definitions={[
-            DEF.backlog,
-            {
-              term: 'Employee relations',
-              text: 'Employee relations cases are reported as counts and timeliness only, so they never appear row by row here or in detail exports.',
-            },
-          ]}
+          definitions={[D.aged, D.backlog, D.employeeRelations]}
           note={asOfNote(m.asOf, count(m.aged.length, 'case'), erNote)}
           tableOnly
           table={{
-            rowTone: (r) => (r.ageDays > 30 ? 'critical' : 'warning'),
+            rowTone: (r) => (r.ageDays > criticalDays ? 'critical' : 'warning'),
             search: 'Search cases',
             maxRows: 20,
             onRowClick: (r) => drill(agedCase(r)),
           }}
           empty={
             m.small
-              ? SMALL_SCOPE
+              ? smallScope(k)
               : m.aged.length
                 ? null
                 : erAged
-                  ? `No case outside employee relations has been open longer than 14 days (${count(erAged, 'employee relations case')} ${erAged === 1 ? 'has' : 'have'}, not listed).`
-                  : 'No case has been open longer than 14 days.'
+                  ? `No case outside employee relations has been open longer than ${count(agedDays, 'day')} (${count(erAged, 'employee relations case')} ${erAged === 1 ? 'has' : 'have'}, not listed).`
+                  : `No case has been open longer than ${count(agedDays, 'day')}.`
           }
         />
       </Section>

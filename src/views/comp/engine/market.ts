@@ -2,14 +2,16 @@
  * Market position: base pay against the market median for the job (market ratio), by job
  * family, location and level, and the jobs furthest below market. Ratios need no FX. Pure.
  */
-import { LEVELS } from '@/data/schema'
+import { LEVELS, MIN_GROUP } from '@/data/schema'
 import { behind, groupRows, safeMedian, values } from './groups'
 import type { CompPerson } from './population'
+import { defaultRules } from './rules'
 
-/** A job family at or below this median market ratio is flagged (5% or more below market). */
-export const MARKET_FLAG = 0.95
-/** Market medians this far above range midpoints (median market ÷ mid) mean the ranges trail the market. */
-export const MARKET_RANGE_GAP = 1.05
+/*
+ * Statistics take the anonymity minimum as `min` (the model passes the one in force). The
+ * below-market and ranges-trail thresholds are settings of 'comp.market.belowMarket', read in
+ * `rules.ts`; the smallest family ranked is a setting of 'comp.market.gap'.
+ */
 
 export interface MarketRow {
   group: string
@@ -24,18 +26,22 @@ export interface MarketRow {
   members: CompPerson[]
 }
 
-function marketRow(group: string, rows: readonly CompPerson[]): MarketRow {
+function marketRow(group: string, rows: readonly CompPerson[], min: number): MarketRow {
   const xs = values(rows, (p) => p.marketRatio)
-  const median = safeMedian(xs)
+  const median = safeMedian(xs, min)
   return {
     group,
     n: xs.length,
     median,
     gap: median == null ? null : median - 1,
-    marketVsMid: safeMedian(values(rows, (p) => p.marketVsMid)),
+    marketVsMid: safeMedian(
+      values(rows, (p) => p.marketVsMid),
+      min,
+    ),
     members: behind(
       rows.filter((p) => p.marketRatio != null),
       xs.length,
+      min,
     ),
   }
 }
@@ -44,13 +50,11 @@ export function marketBy(
   people: readonly CompPerson[],
   key: (p: CompPerson) => string | null,
   order?: readonly string[],
+  min = MIN_GROUP,
 ): MarketRow[] {
   const priced = people.filter((p) => p.marketRatio != null)
-  return groupRows(priced, key, { order }).map((g) => marketRow(g.label, g.rows))
+  return groupRows(priced, key, { order, min }).map((g) => marketRow(g.label, g.rows, min))
 }
-
-/** The ranked family chart leaves out families under this size (they fold into Other). */
-export const MARKET_CHART_MIN = 10
 
 /**
  * The `top` groups furthest below market, lowest first, with every other group's people folded
@@ -62,14 +66,15 @@ export function marketLowest(
   people: readonly CompPerson[],
   key: (p: CompPerson) => string | null,
   top: number,
-  minN = MARKET_CHART_MIN,
+  minN = defaultRules().marketGap.minFamily,
+  min = MIN_GROUP,
 ): MarketRow[] {
   const priced = people.filter((p) => p.marketRatio != null)
-  const all = groupRows(priced, key)
+  const all = groupRows(priced, key, { min })
   const ranks = (g: (typeof all)[number]) => !g.folded && g.rows.length >= minN
   const ranked = all
     .filter(ranks)
-    .map((g) => ({ g, row: marketRow(g.label, g.rows) }))
+    .map((g) => ({ g, row: marketRow(g.label, g.rows, min) }))
     .sort((a, b) => (a.row.median ?? Number.POSITIVE_INFINITY) - (b.row.median ?? Number.POSITIVE_INFINITY))
   const small = all.filter((g) => !ranks(g))
   // One ranked group past the cut keeps its name: folding it into "Other (1)" hides nothing.
@@ -81,27 +86,29 @@ export function marketLowest(
     marketRow(
       `Other (${folded})`,
       rest.flatMap((g) => g.rows),
+      min,
     ),
   ]
 }
 
-export function marketTotal(people: readonly CompPerson[], label = 'All'): MarketRow {
+export function marketTotal(people: readonly CompPerson[], label = 'All', min = MIN_GROUP): MarketRow {
   return marketRow(
     label,
     people.filter((p) => p.marketRatio != null),
+    min,
   )
 }
 
-export const marketByLevel = (people: readonly CompPerson[]): MarketRow[] =>
-  marketBy(people, (p) => p.level, LEVELS)
+export const marketByLevel = (people: readonly CompPerson[], min = MIN_GROUP): MarketRow[] =>
+  marketBy(people, (p) => p.level, LEVELS, min)
 
 export interface JobMarketRow extends MarketRow {
   jobFamily: string
   level: string
 }
 
-/** Job family × level cells with at least 5 people, lowest market ratio first. */
-export function jobsBelowMarket(people: readonly CompPerson[], top = 15): JobMarketRow[] {
+/** Job family × level cells with at least `min` people (the anonymity minimum), lowest market ratio first. */
+export function jobsBelowMarket(people: readonly CompPerson[], top = 15, min = MIN_GROUP): JobMarketRow[] {
   const cells = new Map<string, { jobFamily: string; level: string; rows: CompPerson[] }>()
   for (const p of people) {
     if (p.marketRatio == null || !p.level) continue
@@ -115,7 +122,7 @@ export function jobsBelowMarket(people: readonly CompPerson[], top = 15): JobMar
   }
   return [...cells.values()]
     .map((c) => ({
-      ...marketRow(`${c.jobFamily} · ${c.level}`, c.rows),
+      ...marketRow(`${c.jobFamily} · ${c.level}`, c.rows, min),
       jobFamily: c.jobFamily,
       level: c.level,
     }))

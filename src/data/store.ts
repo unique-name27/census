@@ -1,16 +1,35 @@
 /**
  * App state (Zustand). Holds the ten datasets with a version record each (mapping, import
- * counts, certification), your reference mappings, the settings, the global filters and the
- * route.
+ * counts, certification), your reference mappings, the settings, your metric dictionary changes
+ * with their change log, the global filters and the route.
  *
  * Persistence never leaves the browser: uploaded datasets, versions, raw sheets and reference
- * mappings go to IndexedDB, settings and filters to localStorage. Sample data is regenerated
+ * mappings go to IndexedDB, settings, the metric dictionary (`census:metrics`) and filters to
+ * localStorage. Sample data is regenerated
  * deterministically on load, so it is never stored. Showing pay amounts is a decision for one
  * session: it lives in memory and starts off on every load.
  */
 import { del as idbDel, get as idbGet, set as idbSet } from 'idb-keyval'
 import { create } from 'zustand'
 import { todayISO } from '@/lib/dates'
+import { metricsApi } from '@/metrics/api'
+import { CATALOG } from '@/metrics/catalog'
+import { compCycleEdits, compCycleOf } from '@/metrics/compCycle'
+import { applyDictionaryPlan, prepareDictionaryImport } from '@/metrics/excel'
+import { applyImport, importMetricsSection, importSummary, metricsFileSection } from '@/metrics/imports'
+import {
+  applyEdit,
+  applyEdits,
+  type BatchResult,
+  EMPTY_METRICS,
+  resetAll,
+  resetMetric,
+  undoChange as undoMetric,
+} from '@/metrics/overrides'
+import { sameParam } from '@/metrics/params'
+import { loadMetrics, METRICS_KEY, saveMetrics } from '@/metrics/persist'
+import { qualityRulesOf } from '@/metrics/quality'
+import type { EditResult, MetricEdit, MetricImportReport, MetricsState } from '@/metrics/types'
 import type { ApplyOptions, ImportIssue, Mapping, ParsedSheet } from './import/types'
 import {
   buildSampleState,
@@ -57,6 +76,7 @@ import { DATASET_KEYS, type DatasetKey, type Datasets, type ISODate, type ViewKe
 import { DEFAULT_FILTERS, type Filters, resolveAsOf } from './scope'
 import {
   type CompCycleSettings,
+  DEFAULT_COMP_CYCLE,
   DEFAULT_SETTINGS,
   type ImportSettingsResult,
   loadSettings,
@@ -124,6 +144,8 @@ export interface SettingsRequest {
   nonce: number
 }
 
+export type MetricImportResult = { ok: true; report: MetricImportReport } | { ok: false; error: string }
+
 export interface CensusState extends Settings {
   ready: boolean
   /** Browser storage did not answer at start-up; uploads from earlier sessions are not loaded. */
@@ -142,6 +164,14 @@ export interface CensusState extends Settings {
   /** Pay amounts are shown and exported. In memory only: off on every load, never persisted. */
   showPay: boolean
   settingsOpen: SettingsRequest
+  /** Your metric dictionary changes (wording, targets, settings) and their change log. */
+  metrics: MetricsState
+  /**
+   * @deprecated The compensation cycle settings now live in the metric dictionary: read them with
+   * `cycleSettingsOf(ctx.metrics)` / `compCycleOf(ctx.metrics)`. This is a read-only mirror of
+   * those settings, kept in step with every dictionary change.
+   */
+  compCycle: CompCycleSettings
 
   init: () => Promise<void>
   setFilters: (patch: Partial<Filters>) => void
@@ -155,7 +185,9 @@ export interface CensusState extends Settings {
   setMotion: (m: MotionPref) => void
   setDataStandard: (s: DataStandard) => void
   setAsOfOverride: (d: ISODate | null) => void
+  /** @deprecated Writes the comp metrics' settings in the dictionary (logged); edit them there instead. */
   setCompCycle: (c: CompCycleSettings) => void
+  /** @deprecated Puts the comp metrics' cycle settings back to their defaults (logged). */
   resetCompCycle: () => void
   /** Save a tool link; null clears it, undefined restores the default. False when the URL is not a web link. */
   setToolLink: (id: string, url: string | null | undefined) => boolean
@@ -188,6 +220,20 @@ export interface CensusState extends Settings {
   revokeCertification: (key: DatasetKey) => void
   /** The original sheet and import log of a version (the current one by default), loaded on demand. */
   getRaw: (key: DatasetKey, versionId?: string) => Promise<RawRecord | null>
+
+  /* metric dictionary */
+  /** Change one wording, target or setting; validated against the metric's definition and logged. */
+  editMetric: (edit: MetricEdit, by?: string | null) => EditResult
+  /** Several changes at once (each validated on its own, one timestamp). */
+  editMetrics: (edits: readonly MetricEdit[], by?: string | null) => BatchResult
+  /** Undo one logged change, or the latest one that can be undone. False when nothing was undone. */
+  undoMetricChange: (changeId?: string, by?: string | null) => boolean
+  /** Put one metric back to its defaults (each field logged). */
+  resetMetric: (metricId: string, by?: string | null) => void
+  /** Put every metric back to its defaults. */
+  resetAllMetrics: (by?: string | null) => void
+  /** Apply an edited "Metric dictionary" workbook, field by field; reports what changed and what was refused. */
+  importMetricDictionary: (file: ArrayBuffer | Uint8Array, by?: string | null) => Promise<MetricImportResult>
 
   /* reference mappings */
   addReferenceMapping: (m: NewReferenceMapping, by?: string | null) => AddResult
@@ -348,13 +394,44 @@ async function persistReference(state: ReferenceState): Promise<void> {
 }
 
 const initialSettings = loadSettings()
+const initialMetrics = loadMetrics(CATALOG)
+let listeningForMetrics = false
 const sampleAsOf = SAMPLE_AS_OF
+
+/** The cycle settings in force, reusing `prev` when they are the same values. */
+function cycleMirror(m: MetricsState, prev?: CompCycleSettings): CompCycleSettings {
+  const next = compCycleOf(metricsApi(m))
+  return prev && sameParam(prev, next) ? prev : next
+}
+
+/** Two import reports as one (a settings file can carry both a dictionary and an old comp cycle). */
+function mergeReports(a: MetricImportReport | undefined, b: MetricImportReport): MetricImportReport {
+  if (!a) return b
+  const changed = [...a.changed, ...b.changed]
+  const rejected = [...a.rejected, ...b.rejected]
+  const unknown = [...new Set([...a.unknown, ...b.unknown])]
+  return { changed, rejected, unknown, summary: importSummary(changed, rejected, unknown) }
+}
 
 export const useCensus = create<CensusState>((set, getState) => {
   /** Apply a settings patch and save every setting. */
   const patchSettings = (patch: Partial<Settings>) => {
-    set(patch)
+    const { compCycle: _ignored, ...rest } = patch
+    set(rest)
     saveSettings(pickSettings(getState()))
+  }
+
+  /** Make a new dictionary state current: the comp cycle mirror follows, and it is saved. */
+  const commitMetrics = (next: MetricsState) => {
+    if (next === getState().metrics) return
+    set((s) => ({ metrics: next, compCycle: cycleMirror(next, s.compCycle) }))
+    saveMetrics(next)
+  }
+
+  const editMetrics = (edits: readonly MetricEdit[], by?: string | null): BatchResult => {
+    const r = applyEdits(getState().metrics, CATALOG, edits, { by })
+    commitMetrics(r.state)
+    return r
   }
 
   /** Move a dataset to a new current version, keeping the old one in its history. */
@@ -404,10 +481,21 @@ export const useCensus = create<CensusState>((set, getState) => {
     route: parseHash(typeof location === 'undefined' ? '' : location.hash) ?? { view: 'recruiting', tab: '' },
     showPay: false,
     settingsOpen: { open: false, section: null, nonce: 0 },
+    metrics: initialMetrics,
+    compCycle: cycleMirror(initialMetrics),
 
     async init() {
       // Earlier versions remembered the pay switch across sessions; it is now per session only.
       LS.remove('showPay')
+      // Another tab's dictionary changes reach this one as they happen (null: storage cleared).
+      if (typeof window !== 'undefined' && !listeningForMetrics) {
+        listeningForMetrics = true
+        window.addEventListener('storage', (e) => {
+          if (e.key !== METRICS_KEY && e.key !== null) return
+          const next = loadMetrics(CATALOG)
+          set((s) => ({ metrics: next, compCycle: cycleMirror(next, s.compCycle) }))
+        })
+      }
       // Another tab's settings, mappings or "clear everything" reach this one as they happen.
       listenToTabs(SETTINGS_KEY, {
         settings: () => set(loadSettings()),
@@ -504,8 +592,12 @@ export const useCensus = create<CensusState>((set, getState) => {
     setMotion: (motion) => patchSettings({ motion }),
     setDataStandard: (dataStandard) => patchSettings({ dataStandard }),
     setAsOfOverride: (asOfOverride) => patchSettings({ asOfOverride }),
-    setCompCycle: (c) => patchSettings({ compCycle: sanitizeCompCycle(c) }),
-    resetCompCycle: () => patchSettings({ compCycle: DEFAULT_SETTINGS.compCycle }),
+    setCompCycle: (c) => {
+      editMetrics(compCycleEdits(sanitizeCompCycle(c)))
+    },
+    resetCompCycle: () => {
+      editMetrics(compCycleEdits(DEFAULT_COMP_CYCLE))
+    },
     setToolLink(id, url) {
       const tools = { ...getState().tools }
       if (url === undefined) delete tools[id]
@@ -521,8 +613,8 @@ export const useCensus = create<CensusState>((set, getState) => {
     resetTools: () => patchSettings({ tools: {} }),
     updateSettings(patch) {
       const cur = pickSettings(getState())
-      const next: Partial<Settings> = { ...patch }
-      if (patch.compCycle) next.compCycle = sanitizeCompCycle(patch.compCycle)
+      const { compCycle, ...next } = patch
+      if (compCycle) editMetrics(compCycleEdits(sanitizeCompCycle(compCycle)))
       if (patch.tools) next.tools = sanitizeTools(patch.tools)
       patchSettings({ ...cur, ...next })
     },
@@ -532,11 +624,36 @@ export const useCensus = create<CensusState>((set, getState) => {
     closeSettings() {
       set((s) => ({ settingsOpen: { ...s.settingsOpen, open: false } }))
     },
-    exportSettings: () => settingsBlob(pickSettings(getState())),
+    exportSettings: () =>
+      settingsBlob(pickSettings(getState()), new Date(), metricsFileSection(getState().metrics)),
     importSettings(json) {
-      const r = parseSettingsFile(json, pickSettings(getState()))
-      if (r.ok) patchSettings(r.settings)
-      return r
+      const st = getState()
+      const r = parseSettingsFile(json, pickSettings(st), undefined, st.compCycle)
+      if (!r.ok) return r
+      patchSettings(r.settings)
+      let state = getState().metrics
+      let report: MetricImportReport | undefined
+      if (r.metricsSection !== undefined) {
+        const m = importMetricsSection(r.metricsSection, state, CATALOG)
+        if (m.ok) {
+          state = m.state
+          report = m.report
+        } else
+          report = {
+            changed: [],
+            rejected: [{ metricId: '', field: '', reason: m.error }],
+            unknown: [],
+            summary: m.error,
+          }
+      }
+      if (r.compCycle) {
+        const planned = compCycleEdits(r.compCycle).map((edit) => ({ edit }))
+        const c = applyImport(state, CATALOG, planned, [], [])
+        state = c.state
+        report = mergeReports(report, c.report)
+      }
+      commitMetrics(state)
+      return report ? { ...r, metrics: report } : r
     },
     async clearDevice() {
       const failed = await clearCensusStorage()
@@ -549,6 +666,8 @@ export const useCensus = create<CensusState>((set, getState) => {
         versions: base.versions,
         history: perKey(() => []),
         reference: EMPTY_REFERENCE,
+        metrics: EMPTY_METRICS,
+        compCycle: cycleMirror(EMPTY_METRICS),
         filters: { ...DEFAULT_FILTERS },
         showPay: false,
         storageUnavailable: false,
@@ -651,7 +770,8 @@ export const useCensus = create<CensusState>((set, getState) => {
       const v = s.versions[key]
       if (!v) return null
       const asOf = contextAsOf(s)
-      const certification = makeCertification({ version: v, input, data: s.data, asOf })
+      const defaultTolerance = qualityRulesOf(metricsApi(s.metrics)).tolerance
+      const certification = makeCertification({ version: v, input, data: s.data, asOf, defaultTolerance })
       set((st) => ({ versions: { ...st.versions, [key]: { ...v, certification } } }))
       void persistVersions(key, getState())
       return certification
@@ -665,6 +785,35 @@ export const useCensus = create<CensusState>((set, getState) => {
     getRaw(key, versionId) {
       const id = versionId ?? getState().versions[key]?.versionId
       return id ? loadRaw(key, id) : Promise.resolve(null)
+    },
+
+    /* ───────────── metric dictionary ───────────── */
+
+    editMetric(edit, by) {
+      const r = applyEdit(getState().metrics, CATALOG, edit, { by })
+      if (r.ok) commitMetrics(r.state)
+      return r
+    },
+    editMetrics,
+    undoMetricChange(changeId, by) {
+      const before = getState().metrics
+      const next = undoMetric(before, CATALOG, changeId, { by })
+      commitMetrics(next)
+      return next !== before
+    },
+    resetMetric(metricId, by) {
+      commitMetrics(resetMetric(getState().metrics, CATALOG, metricId, { by }))
+    },
+    resetAllMetrics(by) {
+      commitMetrics(resetAll(getState().metrics, CATALOG, { by }))
+    },
+    async importMetricDictionary(file, by) {
+      const r = await prepareDictionaryImport(file, CATALOG)
+      if (!r.ok) return r
+      // Applied to the state as it is once the file is read, so nothing made meanwhile is lost.
+      const done = applyDictionaryPlan(r.plan, getState().metrics, CATALOG, { by })
+      commitMetrics(done.state)
+      return { ok: true, report: done.report }
     },
 
     /* ───────────── reference mappings ───────────── */

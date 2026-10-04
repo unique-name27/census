@@ -10,14 +10,6 @@ import { drill, openPerson } from '@/drill'
 import { formatDate } from '@/lib/dates'
 import { fmt } from '@/lib/format'
 import {
-  budgetDefinition,
-  DEF_EXCEPTIONS,
-  DEF_FX,
-  DEF_LATEST_RATING,
-  DEF_SPEND,
-  guidelineDefinition,
-} from '../columns'
-import {
   binColumns,
   binItems,
   exceptionColumns,
@@ -25,7 +17,8 @@ import {
   promotionColumns,
   spendColumns,
 } from '../drillColumns'
-import { type ExceptionRow, OVER_BUDGET, type SpendRow } from '../engine/cycle'
+import type { ExceptionRow, SpendRow } from '../engine/cycle'
+import { FIGURE_METRIC } from '../engine/definitions'
 import { meritBinDrill, mixDrill, spendDrill } from '../engine/drill'
 import { smallSpend } from '../engine/kpis'
 import { type CompModel, MERIT_STEP } from '../engine/model'
@@ -33,7 +26,9 @@ import { pts2 } from '../engine/text'
 import { emptyIf, MISSING, note } from '../shared'
 import { edges } from './Overview'
 
-const spendTone = (d: SpendRow) => (d.delta != null && d.delta >= OVER_BUDGET ? 'warning' : 'default')
+/** Business units over budget by the flag gap or more ('comp.merit.overBudget') are marked. */
+const spendTone = (flag: number) => (d: SpendRow) =>
+  d.delta != null && d.delta >= flag ? 'warning' : 'default'
 const spendGap = (d: SpendRow) => (d.delta == null ? null : pts2(d.delta))
 const pct2 = (v: number | null) => fmt(v, 'pct2')
 const exceptionTone = (r: ExceptionRow): Severity => (r.kind === 'outlier' ? 'info' : 'warning')
@@ -60,8 +55,9 @@ export function Cycle({ m }: { m: CompModel }) {
       { level: r.level, part: 'Equity', share: r.equity },
     ].filter((x) => x.share != null),
   )
-  // Totals over 1-4 proposals would give away individual merit: no overall rate or amount.
-  const hide = smallSpend(c.spend)
+  // Totals over fewer proposals than the anonymity minimum would give away individual merit: no
+  // overall rate or amount.
+  const hide = smallSpend(c.spend, m.rules.minGroup)
   const overall = hide || c.spend.spendPct == null ? '' : ` · ${pct2(c.spend.spendPct)} overall`
   const money =
     !hide && m.showPay && c.spend.overUsd != null
@@ -74,16 +70,17 @@ export function Cycle({ m }: { m: CompModel }) {
 
       <Section
         title="Spend against budget"
-        dek={`Merit proposals as a share of eligible base salary in USD, against the ${pct2(s.meritBudget)} budget from Cycle settings. Promotion increases are kept apart.`}
+        dek={`Merit proposals as a share of eligible base salary in USD, against the ${pct2(s.meritBudget)} merit budget. Promotion increases are kept apart.`}
       >
         <Figure
           id="comp-spend-by-bu"
           uses={m.uses['comp-spend-by-bu']}
+          metric={FIGURE_METRIC['comp-spend-by-bu']}
           title="Merit spend by business unit"
           subtitle={`Σ merit ÷ Σ eligible base, USD, this cycle against the ${pct2(s.meritBudget)} budget`}
           data={c.byBu}
           columns={spendColumns(m)}
-          definitions={[DEF_SPEND, budgetDefinition(s), DEF_FX]}
+          definitions={m.definitions['comp-spend-by-bu']}
           note={`${note(m, c.spend.eligible, 'proposals', true)}${overall}${money}`}
           span={6}
           empty={emptyIf(c.byBu, noMerit, 'No merit proposals in this scope.')}
@@ -94,7 +91,7 @@ export function Cycle({ m }: { m: CompModel }) {
             value="spendPct"
             format="pct2"
             ref={{ value: s.meritBudget, label: `Budget ${pct2(s.meritBudget)}` }}
-            tone={spendTone}
+            tone={spendTone(m.rules.overBudget.flag)}
             secondary={spendGap}
             onSelect={(d) => drill(spendDrill(m, d, 'priced'))}
           />
@@ -102,11 +99,12 @@ export function Cycle({ m }: { m: CompModel }) {
         <Figure
           id="comp-merit-distribution"
           uses={m.uses['comp-merit-distribution']}
+          metric={FIGURE_METRIC['comp-merit-distribution']}
           title="Merit distribution"
           subtitle="Proposed merit % per person, this cycle"
           data={c.hist}
           columns={binColumns(m, c.hist, 'merit')}
-          definitions={[DEF_SPEND, guidelineDefinition(s)]}
+          definitions={m.definitions['comp-merit-distribution']}
           note={`${note(m, merits, 'proposals')}${c.spend.meanMerit == null ? '' : ` · mean ${pct2(c.spend.meanMerit)}`}`}
           span={6}
           empty={emptyIf(c.hist, noMerit, 'No merit proposals in this scope.')}
@@ -134,11 +132,12 @@ export function Cycle({ m }: { m: CompModel }) {
         <Figure
           id="comp-guideline-exceptions"
           uses={m.uses['comp-guideline-exceptions']}
+          metric={FIGURE_METRIC['comp-guideline-exceptions']}
           title="Guideline exceptions"
           subtitle={`Rule breaks first, then the largest gaps to the guideline, as of ${asOf}`}
           data={c.exceptions}
           columns={exceptionColumns(m)}
-          definitions={[DEF_EXCEPTIONS, guidelineDefinition(s), DEF_LATEST_RATING]}
+          definitions={m.definitions['comp-guideline-exceptions']}
           note={note(m, c.exceptions.length, 'proposals')}
           tableOnly
           table={{
@@ -162,17 +161,12 @@ export function Cycle({ m }: { m: CompModel }) {
         <Figure
           id="comp-promotions"
           uses={m.uses['comp-promotions']}
+          metric={FIGURE_METRIC['comp-promotions']}
           title="Promotions in this cycle"
           subtitle="Promotion increases proposed this cycle, kept apart from merit"
           data={c.promotions.rows}
           columns={promotionColumns(m)}
-          definitions={[
-            {
-              term: 'Promotion %',
-              text: 'The promotion increase proposed this cycle. It is reported on its own and left out of merit spend and merit checks.',
-            },
-            DEF_LATEST_RATING,
-          ]}
+          definitions={m.definitions['comp-promotions']}
           note={note(m, c.promotions.rows.length)}
           span={6}
           tableOnly
@@ -182,18 +176,12 @@ export function Cycle({ m }: { m: CompModel }) {
         <Figure
           id="comp-rewards-mix"
           uses={m.uses['comp-rewards-mix']}
+          metric={FIGURE_METRIC['comp-rewards-mix']}
           title="Total rewards mix by level"
           subtitle="Share of target pay from base, target bonus and annual equity, USD"
           data={c.mix}
           columns={mixColumns(m)}
-          definitions={[
-            {
-              term: 'Target pay',
-              text: 'Base salary plus target bonus plus annualized equity, all in US dollars. Shares only, so no amounts are shown.',
-              formula: 'base + base × target bonus % + annual equity',
-            },
-            DEF_FX,
-          ]}
+          definitions={m.definitions['comp-rewards-mix']}
           note={note(
             m,
             c.mix.reduce((a, r) => a + r.n, 0),

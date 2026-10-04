@@ -262,22 +262,23 @@ function caseRow(ctx: DrillContext, c: HrCase): Row {
   const cat = caseCategoryByName.get(c.category)
   const target = c.resolutionTargetHours ?? cat?.resolutionHours ?? null
   const hours = c.resolvedAt ? hoursBetween(c.openedAt, c.resolvedAt) : null
+  // Employee relations: category level only, and never tied to a named person (privacy rule).
+  const er = c.category === 'Employee relations'
   return {
     caseId: c.caseId,
     category: c.category,
-    // Employee relations: category level only (privacy rule).
-    subcategory: c.category === 'Employee relations' ? null : (c.subcategory ?? null),
+    subcategory: er ? null : (c.subcategory ?? null),
     status: c.status,
     priority: c.priority,
     team: c.team,
     assignee: c.assignee ?? null,
-    requester: nameOf(ctx, c.requesterId),
+    requester: er ? null : nameOf(ctx, c.requesterId),
     openedAt: c.openedAt,
     resolvedAt: c.resolvedAt ?? null,
     hoursToResolve: hours,
     withinTarget: hours == null || target == null ? null : hours <= target ? 'Yes' : 'No',
     csat: c.csat ?? null,
-    [PERSON_KEY]: c.requesterId ?? null,
+    [PERSON_KEY]: er ? null : (c.requesterId ?? null),
     [ROW_KEY]: c.caseId,
   }
 }

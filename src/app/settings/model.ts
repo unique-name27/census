@@ -1,79 +1,10 @@
 /**
- * Pure helpers for the Settings sheet: the compensation cycle form (percent text in, fractions
- * out, plain-English errors), the related-tools form, and the wording after a settings import.
+ * Pure helpers for the Settings sheet: the related-tools form and the wording after a settings
+ * import. (The compensation cycle settings moved to the metric dictionary; see CompSection.)
  */
-import {
-  COMP_CYCLE_LIMITS,
-  type CompCycleSettings,
-  RATING_KEYS,
-  type RatingKey,
-  type Settings,
-} from '@/data/settings'
+import type { Settings } from '@/data/settings'
+import type { MetricImportReport } from '@/metrics/types'
 import { DEFAULT_TOOLS, normalizeUrl, type Tool } from '../tools'
-
-/* ───────────── compensation cycle ───────────── */
-
-export interface CompDraft {
-  /** Merit budget in percent. */
-  budget: string
-  low: string
-  high: string
-  /** Guideline by rating in percent. */
-  guideline: Record<RatingKey, string>
-}
-
-const pctText = (v: number) => String(Math.round(v * 10_000) / 100)
-
-export function toCompDraft(c: CompCycleSettings): CompDraft {
-  const guideline = {} as Record<RatingKey, string>
-  for (const r of RATING_KEYS) guideline[r] = pctText(c.guideline[r])
-  return {
-    budget: pctText(c.meritBudgetPct),
-    low: c.healthyBand[0].toFixed(2),
-    high: c.healthyBand[1].toFixed(2),
-    guideline,
-  }
-}
-
-const num = (s: string): number => (s.trim() === '' ? Number.NaN : Number(s))
-const within = (v: number, r: { min: number; max: number }) => v >= r.min && v <= r.max
-
-export type CompDraftResult =
-  | { ok: true; settings: CompCycleSettings }
-  | { ok: false; error: string; field: 'budget' | 'low' | 'high' | `g${RatingKey}` }
-
-/** Settings from the form, or the first problem and the field it is in. */
-export function parseCompDraft(d: CompDraft): CompDraftResult {
-  const L = COMP_CYCLE_LIMITS
-  const budget = num(d.budget) / 100
-  if (!within(budget, L.meritBudgetPct))
-    return { ok: false, error: 'Merit budget must be between 0% and 20%.', field: 'budget' }
-  const low = num(d.low)
-  const high = num(d.high)
-  if (!within(low, L.band))
-    return { ok: false, error: 'Band values must be between 0.50 and 1.50.', field: 'low' }
-  if (!within(high, L.band))
-    return { ok: false, error: 'Band values must be between 0.50 and 1.50.', field: 'high' }
-  if (!(low < high))
-    return { ok: false, error: 'The low end of the band must be below the high end.', field: 'low' }
-  const guideline = {} as Record<RatingKey, number>
-  for (const r of RATING_KEYS) {
-    const v = num(d.guideline[r]) / 100
-    if (!within(v, L.guideline))
-      return { ok: false, error: `The guideline for rating ${r} must be between 0% and 30%.`, field: `g${r}` }
-    guideline[r] = v
-  }
-  return { ok: true, settings: { meritBudgetPct: budget, healthyBand: [low, high], guideline } }
-}
-
-export function sameCompCycle(a: CompCycleSettings, b: CompCycleSettings): boolean {
-  return (
-    a.meritBudgetPct === b.meritBudgetPct &&
-    a.healthyBand[0] === b.healthyBand[0] &&
-    a.healthyBand[1] === b.healthyBand[1] &&
-    RATING_KEYS.every((r) => a.guideline[r] === b.guideline[r])
-  )
-}
 
 /* ───────────── related tools ───────────── */
 
@@ -129,4 +60,23 @@ export function importedText(applied: readonly (keyof Settings)[]): string {
   if (!names.length) return 'Nothing in the file could be applied.'
   const list = names.length < 2 ? names[0] : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
   return `Applied the ${list} from the file.`
+}
+
+/** What a settings file did to the metric dictionary, in one sentence or two. */
+export function dictionaryImportText(
+  r: Pick<MetricImportReport, 'changed' | 'rejected' | 'unknown' | 'summary'>,
+): string {
+  if (!r.changed.length && !r.rejected.length && !r.unknown.length)
+    return 'The metric definitions already matched the file.'
+  return `Metric definitions: ${r.summary}`
+}
+
+/** The toast after a settings import: the settings applied, then what changed in the metric dictionary. */
+export function importDescription(
+  applied: readonly (keyof Settings)[],
+  metrics?: Pick<MetricImportReport, 'changed' | 'rejected' | 'unknown' | 'summary'>,
+): string {
+  if (!metrics) return importedText(applied)
+  const parts = [applied.length ? importedText(applied) : null, dictionaryImportText(metrics)]
+  return parts.filter(Boolean).join(' ')
 }

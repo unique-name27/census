@@ -2,14 +2,19 @@
  * The Overview KPI strip. Deltas compare with the prior window; a delta is colored only when it
  * clears a materiality gate (2 pts on a rate with at least 30 cases on both sides, 0.1 on CSAT,
  * 15% on counts and durations).
+ *
+ * Each tile names its metric dictionary entry (`metricId`) and takes its info-popover definition
+ * from the registry with your wording; targets and the age limit are settings.
  */
 import type { Kpi } from '@/components/types'
+import { MIN_GROUP } from '@/data/schema'
 import type { Window } from '@/data/scope'
 import { formatDate } from '@/lib/dates'
 import { fmt } from '@/lib/format'
 import { isMaterialChange } from '@/lib/stats'
+import type { MetricsApi } from '@/metrics/types'
+import { M } from '../metrics'
 import { csat, medianHours, openedIn, resolutionSla, resolvedIn, responseSla } from './cases'
-import { RESOLUTION_SLA_TARGET, TRANSACTION_ON_TIME_TARGET } from './catalog'
 import {
   caseDrill,
   csatDrill,
@@ -24,6 +29,7 @@ import {
 import { tagKpis } from './drillUses'
 import { type CaseColumns, type CaseFact, dueIn, onTimeRate, type TxColumns, type TxFact } from './facts'
 import type { Lineage } from './lineage'
+import type { ServicesSettings } from './settings'
 import { duration, type Share } from './util'
 
 export interface CaseSummary {
@@ -36,15 +42,15 @@ export interface CaseSummary {
   rows: { opened: CaseFact[]; resolved: CaseFact[] }
 }
 
-export function caseSummary(facts: readonly CaseFact[], w: Window): CaseSummary {
+export function caseSummary(facts: readonly CaseFact[], w: Window, min = MIN_GROUP): CaseSummary {
   const opened = openedIn(facts, w)
   const resolved = resolvedIn(facts, w)
   return {
     opened: opened.length,
-    resolution: resolutionSla(opened),
-    response: responseSla(opened),
-    medianHours: medianHours(resolved),
-    csat: csat(resolved),
+    resolution: resolutionSla(opened, min),
+    response: responseSla(opened, min),
+    medianHours: medianHours(resolved, min),
+    csat: csat(resolved, min),
     rows: { opened, resolved },
   }
 }
@@ -86,15 +92,23 @@ export interface KpiInputs {
   scope: DrillScope
   /** The fields behind each measure (engine/lineage.ts). */
   lineage: Lineage
+  /** Targets, the age limit and the anonymity minimum in force. */
+  settings: ServicesSettings
+  /** The metric dictionary: each tile's definition comes from its entry. */
+  metrics: Pick<MetricsApi, 'def'>
 }
 
 export function buildKpis(x: KpiInputs): Kpi[] {
-  const cur = caseSummary(x.facts, x.window)
-  const prev = caseSummary(x.facts, x.prior)
+  const cfg = x.settings
+  const min = cfg.minGroup
+  const text = (id: string) => x.metrics.def(id)?.definition
+  const cur = caseSummary(x.facts, x.window, min)
+  const prev = caseSummary(x.facts, x.prior, min)
   const backlog = openAt(x.facts, x.asOf)
   const backlogPrev = openAt(x.facts, x.prior.end)
-  const older = backlog.filter((f) => f.ageDays != null && f.ageDays > 14)
-  const over14 = older.length
+  const agedDays = cfg.agedDays
+  const older = backlog.filter((f) => f.ageDays != null && f.ageDays > agedDays)
+  const overLimit = older.length
   const vs = 'vs prior period'
   // The comparison drills: the same measure over the prior window, in this scope.
   const priorSub = `${x.prior.label} · ${x.scope.scope}`
@@ -107,6 +121,7 @@ export function buildKpis(x: KpiInputs): Kpi[] {
 
   kpis.push({
     id: 'cases-opened',
+    metricId: M.opened,
     label: 'Cases opened',
     value: x.hasCases ? cur.opened : null,
     format: 'int',
@@ -116,7 +131,7 @@ export function buildKpis(x: KpiInputs): Kpi[] {
     spark: x.sparkOpened,
     note: x.hasCases ? `About ${fmt(cur.opened / x.window.months, 'int')} a month` : noCases,
     tab: 'cases',
-    definition: 'Cases opened in the period, every category and channel.',
+    definition: text(M.opened),
     uses: L.opened,
     drill: drillWhen(s, cur.rows.opened, () =>
       caseDrill(s, cur.rows.opened, {
@@ -143,6 +158,7 @@ export function buildKpis(x: KpiInputs): Kpi[] {
 
   kpis.push({
     id: 'open-backlog',
+    metricId: M.backlog,
     label: 'Open backlog',
     value: x.hasCases ? backlog.length : null,
     format: 'int',
@@ -152,12 +168,11 @@ export function buildKpis(x: KpiInputs): Kpi[] {
     deltaMaterial: isMaterialChange(backlog.length, backlogPrev.length, backlog.length, backlogPrev.length),
     note: x.hasCases
       ? backlog.length
-        ? `${fmt(over14 / backlog.length, 'pct0')} older than 14 d`
+        ? `${fmt(overLimit / backlog.length, 'pct0')} older than ${fmt(agedDays, 'days')}`
         : 'No open cases'
       : noCases,
     tab: 'cases',
-    definition:
-      'Cases still open at the end of the as-of date, in any open status. Age runs from the opened date.',
+    definition: text(M.backlog),
     uses: L.open,
     drill: drillWhen(s, backlog, () => openDrill(s, backlog, `Open cases at ${formatDate(x.asOf)}`)),
     deltaDrill: drillWhen(s, backlogPrev, () =>
@@ -167,15 +182,15 @@ export function buildKpis(x: KpiInputs): Kpi[] {
         note: 'Cases open at the end of that day, shown with their current status.',
       }),
     ),
-    // "46% older than 14 d": the open cases past 14 days.
+    // "46% older than 14 d": the open cases past the age limit.
     noteDrill: drillWhen(s, older, () =>
       caseDrill(s, older, {
-        title: `Open cases older than 14 days at ${formatDate(x.asOf)}`,
+        title: `Open cases older than ${agedDays} days at ${formatDate(x.asOf)}`,
         subtitle: `As of ${formatDate(x.asOf)} · ${s.scope}`,
         age: true,
         order: (a, b) => (b.ageDays ?? 0) - (a.ageDays ?? 0),
         gate: backlog,
-        note: `Share = ${fmt(over14, 'int')} ÷ ${fmt(backlog.length, 'int')} open cases.`,
+        note: `Share = ${fmt(overLimit, 'int')} ÷ ${fmt(backlog.length, 'int')} open cases.`,
       }),
     ),
   })
@@ -183,6 +198,7 @@ export function buildKpis(x: KpiInputs): Kpi[] {
   const resolutionOk = x.hasCases && x.cols.resolvedAt
   kpis.push({
     id: 'resolution-sla',
+    metricId: M.resolutionSla,
     label: 'Resolution SLA met',
     value: resolutionOk ? cur.resolution.rate : null,
     format: 'pct',
@@ -196,10 +212,10 @@ export function buildKpis(x: KpiInputs): Kpi[] {
       ? noCases
       : !x.cols.resolvedAt
         ? 'Resolved column missing'
-        : `Target ${fmt(RESOLUTION_SLA_TARGET, 'pct0')} · ${fmt(cur.resolution.n, 'int')} cases`,
+        : // The tile shows the target and whether it is met (the metric's own target).
+          `${fmt(cur.resolution.n, 'int')} cases`,
     tab: 'cases',
-    definition:
-      "Share of cases opened in the period resolved within their category's resolution target (calendar hours). Open cases already past their target count as missed; open cases still inside it are left out.",
+    definition: text(M.resolutionSla),
     uses: L.resolutionSla,
     drill: drillWhen(s, cur.rows.opened, () =>
       resolutionDrill(s, cur.rows.opened, `Cases judged on resolution SLA, ${per}`),
@@ -215,6 +231,7 @@ export function buildKpis(x: KpiInputs): Kpi[] {
   const responseOk = x.hasCases && x.cols.firstResponseAt
   kpis.push({
     id: 'response-sla',
+    metricId: M.responseSla,
     label: 'First response SLA met',
     value: responseOk ? cur.response.rate : null,
     format: 'pct',
@@ -230,8 +247,7 @@ export function buildKpis(x: KpiInputs): Kpi[] {
         ? 'First response column missing'
         : `${fmt(cur.response.n, 'int')} cases`,
     tab: 'levels',
-    definition:
-      "Share of cases opened in the period with a first reply within their category's response target (calendar hours).",
+    definition: text(M.responseSla),
     uses: L.responseSla,
     drill: drillWhen(s, cur.rows.opened, () =>
       responseDrill(s, cur.rows.opened, `Cases judged on first response SLA, ${per}`),
@@ -249,6 +265,7 @@ export function buildKpis(x: KpiInputs): Kpi[] {
     prev.medianHours.hours == null ? null : prev.medianHours.hours / (dur.format === 'days' ? 24 : 1)
   kpis.push({
     id: 'time-to-resolve',
+    metricId: M.timeToResolve,
     label: 'Median time to resolve',
     value: x.cols.resolvedAt ? dur.value : null,
     format: dur.format,
@@ -266,8 +283,7 @@ export function buildKpis(x: KpiInputs): Kpi[] {
         ? 'Resolved column missing'
         : `${fmt(cur.medianHours.n, 'int')} cases resolved`,
     tab: 'cases',
-    definition:
-      'Median calendar time from opened to resolved, for cases resolved in the period. Shown in hours below 48 h and in days above.',
+    definition: text(M.timeToResolve),
     uses: L.resolved,
     drill: drillWhen(s, cur.rows.resolved, () =>
       resolveTimeDrill(s, cur.rows.resolved, `Cases resolved, ${per}`),
@@ -282,6 +298,7 @@ export function buildKpis(x: KpiInputs): Kpi[] {
 
   kpis.push({
     id: 'csat',
+    metricId: M.csat,
     label: 'Satisfaction',
     value: x.cols.csat ? cur.csat.mean : null,
     format: 'num1',
@@ -301,7 +318,7 @@ export function buildKpis(x: KpiInputs): Kpi[] {
         ? 'Satisfaction column missing'
         : `Out of 5 · ${fmt(cur.csat.n, 'int')} responses`,
     tab: 'cases',
-    definition: 'Mean satisfaction score (1 to 5) on cases resolved in the period. Hidden below 5 responses.',
+    definition: text(M.csat),
     uses: L.csat,
     drill: drillWhen(s, cur.rows.resolved, () =>
       csatDrill(s, cur.rows.resolved, `Cases rated for satisfaction, ${per}`),
@@ -316,11 +333,12 @@ export function buildKpis(x: KpiInputs): Kpi[] {
 
   const due = dueIn(x.tx, x.window)
   const dueP = dueIn(x.tx, x.prior)
-  const t = onTimeRate(due)
-  const tp = onTimeRate(dueP)
+  const t = onTimeRate(due, min)
+  const tp = onTimeRate(dueP, min)
   const txOk = x.hasTx && x.txCols.dueDate
   kpis.push({
     id: 'tx-on-time',
+    metricId: M.onTime,
     label: 'Transactions on time',
     value: txOk ? t.rate : null,
     format: 'pct',
@@ -334,10 +352,9 @@ export function buildKpis(x: KpiInputs): Kpi[] {
       ? 'Upload HR transactions to see this'
       : !x.txCols.dueDate
         ? 'Due date column missing'
-        : `Target ${fmt(TRANSACTION_ON_TIME_TARGET, 'pct0')} · ${fmt(t.n, 'int')} due`,
+        : `${fmt(t.n, 'int')} due`,
     tab: 'transactions',
-    definition:
-      'Share of HR transactions due in the period that were completed on or before their due date. Open transactions past due count as late.',
+    definition: text(M.onTime),
     uses: L.onTime,
     drill: drillWhen(s, due, () => onTimeDrill(s, due, `Transactions due, ${per}`)),
     deltaDrill: drillWhen(s, dueP, () =>

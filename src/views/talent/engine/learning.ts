@@ -17,9 +17,6 @@ import { decomposeRate, type Segment } from '@/lib/decompose'
 import { avgHeadcount, isActiveAt, isEmployee } from '@/lib/people'
 import { nameOf, orgDims, pushTo, type TalentBase } from './base'
 
-export const ON_TIME_TARGET = 0.95
-const MIN_GROUP = 5
-
 export interface CourseRow {
   course: string
   category: string
@@ -141,7 +138,8 @@ export interface LearningResult {
   records: LearningRecords
 }
 
-const rate = (k: number, n: number) => (n >= MIN_GROUP ? k / n : null)
+/** k ÷ n, or null under the anonymity minimum. */
+const rateOf = (min: number) => (k: number, n: number) => (n >= min ? k / n : null)
 
 /** Required assignments due in w (and by asOf) to employees still employed on the due date. */
 function dueIn(
@@ -160,9 +158,9 @@ function dueIn(
 /** Completed on or before the due date. */
 export const isOnTime = (l: LearningRecord): boolean => !!l.completedDate && l.completedDate <= l.dueDate!
 
-function onTimeOf(due: readonly LearningRecord[]): OnTime {
+function onTimeOf(due: readonly LearningRecord[], min: number): OnTime {
   const onTime = due.filter(isOnTime).length
-  return { rate: rate(onTime, due.length), due: due.length, onTime }
+  return { rate: rateOf(min)(onTime, due.length), due: due.length, onTime }
 }
 
 function onTimeIn(
@@ -170,8 +168,9 @@ function onTimeIn(
   byId: Map<string, Employee>,
   w: Pick<Window, 'start' | 'end'>,
   asOf: ISODate,
+  min: number,
 ): OnTime {
-  return onTimeOf(dueIn(rows, byId, w, asOf))
+  return onTimeOf(dueIn(rows, byId, w, asOf), min)
 }
 
 /** Half the summed difference in course-category shares: 0 = same mix, 1 = nothing in common. */
@@ -191,7 +190,9 @@ function mixDistance(a: readonly LearningRecord[], b: readonly LearningRecord[])
 function overdueCells(
   pastDue: readonly { l: LearningRecord; e: Employee; overdue: boolean }[],
   key: (e: Employee) => string,
+  min: number,
 ): OverdueCell[] {
+  const rate = rateOf(min)
   const m = new Map<string, OverdueCell>()
   for (const { l, e, overdue } of pastDue) {
     const group = key(e)
@@ -203,13 +204,15 @@ function overdueCells(
   }
   for (const c of m.values()) {
     c.share = rate(c.overdue ?? 0, c.pastDue)
-    if (c.pastDue < MIN_GROUP) c.overdue = null
+    if (c.pastDue < min) c.overdue = null
   }
   return [...m.values()]
 }
 
 export function computeLearning(base: TalentBase): LearningResult {
   const { asOf, ctx } = base
+  const { minGroup } = base.settings
+  const rate = rateOf(minGroup)
   const w = ctx.window
   const all = ctx.data.learning
   const required = all.filter((l) => l.required === true)
@@ -218,8 +221,8 @@ export function computeLearning(base: TalentBase): LearningResult {
 
   const dueNow = dueIn(required, byId, w, asOf)
   const duePrior = dueIn(required, byId, ctx.prior, asOf)
-  const current = onTimeOf(dueNow)
-  const prior = onTimeOf(duePrior)
+  const current = onTimeOf(dueNow, minGroup)
+  const prior = onTimeOf(duePrior, minGroup)
   const mixDiffers = dueNow.length > 0 && duePrior.length > 0 && mixDistance(dueNow, duePrior) > 0.25
 
   // By course: assignments due in the window.
@@ -279,7 +282,7 @@ export function computeLearning(base: TalentBase): LearningResult {
   let concentration: OverdueConcentration | null = null
   let segment: LearningRecord[] = []
   const topCourse = overdueCourses[0]
-  if (topCourse && (overdueByCourse.get(topCourse) ?? 0) >= MIN_GROUP) {
+  if (topCourse && (overdueByCourse.get(topCourse) ?? 0) >= minGroup) {
     const rows = pastDue.filter((p) => p.l.course === topCourse)
     const dims = orgDims((r: (typeof rows)[number]) => r.e)
     const segs = decomposeRate(rows, dims, (r) => r.overdue, { minDev: 0.05, minPopulation: 10, top: 8 })
@@ -348,14 +351,16 @@ export function computeLearning(base: TalentBase): LearningResult {
         .map(([businessUnit, people]) => {
           const avg = avgHeadcount(people, w)
           const h = unitHours.get(businessUnit) ?? 0
-          return { businessUnit, hours: h, avgHeadcount: avg, perEmployee: avg >= MIN_GROUP ? h / avg : null }
+          return { businessUnit, hours: h, avgHeadcount: avg, perEmployee: avg >= minGroup ? h / avg : null }
         })
         .filter((r) => r.avgHeadcount > 0)
         .sort((a, b) => (b.perEmployee ?? -1) - (a.perEmployee ?? -1))
     : []
 
   // Monthly on-time share across the window for the KPI sparkline.
-  const trend = months.map((m) => onTimeIn(required, byId, { start: `${m}-01`, end: `${m}-31` }, asOf).rate)
+  const trend = months.map(
+    (m) => onTimeIn(required, byId, { start: `${m}-01`, end: `${m}-31` }, asOf, minGroup).rate,
+  )
 
   return {
     hasDueDates,
@@ -364,8 +369,8 @@ export function computeLearning(base: TalentBase): LearningResult {
     mixDiffers,
     otherWorkersOverdue,
     byCourse,
-    overdueByDepartment: overdueCells(inOverdueCourse, (e) => e.department),
-    overdueByLocation: overdueCells(inOverdueCourse, (e) => e.location),
+    overdueByDepartment: overdueCells(inOverdueCourse, (e) => e.department, minGroup),
+    overdueByLocation: overdueCells(inOverdueCourse, (e) => e.location, minGroup),
     overdueCourses,
     completions,
     hours,

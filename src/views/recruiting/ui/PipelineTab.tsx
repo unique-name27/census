@@ -10,14 +10,17 @@ import { STAGES } from '@/data/schema'
 import { Drill, drill } from '@/drill'
 import { formatDate } from '@/lib/dates'
 import { fmt, plural } from '@/lib/format'
+import { timesText } from '../engine/definitions'
 import { candidateDrill, flowDrill, speedCellDrill, stepChangeDrill, stepDaysDrill } from '../engine/drills'
 import { type FlowKind, type SpeedCell, TRANSITIONS } from '../engine/flow'
 import { FIGURE_USES } from '../engine/lineage'
+import { FIGURE_METRICS } from '../engine/metricLinks'
 import type { WaitDot } from '../engine/pipeline'
 import { HIRED, LAST_OPEN_STAGE } from '../engine/types'
+import { RM } from '../metrics'
 import { useRecruitingUi } from '../state'
 import { ActionQueue } from './ActionQueue'
-import { asOfNote, drillIf, NEED_CANDIDATES, NoRecruitingData, windowText } from './common'
+import { asOfNote, defOf, drillIf, NEED_CANDIDATES, NoRecruitingData, windowText } from './common'
 import { useRecruiting } from './hooks'
 import { RiverChart } from './RiverChart'
 
@@ -48,6 +51,7 @@ export function PipelineTab() {
   }, [focusQueue, queueFocused])
 
   if (!b.apps.length && !b.reqs.length) return <NoRecruitingData />
+  const { minGroup, aging } = b.settings
 
   const flow = b.flow
   type FlowRow = {
@@ -215,6 +219,7 @@ export function PipelineTab() {
         <Figure
           id="recruiting-candidate-flow"
           uses={FIGURE_USES['recruiting-candidate-flow']}
+          metric={FIGURE_METRICS['recruiting-candidate-flow']}
           title="Candidate flow"
           subtitle={`Applications received ${windowText(b.window)}, by the furthest stage reached and outcome on ${formatDate(b.asOf)}`}
           data={flowRows}
@@ -227,16 +232,9 @@ export function PipelineTab() {
             rows: () => b.cohort.map(memberRow),
           }}
           definitions={[
+            defOf(b, RM.candidateFlow),
             { term: 'Cohort', text: `Applications with an applied date ${windowText(b.window)}.` },
-            {
-              term: 'Reached a stage',
-              text: 'Has a date for that stage or a later one, or is at or past it now, so skipped stages count as passed.',
-            },
-            {
-              term: 'Pass rate',
-              text: 'Of candidates who reached a stage and are no longer waiting there, the share who advanced. Still-active candidates don’t count against it.',
-              formula: 'advanced ÷ (advanced + rejected + withdrawn + declined)',
-            },
+            defOf(b, RM.passRate, { term: 'Pass rate' }),
             {
               term: 'Still active',
               text: 'In process at that stage on the as-of date: the open-ended fade.',
@@ -268,6 +266,7 @@ export function PipelineTab() {
         <Figure
           id="recruiting-stage-conversion"
           uses={FIGURE_USES['recruiting-stage-conversion']}
+          metric={FIGURE_METRICS['recruiting-stage-conversion']}
           title="Stage conversion"
           subtitle={`Applications received ${windowText(b.window)}, by stage, with the median days to the next stage and the change vs the prior period. Hired counts the ones that ended in an accepted offer, whenever it was accepted.`}
           data={conversion}
@@ -281,18 +280,14 @@ export function PipelineTab() {
               term: 'Hired',
               text: 'Applications received in the period that ended in an accepted offer, whenever it was accepted. Not the same as Offers accepted on the Overview, which counts offers by the date they were accepted.',
             },
-            {
+            defOf(b, RM.passRate, {
               term: 'Pass rate',
-              text: 'Advanced ÷ (advanced + left at this stage). Candidates still active at the stage are shown separately (Active).',
-              formula: 'advanced ÷ (advanced + rejected + withdrawn + declined)',
-            },
-            {
-              term: 'Median days',
-              text: 'Median days between the stage date and the next stage date, for candidates with both.',
-            },
+              extra: 'Candidates still active at the stage are shown separately (Active).',
+            }),
+            defOf(b, RM.daysToNextStage, { term: 'Median days' }),
             {
               term: 'Change',
-              text: `Median days to next stage minus the same median for applications received ${windowText(b.prior)}, in days (negative = faster). Shown when both periods have at least 5 candidates.`,
+              text: `Median days to next stage minus the same median for applications received ${windowText(b.prior)}, in days (negative = faster). Shown when both periods have at least ${minGroup} candidates.`,
             },
           ]}
           note={`${plural(flow.total, 'application')} · ${asOfNote(b.asOf)}`}
@@ -300,6 +295,7 @@ export function PipelineTab() {
         <Figure
           id="recruiting-waiting-time"
           uses={FIGURE_USES['recruiting-waiting-time']}
+          metric={FIGURE_METRICS['recruiting-waiting-time']}
           title="Waiting time by stage"
           subtitle={`Days each active candidate has waited, ${formatDate(b.asOf)}`}
           data={m.waiting}
@@ -322,12 +318,15 @@ export function PipelineTab() {
               : NEED_CANDIDATES
           }
           definitions={[
+            defOf(b, RM.daysWaiting),
             {
-              term: 'Days waiting',
-              text: 'Days since the interview for decisions, since the offer for offers out, otherwise days in the current stage.',
+              term: 'Red',
+              text: `Overdue: no step booked past ${timesText(aging.overdue)} the usual days for the stage, a decision pending more than ${plural(aging.decisionOverdueDays, 'day')}, or an offer out more than ${plural(aging.offerOverdueDays, 'day')}.`,
             },
-            { term: 'Red', text: 'Overdue: well past the usual time with nothing pending.' },
-            { term: 'Amber', text: 'Watch: past the usual time.' },
+            {
+              term: 'Amber',
+              text: `Watch: no step booked past ${timesText(aging.watch)} the usual days for the stage, a decision pending more than ${plural(aging.decisionWatchDays, 'day')}, an offer out more than ${plural(aging.offerWatchDays, 'day')}, or a step booked more than ${timesText(aging.farOut)} the usual days away.`,
+            },
             { term: 'Gray', text: 'Scheduled: in motion.' },
           ]}
           note={`${plural(m.waiting.length, 'active candidate')} · ${fmt(lacking, 'int')} lack a next step · ticks mark each stage’s median`}
@@ -355,6 +354,7 @@ export function PipelineTab() {
         <Figure
           id="recruiting-speed-heatmap"
           uses={FIGURE_USES['recruiting-speed-heatmap']}
+          metric={FIGURE_METRICS['recruiting-speed-heatmap']}
           title="Days per transition by month"
           subtitle={`Median days per step, steps completed in the 12 months to ${formatDate(b.window.end)}`}
           data={m.speed}
@@ -369,12 +369,12 @@ export function PipelineTab() {
           span={12}
           empty={b.apps.length ? null : NEED_CANDIDATES}
           definitions={[
-            {
+            defOf(b, RM.stepDaysByMonth, {
               term: 'Median days',
-              text: 'Days from one stage date to the next, for steps completed that month (the date of the later stage). Grouping by completion month keeps slow steps in the month they finished, so a recent slowdown shows. Cells with fewer than 5 steps are left blank.',
-            },
+              extra: `Cells with fewer than ${minGroup} steps are left blank.`,
+            }),
           ]}
-          note={`Click a cell to see the steps behind it · cells under 5 steps are blank and hidden · ${asOfNote(b.asOf)}`}
+          note={`Click a cell to see the steps behind it · cells under ${minGroup} steps are blank and hidden · ${asOfNote(b.asOf)}`}
         >
           <Heatmap
             data={m.speed}

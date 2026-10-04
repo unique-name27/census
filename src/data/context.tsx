@@ -4,12 +4,20 @@
  * index with the data standard.
  *
  * `data` and `all` are the datasets after your reference mappings (Data room → Categories &
- * mapping). The mappings and the quality index depend only on the data, its versions and the
- * as-of date, so changing a filter never recomputes them.
+ * mapping). The mappings and the quality index depend only on the data, its versions, the
+ * as-of date and the data quality rules, so changing a filter never recomputes them.
+ *
+ * `metrics` is the metric dictionary with your changes (docs/METRICS.md): engines read every
+ * calculation setting through `ctx.metrics.param(id, key)`, and the quality index uses the data
+ * quality rules it holds. It is rebuilt only when the dictionary changes.
  */
 import { createContext, type ReactNode, use, useMemo } from 'react'
+import { defaultMetrics, metricsApi } from '@/metrics/api'
+import { qualityRulesOf } from '@/metrics/quality'
+import type { MetricsApi } from '@/metrics/types'
 import { computeQuality, type ReferenceEffect } from './quality/compute'
 import type { FieldRef } from './quality/fieldRef'
+import { DEFAULT_QUALITY_RULES, type QualityRules } from './quality/rules'
 import { type DataStandard, DEFAULT_STANDARD } from './quality/tier'
 import type { DatasetVersion, QualityIndex } from './quality/types'
 import { applyReferenceMappings, targetRefs } from './reference/apply'
@@ -62,6 +70,8 @@ export interface AnalyticsContext {
   /** The lowest tier the dashboard shows. */
   standard: DataStandard
   reference: ReferenceSummary
+  /** The metric dictionary: wording, targets and the calculation settings engines read. */
+  metrics: MetricsApi
 }
 
 const NO_MAPPINGS: readonly ReferenceMapping[] = []
@@ -71,13 +81,22 @@ export function referenceLayer(data: Datasets, mappings: readonly ReferenceMappi
   return applyReferenceMappings(data, mappings)
 }
 
-/** The quality index for the mapped data (memoized inside `computeQuality`). */
+/**
+ * The quality index for the mapped data under the data quality rules in force (the defaults when
+ * not given). Memoized inside `computeQuality`; pass the rules from `qualityRulesOf` so the same
+ * values reuse the same index.
+ */
 export function qualityFor(
   applied: AppliedReference,
   versions: Partial<Record<DatasetKey, DatasetVersion | null>>,
   asOf: ISODate,
+  rules?: QualityRules,
 ): QualityIndex {
-  return computeQuality(applied.datasets, versions, undefined, { asOf, reference: effectOf(applied) })
+  return computeQuality(applied.datasets, versions, undefined, {
+    asOf,
+    reference: effectOf(applied),
+    ...(rules && rules !== DEFAULT_QUALITY_RULES ? { rules } : {}),
+  })
 }
 
 const effects = new WeakMap<AppliedReference, ReferenceEffect | null>()
@@ -136,8 +155,11 @@ export function buildContext(args: {
   applied?: AppliedReference
   standard?: DataStandard
   quality?: QualityIndex
+  /** The metric dictionary; every metric at its defaults when not given. */
+  metrics?: MetricsApi
 }): AnalyticsContext {
   const { sources, filters, asOfOverride, showPay } = args
+  const metrics = args.metrics ?? defaultMetrics()
   const applied = args.applied ?? referenceLayer(args.data, args.mappings ?? NO_MAPPINGS)
   const all = applied.datasets
   const isSample = Object.values(sources).every((s) => s.kind === 'sample')
@@ -165,9 +187,10 @@ export function buildContext(args: {
     sources,
     isSample,
     showPay,
-    quality: args.quality ?? qualityFor(applied, versions, asOf),
+    quality: args.quality ?? qualityFor(applied, versions, asOf, qualityRulesOf(metrics)),
     standard: args.standard ?? DEFAULT_STANDARD,
     reference: summaryOf(applied),
+    metrics,
   }
 }
 
@@ -182,14 +205,29 @@ export function AnalyticsProvider({ children }: { children: ReactNode }) {
   const versions = useCensus((s) => s.versions)
   const mappings = useCensus((s) => s.reference.mappings)
   const standard = useCensus((s) => s.dataStandard)
+  const metricsState = useCensus((s) => s.metrics)
   // Layers that don't depend on filters, so a filter change only rescopes.
   const applied = useMemo(() => referenceLayer(data, mappings), [data, mappings])
   const asOf = useMemo(() => contextAsOf({ data, sources, asOfOverride }), [data, sources, asOfOverride])
-  const quality = useMemo(() => qualityFor(applied, versions, asOf), [applied, versions, asOf])
+  // One dictionary object per dictionary state; the rules object only changes with a rule's value.
+  const metrics = useMemo(() => metricsApi(metricsState), [metricsState])
+  const rules = qualityRulesOf(metrics)
+  const quality = useMemo(() => qualityFor(applied, versions, asOf, rules), [applied, versions, asOf, rules])
   const value = useMemo(
     () =>
-      buildContext({ data, sources, filters, asOfOverride, showPay, versions, applied, standard, quality }),
-    [data, sources, filters, asOfOverride, showPay, versions, applied, standard, quality],
+      buildContext({
+        data,
+        sources,
+        filters,
+        asOfOverride,
+        showPay,
+        versions,
+        applied,
+        standard,
+        quality,
+        metrics,
+      }),
+    [data, sources, filters, asOfOverride, showPay, versions, applied, standard, quality, metrics],
   )
   return <Ctx value={value}>{children}</Ctx>
 }

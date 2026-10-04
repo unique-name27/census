@@ -1,19 +1,29 @@
 /**
  * The shared base every recruiting measure reads: applications evaluated on the as-of date, the
- * active pipeline with next-step states, the window cohorts and the requisition facts.
+ * active pipeline with next-step states, the window cohorts and the requisition facts, with the
+ * dictionary and the calculation settings in force (`settings`, read once from `ctx.metrics`).
  */
 import type { AnalyticsContext } from '@/data/context'
 import type { Candidate, Employee, ISODate, Requisition } from '@/data/schema'
 import type { Window } from '@/data/scope'
 import { fmt } from '@/lib/format'
+import type { MetricsApi } from '@/metrics/types'
+import { type TtfDays, ttfClock } from './clock'
 import { cohort, type Flow, stageFlow } from './flow'
 import { activeItems } from './nextStep'
 import { coverage, inWin, prepareApps, reqIndex, stageNorms } from './prepare'
 import { filledIn, type ReqFacts, reqFacts } from './reqs'
+import { type RecruitingSettings, recruitingSettings } from './settings'
 import { resolvedOffers } from './sources'
 import type { ActiveItem, App, Coverage, Norms } from './types'
 
 export interface RecruitingBase {
+  /** The metric dictionary in force (wording, targets and settings). */
+  metrics: MetricsApi
+  /** The calculation settings in force, read from the dictionary. */
+  settings: RecruitingSettings
+  /** Days to fill one filled req, with the clock the dictionary sets (offer accepted or start date). */
+  ttf: TtfDays
   asOf: ISODate
   window: Window
   prior: Window
@@ -49,12 +59,12 @@ export interface RecruitingBase {
   join: { candidates: number; matched: number }
   /** Candidate rows (company-wide) whose req ID matches no requisition. */
   unmatched: Candidate[]
-  /** "0 of 9,279 applications match a requisition ID" when fewer than half match; else null. */
+  /**
+   * "0 of 9,279 applications match a requisition ID" when fewer than the matching share (half, by
+   * default) match; else null.
+   */
   joinNote: string | null
 }
-
-/** Below this share of applications matching a req ID, per-req health is not read. */
-export const MIN_JOIN_SHARE = 0.5
 
 const COMPARE: Record<string, [string, string]> = {
   t12m: ['vs prior 12 months', 'last 12 months'],
@@ -67,6 +77,7 @@ const COMPARE: Record<string, [string, string]> = {
 
 export function computeBase(ctx: AnalyticsContext): RecruitingBase {
   const { asOf, window, prior } = ctx
+  const settings = recruitingSettings(ctx.metrics)
   const reqs = ctx.data.requisitions
   const companyReqs = ctx.all.requisitions
   const companyIndex = reqIndex(companyReqs)
@@ -75,9 +86,9 @@ export function computeBase(ctx: AnalyticsContext): RecruitingBase {
     ctx.data.candidates === ctx.all.candidates
       ? companyApps
       : prepareApps(ctx.data.candidates, companyIndex, asOf)
-  const norms = stageNorms(companyApps)
+  const norms = stageNorms(companyApps, settings.norms)
   const cov = coverage(ctx.all.candidates, companyReqs)
-  const actives = activeItems(apps, asOf, norms)
+  const actives = activeItems(apps, asOf, norms, settings.aging)
   let matched = 0
   const unmatched: Candidate[] = []
   for (const c of ctx.all.candidates) {
@@ -85,7 +96,7 @@ export function computeBase(ctx: AnalyticsContext): RecruitingBase {
     else unmatched.push(c)
   }
   const join = { candidates: ctx.all.candidates.length, matched }
-  const joins = join.candidates > 0 && matched / join.candidates >= MIN_JOIN_SHARE
+  const joins = join.candidates > 0 && matched / join.candidates >= settings.joinMinShare
   const joinNote =
     join.candidates > 0 && companyReqs.length > 0 && !joins
       ? `${fmt(matched, 'int')} of ${fmt(join.candidates, 'int')} applications match a requisition ID`
@@ -94,6 +105,9 @@ export function computeBase(ctx: AnalyticsContext): RecruitingBase {
   const priorCohort = cohort(apps, prior)
   const [compareLabel, windowWords] = COMPARE[ctx.filters.period] ?? COMPARE.custom
   return {
+    metrics: ctx.metrics,
+    settings,
+    ttf: ttfClock(settings.ttfEnd, companyApps, ctx.all.employees, asOf),
     asOf,
     window,
     prior,
@@ -111,7 +125,7 @@ export function computeBase(ctx: AnalyticsContext): RecruitingBase {
     actives,
     cohort: current,
     priorCohort,
-    flow: stageFlow(current, priorCohort),
+    flow: stageFlow(current, priorCohort, settings.minGroup),
     filled: filledIn(reqs, window),
     filledPrior: filledIn(reqs, prior),
     companyFilled: filledIn(companyReqs, window),
@@ -119,7 +133,7 @@ export function computeBase(ctx: AnalyticsContext): RecruitingBase {
     hiresPrior: apps.filter((a) => a.outcome === 'Hired' && inWin(a.exitDate, prior)),
     offers: resolvedOffers(apps, window),
     offersPrior: resolvedOffers(apps, prior),
-    req: reqFacts(reqs, apps, actives, asOf, joins),
+    req: reqFacts(reqs, apps, actives, asOf, joins, settings.emptyFunnelDays),
     join,
     unmatched,
     joinNote,

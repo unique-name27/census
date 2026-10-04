@@ -59,6 +59,22 @@ describe('drill tables', () => {
     expect(t.rows.every((r) => r.subcategory == null)).toBe(true)
   })
 
+  it('never ties an employee relations case to a named person', () => {
+    const er = data.cases.filter((c) => c.category === 'Employee relations' && c.requesterId).slice(0, 5)
+    expect(er.length).toBeGreaterThan(0)
+    const t = buildDrillTable(drillSpec({ kind: 'cases', title: 'ER', rows: er }), ctx)
+    for (const r of t.rows) {
+      expect(r.requester).toBeNull()
+      expect(r[PERSON_KEY]).toBeNull()
+      expect(rowPerson(ctx, r)).toBeNull()
+    }
+    // Other cases still name their requester and open their card.
+    const other = data.cases.find((c) => c.category !== 'Employee relations' && c.requesterId)!
+    const o = buildDrillTable(drillSpec({ kind: 'cases', title: 'Other', rows: [other] }), ctx).rows[0]
+    expect(o[PERSON_KEY]).toBe(other.requesterId)
+    expect(o.requester).not.toBeNull()
+  })
+
   it('adds extra columns from the view', () => {
     const t = buildDrillTable(
       drillSpec({

@@ -181,9 +181,12 @@ export interface ServiceLevelDef {
   processId: string
   /** What Census measures, in plain words. */
   measure: string
-  /** The target as a reader sees it. */
+  /** The default target as a reader sees it (the scorecard writes the target in force the same way). */
   targetText: string
+  /** The default target; the one in force is a setting of the measure's metric (metrics.ts). */
   target: number
+  /** Words after a share target: "of changes" in "< 2% of changes". */
+  targetNoun?: string
   /** 'min': the actual must reach the target. 'max': it must stay at or under it. */
   direction: 'min' | 'max'
   /** For 'max' targets written as "below": the actual must be strictly under the target. */
@@ -215,7 +218,7 @@ export const SERVICE_LEVELS: readonly ServiceLevelDef[] = [
     atlas: 'Underpayments corrected within 2 business days: ≥ 98%',
     basis: 'Census target',
     adaptation:
-      'The Atlas KPI covers underpayments only; Census measures every payroll case, so the target is 95%.',
+      'The Atlas KPI covers underpayments only; Census measures every payroll case, so it sets its own target.',
     team: 'Payroll',
     caseCategory: 'Payroll',
   },
@@ -258,7 +261,7 @@ export const SERVICE_LEVELS: readonly ServiceLevelDef[] = [
     atlas: 'Designation within 5 business days of complete certification',
     basis: 'Census target',
     adaptation:
-      'Cases do not record when certification was complete, so Census measures opened to resolved on a 5 business day clock, against a 95% target.',
+      'Cases do not record when certification was complete, so Census measures opened to resolved on a 5 business day clock, against its own target.',
     team: 'Leave & accommodation',
     caseCategory: 'Leave & accommodation',
   },
@@ -292,6 +295,7 @@ export const SERVICE_LEVELS: readonly ServiceLevelDef[] = [
     measure: 'Job and pay changes processed after the payroll cut-off (retro)',
     targetText: '< 2% of changes',
     target: 0.02,
+    targetNoun: 'of changes',
     direction: 'max',
     strict: true,
     unit: 'share',
@@ -393,18 +397,23 @@ export const SERVICE_LEVELS: readonly ServiceLevelDef[] = [
   },
 ]
 
-/** Case-level service-level targets in Census (the KPI strip and the figures use these). */
-export const RESOLUTION_SLA_TARGET = 0.9
-export const TRANSACTION_ON_TIME_TARGET = 0.98
-/** "At risk" band for percentage targets (points below the target). */
-export const AT_RISK_PTS = 0.05
-/** "At risk" band for day targets (share above the target). */
-export const AT_RISK_DAYS_SHARE = 0.1
-/**
- * "At risk" band for ceiling targets on a share ("under 2%"): up to 25% above the target. A fixed
- * 5-point band would call a retro rate 3.5 times the target "at risk", so ceilings use a relative band.
- */
-export const AT_RISK_CEILING_SHARE = 0.25
+/** A business-day clock on cases: the clock stops at resolution or at the first response. */
+export interface LevelClock {
+  category: string
+  days: number
+  stop: 'resolved' | 'responded'
+}
+
+/** The case measures timed on a business-day clock (part of each measure's definition). */
+export const LEVEL_CLOCKS: Partial<Record<ServiceLevelId, LevelClock>> = {
+  'py05-payroll-2bd': { category: 'Payroll', days: 2, stop: 'resolved' },
+  'ds07-verification-2bd': { category: 'Employment verification', days: 2, stop: 'resolved' },
+  'ds04-access-2bd': { category: 'Systems access', days: 2, stop: 'resolved' },
+  'bn03-benefits-5bd': { category: 'Benefits', days: 5, stop: 'resolved' },
+  'lv01-leave-response-1bd': { category: 'Leave & accommodation', days: 1, stop: 'responded' },
+  'lv01-leave-designation-5bd': { category: 'Leave & accommodation', days: 5, stop: 'resolved' },
+  'mv06-immigration-response-1bd': { category: 'Immigration & mobility', days: 1, stop: 'responded' },
+}
 
 /* ───────────── final pay rules by jurisdiction ───────────── */
 

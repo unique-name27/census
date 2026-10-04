@@ -6,15 +6,18 @@
  *  - time to resolve, satisfaction and first-contact resolution: cases resolved in the window;
  *  - backlog: cases open at the end of the as-of day.
  *
- * Privacy: every rate, median and mean needs at least MIN_GROUP cases from MIN_GROUP distinct
- * requesters, and every breakdown folds groups behind fewer than MIN_GROUP people into "Other (k)".
- * Employee relations cases never appear row by row (counts and timeliness only).
+ * Privacy: every rate, median and mean needs at least `min` cases from `min` distinct requesters,
+ * and every breakdown folds groups behind fewer than `min` people into "Other (k)". `min` is the
+ * anonymity minimum in force (`settings.minGroup`, read from the metric dictionary; it defaults to
+ * MIN_GROUP for direct calls). Employee relations cases never appear row by row (counts and
+ * timeliness only).
  */
 
-import { CASE_OPEN_STATUSES, caseCategoryByName, MIN_GROUP } from '@/data/schema'
+import { CASE_OPEN_STATUSES, MIN_GROUP } from '@/data/schema'
 import type { Window } from '@/data/scope'
 import { groupBy, mean, median, quantile } from '@/lib/stats'
 import { type CaseFact, inWin, openStatusLabel } from './facts'
+import { defaultSettings } from './settings'
 import {
   foldGroups,
   type Group,
@@ -33,21 +36,26 @@ export const openedIn = (facts: readonly CaseFact[], w: Pick<Window, 'start' | '
 export const resolvedIn = (facts: readonly CaseFact[], w: Pick<Window, 'start' | 'end'>): CaseFact[] =>
   facts.filter((f) => inWin(f.resolved, w))
 
-export const responseSla = (rows: readonly CaseFact[]): Share => shareOf(rows, (f) => f.responseMet)
-export const resolutionSla = (rows: readonly CaseFact[]): Share => shareOf(rows, (f) => f.resolutionMet)
+export const responseSla = (rows: readonly CaseFact[], min = MIN_GROUP): Share =>
+  shareOf(rows, (f) => f.responseMet, min)
+export const resolutionSla = (rows: readonly CaseFact[], min = MIN_GROUP): Share =>
+  shareOf(rows, (f) => f.resolutionMet, min)
 
-/** Median calendar hours from opened to resolved; null below MIN_GROUP cases or requesters. */
-export function medianHours(resolved: readonly CaseFact[]): { hours: number | null; n: number } {
+/** Median calendar hours from opened to resolved; null below `min` cases or requesters. */
+export function medianHours(
+  resolved: readonly CaseFact[],
+  min = MIN_GROUP,
+): { hours: number | null; n: number } {
   const timed = resolved.filter((f) => f.resolutionHours != null)
   const xs = timed.map((f) => f.resolutionHours as number)
-  return { hours: isShowable(xs.length, peopleIn(timed)) ? median(xs) : null, n: xs.length }
+  return { hours: isShowable(xs.length, peopleIn(timed), min) ? median(xs) : null, n: xs.length }
 }
 
-/** Mean satisfaction (1-5) with its response count; null below MIN_GROUP responses or respondents. */
-export function csat(resolved: readonly CaseFact[]): { mean: number | null; n: number } {
+/** Mean satisfaction (1-5) with its response count; null below `min` responses or respondents. */
+export function csat(resolved: readonly CaseFact[], min = MIN_GROUP): { mean: number | null; n: number } {
   const scored = resolved.filter((f) => f.csat != null)
   const xs = scored.map((f) => f.csat as number)
-  return { mean: isShowable(xs.length, peopleIn(scored)) ? mean(xs) : null, n: xs.length }
+  return { mean: isShowable(xs.length, peopleIn(scored), min) ? mean(xs) : null, n: xs.length }
 }
 
 /**
@@ -87,15 +95,18 @@ export interface CategoryRow {
 }
 
 /** Groups sorted largest first, then folded by people ("Other (k)" last). */
-const foldedBy = (rows: readonly CaseFact[], key: (f: CaseFact) => string): Group<CaseFact>[] =>
-  foldGroups([...groupBy(rows, key)].sort((a, b) => b[1].length - a[1].length))
+const foldedBy = (rows: readonly CaseFact[], key: (f: CaseFact) => string, min: number): Group<CaseFact>[] =>
+  foldGroups(
+    [...groupBy(rows, key)].sort((a, b) => b[1].length - a[1].length),
+    min,
+  )
 
-export function byCategory(facts: readonly CaseFact[], w: Window): CategoryRow[] {
+export function byCategory(facts: readonly CaseFact[], w: Window, min = MIN_GROUP): CategoryRow[] {
   const opened = openedIn(facts, w)
   const openNow = facts.filter((f) => f.open)
-  return foldedBy(opened, (f) => f.category).map(({ key, rows, folded }) => {
+  return foldedBy(opened, (f) => f.category, min).map(({ key, rows, folded }) => {
     const cats = new Set(rows.map((f) => f.category))
-    const sla = resolutionSla(rows)
+    const sla = resolutionSla(rows, min)
     const mine = openNow.filter((f) => cats.has(f.category))
     return {
       category: key,
@@ -107,7 +118,7 @@ export function byCategory(facts: readonly CaseFact[], w: Window): CategoryRow[]
       slaRate: sla.rate,
       slaMet: hitsOf(sla.rate, sla.hits),
       slaN: sla.n,
-      responseRate: responseSla(rows).rate,
+      responseRate: responseSla(rows, min).rate,
       open: mine.length,
       waitingThirdParty: mine.filter((f) => f.status === 'Waiting on third party').length,
       records: rows,
@@ -131,12 +142,13 @@ export const ALL_CATEGORIES = 'All categories'
 
 /**
  * Cases opened per month, split into the `top` largest categories and Other. Only categories
- * behind at least MIN_GROUP requesters over the months get their own series.
+ * behind at least `min` requesters over the months get their own series.
  */
 export function openedByMonth(
   facts: readonly CaseFact[],
   months: readonly string[],
   top = 5,
+  min = MIN_GROUP,
 ): { rows: MonthCategoryRow[]; series: string[] } {
   const inMonths = new Set(months)
   const ranked = [
@@ -145,7 +157,7 @@ export function openedByMonth(
       (f) => f.category,
     ),
   ].sort((a, b) => b[1].length - a[1].length)
-  const eligible = ranked.filter(([, rows]) => peopleIn(rows) >= MIN_GROUP).map(([c]) => c)
+  const eligible = ranked.filter(([, rows]) => peopleIn(rows) >= min).map(([c]) => c)
   const all = eligible.length === ranked.length && ranked.length <= top + 1
   const keep = new Set(all ? eligible : eligible.slice(0, top))
   const rest = keep.size ? 'Other' : ALL_CATEGORIES
@@ -180,19 +192,23 @@ export interface MonthSlaRow {
   records: CaseFact[]
 }
 
-export function slaByMonth(facts: readonly CaseFact[], months: readonly string[]): MonthSlaRow[] {
+export function slaByMonth(
+  facts: readonly CaseFact[],
+  months: readonly string[],
+  min = MIN_GROUP,
+): MonthSlaRow[] {
   const groups = new Map<string, CaseFact[]>(months.map((m) => [m, []]))
   for (const f of facts) groups.get(f.month)?.push(f)
   return months.map((month) => {
     const list = groups.get(month) ?? []
-    const sla = resolutionSla(list)
+    const sla = resolutionSla(list, min)
     return {
       month,
       opened: list.length,
       slaRate: sla.rate,
       slaMet: hitsOf(sla.rate, sla.hits),
       slaN: sla.n,
-      responseRate: responseSla(list).rate,
+      responseRate: responseSla(list, min).rate,
       records: list,
     }
   })
@@ -265,8 +281,11 @@ export interface AgedCaseRow {
   fact: CaseFact
 }
 
-/** Open cases older than `minAge` days, oldest first. Employee relations cases are never listed. */
-export function agedCases(facts: readonly CaseFact[], minAge = 14): AgedCaseRow[] {
+/**
+ * Open cases older than `minAge` days (the age limit setting), oldest first. Employee relations
+ * cases are never listed.
+ */
+export function agedCases(facts: readonly CaseFact[], minAge = defaultSettings().agedDays): AgedCaseRow[] {
   return facts
     .filter((f) => f.open && f.ageDays != null && f.ageDays > minAge && !isRowPrivate(f))
     .map((f) => {
@@ -292,17 +311,21 @@ export function agedCases(facts: readonly CaseFact[], minAge = 14): AgedCaseRow[
 export interface AgedPrivateRow {
   category: string
   cases: number
-  /** Oldest age in days; only given for a group of at least MIN_GROUP cases. */
+  /** Oldest age in days; only given for a group of at least the anonymity minimum of cases. */
   oldestDays: number | null
 }
 
 /** The aged cases left out of row-level lists (employee relations), as counts by category. */
-export function agedPrivate(facts: readonly CaseFact[], minAge = 14): AgedPrivateRow[] {
+export function agedPrivate(
+  facts: readonly CaseFact[],
+  minAge = defaultSettings().agedDays,
+  min = MIN_GROUP,
+): AgedPrivateRow[] {
   const aged = facts.filter((f) => f.open && f.ageDays != null && f.ageDays > minAge && isRowPrivate(f))
   return [...groupBy(aged, (f) => f.category)].map(([category, list]) => ({
     category,
     cases: list.length,
-    oldestDays: list.length >= MIN_GROUP ? Math.max(...list.map((f) => f.ageDays as number)) : null,
+    oldestDays: list.length >= min ? Math.max(...list.map((f) => f.ageDays as number)) : null,
   }))
 }
 
@@ -333,20 +356,26 @@ export interface ResolveRow {
 /**
  * Time to resolve by category (cases resolved in the window), in days and as a share of each
  * case's resolution target, so a 30-day category and a 2-day category read on one axis.
- * Categories behind fewer than MIN_GROUP requesters are left out. Longest against target first.
+ * Categories behind fewer than `min` requesters are left out. Longest against target first. The
+ * target column is the category's resolution target in force (`resolutionHours`, a setting).
  */
-export function timeToResolve(facts: readonly CaseFact[], w: Window): ResolveRow[] {
+export function timeToResolve(
+  facts: readonly CaseFact[],
+  w: Window,
+  min = MIN_GROUP,
+  resolutionHours: ReadonlyMap<string, number> = defaultSettings().caseTargets.resolution,
+): ResolveRow[] {
   const timed = resolvedIn(facts, w).filter((f) => f.resolutionHours != null)
   return [...groupBy(timed, (f) => f.category)]
-    .filter(([, list]) => isShowable(list.length, peopleIn(list)))
+    .filter(([, list]) => isShowable(list.length, peopleIn(list), min))
     .map(([category, list]) => {
       const days = list.map((f) => (f.resolutionHours as number) / 24)
       const ratios = list.flatMap((f) =>
         f.resolutionTarget ? [(f.resolutionHours as number) / f.resolutionTarget] : [],
       )
       const targets = list.flatMap((f) => (f.resolutionTarget ? [f.resolutionTarget / 24] : []))
-      const meta = caseCategoryByName.get(category)
-      const shares = ratios.length >= MIN_GROUP
+      const inForce = resolutionHours.get(category)
+      const shares = ratios.length >= min
       const q = (xs: number[], p: number, ok = true) => (ok ? quantile(xs, p) : null)
       return {
         category,
@@ -356,7 +385,7 @@ export function timeToResolve(facts: readonly CaseFact[], w: Window): ResolveRow
         median: q(days, 0.5),
         q3: q(days, 0.75),
         p90: q(days, 0.9),
-        targetDays: meta ? meta.resolutionHours / 24 : median(targets),
+        targetDays: inForce != null ? inForce / 24 : median(targets),
         p10Share: q(ratios, 0.1, shares),
         q1Share: q(ratios, 0.25, shares),
         medianShare: q(ratios, 0.5, shares),
@@ -381,7 +410,7 @@ export interface ArrivalRow {
 }
 
 /** Weekday × hour of opening for cases opened in the window, trimmed to the hours in use. */
-export function arrivals(facts: readonly CaseFact[], w: Window): ArrivalRow[] {
+export function arrivals(facts: readonly CaseFact[], w: Window, min = MIN_GROUP): ArrivalRow[] {
   const opened = openedIn(facts, w).filter((f) => f.hour != null)
   if (!opened.length) return []
   const grid = new Map<string, CaseFact[]>()
@@ -398,8 +427,8 @@ export function arrivals(facts: readonly CaseFact[], w: Window): ArrivalRow[] {
   }
   const weekend = opened.some((f) => f.weekday >= 5)
   const days = weekend ? 7 : 5
-  // Shares are rates over the requesters: hidden behind fewer than 5 people.
-  const shown = isShowable(opened.length, peopleIn(opened))
+  // Shares are rates over the requesters: hidden behind fewer than `min` people.
+  const shown = isShowable(opened.length, peopleIn(opened), min)
   const rows: ArrivalRow[] = []
   for (let d = 0; d < days; d++) {
     for (let h = lo; h <= hi; h++) {
@@ -430,20 +459,20 @@ export interface ChannelRow {
   resolvedRecords: CaseFact[]
 }
 
-/** Satisfaction and resolution SLA by channel; channels behind fewer than 5 requesters fold into Other. */
-export function byChannel(facts: readonly CaseFact[], w: Window): ChannelRow[] {
+/** Satisfaction and resolution SLA by channel; channels behind fewer than `min` requesters fold into Other. */
+export function byChannel(facts: readonly CaseFact[], w: Window, min = MIN_GROUP): ChannelRow[] {
   const channelOf = (f: CaseFact) => f.channel ?? 'Unknown'
   const resolved = resolvedIn(facts, w)
-  return foldedBy(openedIn(facts, w), channelOf).map(({ key, rows }) => {
+  return foldedBy(openedIn(facts, w), channelOf, min).map(({ key, rows }) => {
     const names = new Set(rows.map(channelOf))
     const mine = resolved.filter((f) => names.has(channelOf(f)))
-    const c = csat(mine)
+    const c = csat(mine, min)
     return {
       channel: key,
       cases: rows.length,
       responses: c.n,
       csat: c.mean,
-      slaRate: resolutionSla(rows).rate,
+      slaRate: resolutionSla(rows, min).rate,
       records: rows,
       resolvedRecords: mine,
     }
@@ -468,21 +497,22 @@ export interface ReopenRow {
 
 /**
  * Reopen rate over resolved cases and escalation rate over all cases, both opened in the window.
- * Highest reopen rate first; categories behind fewer than 5 requesters fold into "Other (k)", last.
+ * Highest reopen rate first; categories behind fewer than `min` requesters fold into "Other (k)", last.
  */
-export function reopenEscalate(facts: readonly CaseFact[], w: Window): ReopenRow[] {
-  const rows = foldedBy(openedIn(facts, w), (f) => f.category).map((g) => reopenRow(g.key, g.rows))
+export function reopenEscalate(facts: readonly CaseFact[], w: Window, min = MIN_GROUP): ReopenRow[] {
+  const rows = foldedBy(openedIn(facts, w), (f) => f.category, min).map((g) => reopenRow(g.key, g.rows, min))
   const real = rows.filter((r) => !isOther(r.category))
   real.sort((a, b) => (b.reopenRate ?? -1) - (a.reopenRate ?? -1))
   return [...real, ...rows.filter((r) => isOther(r.category))]
 }
 
-export function reopenRow(category: string, list: readonly CaseFact[]): ReopenRow {
+export function reopenRow(category: string, list: readonly CaseFact[], min = MIN_GROUP): ReopenRow {
   const reopen = shareOf(
     list.filter((f) => f.resolved != null),
     (f) => f.reopened,
+    min,
   )
-  const escalate = shareOf(list, (f) => f.escalated)
+  const escalate = shareOf(list, (f) => f.escalated, min)
   return {
     category,
     opened: list.length,
@@ -513,8 +543,13 @@ export interface TeamRow {
   openRecords: CaseFact[]
 }
 
-/** Workload by owning team, most cases opened first; teams behind fewer than 5 requesters fold into Other. */
-export function teamWorkload(facts: readonly CaseFact[], w: Window, tierKnown: boolean): TeamRow[] {
+/** Workload by owning team, most cases opened first; teams behind fewer than `min` requesters fold into Other. */
+export function teamWorkload(
+  facts: readonly CaseFact[],
+  w: Window,
+  tierKnown: boolean,
+  min = MIN_GROUP,
+): TeamRow[] {
   const opened = openedIn(facts, w)
   const resolved = resolvedIn(facts, w)
   const openNow = facts.filter((f) => f.open)
@@ -522,24 +557,27 @@ export function teamWorkload(facts: readonly CaseFact[], w: Window, tierKnown: b
   const touched = [...new Map([...opened, ...resolved, ...openNow].map((f) => [f.caseId, f])).values()]
   const openedBy = groupBy(opened, (f) => f.team)
   const size = (team: string) => openedBy.get(team)?.length ?? 0
-  const groups = foldGroups([...groupBy(touched, (f) => f.team)].sort((a, b) => size(b[0]) - size(a[0])))
+  const groups = foldGroups(
+    [...groupBy(touched, (f) => f.team)].sort((a, b) => size(b[0]) - size(a[0])),
+    min,
+  )
   return groups.map(({ key, rows }) => {
     const teams = new Set(rows.map((f) => f.team))
     const mine = (f: CaseFact) => teams.has(f.team)
     const o = opened.filter(mine)
     const r = resolved.filter(mine)
     const now = openNow.filter(mine)
-    const c = csat(r)
+    const c = csat(r, min)
     return {
       team: key,
       opened: o.length,
       resolved: r.length,
       open: now.length,
-      slaRate: resolutionSla(o).rate,
-      medianHours: medianHours(r).hours,
+      slaRate: resolutionSla(o, min).rate,
+      medianHours: medianHours(r, min).hours,
       csat: c.mean,
       csatN: c.n,
-      firstContact: tierKnown ? shareOf(r, (f) => isFirstContact(f)).rate : null,
+      firstContact: tierKnown ? shareOf(r, (f) => isFirstContact(f), min).rate : null,
       openedRecords: o,
       resolvedRecords: r,
       openRecords: now,

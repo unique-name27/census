@@ -2,6 +2,8 @@
  * Addresses inside the Data room, carried in the route's tab (`#data.<tab>`):
  *
  *   #data                     Datasets tab
+ *   #data.quality             Data quality tab
+ *   #data.metrics             Metric definitions tab (see ./metrics/links.ts for its addresses)
  *   #data.mapping             Categories & mapping tab
  *   #data.candidates          Datasets tab with Candidates open on its default panel
  *   #data.candidates-raw      … on its Raw panel (raw, mapping, quality, certify)
@@ -11,7 +13,7 @@
  */
 import { DATASET_KEYS, type DatasetKey } from '@/data/schema'
 
-export type DataTab = 'datasets' | 'mapping'
+export type DataTab = 'datasets' | 'quality' | 'metrics' | 'mapping'
 
 export type DatasetPanel = 'raw' | 'mapping' | 'quality' | 'certify'
 
@@ -30,6 +32,8 @@ export const DEFAULT_PANEL: DatasetPanel = 'quality'
 
 export const DATA_TABS: readonly { key: DataTab; label: string; route: string }[] = [
   { key: 'datasets', label: 'Datasets', route: '' },
+  { key: 'quality', label: 'Data quality', route: 'quality' },
+  { key: 'metrics', label: 'Metric definitions', route: 'metrics' },
   { key: 'mapping', label: 'Categories & mapping', route: 'mapping' },
 ]
 
@@ -47,6 +51,10 @@ const isPanel = (s: string): s is DatasetPanel => (DATASET_PANELS as readonly st
 export function parseDataTab(tab: string | null | undefined): DataRoute {
   const t = (tab ?? '').trim()
   if (t === 'mapping') return { tab: 'mapping', dataset: null, panel: null }
+  // A tab may carry its own address after a colon or slash ("metrics/comp/merit/spend").
+  for (const sub of ['quality', 'metrics'] as const)
+    if (t === sub || t.startsWith(`${sub}:`) || t.startsWith(`${sub}/`))
+      return { tab: sub, dataset: null, panel: null }
   const [key, panel] = t.split('-')
   if (key && isDataset(key))
     return { tab: 'datasets', dataset: key, panel: panel && isPanel(panel) ? panel : null }
@@ -58,5 +66,5 @@ export function datasetTab(key: DatasetKey, panel?: DatasetPanel | null): string
   return panel ? `${key}-${panel}` : key
 }
 
-/** The route tab of a Data room tab: '' for Datasets, 'mapping' for Categories & mapping. */
+/** The route tab of a Data room tab: '' for Datasets, otherwise the tab's key ('mapping'). */
 export const tabRoute = (tab: DataTab): string => DATA_TABS.find((t) => t.key === tab)?.route ?? ''

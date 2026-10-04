@@ -109,16 +109,18 @@ function hiresByMonth(b: RecruitingBase): HiresMonthRow[] {
 
 export function computeRecruitingUncached(ctx: AnalyticsContext): RecruitingModel {
   const b = computeBase(ctx)
-  const sources = sourceRows(b.cohort, b.priorCohort)
+  const { minGroup } = b.settings
+  const sources = sourceRows(b.cohort, b.priorCohort, minGroup)
   // The source that moved most against the overall trend in applications.
   const overall = b.priorCohort.length ? b.cohort.length / b.priorCohort.length - 1 : 0
   const gap = (s: SourceRow) => Math.abs((s.change ?? 0) - overall)
   const changed = sources
-    .filter((s) => s.priorApplications >= 30 && s.change != null)
+    .filter((s) => s.priorApplications >= b.settings.highlightMinPrior && s.change != null)
     .sort((x, y) => gap(y) - gap(x))[0]
   const companyRate = (w: { start: string; end: string }) => acceptance(resolvedOffers(b.companyApps, w)).rate
   const [, q] = quarterWindows(b.window.end, 2)
-  const recruiters = recruiterLoad(b.req.open, b.actives, b.apps, b.window)
+  const recruiters = recruiterLoad(b.req.open, b.actives, b.apps, b.window, b.settings.recruiterFlagFactor)
+  const ttfGroups = { days: b.ttf, minGroup }
   return {
     base: b,
     kpis: recruitingKpis(b),
@@ -126,14 +128,14 @@ export function computeRecruitingUncached(ctx: AnalyticsContext): RecruitingMode
     pipeline: pipelineToday(b.actives),
     queue: queueGroups(b.actives),
     waiting: waitingDots(b.actives),
-    speed: speedByMonth(b.apps, b.window.end),
+    speed: speedByMonth(b.apps, b.window.end, minGroup),
     hiresByMonth: hiresByMonth(b),
-    acceptanceByQuarter: acceptanceByQuarter(b.apps, b.window.end),
+    acceptanceByQuarter: acceptanceByQuarter(b.apps, b.window.end, 8, minGroup),
     openByDepartment: openByDepartment(b.req.open, b.asOf),
-    ttfByLevel: ttfBy(b.filled, (r) => r.level, LEVELS),
-    ttfByDepartment: ttfBy(b.filled, (r) => r.department),
-    companyTtf: b.cov.hasFilledDate ? medianTtf(b.companyFilled) : null,
-    ttf: b.cov.hasFilledDate ? medianTtf(b.filled) : null,
+    ttfByLevel: ttfBy(b.filled, (r) => r.level, LEVELS, ttfGroups),
+    ttfByDepartment: ttfBy(b.filled, (r) => r.department, undefined, ttfGroups),
+    companyTtf: b.cov.hasFilledDate ? medianTtf(b.companyFilled, b.ttf) : null,
+    ttf: b.cov.hasFilledDate ? medianTtf(b.filled, b.ttf) : null,
     openAges: b.req.rows.map((r) => r.daysOpen),
     openedFilled: openedFilledByMonth(b.reqs, b.window.end),
     recruiters: recruiters.rows,
@@ -147,7 +149,7 @@ export function computeRecruitingUncached(ctx: AnalyticsContext): RecruitingMode
       sources.map((s) => s.source),
     ),
     changedSource: changed?.source ?? null,
-    acceptanceByLocation: acceptanceBy(b.offers, (a) => a.location),
+    acceptanceByLocation: acceptanceBy(b.offers, (a) => a.location, minGroup),
     companyAcceptance: companyRate(b.window),
     latestQuarter: {
       label: q.key.replace(/^(\d{4}) (Q\d)$/, '$2 $1'),
@@ -155,7 +157,7 @@ export function computeRecruitingUncached(ctx: AnalyticsContext): RecruitingMode
       end: q.end,
       complete: q.end === addDays(addMonths(q.start, 3), -1),
     },
-    acceptanceByLocationQuarter: acceptanceBy(resolvedOffers(b.apps, q), (a) => a.location),
+    acceptanceByLocationQuarter: acceptanceBy(resolvedOffers(b.apps, q), (a) => a.location, minGroup),
     companyAcceptanceQuarter: companyRate(q),
     acceptanceDropBasis: acceptanceDrop(b)?.basis ?? null,
     declineReasons: declineReasons(b.offers),

@@ -6,6 +6,7 @@ import { fmt } from '@/lib/format'
 import type { ServicesModel } from '../engine'
 import type { CategoryRow } from '../engine/cases'
 import { SERVICE_LEVELS, type ServiceLevelId } from '../engine/catalog'
+import { metricDefinition, servicesDefinitions } from '../engine/definitions'
 import {
   caseDrill,
   drillWhen,
@@ -18,8 +19,9 @@ import {
 } from '../engine/drills'
 import type { LevelRow, LevelStatus, ProcessRow } from '../engine/levels'
 import { isOther } from '../engine/util'
+import { FIGURE_METRIC, levelMetric } from '../metrics'
 import { type AtlasColumn, AtlasTable, ProcessId } from './AtlasTable'
-import { asOfNote, count, DEF, period, STATUS_SEVERITY, STATUS_TONE, titled, useProcessHref } from './shared'
+import { asOfNote, count, period, STATUS_SEVERITY, STATUS_TONE, titled, useProcessHref } from './shared'
 
 /** Short names for chart labels, unique per measure (LV-01 has two). */
 const SHORT: Record<ServiceLevelId, string> = {
@@ -49,33 +51,12 @@ function gapText(r: LevelRow): string {
   return fmt(r.gap, 'pts')
 }
 
-const STATUS_DEF = {
-  term: 'Status',
-  text: 'Met when the actual reaches the target. At risk when it is within 5 pts below a percentage target, within 10% above a day target, or within a quarter above a ceiling such as "under 2%" (up to 2.5%). Missed otherwise. A ceiling uses a relative band because 5 pts would be more than twice the target itself. No status below 5 cases or transactions, or 5 people.',
-}
-
-const BUSINESS_DAYS_DEF = {
-  term: 'Business days',
-  text: 'Monday to Friday between the opened date and the resolved (or first response) date, with no holiday calendar. Counted by date, not by hour. A case still open past the clock counts as missed.',
-  formula: 'business days(opened, resolved) ≤ target',
-}
-
-const CASE_SLA_DEF = {
-  term: 'Case SLA (calendar hours)',
-  text: "The help desk's own resolution target for the category, in calendar hours from the opened time, as on the Cases tab and in the readout (Payroll 48 h, Leave 7 d). The Atlas clocks count business days between dates, so they are more lenient: a payroll case opened Thursday afternoon and resolved Monday morning is within 2 business days but past 48 hours. That is why PY-05 can be Met while Payroll misses the 90% case SLA.",
-  formula: 'resolvedAt − openedAt ≤ category target (hours)',
-}
-
-const ON_TIME_DEF = {
-  term: 'On time (transactions)',
-  text: "A transaction is on time when it was completed on or before its due date (Day −3 for new hires, the final pay deadline for exits, the payroll cut-off for changes, the return date for returns from leave). Each row's target is in its Target column.",
-  formula: 'completedDate ≤ dueDate',
-}
-
 const CASE_CATEGORY = new Map(SERVICE_LEVELS.map((d) => [d.id, d.caseCategory ?? null]))
 
 export function LevelsTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext }) {
   const s = m.scope
+  const k = m.settings.minGroup
+  const D = servicesDefinitions(ctx.metrics, m.settings)
   const processHref = useProcessHref()
   const per = period(ctx)
   const order = new Map(SERVICE_LEVELS.map((d, i) => [d.id, i]))
@@ -88,10 +69,10 @@ export function LevelsTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext 
   const missed = scored.filter((r) => r.status === 'Missed').length
   const gaps = rows.filter((r) => r.unit === 'share' && r.gap != null)
   const dayRows = m.levels.filter((r) => r.unit === 'days')
-  const adaptations = SERVICE_LEVELS.filter((d) => d.adaptation).map((d) => ({
-    term: `${d.processId} ${d.measure}`,
-    text: d.adaptation as string,
-  }))
+  // Each Atlas measure's own entry (with your wording), for the measures Census adapted.
+  const adaptations = SERVICE_LEVELS.filter((d) => d.adaptation).map((d) =>
+    metricDefinition(ctx.metrics, levelMetric(d.id)),
+  )
   const response = m.categories
     .filter((c) => !isOther(c.category))
     .sort((a, b) => (a.responseRate ?? 2) - (b.responseRate ?? 2))
@@ -257,12 +238,13 @@ export function LevelsTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext 
         <Figure
           id="services-scorecard"
           uses={m.uses['services-scorecard']}
+          metric={FIGURE_METRIC['services-scorecard']}
           span={12}
           title="Service level scorecard"
           subtitle={`${scored.length} Atlas measures with data, ${missed} missed, ${m.window.label}`}
           data={rows}
           columns={scorecardColumns}
-          definitions={[STATUS_DEF, BUSINESS_DAYS_DEF, CASE_SLA_DEF, ON_TIME_DEF, ...adaptations]}
+          definitions={[D.levelStatus, D.businessDays, D.caseSla, D.txOnTime, ...adaptations]}
           note={asOfNote(
             m.asOf,
             'n = cases or transactions judged',
@@ -282,6 +264,7 @@ export function LevelsTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext 
         <Figure
           id="services-gap-to-target"
           uses={m.uses['services-gap-to-target']}
+          metric={FIGURE_METRIC['services-gap-to-target']}
           span={7}
           title="Gap to target"
           subtitle={`Actual minus target in points for each Atlas measure, ${per}; below zero misses the target`}
@@ -294,14 +277,7 @@ export function LevelsTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext 
             { key: 'gap', label: 'Gap to target', format: 'pts', drill: (r: Row) => level(r, 'misses') },
             { key: 'statusText', label: 'Status' },
           ]}
-          definitions={[
-            {
-              term: 'Gap to target',
-              text: 'Actual minus target for "at least" targets, target minus actual for "under" targets, so a positive gap is always better.',
-              formula: 'actual − target',
-            },
-            STATUS_DEF,
-          ]}
+          definitions={[D.levelGap, D.levelStatus]}
           note={asOfNote(
             m.asOf,
             dayRows.length
@@ -323,6 +299,7 @@ export function LevelsTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext 
         <Figure
           id="services-response-by-category"
           uses={m.uses['services-response-by-category']}
+          metric={FIGURE_METRIC['services-response-by-category']}
           span={5}
           title="First response SLA by category"
           subtitle={`Cases opened in the ${per} with a first reply inside the category response target, lowest first`}
@@ -341,7 +318,7 @@ export function LevelsTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext 
             },
             { key: 'responseRate', label: 'First response SLA met', format: 'pct', drill: responseCategory },
           ]}
-          definitions={[DEF.responseSla, DEF.anonymity]}
+          definitions={[D.responseSla, D.anonymity]}
           note={asOfNote(m.asOf, count(m.summary.response.n, 'case'))}
           empty={
             !m.hasCases
@@ -350,7 +327,7 @@ export function LevelsTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext 
                 ? 'Upload HR cases with a first response time to see this.'
                 : response.length
                   ? null
-                  : 'No category has cases from 5 or more people in this period.'
+                  : `No category has cases from ${k} or more people in this period.`
           }
         >
           <BarList
@@ -373,21 +350,13 @@ export function LevelsTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext 
         <Figure
           id="services-atlas-processes"
           uses={m.uses['services-atlas-processes']}
+          metric={FIGURE_METRIC['services-atlas-processes']}
           span={12}
           title="Processes behind these measures"
           subtitle={`Cases opened and transactions due in the ${per}, by governing process`}
           data={m.processes}
           columns={processColumns}
-          definitions={[
-            {
-              term: 'Atlas process',
-              text: 'Each case category and transaction type maps to one process in the Hire-to-Retire Atlas. Uploaded cases keep their own process ID when they carry one.',
-            },
-            {
-              term: 'Hidden counts',
-              text: 'A count of cases or transactions behind fewer than 5 people shows as "—", so a small scope cannot show that one of its members had, say, an immigration case.',
-            },
-          ]}
+          definitions={[D.processVolume, D.atlasProcess, D.hiddenCounts]}
           note={asOfNote(m.asOf, `${m.processes.length} processes`)}
           tableOnly
           table={{ maxRows: 20 }}

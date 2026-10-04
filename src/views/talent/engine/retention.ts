@@ -18,13 +18,6 @@ import {
   type RiskModel,
 } from './risk'
 
-/**
- * A factor at least this share of the company's high band carries says little about one person
- * (in the sample, tenure of 1-3 years), so it is never shown as their main reason when they have
- * another one.
- */
-export const COMMON_SHARE = 0.8
-
 export interface BandRow {
   band: RiskBand
   people: number
@@ -79,7 +72,7 @@ export interface RetentionResult {
   bands: BandRow[]
   scored: number
   keyTalent: RiskPersonRow[]
-  /** Active people in scope whose latest rating is 4-5, for the share at risk. */
+  /** Active people in scope whose latest rating is at or above the high performer rating, for the share at risk. */
   highPerformers: number
   /** Those people (the share's denominator). */
   highPerformerPeople: Employee[]
@@ -145,12 +138,13 @@ function regretMissing(base: TalentBase): string | null {
   return null
 }
 
-/** Voluntary regretted exits in a window whose last rating before leaving was 4 or 5. */
+/** Voluntary regretted exits in a window whose last rating before leaving was high (4 or 5 by default). */
 function regrettedHighIn(base: TalentBase, w: Pick<Window, 'start' | 'end'>): ExitPerson[] {
+  const { highRating } = base.settings
   return exitsIn(base.scoped, w)
     .filter((e) => e.terminationType === 'Voluntary' && e.regrettable === true)
     .map((e) => ({ e, rating: ratingAt(base, e.employeeId, e.terminationDate!) }))
-    .filter((x) => x.rating != null && x.rating >= 4)
+    .filter((x) => x.rating != null && x.rating >= highRating)
     .map(({ e, rating }) => exitPerson(e, rating))
     .sort((a, b) => (a.terminationDate < b.terminationDate ? 1 : -1))
 }
@@ -168,6 +162,7 @@ const exitPerson = (e: Employee, rating: number | null): ExitPerson => ({
 
 export function computeRetention(base: TalentBase, model: RiskModel): RetentionResult {
   const { asOf } = base
+  const { highRating, minGroup, sharedFactor, findings: rule } = base.settings
   const scopedScores: { e: Employee; r: PersonRisk }[] = []
   for (const e of base.active) {
     const r = model.scores.get(e.employeeId)
@@ -185,18 +180,20 @@ export function computeRetention(base: TalentBase, model: RiskModel): RetentionR
     return {
       band,
       people: k,
-      share: scored >= 5 ? k / scored : null,
-      companyShare: companyCount >= 5 ? all / companyCount : null,
+      share: scored >= minGroup ? k / scored : null,
+      companyShare: companyCount >= minGroup ? all / companyCount : null,
     }
   })
 
-  // Factors most of the company's high band carries.
+  // Factors most of the company's high band carries: at least the shared-factor setting (80% by
+  // default) says little about one person (in the sample, tenure of 1-3 years), so it is never
+  // shown as their main reason when they have another one.
   const companyHigh = [...model.scores.values()].filter((s) => s.band === 'High')
   const commonFactors = FACTORS.map((f) => f.key).filter(
     (k) =>
       companyHigh.length > 0 &&
       companyHigh.filter((s) => s.factors.some((x) => x.key === k)).length / companyHigh.length >=
-        COMMON_SHARE,
+        sharedFactor,
   )
   const common = new Set(commonFactors)
 
@@ -204,8 +201,8 @@ export function computeRetention(base: TalentBase, model: RiskModel): RetentionR
     .filter((s) => s.r.band !== 'Low')
     .map((s) => personRow(base, s.e, s.r, common))
     .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name))
-  const keyTalent = rows.filter((r) => r.band === 'High' && r.rating != null && r.rating >= 4)
-  const highPerformers = scopedScores.filter((s) => (ratingAt(base, s.e.employeeId, asOf) ?? 0) >= 4)
+  const keyTalent = rows.filter((r) => r.band === 'High' && r.rating != null && r.rating >= highRating)
+  const highPerformers = scopedScores.filter((s) => (ratingAt(base, s.e.employeeId, asOf) ?? 0) >= highRating)
 
   // Where key talent at risk concentrates among high performers.
   const keyIds = new Set(keyTalent.map((k) => k.employeeId))
@@ -240,8 +237,9 @@ export function computeRetention(base: TalentBase, model: RiskModel): RetentionR
     ? quarterPoints(asOf, 8).map((end) => regrettedHighIn(base, trailingMonths(end, 3)).length)
     : []
 
-  // High-potential regretted exits in the last 6 months: latest potential on record High, rated 4+.
-  const hipoWindow = trailingMonths(asOf, 6)
+  // High-potential regretted exits in the last months of the finding's setting (6 by default):
+  // latest potential on record High, rated at or above the high performer rating.
+  const hipoWindow = trailingMonths(asOf, rule.hipoExitMonths)
   const hipoMissing = missing ?? (base.has.potential ? null : 'Potential is missing')
   const hipo = hipoMissing
     ? []
@@ -249,7 +247,7 @@ export function computeRetention(base: TalentBase, model: RiskModel): RetentionR
         .filter((e) => e.terminationType === 'Voluntary' && e.regrettable === true)
         .filter((e) => potentialAt(base, e.employeeId, e.terminationDate!) === 'High')
         .map((e) => exitPerson(e, ratingAt(base, e.employeeId, e.terminationDate!)))
-        .filter((p) => p.rating != null && p.rating >= 4)
+        .filter((p) => p.rating != null && p.rating >= highRating)
         .sort((a, b) => (a.terminationDate < b.terminationDate ? -1 : 1))
 
   return {

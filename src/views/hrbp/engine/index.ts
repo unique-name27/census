@@ -5,7 +5,7 @@
 import type { Finding, Kpi } from '@/components/types'
 import type { AnalyticsContext } from '@/data/context'
 import type { FieldRef } from '@/data/quality/fieldRef'
-import { headcountAt } from '@/lib/people'
+import { ID } from '../metrics'
 import { type AttritionModel, computeAttrition } from './attrition'
 import { type Prep, prepare, quarterBlocks } from './base'
 import { tagFindings } from './drillUses'
@@ -14,7 +14,9 @@ import { computeKpis, type KpiModel } from './kpis'
 import { all, HEADCOUNT, ifPresent, PAST_HEADCOUNT, resolveLineage, scopeLineage } from './lineage'
 import { computeMovement, type MovementModel } from './movement'
 import { computeOrg, type OrgModel } from './org'
+import { countsFor, headcountAt } from './population'
 import { computeScorecard, type Scorecard } from './scorecard'
+import { settingsOf } from './settings'
 import { movementKpis, orgKpis } from './tiles'
 import { computeWorkforce, type WorkforceModel } from './workforce'
 
@@ -57,20 +59,27 @@ export function computeHrbp(ctx: AnalyticsContext): HrbpModel {
 }
 
 /**
- * Folder-tab number: employees at asOf, with the last 8 quarter-end headcounts. Its fields are the
- * Employees tile's (headcount in the scope), plus the past headcount behind the spark when the
- * roster keeps its leavers.
+ * Folder-tab number: employees at asOf (with contractors when that setting is on), with the last
+ * 8 quarter-end headcounts. Its fields are the Employees tile's (headcount in the scope), plus the
+ * past headcount behind the spark when the roster keeps its leavers.
  */
 export function hrbpHeadline(ctx: AnalyticsContext): {
   value: number
   spark: number[]
   uses: readonly FieldRef[]
+  metricId: string
+  /** Contractors count in headcount (the setting is on). */
+  withContractors: boolean
 } {
   const emps = ctx.data.employees
+  const withContractors = settingsOf(ctx.metrics).countContractors
+  const counts = countsFor(withContractors)
   const present = (ref: FieldRef) => ctx.quality.fieldTier(ref) !== 'none'
   return {
-    value: headcountAt(emps, ctx.asOf),
-    spark: quarterBlocks(ctx.asOf, 8).map((b) => headcountAt(emps, b.end)),
+    metricId: ID.headcount,
+    withContractors,
+    value: headcountAt(emps, ctx.asOf, counts),
+    spark: quarterBlocks(ctx.asOf, 8).map((b) => headcountAt(emps, b.end, counts)),
     uses: resolveLineage(all(HEADCOUNT, ifPresent(PAST_HEADCOUNT), scopeLineage(ctx.filters)), present),
   }
 }

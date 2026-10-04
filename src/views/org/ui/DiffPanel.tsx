@@ -2,15 +2,20 @@
  * Scenario diff (the old tool's ScenarioDiffModal, as a sheet): what the scenario changes against
  * the org on the as-of date. Spans, layers, managers gaining their first report or losing their
  * last, new span outliers, people reporting across departments, and moves that were blocked.
- * Every number opens the people it affects.
+ * Every number opens the people it affects, and hovering a label shows its definition from the
+ * metric dictionary. Span outliers use the wide-span and narrow-span settings in force.
  */
 import type { ReactNode } from 'react'
 import { SeverityIcon, spanClass } from '@/components'
 import { cx } from '@/components/ui'
+import { useAnalytics } from '@/data/context'
 import { Drill, type DrillSource, type DrillSpec } from '@/drill'
 import { DASH, fmt, plural } from '@/lib/format'
 import {
   type DrillScope,
+  defText,
+  narrowSpanLabel,
+  type OrgRules,
   type OrgTree,
   peopleAtLayer,
   peopleDrill,
@@ -20,10 +25,12 @@ import {
   scopeLine,
   spanChangesDrill,
 } from '../engine'
+import { ORG_METRIC, type OrgMetricId } from '../metrics'
 import type { BlockedAttempt } from './state'
 
 export function DiffPanel({
   diff,
+  rules,
   before,
   after,
   scope,
@@ -33,6 +40,8 @@ export function DiffPanel({
   onClearBlocked,
 }: {
   diff: ScenarioDiff
+  /** The settings in force, for the span outlier labels. */
+  rules: OrgRules
   /** The org today and in the scenario, for the people behind each number. */
   before: OrgTree
   after: OrgTree
@@ -42,8 +51,13 @@ export function DiffPanel({
   onJump: (id: string) => void
   onClearBlocked: () => void
 }) {
+  const { metrics } = useAnalytics()
+  const define = (id: OrgMetricId) => defText(metrics, id)
   const empty = !diff.reportingChanges.length && !diff.removed.length
   const sub = scopeLine(scope)
+  const wide = `${rules.wideSpan}+`
+  const narrow = narrowSpanLabel(rules).toLowerCase()
+  const narrowNew = rules.narrowSpan <= 1 ? 'spans of 1' : `spans of ${rules.narrowSpan} or fewer`
   const when = (t: OrgTree) => (t === before ? 'today' : 'in the scenario')
   const managers = (t: OrgTree) => [...t.people.keys()].filter((id) => (t.directs.get(id) ?? 0) > 0)
   const managersDrill = (t: OrgTree) => () =>
@@ -103,21 +117,25 @@ export function DiffPanel({
       <dl className="mt-3 grid grid-cols-2 gap-px overflow-hidden rounded-control bg-rule sm:grid-cols-3">
         <Tile
           label="People changing manager"
+          title={define(ORG_METRIC.reportingChanges)}
           value={fmt(diff.reportingChanges.length, 'int')}
           drill={() => reportingChangesDrill(after, diff.reportingChanges, scope)}
         />
         <Tile
           label="Spans that change"
+          title={define(ORG_METRIC.spanChanges)}
           value={fmt(diff.spanChanges.length, 'int')}
           drill={() => spanChangesDrill(before, after, diff.spanChanges, scope)}
         />
         <Tile
           label="Exits"
+          title={define(ORG_METRIC.scenarioExits)}
           value={fmt(diff.removed.length, 'int')}
           drill={() => removedDrill(before, diff.removed, scope)}
         />
         <Tile
           label="People managers"
+          title={define(ORG_METRIC.managers)}
           before={diff.managers.before}
           after={diff.managers.after}
           format="int"
@@ -126,6 +144,7 @@ export function DiffPanel({
         />
         <Tile
           label="Average span"
+          title={define(ORG_METRIC.avgSpan)}
           before={diff.avgSpan.before}
           after={diff.avgSpan.after}
           format="num1"
@@ -134,6 +153,7 @@ export function DiffPanel({
         />
         <Tile
           label="Layers"
+          title={define(ORG_METRIC.layers)}
           before={diff.layers.before}
           after={diff.layers.after}
           format="int"
@@ -150,6 +170,7 @@ export function DiffPanel({
         <div className="mt-4 grid gap-x-6 gap-y-4 sm:grid-cols-2">
           <List
             title="First direct report"
+            definition={define(ORG_METRIC.firstReport)}
             empty="Nobody becomes a manager."
             items={diff.managersCreated.map((m) => ({
               id: m.id,
@@ -161,6 +182,7 @@ export function DiffPanel({
           />
           <List
             title="No direct reports left"
+            definition={define(ORG_METRIC.noReportsLeft)}
             empty="No manager loses their whole team."
             items={diff.managersEmptied.map((m) => ({ id: m.id, text: m.name, note: `had ${m.before}` }))}
             drillOf={(ids) =>
@@ -176,7 +198,8 @@ export function DiffPanel({
             onJump={onJump}
           />
           <List
-            title="New wide spans (12+)"
+            title={`New wide spans (${wide})`}
+            definition={define(ORG_METRIC.wideSpan)}
             empty="No new wide spans."
             severity="warning"
             items={diff.newWideSpans.map((m) => ({
@@ -184,19 +207,21 @@ export function DiffPanel({
               text: m.name,
               note: plural(m.directs, 'report'),
             }))}
-            drillOf={afterList('Managers with a new wide span (12+)')}
+            drillOf={afterList(`Managers with a new wide span (${wide})`)}
             onJump={onJump}
           />
           <List
-            title="New spans of 1"
-            empty="No new spans of 1."
+            title={`New ${narrowNew}`}
+            definition={define(ORG_METRIC.narrowSpan)}
+            empty={`No new ${narrowNew}.`}
             severity="info"
             items={diff.newSpansOfOne.map((m) => ({ id: m.id, text: m.name }))}
-            drillOf={afterList('Managers with a new span of 1')}
+            drillOf={afterList(`Managers with a new ${narrow}`)}
             onJump={onJump}
           />
           <List
             title="Reporting across departments"
+            definition={define(ORG_METRIC.crossDepartment)}
             empty="Everyone moved stays within their department."
             items={diff.crossDept.map((c) => ({
               id: c.id,
@@ -215,7 +240,9 @@ export function DiffPanel({
             onJump={onJump}
           />
           <div>
-            <h4 className="eyebrow mb-1.5">People per layer</h4>
+            <h4 className="eyebrow mb-1.5" title={define(ORG_METRIC.layers)}>
+              People per layer
+            </h4>
             <table className="w-full text-[12px]">
               <thead>
                 <tr className="text-[11px] text-muted">
@@ -292,6 +319,7 @@ function Count({ n, drill }: { n: number; drill: DrillSource }) {
 
 function Tile({
   label,
+  title,
   value,
   before,
   after,
@@ -301,6 +329,8 @@ function Tile({
   drillAfter,
 }: {
   label: string
+  /** The definition, from the metric dictionary, shown on hover. */
+  title?: string
   value?: string
   before?: number | null
   after?: number | null
@@ -316,7 +346,7 @@ function Tile({
   // Compare what is shown, so "5.9 → 5.9" never appears when only hidden decimals moved.
   const changed = before !== undefined && b !== a
   return (
-    <div className="bg-sheet px-3 py-2">
+    <div className="bg-sheet px-3 py-2" title={title}>
       <dt className="text-[11px] text-muted">{label}</dt>
       <dd className="cut-head mt-0.5 text-[20px] font-semibold text-ink">
         {value !== undefined ? (
@@ -336,6 +366,7 @@ function Tile({
 
 function List({
   title,
+  definition,
   items,
   empty,
   severity,
@@ -343,6 +374,8 @@ function List({
   onJump,
 }: {
   title: string
+  /** The definition, from the metric dictionary, shown on hover. */
+  definition?: string
   items: { id: string; text: string; note?: string }[]
   empty: string
   severity?: 'warning' | 'info'
@@ -377,7 +410,7 @@ function List({
     )
   return (
     <div>
-      <h4 className="eyebrow mb-1.5 flex items-center gap-1.5">
+      <h4 className="eyebrow mb-1.5 flex items-center gap-1.5" title={definition}>
         {title}
         {items.length > 0 && (
           <>

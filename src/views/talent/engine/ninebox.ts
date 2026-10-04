@@ -1,9 +1,10 @@
 /**
- * The 9-box: performance (rating 1-2 Low, 3 Moderate, 4-5 High) against potential (Low, Moderate,
- * High) from the latest annual cycle, for employees active at the as-of date.
+ * The 9-box: performance (rating 1-2 Low, 3 Moderate, 4-5 High at the default high performer
+ * rating of 4) against potential (Low, Moderate, High) from the latest annual cycle, for employees
+ * active at the as-of date.
  * Pure: no React, no DOM.
  */
-import { MIN_GROUP, POTENTIALS, type Potential } from '@/data/schema'
+import { POTENTIALS, type Potential } from '@/data/schema'
 import {
   type Cycle,
   nameOf,
@@ -57,6 +58,7 @@ export const cellLabel = (perf: PerfBand, pot: Potential): string =>
 export const cellKey = (perf: PerfBand, pot: Potential): string => `${perf}|${pot}`
 
 export function computeNineBox(base: TalentBase, risk: Map<string, PersonRisk>): NineBoxResult {
+  const { highRating, minGroup } = base.settings
   const cycle = base.latestAnnual
   const cells = new Map<string, NineBoxCell>()
   for (const pot of POTENTIALS) {
@@ -78,7 +80,7 @@ export function computeNineBox(base: TalentBase, risk: Map<string, PersonRisk>):
       const r = reviewIn(base, e.employeeId, cycle.cycle)
       const rating = normRating(r?.rating)
       if (!r || rating == null || !r.potential) continue
-      const cell = cells.get(cellKey(perfBand(rating), r.potential))
+      const cell = cells.get(cellKey(perfBand(rating, highRating), r.potential))
       if (!cell) continue
       const pr = risk.get(e.employeeId)
       cell.count++
@@ -100,7 +102,7 @@ export function computeNineBox(base: TalentBase, risk: Map<string, PersonRisk>):
     }
   }
   for (const c of cells.values()) {
-    c.share = placed >= MIN_GROUP ? c.count / placed : null
+    c.share = placed >= minGroup ? c.count / placed : null
     c.people.sort((a, b) => b.rating - a.rating || a.name.localeCompare(b.name))
   }
   return { cycle, cells: [...cells.values()], placed, notPlaced: base.active.length - placed }

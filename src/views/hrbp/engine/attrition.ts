@@ -1,31 +1,18 @@
 /**
  * Who left, when, why, and from where. Rates are annualized exits ÷ average headcount
- * (`@/lib/people` conventions); groups under 5 average headcount are suppressed (null), and every
- * rate is null when no Employees row has a termination date (an active-only roster).
+ * (`@/lib/people` conventions, with the People stats settings); groups under the anonymity
+ * minimum (5) are suppressed (null), and every rate is null when no Employees row has a
+ * termination date (an active-only roster).
  */
-import {
-  type Employee,
-  type ISODate,
-  LEVELS,
-  MIN_GROUP,
-  RATING_LABELS,
-  VOLUNTARY_REASONS,
-} from '@/data/schema'
+import { type Employee, type ISODate, LEVELS, RATING_LABELS, VOLUNTARY_REASONS } from '@/data/schema'
 import type { Window } from '@/data/scope'
 import { addMonths } from '@/lib/dates'
-import {
-  attrition,
-  buildReviewIndex,
-  exitsIn,
-  isEmployee,
-  reviewAt,
-  TENURE_BANDS,
-  tenureBand,
-  tenureYears,
-} from '@/lib/people'
+import { buildReviewIndex, isEmployee, reviewAt, TENURE_BANDS, tenureBand, tenureYears } from '@/lib/people'
 import type { Prep } from './base'
 import { quarterBlocks } from './base'
-import { annualRate, exitsByGroup, leftInFirstYear } from './rates'
+import { attrition, type Counts, exitsIn, leftWithin } from './population'
+import { exitsByGroup, type GroupOptions } from './rates'
+import { defaultSettings } from './settings'
 import { NO_LEVEL } from './workforce'
 
 export type ExitType = 'Voluntary' | 'Involuntary' | 'Not recorded'
@@ -142,17 +129,36 @@ export const exitType = (e: Employee): ExitType =>
     : 'Not recorded'
 
 /** The cohort behind first-year attrition: employees hired 12 to 24 months before asOf (same bounds as `firstYearAttrition`). */
-export function firstYearCohort(emps: readonly Employee[], asOf: ISODate): Employee[] {
+export function firstYearCohort(
+  emps: readonly Employee[],
+  asOf: ISODate,
+  counts: Counts = isEmployee,
+): Employee[] {
   const from = addMonths(asOf, -24)
   const to = addMonths(asOf, -12)
-  return emps.filter((e) => isEmployee(e) && e.hireDate > from && e.hireDate <= to)
+  return emps.filter((e) => counts(e) && e.hireDate > from && e.hireDate <= to)
 }
 
-export function cohortSummary(emps: readonly Employee[], asOf: ISODate): CohortSummary {
-  const cohort = firstYearCohort(emps, asOf)
-  const leavers = cohort.filter(leftInFirstYear).length
+export interface CohortOptions {
+  counts?: Counts
+  /** First-year leaver test (default: left within the registry's first-year window). */
+  leftFirstYear?: (e: Employee) => boolean
+  /** The anonymity minimum (default 5). */
+  minGroup?: number
+}
+
+/** The cohort's size, its first-year leavers and the rate, null below the anonymity minimum. */
+export function cohortSummary(
+  emps: readonly Employee[],
+  asOf: ISODate,
+  opts: CohortOptions = {},
+): CohortSummary {
+  const left = opts.leftFirstYear ?? leftWithin(defaultSettings().firstYearDays)
+  const minGroup = opts.minGroup ?? defaultSettings().minGroup
+  const cohort = firstYearCohort(emps, asOf, opts.counts)
+  const leavers = cohort.filter(left).length
   return {
-    rate: cohort.length >= 5 ? leavers / cohort.length : null,
+    rate: cohort.length >= minGroup ? leavers / cohort.length : null,
     cohort: cohort.length,
     leavers,
     from: addMonths(asOf, -24),
@@ -162,26 +168,35 @@ export function cohortSummary(emps: readonly Employee[], asOf: ISODate): CohortS
 
 function groupRows(map: ReturnType<typeof exitsByGroup>, p: Prep, typed: boolean): GroupRateRow[] {
   const left = p.has.terminationDate
+  const minGroup = p.set.minGroup
   return [...map.values()]
     .map((g) => ({
       group: g.key,
       avgHeadcount: g.avgHeadcount,
       exits: g.exits,
       voluntary: g.voluntary,
-      rate: left ? annualRate(g.exits, g.avgHeadcount, p.window) : null,
-      voluntaryRate: typed ? annualRate(g.voluntary, g.avgHeadcount, p.window) : null,
+      rate: left ? p.rate(g.exits, g.avgHeadcount, p.window) : null,
+      voluntaryRate: typed ? p.rate(g.voluntary, g.avgHeadcount, p.window) : null,
       // A group too small to show its rates has no records behind them either.
-      leavers: g.avgHeadcount >= MIN_GROUP ? g.leavers : [],
+      leavers: g.avgHeadcount >= minGroup ? g.leavers : [],
     }))
     .sort((a, b) => b.avgHeadcount - a.avgHeadcount)
 }
+
+/** Who counts and what is regretted, for `exitsByGroup` inside the engine. */
+export const groupOptions = (p: Prep): GroupOptions => ({ counts: p.counts, isRegretted: p.isRegretted })
 
 /**
  * Voluntary exits and average headcount by department, counting each person in the department
  * they were in at each month end (transfers rebuilt from Job changes), as the level chart does.
  */
-export function exitsByDepartment(emps: readonly Employee[], w: Window, deptAt: Prep['history']['deptAt']) {
-  return exitsByGroup(emps, w, leaverGroup.department, (e, d) => deptAt(e, d) || 'Not recorded')
+export function exitsByDepartment(
+  emps: readonly Employee[],
+  w: Window,
+  deptAt: Prep['history']['deptAt'],
+  opts: GroupOptions = {},
+) {
+  return exitsByGroup(emps, w, leaverGroup.department, (e, d) => deptAt(e, d) || 'Not recorded', opts)
 }
 
 export function computeAttrition(p: Prep): AttritionModel {
@@ -189,19 +204,21 @@ export function computeAttrition(p: Prep): AttritionModel {
   const left = p.has.terminationDate
   const typed = left && p.has.terminationType
   const blocks = quarterBlocks(asOf, 8)
+  const minGroup = p.set.minGroup
+  const by = groupOptions(p)
 
   const quarters: QuarterExitRow[] = []
   const regrettedByQuarter: RegrettedQuarterRow[] = []
   const companyByQuarter = ctx.isCompany ? null : p.companyEmps
-  const isRegretted = (e: Employee) => e.terminationType === 'Voluntary' && e.regrettable === true
+  const isRegretted = p.isRegretted
   for (const b of blocks) {
-    const g = exitsByGroup(emps, b, () => 'all').get('all')
+    const g = exitsByGroup(emps, b, () => 'all', undefined, by).get('all')
     const avg = g?.avgHeadcount ?? 0
     const exits = g?.leavers ?? []
     for (const type of EXIT_TYPES) {
       const records = exits.filter((e) => exitType(e) === type)
       if (type === 'Not recorded' && records.length === 0) continue
-      const rate = left ? annualRate(records.length, avg, b) : null
+      const rate = left ? p.rate(records.length, avg, b) : null
       quarters.push({
         quarter: b.label,
         start: b.start,
@@ -210,11 +227,11 @@ export function computeAttrition(p: Prep): AttritionModel {
         exits: records.length,
         avgHeadcount: avg,
         rate,
-        records: avg >= MIN_GROUP ? records : [],
+        records: avg >= minGroup ? records : [],
       })
     }
-    if (typed && p.has.regrettable) {
-      const rate = annualRate(g?.regretted ?? 0, avg, b)
+    if (p.regrettedReady) {
+      const rate = p.rate(g?.regretted ?? 0, avg, b)
       regrettedByQuarter.push({
         quarterEnd: b.end,
         quarter: b.label,
@@ -225,8 +242,8 @@ export function computeAttrition(p: Prep): AttritionModel {
         records: rate == null ? [] : exits.filter(isRegretted),
       })
       if (companyByQuarter) {
-        const c = exitsByGroup(companyByQuarter, b, () => 'all').get('all')
-        const cRate = annualRate(c?.regretted ?? 0, c?.avgHeadcount ?? 0, b)
+        const c = exitsByGroup(companyByQuarter, b, () => 'all', undefined, by).get('all')
+        const cRate = p.rate(c?.regretted ?? 0, c?.avgHeadcount ?? 0, b)
         regrettedByQuarter.push({
           quarterEnd: b.end,
           quarter: b.label,
@@ -240,7 +257,7 @@ export function computeAttrition(p: Prep): AttritionModel {
     }
   }
 
-  const leavers = exitsIn(emps, window)
+  const leavers = exitsIn(emps, window, p.counts)
   const voluntary = leavers.filter((e) => e.terminationType === 'Voluntary')
   const byReason = new Map<string, Employee[]>()
   for (const e of voluntary) {
@@ -260,11 +277,11 @@ export function computeAttrition(p: Prep): AttritionModel {
     }))
     .sort((a, b) => b.exits - a.exits || taxonomy.indexOf(a.reason) - taxonomy.indexOf(b.reason))
 
-  const byDepartment = groupRows(exitsByDepartment(emps, window, p.history.deptAt), p, typed)
-  const byLocation = groupRows(exitsByGroup(emps, window, leaverGroup.location), p, typed)
+  const byDepartment = groupRows(exitsByDepartment(emps, window, p.history.deptAt, by), p, typed)
+  const byLocation = groupRows(exitsByGroup(emps, window, leaverGroup.location, undefined, by), p, typed)
   const levelOrder = new Map<string, number>(LEVELS.map((l, i) => [l, i]))
   const byLevel = groupRows(
-    exitsByGroup(emps, window, leaverGroup.level, (e, d) => p.history.levelAt(e, d) ?? NO_LEVEL),
+    exitsByGroup(emps, window, leaverGroup.level, (e, d) => p.history.levelAt(e, d) ?? NO_LEVEL, by),
     p,
     typed,
   ).sort((a, b) => (levelOrder.get(a.group) ?? 99) - (levelOrder.get(b.group) ?? 99))
@@ -305,7 +322,7 @@ export function computeAttrition(p: Prep): AttritionModel {
     }
   }
 
-  const regretted = voluntary.filter((e) => e.regrettable === true)
+  const regretted = leavers.filter(isRegretted)
   const regrettedLeavers: LeaverRow[] = regretted
     .map((e) => ({
       employeeId: e.employeeId,
@@ -322,7 +339,12 @@ export function computeAttrition(p: Prep): AttritionModel {
     }))
     .sort((a, b) => (a.exitDate < b.exitDate ? 1 : -1))
 
-  const companyRate = (kind: 'all' | 'voluntary' | 'regretted') => attrition(p.companyEmps, window, kind).rate
+  const companyRate = (kind: 'all' | 'voluntary' | 'regretted') =>
+    attrition(p.companyEmps, window, kind, {
+      counts: p.counts,
+      annualize: p.set.annualize,
+      regretted: p.set.regretted,
+    }).rate
   return {
     quarters,
     regrettedByQuarter,
@@ -337,7 +359,7 @@ export function computeAttrition(p: Prep): AttritionModel {
     company: {
       all: left ? companyRate('all') : null,
       voluntary: typed ? companyRate('voluntary') : null,
-      regretted: typed && p.has.regrettable ? companyRate('regretted') : null,
+      regretted: p.regrettedReady ? companyRate('regretted') : null,
     },
     leavers,
     regretted,

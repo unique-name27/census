@@ -1,21 +1,24 @@
 /**
  * Sub-org scorecard: one row per organization one level down from the scope (the selected
  * leader's direct reports, else business units, else departments, else locations), the
- * company as a benchmark row, and orgs under 5 employees folded into "Other (k)".
- * A cell is marked when it is materially off the company: |Δ| > max(1 pt, 10% of the company
- * value) for rates, |Δ| > max(0.5, 10%) for span, in orgs of 10 or more employees.
+ * company as a benchmark row, and orgs under the anonymity minimum (5 employees) folded into
+ * "Other (k)". A cell is marked when it is materially off the company (the "Materially off the
+ * company" settings): |Δ| > max(1 pt, 10% of the company value) for rates, |Δ| > max(0.5, 10%)
+ * for span, in orgs of 10 or more employees.
  */
 import type { Employee, JobChange } from '@/data/schema'
 import { type Filters, subtreeIds } from '@/data/scope'
 import { addDays } from '@/lib/dates'
-import { activeAt, attrition, exitsIn, inWindow, isActiveAt } from '@/lib/people'
+import { inWindow, isActiveAt } from '@/lib/people'
 import { mean } from '@/lib/stats'
 import { cohortSummary, firstYearCohort } from './attrition'
 import type { Prep } from './base'
+import { rateOptions } from './kpis'
 import type { ScoreDim } from './lineage'
 import { promotionRate } from './movement'
 import { activeChildren, subtreeSizer } from './org'
-import { leftInFirstYear } from './rates'
+import { activeAt, attrition, exitsIn } from './population'
+import { defaultSettings, type HrbpSettings } from './settings'
 
 export const SCORE_METRICS = ['voluntary', 'regretted', 'firstYear', 'promotionRate', 'avgSpan'] as const
 export type ScoreMetric = (typeof SCORE_METRICS)[number]
@@ -28,9 +31,6 @@ export const METRIC_POLARITY: Record<ScoreMetric, 'higher-worse' | 'neutral'> = 
   promotionRate: 'neutral',
   avgSpan: 'neutral',
 }
-
-/** Orgs smaller than this are compared but never marked: one exit swings their rates too far. */
-export const SHADE_MIN_HEADCOUNT = 10
 
 export interface ScoreRow {
   key: string
@@ -78,6 +78,12 @@ export interface Scorecard {
   /** What the rows are: a leader's direct reports' orgs, business units, departments or locations. */
   dim: ScoreDim
   rows: ScoreRow[]
+  /**
+   * When a cell is marked, as calculated: the smallest gap for rates and span, as a share of the
+   * company value, and the smallest org marked (smaller orgs are compared but never marked: one
+   * exit swings their rates too far).
+   */
+  rule: Readonly<HrbpSettings['offCompany']>
 }
 
 interface OrgDef {
@@ -93,11 +99,12 @@ export function isMaterialOff(
   metric: ScoreMetric,
   value: number | null,
   company: number | null,
+  rule: HrbpSettings['offCompany'] = defaultSettings().offCompany,
 ): Shade | null {
   if (value == null || company == null) return null
-  const floor = metric === 'avgSpan' ? 0.5 : 0.01
+  const floor = metric === 'avgSpan' ? rule.spanFloor : rule.rateFloor
   const diff = value - company
-  if (Math.abs(diff) <= Math.max(floor, 0.1 * Math.abs(company))) return null
+  if (Math.abs(diff) <= Math.max(floor, rule.relative * Math.abs(company))) return null
   return diff > 0 ? 'above' : 'below'
 }
 
@@ -106,9 +113,11 @@ function metrics(
   people: readonly Employee[],
   changesById: Map<string, JobChange[]>,
 ): Omit<ScoreRow, 'key' | 'label' | 'sublabel' | 'kind' | 'filter' | 'shade'> {
-  const emps = people.filter((e) => e.employmentType === 'Employee')
+  const emps = people.filter(p.counts)
   const left = p.has.terminationDate
   const typed = left && p.has.terminationType
+  const minGroup = p.set.minGroup
+  const opts = rateOptions(p)
   const changes: JobChange[] = []
   for (const e of emps) for (const c of changesById.get(e.employeeId) ?? []) changes.push(c)
   const active = people.filter((e) => isActiveAt(e, p.asOf))
@@ -120,10 +129,10 @@ function metrics(
     return employee ? [{ employee, directs: kids.length, totalOrg: below(id) }] : []
   })
   const spans = [...children.values()].map((k) => k.length)
-  const vol = attrition(emps, p.window, 'voluntary')
-  const reg = attrition(emps, p.window, 'regretted')
+  const vol = attrition(emps, p.window, 'voluntary', opts)
+  const reg = attrition(emps, p.window, 'regretted', opts)
   const yearAgo = addDays(p.t12.start, -1)
-  const now = activeAt(emps, p.asOf)
+  const now = activeAt(emps, p.asOf, p.counts)
   const hc = now.length
   const joined: Employee[] = []
   const gone: Employee[] = []
@@ -135,11 +144,11 @@ function metrics(
     if (is && !was) joined.push(e)
     if (was && !is) gone.push(e)
   }
-  const exits = exitsIn(emps, p.window)
-  const cohort = cohortSummary(emps, p.asOf)
-  const promo = promotionRate(emps, changes, p.window, p.has.jobChanges)
-  const voluntary = typed && vol.avgHeadcount >= 5 ? vol.rate : null
-  const regretted = typed && p.has.regrettable && reg.avgHeadcount >= 5 ? reg.rate : null
+  const exits = exitsIn(emps, p.window, p.counts)
+  const cohort = cohortSummary(emps, p.asOf, { counts: p.counts, leftFirstYear: p.leftFirstYear, minGroup })
+  const promo = promotionRate(emps, changes, p.window, p.has.jobChanges, { counts: p.counts, minGroup })
+  const voluntary = typed && vol.avgHeadcount >= minGroup ? vol.rate : null
+  const regretted = p.regrettedReady && reg.avgHeadcount >= minGroup ? reg.rate : null
   const firstYear = left ? cohort.rate : null
   const avgSpan = spans.length ? mean(spans) : null
   return {
@@ -155,11 +164,8 @@ function metrics(
       joined: left ? joined : [],
       left: left ? gone : [],
       voluntary: voluntary == null ? [] : exits.filter((e) => e.terminationType === 'Voluntary'),
-      regretted:
-        regretted == null
-          ? []
-          : exits.filter((e) => e.terminationType === 'Voluntary' && e.regrettable === true),
-      firstYear: firstYear == null ? [] : firstYearCohort(emps, p.asOf).filter(leftInFirstYear),
+      regretted: regretted == null ? [] : exits.filter(p.isRegretted),
+      firstYear: firstYear == null ? [] : firstYearCohort(emps, p.asOf, p.counts).filter(p.leftFirstYear),
       cohort: cohort.cohort,
       promotions:
         promo.rate == null
@@ -228,19 +234,21 @@ export function computeScorecard(p: Prep): Scorecard {
   }
   const { label, dim, defs } = orgDefinitions(p)
   const company = metrics(p, p.ctx.all.employees, changesById)
+  const rule = { ...p.set.offCompany }
+  const minGroup = p.set.minGroup
 
   const rows: ScoreRow[] = []
   const small: OrgDef[] = []
   for (const d of defs) {
     const m = metrics(p, d.people, changesById)
-    if (m.headcount < 5) {
+    if (m.headcount < minGroup) {
       if (d.people.length) small.push(d)
       continue
     }
     const shade: Partial<Record<ScoreMetric, Shade>> = {}
-    if (m.headcount >= SHADE_MIN_HEADCOUNT) {
+    if (m.headcount >= rule.minHeadcount) {
       for (const k of SCORE_METRICS) {
-        const s = isMaterialOff(k, m[k], company[k])
+        const s = isMaterialOff(k, m[k], company[k], rule)
         if (s) shade[k] = s
       }
     }
@@ -281,5 +289,5 @@ export function computeScorecard(p: Prep): Scorecard {
       shade: {},
     })
   }
-  return { rowsLabel: label, dim, rows }
+  return { rowsLabel: label, dim, rows, rule }
 }

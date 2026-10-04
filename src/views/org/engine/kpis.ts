@@ -1,16 +1,23 @@
 /**
  * The key figure tiles for the org on screen: people, managers, median span, layers, open roles
- * (only with the Open roles overlay on) and structure flags. Each tile carries the records behind it (built only when opened) and the fields
- * it is computed from, for its tier.
+ * (only with the Open roles overlay on) and structure flags. Each tile carries the records behind
+ * it (built only when opened), the fields it is computed from (for its tier), and its metric
+ * dictionary entry: the info popover reads the registry's definition, with your wording.
  */
 import type { Kpi } from '@/components/types'
 import type { Requisition } from '@/data/schema'
 import type { DrillSource } from '@/drill/Drill'
+import { plural } from '@/lib/format'
+import { defaultMetrics } from '@/metrics/api'
+import type { MetricsApi } from '@/metrics/types'
+import { ORG_METRIC } from '../metrics'
+import { defText, flaggedDefinition } from './defs'
 import { type DrillScope, type KeyFigureDrills, keyFigureDrills } from './drill'
 import { tagKpis } from './drillUses'
 import type { OrgKeyFigures } from './figures'
 import type { Flag } from './flags'
 import { keyFigureUses, type OrgLineage } from './lineage'
+import { orgRules } from './rules'
 import type { OrgTree } from './tree'
 
 export interface OrgKpiInput {
@@ -28,14 +35,18 @@ export interface OrgKpiInput {
    * team chose to leave them off), so their tile shows only with the overlay.
    */
   openRoles: boolean
+  /** The metric dictionary (`ctx.metrics`): wording and settings. The defaults without it. */
+  metrics?: MetricsApi
 }
 
 export function orgKpis(p: OrgKpiInput): Kpi[] {
   const { key } = p
+  const m = p.metrics ?? defaultMetrics()
+  const rules = orgRules(m)
   const uses = keyFigureUses(p.lineage)
   let drills: KeyFigureDrills | null = null
   const kd = () => {
-    drills ??= keyFigureDrills(p.tree, p.rootId, key, p.scope, p.flags, p.reqRecords)
+    drills ??= keyFigureDrills(p.tree, p.rootId, key, p.scope, p.flags, p.reqRecords, rules)
     return drills
   }
   /** A zero has nothing behind it: no drill, so no underline that opens nothing. */
@@ -44,58 +55,70 @@ export function orgKpis(p: OrgKpiInput): Kpi[] {
   const tiles: Kpi[] = [
     {
       id: 'org-people',
+      metricId: ORG_METRIC.people,
       label: p.dims ? 'People matching' : 'People in this org',
       value: key.people.length,
       format: 'int',
       note: p.dims ? 'Matching the filters · every worker type' : 'Including the leader · every worker type',
+      definition: defText(m, ORG_METRIC.people),
       drill: when(key.people.length, 'people'),
       uses: uses.people,
     },
     {
       id: 'org-managers',
+      metricId: ORG_METRIC.managers,
       label: 'People managers',
       value: key.managers.length,
       format: 'int',
+      definition: defText(m, ORG_METRIC.managers),
       drill: when(key.managers.length, 'managers'),
       uses: uses.managers,
     },
     {
       id: 'org-span',
+      metricId: ORG_METRIC.medianSpan,
       label: 'Median span',
       value: key.medianSpan,
       format: 'num1',
       note: 'Direct reports per manager',
-      definition: 'Median number of direct reports among people with at least one, all worker types.',
+      definition: defText(m, ORG_METRIC.medianSpan),
       drill: when(key.managers.length, 'medianSpan'),
       uses: uses.medianSpan,
     },
     {
       id: 'org-layers',
+      metricId: ORG_METRIC.layers,
       label: 'Layers',
       value: key.layers,
       format: 'int',
-      definition: 'Levels from the top of this org to its deepest report, counting the top as 1.',
+      // Only an org deeper than the deep-chain setting gets a note: how many sit below it.
+      note: key.deep.length
+        ? `${plural(key.deep.length, 'person', 'people')} below layer ${key.deepLayer}`
+        : undefined,
+      definition: defText(m, ORG_METRIC.layers),
       drill: when(key.layers, 'layers'),
+      noteDrill: when(key.deep.length, 'deepChain'),
       uses: uses.layers,
     },
     {
       id: 'org-open-roles',
+      metricId: ORG_METRIC.openRoles,
       label: 'Open roles',
       value: key.openReqIds.length,
       format: 'int',
       note: 'Open requisitions',
+      definition: defText(m, ORG_METRIC.openRoles),
       drill: when(key.openReqIds.length, 'openRoles'),
       uses: uses.openRoles,
     },
     {
       id: 'org-flags',
+      metricId: ORG_METRIC.flagged,
       label: 'Structure flags',
       value: key.flagged.length,
       format: 'int',
       note: 'People with a span, chain or new-manager flag',
-      definition: p.lineage.jobChanges
-        ? 'People with a wide span (12+), a span of 1, a single-report chain, or under 12 months as a manager with 8 or more direct reports. Managing since is the move to a manager level in Job changes, otherwise the hire date.'
-        : 'People with a wide span (12+), a span of 1, a single-report chain, or under 12 months as a manager with 8 or more direct reports. Managing since is the hire date here, because Job changes is not loaded or not at the data standard.',
+      definition: flaggedDefinition(m, rules, p.lineage.jobChanges),
       drill: when(key.flagged.length, 'flagged'),
       uses: uses.flagged,
     },

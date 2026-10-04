@@ -9,6 +9,11 @@ import type { Format } from '@/lib/format'
 /** A headline number. Missing data is `null` (renders "—"), never 0. */
 export interface Kpi {
   id: string
+  /**
+   * The metric dictionary entry this tile shows ('hrbp.attrition.voluntary'). Its info popover
+   * reads the definition from the registry (with your wording) and links to "Edit definition".
+   */
+  metricId?: string
   label: string
   value: number | null
   format: Format
@@ -57,6 +62,8 @@ export interface FindingPerson {
 /** One generated finding in a view's readout. Wording rules: plain, sentence case, no nagging verbs. */
 export interface Finding {
   id: string
+  /** The metric dictionary entry the finding's number comes from, for its definition and target. */
+  metricId?: string
   severity: Severity
   /** One sentence headline with the number in it. */
   title: string

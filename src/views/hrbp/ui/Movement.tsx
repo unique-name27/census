@@ -1,7 +1,6 @@
 import { BarList, Columns, Figure, HBars } from '@/charts'
 import { EmptyState, KpiStrip, Section } from '@/components'
 import { useAnalytics } from '@/data/context'
-import { MIN_GROUP } from '@/data/schema'
 import { drill } from '@/drill/Drill'
 import { openPerson } from '@/drill/store'
 import { formatDate } from '@/lib/dates'
@@ -11,7 +10,7 @@ import { count } from '../engine/base'
 import { deptMoveSpec, promotionLevelSpec, promotionQuarterSpec, sinceSpec } from '../engine/buckets'
 import { FIGURE } from '../engine/lineage'
 import { type DeptMoveRow, SINCE_BANDS } from '../engine/movement'
-import { DEF } from './defs'
+import { ANONYMITY_ID, ID } from './defs'
 import { drillWhen } from './drill'
 
 export function Movement({ m }: { m: HrbpModel }) {
@@ -47,6 +46,7 @@ export function Movement({ m }: { m: HrbpModel }) {
       >
         <Figure
           id="hrbp-promotions-quarter"
+          metric={ID.promotions}
           uses={p.uses(FIGURE.promotionsByQuarter)}
           title="Promotions by quarter"
           subtitle={`Promotion events per quarter, ${quarters.length ? formatDate(quarters[0].start) : ''} to ${asOf}`}
@@ -69,7 +69,7 @@ export function Movement({ m }: { m: HrbpModel }) {
               drill: (r) => drillWhen(r.records.length > 0, () => promotionQuarterSpec(p, r)),
             },
           ]}
-          definitions={[DEF.promotionRate, DEF.avgHeadcount]}
+          definitions={p.defs(ID.promotions, ID.promotionRate, ID.avgHeadcount)}
           note={`${qPromos} promotions in 8 quarters · as of ${asOf}`}
           span={6}
           empty={qPromos ? null : 'No promotions in the last 8 quarters.'}
@@ -84,6 +84,7 @@ export function Movement({ m }: { m: HrbpModel }) {
         </Figure>
         <Figure
           id="hrbp-promotion-level"
+          metric={ID.promotionRate}
           uses={p.uses(FIGURE.promotionsByLevel)}
           title="Promotion rate by level"
           subtitle={`Promotions from each level ÷ average headcount at that level, ${window}`}
@@ -105,17 +106,19 @@ export function Movement({ m }: { m: HrbpModel }) {
             },
           ]}
           definitions={[
-            DEF.promotionRate,
+            ...p.defs(ID.promotionRate),
             {
               term: 'Level',
               text: 'The level a person was promoted from, over the average number of employees at that level (rebuilt from Job changes for each month end).',
             },
-            DEF.suppressed,
+            ...p.defs(ANONYMITY_ID),
           ]}
-          note={`Groups under ${MIN_GROUP} hidden${companyRate != null ? ` · company rate ${fmt(companyRate, 'pct')}` : ''}`}
+          note={`Groups under ${p.set.minGroup} hidden${companyRate != null ? ` · company rate ${fmt(companyRate, 'pct')}` : ''}`}
           span={6}
           empty={
-            mv.byLevel.some((r) => r.rate != null) ? null : 'No level has 5 or more employees in this period.'
+            mv.byLevel.some((r) => r.rate != null)
+              ? null
+              : `No level has ${p.set.minGroup} or more employees in this period.`
           }
         >
           <BarList
@@ -141,6 +144,7 @@ export function Movement({ m }: { m: HrbpModel }) {
       >
         <Figure
           id="hrbp-moves-department"
+          metric={ID.moves}
           uses={p.uses(FIGURE.movesByDepartment)}
           title="Transfers and lateral moves by department"
           subtitle={`Moves into each department, ${window}`}
@@ -155,13 +159,7 @@ export function Movement({ m }: { m: HrbpModel }) {
               drill: (r) => drillWhen(r.records.length > 0, () => deptMoveSpec(p, [r])),
             },
           ]}
-          definitions={[
-            {
-              term: 'Transfer',
-              text: 'A move to a different department or manager line, recorded in Job changes.',
-            },
-            { term: 'Lateral move', text: 'A change of role at the same level.' },
-          ]}
+          definitions={p.defs(ID.moves)}
           note={`${deptTotal} moves · as of ${asOf}`}
           span={7}
           empty={deptTotal ? null : 'No transfers or lateral moves in this period.'}
@@ -179,6 +177,7 @@ export function Movement({ m }: { m: HrbpModel }) {
         </Figure>
         <Figure
           id="hrbp-time-since-promotion"
+          metric={ID.sincePromotion}
           uses={p.uses(FIGURE.timeSincePromotion)}
           title="Time since last promotion"
           subtitle={`Employees on ${asOf} by years since their last promotion`}
@@ -198,12 +197,7 @@ export function Movement({ m }: { m: HrbpModel }) {
               drill: (r) => drillWhen(r.records.length > 0, () => sinceSpec(p, r)),
             },
           ]}
-          definitions={[
-            {
-              term: 'Never promoted',
-              text: 'No Promotion event on record since hire, including people hired recently.',
-            },
-          ]}
+          definitions={p.defs(ID.sincePromotion)}
           note={`${active.toLocaleString('en-US')} employees · as of ${asOf}`}
           span={5}
           empty={active ? null : 'No active employees in this scope.'}
@@ -219,6 +213,7 @@ export function Movement({ m }: { m: HrbpModel }) {
         </Figure>
         <Figure
           id="hrbp-internal-moves"
+          metric={ID.mobility}
           uses={p.uses(FIGURE.internalMoves)}
           title="Internal moves"
           subtitle={`Promotions, transfers, lateral moves and demotions, ${window}, newest first. Select a row to open the person.`}
@@ -233,7 +228,7 @@ export function Movement({ m }: { m: HrbpModel }) {
             { key: 'fromDepartment', label: 'From department', format: 'text' },
             { key: 'toDepartment', label: 'To department', format: 'text' },
           ]}
-          definitions={[DEF.promotionRate, DEF.mobility]}
+          definitions={p.defs(ID.moves, ID.promotionRate, ID.mobility)}
           note={`${mv.moves.length} moves · as of ${asOf}`}
           tableOnly
           table={{ search: 'Search moves', maxRows: 12, onRowClick: (r) => openPerson(r.employeeId) }}

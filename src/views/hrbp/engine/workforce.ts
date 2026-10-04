@@ -5,18 +5,10 @@
  */
 import { EMPLOYMENT_TYPES, type Employee, type ISODate, LEVELS } from '@/data/schema'
 import { addDays, addMonths, formatDate, monthEnd, monthKey, monthsBetween } from '@/lib/dates'
-import {
-  activeAt,
-  exitsIn,
-  headcountAt,
-  hiresIn,
-  isActiveAt,
-  TENURE_BANDS,
-  tenureBand,
-  tenureYears,
-} from '@/lib/people'
+import { isActiveAt, TENURE_BANDS, tenureBand, tenureYears } from '@/lib/people'
 import { mean } from '@/lib/stats'
 import { activeWorkers, monthEnds, type Prep } from './base'
+import { activeAt, exitsIn, headcountAt, hiresIn } from './population'
 
 export interface CountRow {
   label: string
@@ -104,6 +96,8 @@ export interface EngineeringShare {
   share: number | null
   engineering: number
   total: number
+  /** Where the meter's reference tick sits (the "Reference line" setting, 65% by default). */
+  reference: number
   /** Engineering and the other functions; no records when the share is hidden (under 5 people). */
   rows: { group: string; headcount: number; share: number; records: Employee[] }[]
 }
@@ -245,7 +239,9 @@ export function otherChanges(
 
 export function computeWorkforce(p: Prep): WorkforceModel {
   const { asOf, emps, people, t12 } = p
-  const active = activeAt(emps, asOf)
+  const counted = p.counts
+  const minGroup = p.set.minGroup
+  const active = activeAt(emps, asOf, counted)
   const yearAgo = addDays(t12.start, -1)
 
   const levelOrder = new Map<string, number>(LEVELS.map((l, i) => [l, i]))
@@ -289,7 +285,7 @@ export function computeWorkforce(p: Prep): WorkforceModel {
     .map(([group, records]) => {
       const now = records.now.length
       const before = records.before.length
-      const shown = before >= 5
+      const shown = before >= minGroup
       return {
         group,
         yearAgo: before,
@@ -304,11 +300,12 @@ export function computeWorkforce(p: Prep): WorkforceModel {
 
   const engineers = active.filter(isEngineering)
   const eng = engineers.length
-  const shareShown = active.length >= 5
+  const shareShown = active.length >= minGroup
   const engineering: EngineeringShare = {
     share: shareShown ? eng / active.length : null,
     engineering: eng,
     total: active.length,
+    reference: p.set.engineeringReference,
     rows: [
       {
         group: 'Engineering',
@@ -329,13 +326,13 @@ export function computeWorkforce(p: Prep): WorkforceModel {
   const pts = monthEnds(asOf, 25)
   const series: HeadcountPoint[] = pts.map((d) => ({
     date: d,
-    headcount: headcountAt(emps, d),
+    headcount: headcountAt(emps, d, counted),
     period: d > yearAgo ? LAST_YEAR : YEAR_BEFORE,
   }))
 
   const months = monthsBetween(t12.start, t12.end)
-  const hiredList = hiresIn(emps, t12)
-  const exitList = exitsIn(emps, t12)
+  const hiredList = hiresIn(emps, t12, counted)
+  const exitList = exitsIn(emps, t12, counted)
   const hires = new Map<string, Employee[]>()
   const exits = new Map<string, Employee[]>()
   for (const e of hiredList) push(hires, monthKey(e.hireDate), e)
@@ -349,7 +346,7 @@ export function computeWorkforce(p: Prep): WorkforceModel {
     ]
   })
 
-  const startList = activeAt(emps, yearAgo)
+  const startList = activeAt(emps, yearAgo, counted)
   const start = startList.length
   const hired = hiredList.length
   const left = exitList.length
@@ -380,7 +377,7 @@ export function computeWorkforce(p: Prep): WorkforceModel {
     byBusinessUnit: counts(active, (e) => e.businessUnit || 'Not recorded'),
     byLevel,
     tenure,
-    avgTenure: active.length >= 5 ? mean(active.map((e) => tenureYears(e, asOf))) : null,
+    avgTenure: active.length >= minGroup ? mean(active.map((e) => tenureYears(e, asOf))) : null,
     mix,
     growth,
     engineering,

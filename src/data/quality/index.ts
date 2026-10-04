@@ -47,6 +47,8 @@ export {
   computeControlTotal,
   controlMetricsFor,
   DATE_SEQUENCES,
+  DEFAULT_FRESH_DAYS,
+  DEFAULT_QUALITY_RULES,
   DEFAULT_TOLERANCE,
   datesOutOfOrder,
   duplicateRows,
@@ -56,9 +58,10 @@ export {
   LINKS,
   type Link,
   MAX_UNRESOLVED_SHARE,
+  type QualityRules,
   reconciles,
 } from './rules'
-export { pctAgainst, pctText, shortDate } from './text'
+export { limitText, pctAgainst, pctText, shortDate } from './text'
 export {
   BELOW_STANDARD_TEXT,
   compareTiers,

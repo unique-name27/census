@@ -10,14 +10,16 @@ import { fmt } from '@/lib/format'
 import { missingDrill } from './engine/drill'
 import { type CompModel, computeComp } from './engine/model'
 import { emptyScope, missingText, payNotice } from './engine/notes'
-import { useCycleSettings } from './settingsStore'
 
 export { asOfNote, note } from './engine/notes'
 
+/**
+ * The view's model. Every setting comes from the metric dictionary on the context, so a change in
+ * Metric definitions gives a new context and recomputes the view.
+ */
 export function useCompModel(): CompModel {
   const ctx = useAnalytics()
-  const settings = useCycleSettings()
-  return useMemo(() => computeComp(ctx, settings), [ctx, settings])
+  return useMemo(() => computeComp(ctx), [ctx])
 }
 
 /** Empty-state text for a figure whose input is missing: names the dataset or column. */

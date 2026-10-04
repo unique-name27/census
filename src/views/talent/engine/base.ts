@@ -25,16 +25,25 @@ import {
   type ReviewIndex,
   reviewAt,
 } from '@/lib/people'
+import { DEFAULTS, highRangeText, readSettings, type TalentSettings } from './settings'
 
 /** Label for org fields of people missing from the roster (e.g. an incumbent who was never uploaded). */
 export const UNKNOWN = 'Not in roster'
 
 export type PerfBand = 'Low' | 'Moderate' | 'High'
 export const PERF_BANDS: readonly PerfBand[] = ['Low', 'Moderate', 'High']
-export const PERF_BAND_LABEL: Record<PerfBand, string> = {
-  Low: 'Low (1-2)',
-  Moderate: 'Moderate (3)',
-  High: 'High (4-5)',
+
+/**
+ * Axis labels of the 9-box performance bands for a high performer rating: "High (4-5)",
+ * "Moderate (3)" and "Low (1-2)" at the default of 4.
+ */
+export function perfBandLabels(highRating: number): Record<PerfBand, string> {
+  const moderate = highRating - 1 > 3 ? `3-${highRating - 1}` : highRating - 1 === 3 ? '3' : null
+  return {
+    Low: 'Low (1-2)',
+    Moderate: moderate ? `Moderate (${moderate})` : 'Moderate (none)',
+    High: `High (${highRangeText(highRating)})`,
+  }
 }
 
 /** Ratings are ordinal 1-5; imported half points round to the nearest whole rating. */
@@ -44,8 +53,9 @@ export function normRating(r: number | null | undefined): number | null {
   return v >= 1 && v <= 5 ? v : null
 }
 
-export const perfBand = (rating: number): PerfBand =>
-  rating >= 4 ? 'High' : rating >= 3 ? 'Moderate' : 'Low'
+/** Performance band of a rating: High at or above the high performer rating, Moderate from 3, else Low. */
+export const perfBand = (rating: number, highRating: number = DEFAULTS.highRating): PerfBand =>
+  rating >= highRating ? 'High' : rating >= 3 ? 'Moderate' : 'Low'
 
 export interface Cycle {
   cycle: string
@@ -85,6 +95,8 @@ export interface TalentBase {
   /** Latest cycle on or before asOf that records potential (the annual cycle). */
   latestAnnual: Cycle | null
   has: FieldCoverage
+  /** The calculation settings in force, read from the metric dictionary (`ctx.metrics`). */
+  settings: TalentSettings
 }
 
 export function buildBase(ctx: AnalyticsContext): TalentBase {
@@ -123,6 +135,7 @@ export function buildBase(ctx: AnalyticsContext): TalentBase {
     jobs,
     latest: latestCycle(reviews, asOf),
     latestAnnual,
+    settings: readSettings(ctx.metrics),
     has: {
       reviews: ctx.all.reviews.length > 0,
       potential: potentialCycles.size > 0,
@@ -259,22 +272,24 @@ export function topCounts<T>(
 export const otherLabel = (groups: number): string => `Other (${groups})`
 
 /**
- * Fold groups of fewer than MIN_GROUP people into one "Other (k)" row at the end, so no count over
- * fewer than 5 people is shown or exported. When that row is itself under 5, the next-smallest
- * groups join it until it reaches 5, so its counts can't be worked out by subtraction either.
- * `combine` builds the folded row (and should null its counts when the total is still under 5).
+ * Fold groups of fewer than `min` people (the anonymity minimum, 5 by default) into one
+ * "Other (k)" row at the end, so no count over fewer people is shown or exported. When that row
+ * is itself under the minimum, the next-smallest groups join it until it reaches it, so its
+ * counts can't be worked out by subtraction either. `combine` builds the folded row (and should
+ * null its counts when the total is still under the minimum).
  */
 export function foldSmallGroups<R>(
   rows: readonly R[],
   size: (r: R) => number,
   combine: (folded: R[], label: string) => R,
+  min: number = MIN_GROUP,
 ): R[] {
-  const kept = rows.filter((r) => size(r) >= MIN_GROUP)
-  const folded = rows.filter((r) => size(r) < MIN_GROUP)
+  const kept = rows.filter((r) => size(r) >= min)
+  const folded = rows.filter((r) => size(r) < min)
   if (!folded.length) return [...rows]
   let total = folded.reduce((s, r) => s + size(r), 0)
   const bySize = [...kept].sort((a, b) => size(a) - size(b))
-  while (total < MIN_GROUP && bySize.length) {
+  while (total < min && bySize.length) {
     const r = bySize.shift()!
     folded.push(r)
     total += size(r)

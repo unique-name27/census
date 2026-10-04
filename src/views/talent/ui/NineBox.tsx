@@ -20,8 +20,9 @@ import { cx, IconClose } from '@/components'
 import { POTENTIALS } from '@/data/schema'
 import { Drill, type DrillSource, drill, openPerson } from '@/drill'
 import { fmt, plural } from '@/lib/format'
-import { PERF_BAND_LABEL, PERF_BANDS } from '../engine/base'
+import { PERF_BANDS, perfBandLabels } from '../engine/base'
 import { cellKey, type NineBoxCell } from '../engine/ninebox'
+import { DEFAULTS } from '../engine/settings'
 import { nineBoxPeopleColumns } from './columns'
 
 const GAP = 4
@@ -50,15 +51,19 @@ export function NineBox({
   cycle,
   drillFor,
   showRisk = true,
+  highRating = DEFAULTS.highRating,
 }: {
   cells: readonly NineBoxCell[]
   cycle?: string | null
   /** Draw the high flight-risk overlay (false below the data standard). */
   showRisk?: boolean
+  /** The high performer rating in force, for the performance axis labels ("High (4-5)"). */
+  highRating?: number
   /** The people behind a box, or its high flight-risk people. */
   drillFor?: (cell: NineBoxCell, part: 'all' | 'highRisk') => DrillSource
 }) {
   const t = useChartTheme()
+  const bandLabels = perfBandLabels(highRating)
   const { ref, width } = useWidth()
   const tipRef = useRef<HTMLDivElement>(null)
   const [selected, setSelected] = useState<string | null>(null)
@@ -161,7 +166,7 @@ export function NineBox({
                 fill={t.muted}
                 fontSize={11}
               >
-                {PERF_BAND_LABEL[perf]}
+                {bandLabels[perf]}
               </text>
             ))}
             <text

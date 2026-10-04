@@ -30,12 +30,15 @@ export function GuidelineColumns({
   data,
   drillFor,
   height = 260,
+  minGroup = 5,
   ariaLabel,
 }: {
   data: readonly DistributionRow[]
   /** The records behind a column; clicking it opens them. */
   drillFor?: (d: DistributionRow) => DrillSource
   height?: number
+  /** The anonymity minimum in force, for the hidden-share note. */
+  minGroup?: number
   ariaLabel?: string
 }) {
   const theme = useChartTheme()
@@ -124,7 +127,7 @@ export function GuidelineColumns({
       ...(d.share == null ? [] : [{ value: fmt(d.people), label: d.people === 1 ? 'person' : 'people' }]),
     ],
     // Without a note the chart says "Click to see the records" on columns that open them.
-    note: d.share == null ? 'Hidden to protect anonymity (n < 5)' : undefined,
+    note: d.share == null ? `Hidden to protect anonymity (n < ${minGroup})` : undefined,
   })
 
   return (

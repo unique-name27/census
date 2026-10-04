@@ -15,7 +15,8 @@ import { formatDate } from '@/lib/dates'
 import { fmt, plural } from '@/lib/format'
 import type { OrgKeyFigures } from './figures'
 import { layerIn } from './figures'
-import { FLAG_LABELS, type Flag, type FlagKind } from './flags'
+import { type Flag, type FlagKind, flagName } from './flags'
+import { defaultOrgRules, monthsText, narrowSpanLabel, type OrgRules, wideSpanLabel } from './rules'
 import { COMPANY_ROOT, type OrgTree } from './tree'
 
 /** Where the numbers come from, for drill subtitles. */
@@ -114,8 +115,7 @@ export function peopleDrill(
             if (wanted.has('totalOrg')) v.orgTotal = fact(e, 'totalOrg')
             if (wanted.has('layer')) v.orgLayer = fact(e, 'layer')
             if (wanted.has('flags'))
-              v.orgFlags =
-                (o.flags?.get(e.employeeId) ?? []).map((f) => FLAG_LABELS[f.kind]).join('; ') || null
+              v.orgFlags = (o.flags?.get(e.employeeId) ?? []).map((f) => f.name).join('; ') || null
             if (wanted.has('manager')) v.orgManager = managerName(e.employeeId)
             return o.more ? { ...v, ...o.more.values(e) } : v
           },
@@ -191,6 +191,8 @@ export interface KeyFigureDrills {
   layers: DrillSpec<'employees'> | null
   openRoles: DrillSpec<'requisitions'> | null
   flagged: DrillSpec<'employees'> | null
+  /** People below the deep-chain layer (the Layers tile's note). */
+  deepChain: DrillSpec<'employees'> | null
 }
 
 /** Drill specs for the key figures, one per tile. */
@@ -201,6 +203,7 @@ export function keyFigureDrills(
   scope: DrillScope,
   flags: ReadonlyMap<string, readonly Flag[]>,
   reqRecords: ReadonlyMap<string, Requisition>,
+  rules: OrgRules = defaultOrgRules(),
 ): KeyFigureDrills {
   const sub = scopeLine(scope)
   const where = scope.label === 'Whole company' ? 'the company' : scope.label
@@ -257,7 +260,15 @@ export function keyFigureDrills(
       columns: ['flags', 'directs', 'totalOrg'],
       flags,
       sortBy: 'directs',
-      note: 'Wide span (12+), span of 1, single-report chain, or a new manager with a large team.',
+      note: `${wideSpanLabel(rules)}, ${narrowSpanLabel(rules).toLowerCase()}, single-report chain, or a new manager (under ${monthsText(rules.newManagerMonths)}) with ${rules.largeTeam} or more direct reports.`,
+    }),
+    deepChain: peopleDrill(tree, k.deep, {
+      title: `People below layer ${fmt(k.deepLayer, 'int')} in ${where}`,
+      subtitle: sub,
+      columns: ['layer', 'directs'],
+      rootId,
+      sortBy: 'layer',
+      note: `Layer 1 is the top of this org. A chain deeper than ${plural(k.deepLayer, 'layer')} is a deep chain. Deepest first.`,
     }),
   }
 }
@@ -272,8 +283,10 @@ export function flagKindDrill(
 ): DrillSpec<'employees'> | null {
   const hit = [...ids].filter((id) => flags.get(id)?.some((f) => f.kind === kind))
   const where = scope.label === 'Whole company' ? 'the company' : scope.label
+  // The flags carry their name with the settings they were computed with.
+  const name = hit.length ? flags.get(hit[0])!.find((f) => f.kind === kind)!.name : flagName(kind)
   return peopleDrill(tree, hit, {
-    title: `${FLAG_LABELS[kind]} in ${where}`,
+    title: `${name} in ${where}`,
     subtitle: scopeLine(scope),
     columns: ['directs', 'totalOrg', 'flags'],
     flags,
@@ -289,17 +302,18 @@ export function leaversDrill(
   rows: readonly Employee[],
   regrettedOnly: boolean,
   scope: DrillScope,
+  months: number = defaultOrgRules().exitMonths,
 ): DrillSpec<'employees'> | null {
   if (!rows.length) return null
   return drillSpec({
     kind: 'employees',
-    title: `${regrettedOnly ? 'Regretted leavers' : 'Leavers'} who reported to ${managerName}, last 12 months`,
+    title: `${regrettedOnly ? 'Regretted leavers' : 'Leavers'} who reported to ${managerName}, last ${monthsText(months)}`,
     subtitle: scopeLine(scope),
     rows: [...rows].sort((a, b) => (b.terminationDate ?? '').localeCompare(a.terminationDate ?? '')),
     hide: ['status'],
     note: regrettedOnly
       ? 'Voluntary exits marked regrettable, with this person as their manager in the data.'
-      : 'Every exit in the 12 months to the as-of date, with this person as their manager in the data.',
+      : `Every exit in the ${monthsText(months)} to the as-of date, with this person as their manager in the data.`,
   })
 }
 

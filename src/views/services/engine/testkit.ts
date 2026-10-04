@@ -11,6 +11,7 @@ import {
 } from '@/data/schema'
 import { DEFAULT_FILTERS, type Filters, type Window } from '@/data/scope'
 import type { SourceMeta } from '@/data/store'
+import type { MetricsApi } from '@/metrics/types'
 
 let caseSeq = 0
 let txSeq = 0
@@ -92,8 +93,11 @@ const sources = (data: Datasets, kind: SourceMeta['kind']) =>
 
 let sample: Datasets | null = null
 
-/** The analytics context over the generated sample, whole company, last 12 months. */
-export function sampleContext(filters: Partial<Filters> = {}) {
+/**
+ * The analytics context over the generated sample, whole company, last 12 months. `metrics` is
+ * the metric dictionary (default: every setting at its default).
+ */
+export function sampleContext(filters: Partial<Filters> = {}, metrics?: MetricsApi) {
   sample ??= generateSample()
   return buildContext({
     data: sample,
@@ -101,11 +105,12 @@ export function sampleContext(filters: Partial<Filters> = {}) {
     filters: { ...DEFAULT_FILTERS, ...filters },
     asOfOverride: null,
     showPay: false,
+    metrics,
   })
 }
 
 /** A context over hand-built rows (treated as uploaded data with a fixed as-of date). */
-export function fixtureContext(partial: Partial<Datasets>, asOf = '2026-09-30') {
+export function fixtureContext(partial: Partial<Datasets>, asOf = '2026-09-30', metrics?: MetricsApi) {
   const data = { ...emptyData(), ...partial }
   return buildContext({
     data,
@@ -113,5 +118,6 @@ export function fixtureContext(partial: Partial<Datasets>, asOf = '2026-09-30') 
     filters: DEFAULT_FILTERS,
     asOfOverride: asOf,
     showPay: false,
+    metrics,
   })
 }

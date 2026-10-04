@@ -188,11 +188,15 @@ function stubQuality(low: Partial<Record<FieldRef, Tier>>): QualityIndex {
 
 const base = sampleCtx()
 /** The sample under a data standard, with every field gold except the ones named. */
-const withQuality = (standard: 'gold' | 'silver' | 'bronze', low: Partial<Record<FieldRef, Tier>>) =>
+const withQuality = (
+  standard: 'gold' | 'silver' | 'bronze',
+  low: Partial<Record<FieldRef, Tier>>,
+  filters = base.filters,
+) =>
   buildContext({
     data: base.all,
     sources: base.sources,
-    filters: base.filters,
+    filters,
     asOfOverride: null,
     showPay: false,
     standard,
@@ -207,12 +211,29 @@ describe('findings cite exit reasons only when they meet the standard', () => {
     const f = bengaluru(m)
     expect(f.title).toBe('Voluntary attrition in Bengaluru is 18.8%, 9.4 pts above the company')
     expect(f.detail).not.toContain('most often')
+    // The next step does not send the reader to reasons the page no longer shows.
+    expect(f.action).toBe('Hold stay conversations in the most affected Bengaluru teams.')
     expect(f.uses).not.toContain('employees.terminationReason')
     expect(f.people!.every((x) => !x.note!.includes('Career growth'))).toBe(true)
     const cluster = m.findings.find((x) => x.id === 'hrbp-regretted-cluster')!
     expect(cluster.detail).toMatch(/^They left between/)
     expect(cluster.uses).not.toContain('employees.terminationReason')
     expect(talkingPoints(m)).not.toContain('The top reason given')
+  })
+
+  it("drops the exit reasons from a filtered scope's next step too", () => {
+    const scoped = (standard: 'gold' | 'bronze') =>
+      computeHrbp(
+        withQuality(
+          standard,
+          { 'employees.terminationReason': 'bronze' },
+          { ...base.filters, location: ['Bengaluru'] },
+        ),
+      ).findings.find((f) => f.id === 'hrbp-voluntary-scope')!
+    expect(scoped('gold').action).toBe('Hold stay conversations in the most affected Bengaluru teams.')
+    expect(scoped('bronze').action).toBe(
+      'Review the top exit reasons with the Bengaluru leaders and hold stay conversations in the most affected teams.',
+    )
   })
 
   it('shows a supporting detail under Everything, else only when it meets the standard', () => {
@@ -228,6 +249,9 @@ describe('findings cite exit reasons only when they meet the standard', () => {
     const m = computeHrbp(withQuality('bronze', { 'employees.terminationReason': 'bronze' }))
     const f = bengaluru(m)
     expect(f.detail).toContain('“Career growth or promotion” (20)')
+    expect(f.action).toBe(
+      'Review the top exit reasons with the Bengaluru leaders and hold stay conversations in the most affected teams.',
+    )
     expect(f.uses).toContain('employees.terminationReason')
     expect(m.findings.find((x) => x.id === 'hrbp-regretted-cluster')!.detail).toContain(
       '“My manager” (5 of 5)',

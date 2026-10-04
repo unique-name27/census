@@ -12,6 +12,7 @@
  */
 import type { ISODate } from '@/data/schema'
 import { daysBetween, formatDate } from '@/lib/dates'
+import { type AgingRules, defaultSettings } from './settings'
 import type { ActiveItem, App, NextState, Norms, OwnerRole, Tier } from './types'
 import { LAST_OPEN_STAGE } from './types'
 
@@ -41,25 +42,37 @@ export function nextStepState(a: App, stage: number, asOf: ISODate): StepInfo {
   return { state: 'needs-step', since: a.enteredDate }
 }
 
-/** State-appropriate aging tier; any tier means the candidate lacks a timely next step. */
-export function agingTier(a: App, stage: number, step: StepInfo, asOf: ISODate, norms: Norms): Tier | null {
-  const norm = norms.days[stage] ?? 14
+/**
+ * State-appropriate aging tier; any tier means the candidate lacks a timely next step. The rules
+ * are dictionary settings of "Candidates lacking a next step" (defaults: no step booked watched
+ * past 1.5× the stage's usual days and overdue past 2.5×, decisions past 2 and 5 days, offers past
+ * 5 and 10 days, a step booked more than 1.5× the usual days away watched).
+ */
+export function agingTier(
+  a: App,
+  stage: number,
+  step: StepInfo,
+  asOf: ISODate,
+  norms: Norms,
+  rules: AgingRules = defaultSettings().aging,
+): Tier | null {
+  const norm = norms.days[stage] ?? defaultSettings().norms.fallbackDays
   switch (step.state) {
     case 'scheduled': {
       const away = a.nextEventDate ? daysBetween(asOf, a.nextEventDate) : 0
-      return away > 1.5 * norm ? 'amber' : null
+      return away > rules.farOut * norm ? 'amber' : null
     }
     case 'awaiting-feedback': {
       const d = daysBetween(step.since, asOf)
-      return d > 5 ? 'red' : d > 2 ? 'amber' : null
+      return d > rules.decisionOverdueDays ? 'red' : d > rules.decisionWatchDays ? 'amber' : null
     }
     case 'offer-out': {
       const d = daysBetween(step.since, asOf)
-      return d > 10 ? 'red' : d > 5 ? 'amber' : null
+      return d > rules.offerOverdueDays ? 'red' : d > rules.offerWatchDays ? 'amber' : null
     }
     case 'needs-step': {
       const d = daysBetween(step.since, asOf)
-      return d > 2.5 * norm ? 'red' : d > 1.5 * norm ? 'amber' : null
+      return d > rules.overdue * norm ? 'red' : d > rules.watch * norm ? 'amber' : null
     }
   }
 }
@@ -120,15 +133,21 @@ export function ownerFor(a: App, stage: number, state: NextState): { name: strin
 
 /**
  * Every active application on the as-of date with its state, clock, tier and owner. Without a
- * next-event column every candidate is "needs a next step", as in the original tool.
+ * next-event column every candidate is "needs a next step", as in the original tool. `rules` are
+ * the aging settings in force.
  */
-export function activeItems(apps: readonly App[], asOf: ISODate, norms: Norms): ActiveItem[] {
+export function activeItems(
+  apps: readonly App[],
+  asOf: ISODate,
+  norms: Norms,
+  rules: AgingRules = defaultSettings().aging,
+): ActiveItem[] {
   const out: ActiveItem[] = []
   for (const a of apps) {
     if (a.outcome !== 'Active') continue
     const stage = Math.min(a.furthest, LAST_OPEN_STAGE)
     const step = nextStepState(a, stage, asOf)
-    const tier = agingTier(a, stage, step, asOf, norms)
+    const tier = agingTier(a, stage, step, asOf, norms, rules)
     const owner = ownerFor(a, stage, step.state)
     out.push({
       app: a,

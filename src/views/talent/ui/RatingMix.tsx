@@ -27,10 +27,11 @@ import {
   truncateText,
   useChartTheme,
 } from '@/charts'
-import { RATING_GUIDELINE } from '@/data/schema'
 import { type DrillSource, drill } from '@/drill'
 import { DASH, fmt } from '@/lib/format'
+import type { RatingMap } from '@/metrics/types'
 import { RATINGS, ratingLabel } from '../engine/performance'
+import { DEFAULT_GUIDELINE } from '../engine/settings'
 
 export interface MixInput {
   group: string
@@ -77,11 +78,17 @@ function segmentsOf(rows: readonly Row[]): Segment[] {
 export function RatingMix({
   data,
   drillFor,
+  guideline = DEFAULT_GUIDELINE,
+  minGroup = 5,
   ariaLabel,
 }: {
   data: readonly MixInput[]
   /** The records behind a group (rating null) or one rating in it; clicking opens them. */
   drillFor?: (group: string, rating: number | null) => DrillSource
+  /** The rating guideline in force (the "Guideline" row). */
+  guideline?: Readonly<RatingMap>
+  /** The anonymity minimum in force, for the hidden-row note. */
+  minGroup?: number
   ariaLabel?: string
 }) {
   const theme = useChartTheme()
@@ -90,7 +97,7 @@ export function RatingMix({
       key: 'g',
       group: 'Guideline',
       rated: 0,
-      shares: RATINGS.map((r) => RATING_GUIDELINE[r] ?? 0),
+      shares: RATINGS.map((r) => guideline[r] ?? 0),
       guideline: true,
     },
     ...data.map((d, i) => ({ ...d, key: `r${i}`, guideline: false })),
@@ -206,7 +213,7 @@ export function RatingMix({
       note: r.guideline
         ? 'Target share of rated people'
         : hidden
-          ? 'Hidden to protect anonymity (n < 5)'
+          ? `Hidden to protect anonymity (n < ${minGroup})`
           : undefined,
     }
   }

@@ -321,3 +321,30 @@ export function buildLineage({
     },
   }
 }
+
+/* ───────── the metric dictionary's lineage ───────── */
+
+/** Every field the flight-risk model can read today, whichever factors the data switches on. */
+const RISK_ALL: Refs = uses(...Object.values(FACTOR_USES), ['employees.terminationType'], ACTIVE)
+/** The same for past scores (the back-test and the evidence): no pay against range. */
+const RISK_HISTORY_ALL: Refs = uses(
+  ...(Object.keys(FACTOR_USES) as FactorKey[]).filter((k) => k !== 'lowCompa').map((k) => FACTOR_USES[k]),
+  ['employees.terminationType'],
+  ACTIVE,
+)
+
+/**
+ * The lineage the metric dictionary declares: the most each KPI, finding and figure can read,
+ * with every flight-risk input and both sources of risk of loss (the plan's own, or the model's).
+ * On screen, a number declares only what it reads with the data loaded (`buildLineage`).
+ */
+export function registryLineage(): TalentLineage {
+  const a = buildLineage({ has: { successionRisk: true }, risk: RISK_ALL, riskHistory: RISK_HISTORY_ALL })
+  const b = buildLineage({ has: { successionRisk: false }, risk: RISK_ALL, riskHistory: RISK_HISTORY_ALL })
+  const merge = <K extends string>(x: Record<K, Refs>, y: Record<K, Refs>): Record<K, Refs> => {
+    const out = {} as Record<K, Refs>
+    for (const k of Object.keys(x) as K[]) out[k] = uses(x[k], y[k])
+    return out
+  }
+  return { kpi: merge(a.kpi, b.kpi), finding: merge(a.finding, b.finding), figure: merge(a.figure, b.figure) }
+}

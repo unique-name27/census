@@ -19,6 +19,7 @@ import type { ExportMeta, RegisteredFigure } from '@/charts/types'
 import { type DataStandard, STANDARD_LABEL, TIER_LABEL } from '@/data/quality/tier'
 import { fmt } from '@/lib/format'
 import { cellFormat, columnAlign, columnFormat, sampleRow, sampleValue, visibleColumns } from './columns'
+import { definitionsLineFor } from './definitions'
 import { downloadBlob, MIME } from './download'
 import { pngDataUrl, type RasterImage, svgToPng, withLightTheme } from './image'
 import { asOfLabel, fileStem, hasDataContext, metaLine, stampLine, standardLine, viewLine } from './names'
@@ -135,6 +136,7 @@ function writeSummary(
   sub.font = { size: 10, color: { argb: XL.muted } }
 
   const anyPay = figures.some((f) => f.columns.some((c) => c.pay))
+  const changedDefs = definitionsLineFor(meta)
   const tabs = [...new Set(entries.flatMap((e) => (e.group ? [e.group.label] : [])))]
   const facts: [string, string][] = [
     ...(tabs.length ? ([['Tabs', tabs.join(', ')]] as [string, string][]) : []),
@@ -154,6 +156,10 @@ function writeSummary(
         ][])
       : []),
     ...(anyPay ? ([['Pay amounts', opts.showPay ? 'Included' : 'Left out']] as [string, string][]) : []),
+    // Someone changed a definition, target or setting: the numbers may not use the standard ones.
+    ...(changedDefs
+      ? ([['Definitions', changedDefs.replace(/^Definitions changed/, 'Changed')]] as [string, string][])
+      : []),
     ['Exported', new Date().toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })],
   ]
   let r = 4
@@ -380,6 +386,7 @@ function titleSlide(pptx: PptxGenJS, meta: ExportMeta) {
     meta.window,
     meta.asOf ? `As of ${asOfLabel(meta.asOf)}` : '',
     meta.standard ? standardLine(meta.standard) : '',
+    definitionsLineFor(meta) ?? '',
   ].filter(Boolean)
   if (context.length)
     s.addText(

@@ -3,7 +3,7 @@
  * readiness and where high potentials sit. Successors who have left are not counted.
  * Pure: no React, no DOM.
  */
-import { LEVELS, MIN_GROUP, READINESS, type Readiness, type Review, type SuccessionPlan } from '@/data/schema'
+import { LEVELS, READINESS, type Readiness, type Review, type SuccessionPlan } from '@/data/schema'
 import { isActiveAt } from '@/lib/people'
 import {
   type Cycle,
@@ -264,6 +264,7 @@ export function computeSuccession(base: TalentBase, risk: Map<string, PersonRisk
   >
 
   // High potentials: active employees assessed in the latest annual cycle.
+  const { minGroup } = base.settings
   const potentialCycle = base.latestAnnual
   const levelGroups = new Map<string, Review[]>()
   const unitGroups = new Map<string, Review[]>()
@@ -281,17 +282,19 @@ export function computeSuccession(base: TalentBase, risk: Map<string, PersonRisk
   const high = assessedReviews.filter(isHipo).length
   const groupRow = (group: string, list: readonly Review[]): HipoGroupRow => {
     const h = list.filter(isHipo).length
-    return { group, assessed: list.length, high: h, share: list.length >= MIN_GROUP ? h / list.length : null }
+    return { group, assessed: list.length, high: h, share: list.length >= minGroup ? h / list.length : null }
   }
   const levelOrder = [...LEVELS, 'Unknown']
   const hipoByLevel = foldHipo(
     levelOrder.filter((l) => levelGroups.has(l)).map((level) => groupRow(level, levelGroups.get(level)!)),
+    minGroup,
   )
 
   const hipoByUnit = foldHipo(
     [...unitGroups.entries()]
       .map(([group, list]) => groupRow(group, list))
       .sort((a, b) => (b.share ?? -1) - (a.share ?? -1)),
+    minGroup,
   )
   const hipoRecords = (rows: readonly HipoGroupRow[], byGroup: Map<string, Review[]>) =>
     recordsByLabel(rows, byGroup, {
@@ -311,7 +314,7 @@ export function computeSuccession(base: TalentBase, risk: Map<string, PersonRisk
     potentialCycle,
     hipoByLevel,
     hipoByUnit,
-    hipoShare: assessed >= MIN_GROUP ? high / assessed : null,
+    hipoShare: assessed >= minGroup ? high / assessed : null,
     hipoHigh: high,
     hipoAssessed: assessed,
     departedSuccessors,
@@ -327,15 +330,18 @@ export function computeSuccession(base: TalentBase, risk: Map<string, PersonRisk
 
 const isHipo = (r: Review) => r.potential === 'High'
 
-/** Groups under 5 assessed fold into a last "Other (k)" row, so no count over fewer than 5 people is exported. */
-function foldHipo(rows: HipoGroupRow[]): HipoGroupRow[] {
+/**
+ * Groups under the anonymity minimum (`min`) fold into a last "Other (k)" row, so no count over
+ * fewer people is exported.
+ */
+function foldHipo(rows: HipoGroupRow[], min: number): HipoGroupRow[] {
   return foldSmallGroups(
     rows,
     (r) => r.assessed,
     (folded, label) => {
       const assessed = folded.reduce((s, r) => s + r.assessed, 0)
       const high = folded.reduce((s, r) => s + (r.high ?? 0), 0)
-      const ok = assessed >= MIN_GROUP
+      const ok = assessed >= min
       return {
         group: label,
         assessed,
@@ -344,6 +350,7 @@ function foldHipo(rows: HipoGroupRow[]): HipoGroupRow[] {
         other: true,
       }
     },
+    min,
   )
 }
 

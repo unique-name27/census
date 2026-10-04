@@ -3,13 +3,26 @@
  * benchmark population, reporting windows, an index of job history (level and department at a
  * date) and which optional columns exist. Built once per analytics context.
  */
+import type { Definition } from '@/charts/types'
 import type { AnalyticsContext } from '@/data/context'
 import { type FieldRef, meetsStandard } from '@/data/quality'
 import { type Employee, type ISODate, type JobChange, LEVELS, type Level } from '@/data/schema'
 import { type PeriodPreset, periodWindows, type Window } from '@/data/scope'
 import { addDays, addMonths, formatMonthShort, formatRange, monthEnd, quarterStart } from '@/lib/dates'
-import { isActiveAt, isEmployee } from '@/lib/people'
-import { all as allOf, HRBP_DATASETS, type Lineage, resolveLineage, scopeLineage } from './lineage'
+import { isActiveAt } from '@/lib/people'
+import {
+  all as allOf,
+  HRBP_DATASETS,
+  type Lineage,
+  regrettedExitsLineage,
+  regrettedLineage,
+  resolveLineage,
+  scopeLineage,
+} from './lineage'
+import { type Counts, countsFor, leftWithin, regrettedBy } from './population'
+import { annualRate } from './rates'
+import { defaultSettings, type HrbpSettings, settingsOf } from './settings'
+import { definitionsOf, definitionText } from './wording'
 
 /** A reporting block (quarter or month) with the length used to annualize rates inside it. */
 export interface Block extends Window {
@@ -70,14 +83,18 @@ export function yearEarlier(w: Window): Window {
   return { start, end, months: w.months, label: formatRange(start, end) }
 }
 
-/** Delta coloring floor carried over from the earlier HRBP dashboard: |Δ| ≥ 2% of the reference + 0.15 pts. */
+/**
+ * Delta coloring floor carried over from the earlier HRBP dashboard: |Δ| ≥ 2% of the reference +
+ * 0.15 pts by default (the "Material change" settings).
+ */
 export function isMaterialGap(
   delta: number | null | undefined,
   reference: number | null | undefined,
+  floor: HrbpSettings['material'] = defaultSettings().material,
 ): boolean {
   if (delta == null || !Number.isFinite(delta)) return false
   const ref = reference != null && Number.isFinite(reference) ? Math.abs(reference) : 0
-  return Math.abs(delta) >= 0.02 * ref + 0.0015
+  return Math.abs(delta) >= floor.relative * ref + floor.absolute
 }
 
 /* ───────── job history ───────── */
@@ -161,6 +178,29 @@ export function buildHistory(changes: readonly JobChange[]): History {
 
 export interface Prep {
   ctx: AnalyticsContext
+  /** The calculation settings in force, read from the metric dictionary when used. */
+  set: HrbpSettings
+  /** Who counts in headcount and every rate: employees, plus contractors when that setting is on. */
+  counts: Counts
+  /** A regretted exit under the setting in force. */
+  isRegretted: (e: Employee) => boolean
+  /** Left within the first-year window of their hire date. */
+  leftFirstYear: (e: Employee) => boolean
+  /** Lineage that depends on what counts as regretted. */
+  lin: { regretted: Lineage; regrettedExits: Lineage }
+  /**
+   * The regretted rate can be computed: the roster has leavers and the Regrettable column, and
+   * Termination type too when only voluntary exits count.
+   */
+  regrettedReady: boolean
+  /** A group's turnover: annualized unless that setting is off, null under the anonymity minimum. */
+  rate: (events: number, avgHeadcount: number, w: Pick<Window, 'months'>) => number | null
+  /** Whether a tile's change clears the materiality floor (and is colored). */
+  material: (delta: number | null | undefined, reference: number | null | undefined) => boolean
+  /** A metric's definition from the dictionary, with any changed setting behind it. */
+  text: (metricId: string) => string
+  /** Figure "Definitions" rows for metrics, from the dictionary. */
+  defs: (...metricIds: string[]) => Definition[]
   asOf: ISODate
   window: Window
   prior: Window
@@ -168,9 +208,9 @@ export interface Prep {
   t12: Window
   /** Scoped workers of every type (contractors and interns count in spans of control). */
   people: readonly Employee[]
-  /** Scoped employees (headcount and every rate). */
+  /** Scoped employees (headcount and every rate), with contractors when that setting is on. */
   emps: Employee[]
-  /** Company employees, for benchmarks. */
+  /** Company employees, for benchmarks (the same population). */
   companyEmps: Employee[]
   /** Scoped job changes for employees (contractor rows are ignored). */
   changes: JobChange[]
@@ -200,20 +240,23 @@ export interface Prep {
   }
 }
 
-const employeeChanges = (changes: readonly JobChange[], byId: Map<string, Employee>) =>
+const employeeChanges = (changes: readonly JobChange[], byId: Map<string, Employee>, counts: Counts) =>
   changes.filter((c) => {
     const e = byId.get(c.employeeId)
-    return !!e && isEmployee(e)
+    return !!e && counts(e)
   })
 
 export function prepare(ctx: AnalyticsContext): Prep {
   const { asOf, org } = ctx
+  const set = settingsOf(ctx.metrics)
+  const counts = countsFor(set.countContractors)
+  const rule = set.regretted
   const all = ctx.all.employees
   const people = ctx.data.employees
-  const emps = people.filter(isEmployee)
-  const companyEmps = ctx.isCompany ? emps : all.filter(isEmployee)
-  const changes = employeeChanges(ctx.data.jobChanges, org.byId)
-  const companyChanges = ctx.isCompany ? changes : employeeChanges(ctx.all.jobChanges, org.byId)
+  const emps = people.filter(counts)
+  const companyEmps = ctx.isCompany ? emps : all.filter(counts)
+  const changes = employeeChanges(ctx.data.jobChanges, org.byId, counts)
+  const companyChanges = ctx.isCompany ? changes : employeeChanges(ctx.all.jobChanges, org.byId, counts)
   const scope = scopeLineage(ctx.filters)
   const presence = new Map<FieldRef, boolean>()
   const meets = new Map<Lineage, boolean>()
@@ -225,8 +268,27 @@ export function prepare(ctx: AnalyticsContext): Prep {
     }
     return has
   }
+  const has = {
+    terminationDate: all.some((e) => !!e.terminationDate),
+    jobChanges: ctx.all.jobChanges.length > 0,
+    reviews: ctx.all.reviews.length > 0,
+    terminationType: all.some((e) => !!e.terminationType),
+    terminationReason: all.some((e) => !!e.terminationReason),
+    regrettable: all.some((e) => e.regrettable === true || e.regrettable === false),
+    level: all.some((e) => !!e.level),
+  }
   return {
     ctx,
+    set,
+    counts,
+    isRegretted: regrettedBy(rule),
+    leftFirstYear: leftWithin(set.firstYearDays),
+    lin: { regretted: regrettedLineage(rule), regrettedExits: regrettedExitsLineage(rule) },
+    regrettedReady: has.terminationDate && has.regrettable && (rule === 'anyFlagged' || has.terminationType),
+    rate: (events, avg, w) => annualRate(events, avg, w, set),
+    material: (delta, reference) => isMaterialGap(delta, reference, set.material),
+    text: (id) => definitionText(ctx.metrics, id),
+    defs: (...ids) => definitionsOf(ctx.metrics, ...ids),
     asOf,
     window: ctx.window,
     prior: ctx.prior,
@@ -248,15 +310,7 @@ export function prepare(ctx: AnalyticsContext): Prep {
       }
       return ok
     },
-    has: {
-      terminationDate: all.some((e) => !!e.terminationDate),
-      jobChanges: ctx.all.jobChanges.length > 0,
-      reviews: ctx.all.reviews.length > 0,
-      terminationType: all.some((e) => !!e.terminationType),
-      terminationReason: all.some((e) => !!e.terminationReason),
-      regrettable: all.some((e) => e.regrettable === true || e.regrettable === false),
-      level: all.some((e) => !!e.level),
-    },
+    has,
   }
 }
 

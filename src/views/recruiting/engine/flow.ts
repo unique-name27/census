@@ -7,6 +7,7 @@ import type { Window } from '@/data/scope'
 import { addMonths, formatMonthShort, monthKey, monthStart, monthsBetween } from '@/lib/dates'
 import { median } from '@/lib/stats'
 import { inWin, transitionDays } from './prepare'
+import { defaultSettings } from './settings'
 import { type App, HIRED, LAST_OPEN_STAGE } from './types'
 
 export const TRANSITIONS = [
@@ -66,7 +67,15 @@ function medianTransition(apps: readonly App[], i: number): { median: number | n
   return { median: median(xs), n: xs.length }
 }
 
-export function stageFlow(current: readonly App[], prior: readonly App[]): Flow {
+/**
+ * The cohort's flow by stage. The change in median days shows only when both periods have at
+ * least the anonymity minimum (5 by default) of measured candidates.
+ */
+export function stageFlow(
+  current: readonly App[],
+  prior: readonly App[],
+  minGroup: number = defaultSettings().minGroup,
+): Flow {
   const stages: StageFlow[] = []
   for (let i = 0; i <= LAST_OPEN_STAGE; i++) {
     let entered = 0
@@ -104,7 +113,9 @@ export function stageFlow(current: readonly App[], prior: readonly App[]): Flow 
       nDays: cur.n,
       priorMedianDays: pri.median,
       deltaDays:
-        cur.median != null && pri.median != null && cur.n >= 5 && pri.n >= 5 ? cur.median - pri.median : null,
+        cur.median != null && pri.median != null && cur.n >= minGroup && pri.n >= minGroup
+          ? cur.median - pri.median
+          : null,
     })
   }
   const sum = (k: 'rejected' | 'withdrawn' | 'declined' | 'active') => stages.reduce((s, x) => s + x[k], 0)
@@ -146,7 +157,7 @@ export interface SpeedCell {
   transition: string
   days: number | null
   n: number
-  /** The steps measured; empty when the median is hidden (fewer than 5), so it never drills. */
+  /** The steps measured; empty when the median is hidden (under the anonymity minimum), so it never drills. */
   steps: TransitionEvent[]
 }
 
@@ -155,7 +166,11 @@ export interface SpeedCell {
  * rule as the bottleneck check. Grouping by completion month keeps recent months honest: grouping
  * by application month would leave only the fast candidates in recent cohorts and hide a slowdown.
  */
-export function speedByMonth(apps: readonly App[], end: string): SpeedCell[] {
+export function speedByMonth(
+  apps: readonly App[],
+  end: string,
+  minGroup: number = defaultSettings().minGroup,
+): SpeedCell[] {
   const months = monthsBetween(addMonths(monthStart(end), -11), end)
   const cells = new Map<string, TransitionEvent[]>()
   for (const m of months) for (let i = 0; i <= LAST_OPEN_STAGE; i++) cells.set(`${m}|${i}`, [])
@@ -171,7 +186,7 @@ export function speedByMonth(apps: readonly App[], end: string): SpeedCell[] {
   for (const m of months) {
     for (let i = 0; i <= LAST_OPEN_STAGE; i++) {
       const steps = cells.get(`${m}|${i}`) ?? []
-      const shown = steps.length >= 5
+      const shown = steps.length >= minGroup
       out.push({
         month: m,
         monthLabel: formatMonthShort(`${m}-01`, true),

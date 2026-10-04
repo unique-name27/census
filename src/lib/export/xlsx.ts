@@ -17,6 +17,7 @@ import {
   sampleValue,
   visibleColumns,
 } from './columns'
+import { definitionsLineFor } from './definitions'
 import { downloadBlob, MIME } from './download'
 import { dataLine, fileStem, metaLine, stampLine, viewLine } from './names'
 import type { ExportOptions, ExportTable } from './types'
@@ -158,6 +159,8 @@ export function addTableSheet(
   block.push({ text: [viewLine(meta), metaLine(meta)].filter(Boolean).join(' · '), size: 9, color: XL.muted })
   const data = dataLine(meta.standard, table.tier, table.withheld)
   if (data) block.push({ text: data, size: 9, color: XL.ink2 })
+  const definitions = definitionsLineFor(meta)
+  if (definitions) block.push({ text: definitions, size: 9, color: XL.ink2 })
   block.push({ text: stampLine(meta), size: 9, color: XL.muted, bold: true })
   // A withheld table prints no note: notes usually carry the numbers the standard hides.
   const note = exportNote(table)

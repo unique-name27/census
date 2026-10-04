@@ -3,30 +3,21 @@
  * calibration moved them, how averages moved across cycles, and how ratings relate to exits.
  * Pure: no React, no DOM.
  */
-import {
-  type Employee,
-  type ISODate,
-  LEVELS,
-  MIN_GROUP,
-  RATING_GUIDELINE,
-  RATING_LABELS,
-  type Review,
-} from '@/data/schema'
+import { type Employee, type ISODate, LEVELS, MIN_GROUP, RATING_LABELS, type Review } from '@/data/schema'
 import { addMonths } from '@/lib/dates'
 import { isEmployee } from '@/lib/people'
 import { mean } from '@/lib/stats'
 import { type Cycle, foldSmallGroups, normRating, pushTo, recordsByLabel, type TalentBase } from './base'
+import { DEFAULT_GUIDELINE, DEFAULTS, guidelineAtOrAbove } from './settings'
 
 export const RATINGS = [1, 2, 3, 4, 5] as const
 export const ratingLabel = (r: number): string => `${r} ${RATING_LABELS[r] ?? ''}`.trim()
 export const RATING_ORDER = RATINGS.map(ratingLabel)
-/** Guideline share rated 4 or 5. */
-export const HIGH_GUIDELINE = (RATING_GUIDELINE[4] ?? 0) + (RATING_GUIDELINE[5] ?? 0)
-/** A business unit is flagged when its share rated 4-5 is this far above the guideline. */
-export const INFLATION_PTS = 0.08
-export const INFLATION_MIN_N = 20
-/** A business unit is flagged when calibration moved its ratings down by more than this. */
-export const CALIBRATION_FLAG = 0.3
+/**
+ * The default guideline share rated 4 or 5 (35%). The engines read the guideline and the high
+ * performer rating in force from the metric dictionary (`base.settings.highGuideline`).
+ */
+export const HIGH_GUIDELINE = guidelineAtOrAbove(DEFAULT_GUIDELINE, DEFAULTS.highRating)
 
 export interface DistributionRow {
   rating: number
@@ -170,7 +161,10 @@ export interface PerformanceResult {
   mix: MixRow[]
   calibration: CalibrationRow[]
   calibrationCompany: CalibrationRow | null
-  /** Business units where calibration lowered ratings by more than 0.3 on average, with the rest for comparison. */
+  /**
+   * Business units where calibration lowered ratings by more than the flag setting (0.3 by
+   * default) on average, with the rest for comparison.
+   */
   calibrationFlags: { row: CalibrationRow; rest: CalibrationRow }[]
   cycles: CycleRow[]
   /**
@@ -188,7 +182,11 @@ export interface PerformanceResult {
   records: PerformanceRecords
 }
 
-const share = (k: number, n: number): number | null => (n >= MIN_GROUP ? k / n : null)
+/** k ÷ n, or null when n is under the anonymity minimum. */
+const shareOf =
+  (min: number) =>
+  (k: number, n: number): number | null =>
+    n >= min ? k / n : null
 
 function ratedIn(base: TalentBase, cycle: string): Review[] {
   return base.ctx.all.reviews.filter((r) => r.cycle === cycle && base.scopeIds.has(r.employeeId))
@@ -200,6 +198,8 @@ function highShares(
   rows: readonly Review[],
   key: 'department' | 'businessUnit' | 'level',
 ): { rows: HighShareRow[]; byGroup: Map<string, Review[]> } {
+  const { highRating, minGroup } = base.settings
+  const share = shareOf(minGroup)
   const byGroup = new Map<string, Review[]>()
   for (const r of rows) {
     const e = base.byId.get(r.employeeId)
@@ -208,7 +208,7 @@ function highShares(
   }
   const out = [...byGroup.entries()]
     .map(([group, list]) => {
-      const high = list.filter((r) => (normRating(r.rating) ?? 0) >= 4).length
+      const high = list.filter((r) => (normRating(r.rating) ?? 0) >= highRating).length
       return { group, rated: list.length, high, share: share(high, list.length) }
     })
     .sort((a, b) => (b.share ?? -1) - (a.share ?? -1) || b.rated - a.rated)
@@ -218,9 +218,10 @@ function highShares(
 /** A folded breakdown and the reviews behind each of its rows. */
 function foldWithRecords(
   groups: { rows: HighShareRow[]; byGroup: Map<string, Review[]> },
+  min: number,
   order?: (a: HighShareRow, b: HighShareRow) => number,
 ): { rows: HighShareRow[]; records: Map<string, Review[]> } {
-  const rows = foldHighShares(order ? [...groups.rows].sort(order) : groups.rows)
+  const rows = foldHighShares(order ? [...groups.rows].sort(order) : groups.rows, min)
   const records = recordsByLabel(rows, groups.byGroup, {
     label: (r) => r.group,
     folded: (r) => !!r.other,
@@ -229,8 +230,12 @@ function foldWithRecords(
   return { rows, records }
 }
 
-/** Small groups folded into "Other (k)" so no count over fewer than 5 people is exported. */
-export function foldHighShares(rows: readonly HighShareRow[]): HighShareRow[] {
+/**
+ * Small groups folded into "Other (k)" so no count over fewer people than the anonymity minimum
+ * (`min`, 5 by default) is exported.
+ */
+export function foldHighShares(rows: readonly HighShareRow[], min: number = MIN_GROUP): HighShareRow[] {
+  const share = shareOf(min)
   return foldSmallGroups(
     rows,
     (r) => r.rated,
@@ -240,12 +245,13 @@ export function foldHighShares(rows: readonly HighShareRow[]): HighShareRow[] {
       return {
         group: label,
         rated,
-        high: rated >= MIN_GROUP ? high : null,
+        high: rated >= min ? high : null,
         share: share(high, rated),
         other: true,
         groups: folded.length,
       }
     },
+    min,
   )
 }
 
@@ -253,12 +259,12 @@ export function foldHighShares(rows: readonly HighShareRow[]): HighShareRow[] {
 const calibrated = (rows: readonly Review[]): Review[] =>
   rows.filter((r) => normRating(r.preCalibrationRating) != null && normRating(r.rating) != null)
 
-function calibrationRow(businessUnit: string, rows: Review[]): CalibrationRow {
+function calibrationRow(businessUnit: string, rows: Review[], min: number): CalibrationRow {
   const pairs = calibrated(rows).map(
     (r) => [normRating(r.preCalibrationRating)!, normRating(r.rating)!] as const,
   )
   const n = pairs.length
-  const ok = n >= MIN_GROUP
+  const ok = n >= min
   return {
     businessUnit,
     n,
@@ -272,6 +278,8 @@ function calibrationRow(businessUnit: string, rows: Review[]): CalibrationRow {
 
 export function computePerformance(base: TalentBase): PerformanceResult {
   const { asOf } = base
+  const { minGroup, highRating, guideline: guide, highGuideline, findings: rule } = base.settings
+  const share = shareOf(minGroup)
   const cycle = base.latest
   const rows = cycle ? ratedIn(base, cycle.cycle) : []
   const rated = rows.filter((r) => normRating(r.rating) != null)
@@ -281,7 +289,7 @@ export function computePerformance(base: TalentBase): PerformanceResult {
   const counts = byRating.map((list) => list.length)
   const distribution: DistributionRow[] = RATINGS.map((r, i) => {
     const s = share(counts[i], n)
-    const guideline = RATING_GUIDELINE[r] ?? 0
+    const guideline = guide[r] ?? 0
     return {
       rating: r,
       label: ratingLabel(r),
@@ -295,7 +303,7 @@ export function computePerformance(base: TalentBase): PerformanceResult {
     { rating: d.label, series: 'Actual' as const, share: d.share },
     { rating: d.label, series: 'Guideline' as const, share: d.guideline },
   ])
-  const high = byRating[3].length + byRating[4].length
+  const high = byRating.reduce((s, list, i) => s + (i + 1 >= highRating ? list.length : 0), 0)
   // One review per active employee rated in the cycle (any rating value, as before).
   const reviewOf = new Map(rows.map((r) => [r.employeeId, r]))
   const ratedActiveReviews = base.active.flatMap((e) => reviewOf.get(e.employeeId) ?? [])
@@ -315,7 +323,7 @@ export function computePerformance(base: TalentBase): PerformanceResult {
   const mix: MixRow[] = [...byUnit.entries()]
     .map(([businessUnit, list]) => {
       const valid = list.filter((r) => normRating(r.rating) != null)
-      if (valid.length >= MIN_GROUP) mixRecords.set(businessUnit, valid)
+      if (valid.length >= minGroup) mixRecords.set(businessUnit, valid)
       const s = (k: number) => share(valid.filter((r) => normRating(r.rating) === k).length, valid.length)
       return { businessUnit, rated: valid.length, r1: s(1), r2: s(2), r3: s(3), r4: s(4), r5: s(5) }
     })
@@ -324,21 +332,22 @@ export function computePerformance(base: TalentBase): PerformanceResult {
   const calibrationRecords = new Map<string, Review[]>()
   for (const [bu, list] of byUnit) {
     const pairs = calibrated(list)
-    if (pairs.length >= MIN_GROUP) calibrationRecords.set(bu, pairs)
+    if (pairs.length >= minGroup) calibrationRecords.set(bu, pairs)
   }
   const calibration = [...byUnit.entries()]
-    .map(([bu, list]) => calibrationRow(bu, list))
+    .map(([bu, list]) => calibrationRow(bu, list, minGroup))
     .filter((c) => c.n > 0)
     .sort((a, b) => (b.shift ?? -9) - (a.shift ?? -9))
   const calibrationCompany =
-    rows.length && base.has.preCalibration ? calibrationRow('All business units', rows) : null
+    rows.length && base.has.preCalibration ? calibrationRow('All business units', rows, minGroup) : null
   const calibrationFlags = calibration
-    .filter((c) => c.shift != null && c.shift > CALIBRATION_FLAG && c.n >= INFLATION_MIN_N)
+    .filter((c) => c.shift != null && c.shift > rule.calibrationShift && c.n >= rule.calibrationMinRated)
     .map((row) => ({
       row,
       rest: calibrationRow(
         'Rest of scope',
         rows.filter((r) => base.byId.get(r.employeeId)?.businessUnit !== row.businessUnit),
+        minGroup,
       ),
     }))
     .filter((f) => f.rest.shift != null)
@@ -363,10 +372,10 @@ export function computePerformance(base: TalentBase): PerformanceResult {
     companyMean.set(c.cycle, mean(allRatings))
     highTrend.push({
       cycle: c.cycle,
-      share: share(allRatings.filter((v) => v >= 4).length, allRatings.length),
+      share: share(allRatings.filter((v) => v >= highRating).length, allRatings.length),
     })
     for (const [bu, reviews] of groups) {
-      const shown = reviews.length >= MIN_GROUP
+      const shown = reviews.length >= minGroup
       if (shown) cycleRecords.set(cycleKey(c.cycle, bu), reviews)
       cycles.push({
         cycle: c.cycle,
@@ -381,7 +390,7 @@ export function computePerformance(base: TalentBase): PerformanceResult {
   let worst = 0
   for (const bu of new Set(cycles.map((c) => c.businessUnit))) {
     const devs = cycles
-      .filter((c) => c.businessUnit === bu && c.mean != null && c.rated >= INFLATION_MIN_N)
+      .filter((c) => c.businessUnit === bu && c.mean != null && c.rated >= rule.inflationMinRated)
       .map((c) => Math.abs((c.mean ?? 0) - (companyMean.get(c.cycle) ?? 0)))
     const dev = mean(devs)
     if (dev != null && devs.length >= 2 && dev > worst) {
@@ -413,7 +422,7 @@ export function computePerformance(base: TalentBase): PerformanceResult {
     RATINGS.forEach((r, i) => {
       const g = groups[i]
       const ratedN = g.reviews.length
-      const shown = ratedN >= MIN_GROUP
+      const shown = ratedN >= minGroup
       exitCohort.push(shown ? g : null)
       exitByRating.push({
         rating: ratingLabel(r),
@@ -431,15 +440,16 @@ export function computePerformance(base: TalentBase): PerformanceResult {
     { rating: r.rating, type: 'Involuntary' as const, rate: r.involuntaryRate },
   ])
 
-  // Rating inflation: a business unit's share rated 4-5 more than 8 pts above the guideline.
+  // Rating inflation: a business unit's share of high performers more than the inflation setting
+  // (8 pts by default) above the guideline share at those ratings.
   const units = highShares(base, rated, 'businessUnit')
   const inflation: InflationFlag[] = []
   for (const g of units.rows) {
     if (
       g.share == null ||
       g.high == null ||
-      g.rated < INFLATION_MIN_N ||
-      g.share - HIGH_GUIDELINE <= INFLATION_PTS
+      g.rated < rule.inflationMinRated ||
+      g.share - highGuideline <= rule.inflationPts
     )
       continue
     const restRated = n - g.rated
@@ -456,19 +466,20 @@ export function computePerformance(base: TalentBase): PerformanceResult {
             (r) => base.byId.get(r.employeeId)?.businessUnit === g.group,
           )
           const vals = list.map((r) => normRating(r.rating)).filter((v): v is number => v != null)
-          return { cycle: c.cycle, share: share(vals.filter((v) => v >= 4).length, vals.length) }
+          return { cycle: c.cycle, share: share(vals.filter((v) => v >= highRating).length, vals.length) }
         }),
       rest: share(restHigh, restRated),
     })
   }
 
   const flagged = inflation[0]?.businessUnit ?? null
-  const byDepartment = foldWithRecords(highShares(base, rated, 'department'))
+  const byDepartment = foldWithRecords(highShares(base, rated, 'department'), minGroup)
   const byLevel = foldWithRecords(
     highShares(base, rated, 'level'),
+    minGroup,
     (a, b) => levelRank(a.group) - levelRank(b.group),
   )
-  const byBusinessUnit = foldWithRecords(units)
+  const byBusinessUnit = foldWithRecords(units, minGroup)
   return {
     cycle,
     rated: n,

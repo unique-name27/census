@@ -5,7 +5,7 @@
  * an empty or suppressed list.
  */
 import type { Employee, JobChange } from '@/data/schema'
-import { MIN_GROUP, RATING_LABELS } from '@/data/schema'
+import { RATING_LABELS } from '@/data/schema'
 import { type DrillSpec, drillSpec } from '@/drill/types'
 import { addDays, addMonths, formatDate, formatMonth, formatRange } from '@/lib/dates'
 import { isActiveAt } from '@/lib/people'
@@ -239,6 +239,7 @@ export function scoreSpec(p: Prep, row: ScoreRow, cell: ScoreCell): Spec {
           ['voluntary exit', 'voluntary exits'],
           r.avgHeadcount,
           p.window.months,
+          p.set.annualize,
         ),
       })
     case 'regretted':
@@ -249,6 +250,7 @@ export function scoreSpec(p: Prep, row: ScoreRow, cell: ScoreCell): Spec {
           ['regretted exit', 'regretted exits'],
           r.avgHeadcount,
           p.window.months,
+          p.set.annualize,
         ),
       })
     case 'firstYear':
@@ -293,7 +295,7 @@ export function quarterExitSpec(p: Prep, rows: readonly QuarterExitRow[]): Spec 
   const what = rows.length === 1 ? TYPE_LEAVERS[first.type] : 'Leavers'
   return leaversSpec(p, `${what}, ${first.quarter}`, records, {
     when: formatRange(first.start, first.end),
-    note: rateNote(records.length, ['exit', 'exits'], first.avgHeadcount, 3),
+    note: rateNote(records.length, ['exit', 'exits'], first.avgHeadcount, 3, p.set.annualize),
   })
 }
 
@@ -304,7 +306,13 @@ export function regrettedQuarterSpec(p: Prep, row: RegrettedQuarterRow, start: s
   const when = formatRange(start, row.quarterEnd)
   return leaversSpec(p, titled('Regretted leavers', company && 'company', row.quarter), row.records, {
     subtitle: company ? `${when} · Whole company` : scopeLine(p, when),
-    note: rateNote(row.records.length, ['regretted exit', 'regretted exits'], row.avgHeadcount, 3),
+    note: rateNote(
+      row.records.length,
+      ['regretted exit', 'regretted exits'],
+      row.avgHeadcount,
+      3,
+      p.set.annualize,
+    ),
   })
 }
 
@@ -342,6 +350,7 @@ export function groupExitSpec(p: Prep, dim: AttritionDim, row: GroupRateRow, vol
         voluntaryOnly ? ['voluntary exit', 'voluntary exits'] : ['exit', 'exits'],
         row.avgHeadcount,
         p.window.months,
+        p.set.annualize,
       ),
     },
   )
@@ -356,7 +365,7 @@ export function groupOtherSpec(
   voluntaryOnly: boolean,
 ): Spec {
   const avg = rows.reduce((s, r) => s + r.avgHeadcount, 0)
-  if (avg < MIN_GROUP) return null
+  if (avg < p.set.minGroup) return null
   const all = leaversIn(
     a,
     dim,
@@ -378,6 +387,7 @@ export function groupOtherSpec(
         voluntaryOnly ? ['voluntary exit', 'voluntary exits'] : ['exit', 'exits'],
         avg,
         p.window.months,
+        p.set.annualize,
       )} Groups: ${rows.map((r) => r.group).join(', ')}.`,
     },
   )

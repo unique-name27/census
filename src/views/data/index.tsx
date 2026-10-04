@@ -1,8 +1,11 @@
 /**
- * The Data room (route #data): two tabs. Datasets shows what is loaded, each dataset's tier and
+ * The Data room (route #data): four tabs. Datasets shows what is loaded, each dataset's tier and
  * its Raw, Mapping, Quality and Certify panels, and how to replace the sample with your own files.
- * Categories & mapping (#data.mapping) shows how the categories in the data relate and lets you
- * fix them. The upload dialog, the spreadsheet reader and the mapping tab load on first use.
+ * Data quality (#data.quality) tells the quality story for the whole dashboard. Metric definitions
+ * (#data.metrics) is the dictionary of every metric, with its wording, target and settings, each
+ * one editable. Categories & mapping (#data.mapping) shows how the categories in the data relate
+ * and lets you fix them. The upload dialog, the spreadsheet reader and every tab but Datasets
+ * load on first use.
  */
 import { lazy, Suspense, useEffect, useMemo } from 'react'
 import { clearDatasetFocus, useDatasetFocus } from '@/app/datasetFocus'
@@ -29,7 +32,9 @@ import {
   type UploadFacts,
   VIEW_COUNT_TEXT,
 } from './engine/manifest'
-import { DATA_TABS, parseDataTab } from './links'
+import { DATA_TABS, type DataTab, parseDataTab } from './links'
+// Exports read how many definitions changed from this module, which loads with the app.
+import './metrics/stamp'
 import { logFor, useImportLogs } from './state/importLog'
 import { useRoom } from './state/room'
 import { useImportSession } from './state/session'
@@ -48,6 +53,14 @@ const ImportDialog = lazy(loadDialog)
 
 // The Categories & mapping tab lives in ./mapping and loads on first visit.
 const MappingTab = lazy(() => import('./mapping/MappingTab').then((m) => ({ default: m.MappingTab })))
+
+// The Metric definitions tab lives in ./metrics and loads on first visit.
+const MetricsTab = lazy(() => import('./metrics/MetricsTab').then((m) => ({ default: m.MetricsTab })))
+
+// The Data quality tab lives in ./quality-overview and loads on first visit.
+const QualityTab = lazy(() =>
+  import('./quality-overview/QualityTab').then((m) => ({ default: m.QualityTab })),
+)
 
 /** Which views read each dataset, as the views declare it. */
 const FEEDS = feedsFromViews(VIEWS)
@@ -162,6 +175,26 @@ function DatasetsTab({
   )
 }
 
+const LOADING: Record<Exclude<DataTab, 'datasets'>, string> = {
+  quality: 'Loading data quality…',
+  metrics: 'Loading metric definitions…',
+  mapping: 'Loading categories and mapping…',
+}
+
+function RoomTab({
+  tab,
+  rows,
+  summaryRows,
+}: {
+  tab: DataTab
+  rows: readonly ManifestRow[]
+  summaryRows: Record<string, unknown>[]
+}) {
+  if (tab === 'datasets') return <DatasetsTab rows={rows} summaryRows={summaryRows} />
+  const body = tab === 'mapping' ? <MappingTab /> : tab === 'metrics' ? <MetricsTab /> : <QualityTab />
+  return <Suspense fallback={<p className="text-[13px] text-muted">{LOADING[tab]}</p>}>{body}</Suspense>
+}
+
 export function DataRoom() {
   const ctx = useAnalytics()
   const routeTab = useCensus((s) => (s.route.view === 'data' ? s.route.tab : ''))
@@ -211,20 +244,14 @@ export function DataRoom() {
     key: 'data',
     label: 'Data room',
     tabs: ROOM_TABS,
-    tab: tab === 'mapping' ? 'mapping' : '',
+    tab: DATA_TABS.find((t) => t.key === tab)?.route ?? '',
   }
 
   return (
     <CurrentViewProvider value={current}>
       <DataRoomHeader summary={summary} tab={tab} />
       <div id={DATA_BODY_ID} role="tabpanel" aria-labelledby={`subtab-data-${tab}`} className="pt-5">
-        {tab === 'mapping' ? (
-          <Suspense fallback={<p className="text-[13px] text-muted">Loading categories and mapping…</p>}>
-            <MappingTab />
-          </Suspense>
-        ) : (
-          <DatasetsTab rows={rows} summaryRows={exportRows} />
-        )}
+        <RoomTab tab={tab} rows={rows} summaryRows={exportRows} />
       </div>
       {phase === 'review' && (
         <Suspense fallback={null}>

@@ -9,11 +9,10 @@
  */
 import type { Column } from '@/charts/types'
 import type { Employee, ISODate, JobChange } from '@/data/schema'
-import { MIN_GROUP } from '@/data/schema'
 import { type DrillExtra, type DrillSpec, drillSpec } from '@/drill/types'
 import { daysBetween, formatDate } from '@/lib/dates'
-import { activeAt } from '@/lib/people'
 import type { Prep } from './base'
+import { activeAt } from './population'
 import type { GrowthRow } from './workforce'
 
 /** Standard employee columns that say nothing on a list of active employees. */
@@ -73,13 +72,18 @@ export function avgText(avg: number): string {
   return avg >= 100 ? n(Math.round(avg)) : avg.toLocaleString('en-US', { maximumFractionDigits: 1 })
 }
 
-/** "Rate = 57 exits ÷ 1,410 average employees, annualized (× 4)." */
-export function rateNote(events: number, noun: Noun, avg: number, months: number): string {
+/**
+ * "Rate = 57 exits ÷ 1,410 average employees, annualized (× 4)." With annualizing switched off
+ * (the "Annualize turnover rates" setting), a window shorter or longer than a year says so.
+ */
+export function rateNote(events: number, noun: Noun, avg: number, months: number, annualize = true): string {
   const factor = months > 0 ? 12 / months : 1
   const annual =
     Math.abs(factor - 1) < 0.005
       ? ''
-      : `, annualized (× ${factor.toLocaleString('en-US', { maximumFractionDigits: 2 })})`
+      : annualize
+        ? `, annualized (× ${factor.toLocaleString('en-US', { maximumFractionDigits: 2 })})`
+        : ', not annualized'
   return `Rate = ${counted(events, noun)} ÷ ${avgText(avg)} average employees${annual}.`
 }
 
@@ -97,18 +101,22 @@ export function employeesOnSpec(
   opts: { title?: string; rows?: readonly Employee[]; note?: string; extra?: DrillExtra<Employee> } = {},
 ): DrillSpec<'employees'> {
   const today = date === p.asOf
+  const who = p.set.countContractors ? 'Employees and contractors' : 'Employees'
   return drillSpec({
     kind: 'employees',
-    title: opts.title ?? titled(`Employees on ${formatDate(date)}`, scopePart(p)),
+    title: opts.title ?? titled(`${who} on ${formatDate(date)}`, scopePart(p)),
     subtitle: scopeLine(p, `As of ${formatDate(date)}`),
-    rows: opts.rows ?? activeAt(p.emps, date),
+    rows: opts.rows ?? activeAt(p.emps, date, p.counts),
     extra: opts.extra,
-    hide: today ? ACTIVE_HIDE : ['employmentType'],
+    // With contractors in headcount the worker type tells the rows apart, so it stays.
+    hide: p.set.countContractors ? (today ? WORKER_HIDE : []) : today ? ACTIVE_HIDE : ['employmentType'],
     note:
       opts.note ??
       (today
-        ? 'Active employees. Contractors and interns are counted separately.'
-        : 'Employees active on that date, shown with their current record.'),
+        ? p.set.countContractors
+          ? 'Active employees and contractors. Interns are counted separately.'
+          : 'Active employees. Contractors and interns are counted separately.'
+        : `${who} active on that date, shown with their current record.`),
   })
 }
 
@@ -302,6 +310,3 @@ export function workersSpec(
     note,
   })
 }
-
-/** Whether a group is large enough for its rate to be shown (and so to drill). */
-export const shown = (avgHeadcount: number): boolean => avgHeadcount >= MIN_GROUP

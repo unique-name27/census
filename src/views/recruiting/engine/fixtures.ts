@@ -1,12 +1,14 @@
 /**
- * Hand-built fixtures for the recruiting engine tests: a requisition and candidate factory and a
- * context builder over otherwise empty datasets. Imported by tests only.
+ * Hand-built fixtures for the recruiting engine tests: requisition, candidate and employee
+ * factories and a context builder over otherwise empty datasets, optionally with a metric
+ * dictionary whose settings differ from the defaults. Imported by tests only.
  */
 import { type AnalyticsContext, buildContext } from '@/data/context'
-import type { Candidate, DatasetKey, Datasets, Requisition } from '@/data/schema'
+import type { Candidate, DatasetKey, Datasets, Employee, Requisition } from '@/data/schema'
 import { DATASET_KEYS } from '@/data/schema'
 import { DEFAULT_FILTERS, type Filters } from '@/data/scope'
 import type { SourceMeta } from '@/data/store'
+import type { MetricsApi } from '@/metrics/types'
 
 export const AS_OF = '2026-09-30'
 
@@ -47,6 +49,22 @@ export function cand(reqId: string, patch: Partial<Candidate> = {}): Candidate {
   }
 }
 
+export function emp(id: string, name: string, hireDate: string, patch: Partial<Employee> = {}): Employee {
+  return {
+    employeeId: id,
+    name,
+    jobTitle: 'Engineer',
+    businessUnit: 'Silicon Engineering',
+    department: 'Design Verification',
+    location: 'San Jose',
+    country: 'United States',
+    level: 'L4',
+    hireDate,
+    employmentType: 'Employee',
+    ...patch,
+  }
+}
+
 const empty = (): Datasets => ({
   employees: [],
   jobChanges: [],
@@ -62,7 +80,7 @@ const empty = (): Datasets => ({
 
 export function ctxOf(
   data: Partial<Datasets>,
-  opts: { asOf?: string; filters?: Partial<Filters> } = {},
+  opts: { asOf?: string; filters?: Partial<Filters>; metrics?: MetricsApi } = {},
 ): AnalyticsContext {
   const sources = Object.fromEntries(
     DATASET_KEYS.map((k) => [k, { kind: 'upload', rowCount: 0 } satisfies SourceMeta]),
@@ -73,5 +91,6 @@ export function ctxOf(
     filters: { ...DEFAULT_FILTERS, ...opts.filters },
     asOfOverride: opts.asOf ?? AS_OF,
     showPay: false,
+    metrics: opts.metrics,
   })
 }

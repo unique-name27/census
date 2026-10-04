@@ -176,6 +176,11 @@ export const APPLICABILITY: Partial<Record<DatasetKey, Record<string, Applicabil
     },
     // The case's own site is only needed when the requester is not named.
     location: { applies: each((r) => !has(r.requesterId)), scope: 'Cases without a requester ID' },
+    // Employee relations keeps the category level only (privacy rule), so its blank topic is no gap.
+    subcategory: {
+      applies: each((r) => r.category !== 'Employee relations'),
+      scope: 'Cases outside employee relations',
+    },
   },
   transactions: {
     completedDate: { applies: each(() => true), scope: 'All transactions', blankOk: true },

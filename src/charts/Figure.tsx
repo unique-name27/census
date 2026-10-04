@@ -38,6 +38,9 @@ import { fileStem, imageFooter } from '@/lib/export/names'
 import { figureExport } from '@/lib/export/withheld'
 import { downloadXlsx } from '@/lib/export/xlsx'
 import { type Span, spanClass } from '@/lib/spans'
+import { definitionOf, metricIdOf } from '@/metrics/api'
+import { DefinitionChangedMark, EditDefinitionLink } from '@/views/data/metrics/ui/EditDefinition'
+import { QualityLensLine } from '@/views/data/quality-overview/LensLine'
 import { DataTable, type DataTableProps } from './DataTable'
 import { HeldBackState, PreviewBar, PreviewFrame } from './FigureGate'
 import { nextFigureOrder, useFigureRegistry } from './registry'
@@ -99,6 +102,11 @@ export interface FigureProps<T extends object> {
    */
   uses?: readonly FieldRef[]
   /**
+   * The metric dictionary entry the figure shows ('hrbp.attrition.voluntary'). Its definitions
+   * panel reads the registry (with your wording) and links to "Edit definition".
+   */
+  metric?: string
+  /**
    * Judge the figure against the data standard (default true). The Data room never gates; set
    * false for figures about the data itself rather than a people number.
    */
@@ -126,11 +134,12 @@ export function Figure<T extends object>({
   tableToggle = true,
   table,
   uses,
+  metric: metricId,
   gate: gated = true,
   className,
   children,
 }: FigureProps<T>) {
-  const { showPay, quality } = useAnalytics()
+  const { showPay, quality, metrics } = useAnalytics()
   const meta = useExportMeta()
   const registry = useFigureRegistry()
   const [order] = useState(nextFigureOrder)
@@ -142,6 +151,11 @@ export function Figure<T extends object>({
   const chartRef = useRef<HTMLDivElement>(null)
   const timer = useRef<number | undefined>(undefined)
   const titleId = useId()
+  // The dictionary entry behind the figure: its wording stands in when the figure gives no
+  // definitions, and the datasheet links to it ("Edit definition").
+  const metric = metricId && metrics.def(metricId) ? metricId : null
+  const metricDefinition = metric ? definitionOf(metrics, metric) : null
+  const datasheet = definitions?.length ? definitions : metricDefinition ? [metricDefinition] : []
 
   const gate = useTierGate(uses, gated)
   const held = gate && !gate.shown ? heldBack(gate, quality) : null
@@ -333,6 +347,7 @@ export function Figure<T extends object>({
               className="mr-0.5"
             />
           )}
+          {metric && <DefinitionChangedMark metricId={metric} className="mr-0.5" />}
           {actions && (
             <div className="mr-1 flex max-w-full min-w-0 flex-wrap items-center justify-end gap-2">
               {actions}
@@ -349,7 +364,7 @@ export function Figure<T extends object>({
               {showTable ? <IconChart /> : <IconTable />}
             </IconButton>
           )}
-          {definitions && definitions.length > 0 && (
+          {datasheet.length > 0 && (
             <Popover
               title="Definitions"
               align="end"
@@ -360,7 +375,13 @@ export function Figure<T extends object>({
                 </IconButton>
               }
             >
-              <Definitions items={definitions} />
+              <Definitions items={datasheet} />
+              {/* Rows from the dictionary carry their own link; the figure's metric gets one here otherwise. */}
+              {metric && !datasheet.some((d) => metricIdOf(d) === metric) && (
+                <div className="mt-1 border-t border-rule pt-2">
+                  <EditDefinitionLink metricId={metric} />
+                </div>
+              )}
             </Popover>
           )}
           {(!noRows || detail) && (
@@ -428,6 +449,18 @@ export function Figure<T extends object>({
       </div>
 
       {note && showsBody && <p className="-mt-1 px-4 pb-3.5 text-[12px] leading-snug text-muted">{note}</p>}
+      {/* The quality lens (view header switch): tier, field limiting it, rows used and left out. */}
+      {gated && (
+        <QualityLensLine
+          uses={uses}
+          metricId={metric ?? undefined}
+          label={title}
+          variant="figure"
+          showTier
+          showChanged={false}
+          className="mx-4 mb-3.5 border-t border-rule pt-2"
+        />
+      )}
     </figure>
   )
 }
@@ -467,6 +500,11 @@ function Definitions({ items }: { items: readonly Definition[] }) {
             <td className="border-t border-rule py-2 text-ink-2">
               {d.text}
               {d.formula && <div className="mt-1 font-mono text-[11px] text-muted">{d.formula}</div>}
+              {metricIdOf(d) && (
+                <div className="mt-1">
+                  <EditDefinitionLink metricId={metricIdOf(d) as string} />
+                </div>
+              )}
             </td>
           </tr>
         ))}

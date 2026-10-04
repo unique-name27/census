@@ -110,13 +110,16 @@ export function makeCertification(args: {
   data: Datasets
   asOf: ISODate
   at?: string
+  /** Tolerance for totals that give none: the quality rules' control-total tolerance. */
+  defaultTolerance?: number
 }): Certification {
   const { version, input, data, asOf } = args
+  const fallback = args.defaultTolerance ?? DEFAULT_TOLERANCE
   const controlTotals: ControlTotal[] = (input.controlTotals ?? []).map((t) => ({
     label: t.label.trim(),
     metric: t.metric,
     expected: t.expected,
-    tolerance: Number.isFinite(t.tolerance) && t.tolerance >= 0 ? t.tolerance : DEFAULT_TOLERANCE,
+    tolerance: Number.isFinite(t.tolerance) && t.tolerance >= 0 ? t.tolerance : fallback,
     actual: computeControlTotal(t.metric, data, version.dataset, asOf),
   }))
   const note = input.note?.trim()

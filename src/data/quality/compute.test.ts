@@ -206,6 +206,30 @@ describe('field tiers', () => {
     expect(q.fieldRows('employees.employmentType', 'defaulted')).toEqual([7])
   })
 
+  it('knows which values not recognized the importer left blank, so a row is counted once', () => {
+    const issues = [issue(34, 'terminationReason', 'unknown-value', 'E033')]
+    const { data, q } = goldRoster((d) => {
+      d.employees[32].terminationReason = null
+    }, issues)
+    const s = q.fieldStats('employees.terminationReason')
+    expect(s).toMatchObject({ blank: 1, invalid: 1, invalidBlank: 1 })
+    expect(q.fieldRows('employees.terminationReason', 'blank')).toEqual([32])
+    expect(q.fieldRows('employees.terminationReason', 'invalid')).toEqual([32])
+    // Without the import log the index can't name the row, so it takes as many as there are blanks.
+    const v = certified(upload('employees', data, issues, 100), data)
+    const noLog = computeQuality(data, { employees: v }, undefined, { asOf: AS_OF })
+    expect(noLog.fieldStats('employees.terminationReason').invalidBlank).toBe(1)
+  })
+
+  it('gives each dataset the freshness its tier is judged by', () => {
+    const { q } = goldRoster(() => {})
+    const ds = q.dataset('employees')
+    const fresh = ds.rules.find((r) => r.id === 'fresh')!
+    expect(ds.freshness.fresh).toBe(fresh.pass)
+    expect(ds.freshness.latest).not.toBeNull()
+    expect(q.dataset('cases').freshness).toMatchObject({ latest: null, fresh: false })
+  })
+
   it('ignores values outside the rows a field applies to', () => {
     const { q } = goldRoster((d) => {
       d.employees[5].terminationReason = 'Moved away'

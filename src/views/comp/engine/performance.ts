@@ -10,8 +10,11 @@ import { behind, groupRows, safeMean, safeMedian, safeQuantile, values } from '.
 import { type CompPerson, POSITIONS } from './population'
 import { type CycleSettings, guidelineFor, RATINGS, type RatingKey, ratingKey } from './settings'
 
-/** Departments whose 4-5 vs 3 merit ratio is below this show no real differentiation. */
-export const DIFFERENTIATION_FLOOR = 1.15
+/*
+ * Statistics take the anonymity minimum as `min` (the model passes the one in force; MIN_GROUP,
+ * its floor, is only the default for direct calls). The differentiation floor is a setting of
+ * 'comp.merit.differentiation', read in `rules.ts`.
+ */
 
 /** Round a fraction-point gap to 0.1 pts, the precision it is read at (so −0.00004 isn't "−0.0 pts"). */
 const toPoint = (d: number): number => Math.round(d * 1000) / 1000 || 0
@@ -46,7 +49,7 @@ export interface CompaByRatingRow {
   members: CompPerson[]
 }
 
-export function compaByRating(people: readonly CompPerson[]): CompaByRatingRow[] {
+export function compaByRating(people: readonly CompPerson[], min = MIN_GROUP): CompaByRatingRow[] {
   return byRating(
     people.filter((p) => p.compa != null),
     (p) => p.rating,
@@ -55,10 +58,10 @@ export function compaByRating(people: readonly CompPerson[]): CompaByRatingRow[]
     return {
       rating: ratingLabel(rating),
       n: xs.length,
-      median: safeMedian(xs),
-      p25: safeQuantile(xs, 0.25),
-      p75: safeQuantile(xs, 0.75),
-      members: behind(rows, xs.length),
+      median: safeMedian(xs, min),
+      p25: safeQuantile(xs, 0.25, min),
+      p75: safeQuantile(xs, 0.75, min),
+      members: behind(rows, xs.length, min),
     }
   })
 }
@@ -94,22 +97,26 @@ export interface MeritByRatingRow {
 }
 
 /** Proposed merit (promotion increases excluded) against the guideline, per rating. */
-export function meritByRating(people: readonly CompPerson[], s: CycleSettings): MeritByRatingRow[] {
+export function meritByRating(
+  people: readonly CompPerson[],
+  s: CycleSettings,
+  min = MIN_GROUP,
+): MeritByRatingRow[] {
   return byRating(
     people.filter((p) => p.merit != null),
     (p) => p.rating,
   ).map(({ rating, rows }) => {
     const xs = values(rows, (p) => p.merit)
-    const m = safeMean(xs)
+    const m = safeMean(xs, min)
     const g = s.guideline[rating]
     return {
       rating: ratingLabel(rating),
       n: xs.length,
       mean: m,
-      median: safeMedian(xs),
+      median: safeMedian(xs, min),
       guideline: g,
       diff: m == null ? null : toPoint(m - g),
-      members: behind(rows, xs.length),
+      members: behind(rows, xs.length, min),
     }
   })
 }
@@ -126,7 +133,7 @@ export interface MatrixCell {
 }
 
 /** Mean merit by rating and range position, against the guideline for the rating. */
-export function meritMatrix(people: readonly CompPerson[], s: CycleSettings): MatrixCell[] {
+export function meritMatrix(people: readonly CompPerson[], s: CycleSettings, min = MIN_GROUP): MatrixCell[] {
   const out: MatrixCell[] = []
   for (const { rating, rows } of byRating(
     people.filter((p) => p.merit != null && p.position != null),
@@ -136,7 +143,7 @@ export function meritMatrix(people: readonly CompPerson[], s: CycleSettings): Ma
       const cell = rows.filter((p) => p.position === pos)
       const xs = values(cell, (p) => p.merit)
       if (!xs.length) continue
-      const m = safeMean(xs)
+      const m = safeMean(xs, min)
       const g = s.guideline[rating]
       out.push({
         rating: ratingLabel(rating),
@@ -145,7 +152,7 @@ export function meritMatrix(people: readonly CompPerson[], s: CycleSettings): Ma
         mean: m,
         guideline: g,
         diff: m == null ? null : toPoint(m - g),
-        members: behind(cell, xs.length),
+        members: behind(cell, xs.length, min),
       })
     }
   }
@@ -163,8 +170,8 @@ export interface Differentiation {
   rated3: CompPerson[]
 }
 
-/** Mean merit of rating 4-5 ÷ mean merit of rating 3; null when either side has fewer than 5 people. */
-export function differentiation(people: readonly CompPerson[]): Differentiation {
+/** Mean merit of rating 4-5 ÷ mean merit of rating 3; null when either side has fewer than `min` people. */
+export function differentiation(people: readonly CompPerson[], min = MIN_GROUP): Differentiation {
   const m45: number[] = []
   const m3: number[] = []
   const p45: CompPerson[] = []
@@ -180,16 +187,16 @@ export function differentiation(people: readonly CompPerson[]): Differentiation 
       p3.push(p)
     }
   }
-  const a = m45.length >= MIN_GROUP ? mean(m45) : null
-  const b = m3.length >= MIN_GROUP ? mean(m3) : null
+  const a = m45.length >= min ? mean(m45) : null
+  const b = m3.length >= min ? mean(m3) : null
   return {
     ratio: a != null && b != null && b > 0 ? a / b : null,
     merit45: a,
     merit3: b,
     n45: m45.length,
     n3: m3.length,
-    rated45: behind(p45, p45.length),
-    rated3: behind(p3, p3.length),
+    rated45: behind(p45, p45.length, min),
+    rated3: behind(p3, p3.length, min),
   }
 }
 
@@ -200,9 +207,10 @@ export interface DifferentiationRow extends Differentiation {
 export function differentiationBy(
   people: readonly CompPerson[],
   key: (p: CompPerson) => string | null,
+  min = MIN_GROUP,
 ): DifferentiationRow[] {
   const rated = people.filter((p) => p.merit != null && ratingKey(p.rating) != null)
-  return groupRows(rated, key).map((g) => ({ group: g.label, ...differentiation(g.rows) }))
+  return groupRows(rated, key, { min }).map((g) => ({ group: g.label, ...differentiation(g.rows, min) }))
 }
 
 export interface BonusByRatingRow {
@@ -215,7 +223,7 @@ export interface BonusByRatingRow {
 }
 
 /** Last bonus payout (share of target) by the rating in the latest annual cycle. */
-export function bonusByRating(people: readonly CompPerson[]): BonusByRatingRow[] {
+export function bonusByRating(people: readonly CompPerson[], min = MIN_GROUP): BonusByRatingRow[] {
   return byRating(
     people.filter((p) => p.bonusPayout != null),
     (p) => p.annualRating,
@@ -224,9 +232,9 @@ export function bonusByRating(people: readonly CompPerson[]): BonusByRatingRow[]
     return {
       rating: ratingLabel(rating),
       n: xs.length,
-      mean: safeMean(xs),
-      median: safeMedian(xs),
-      members: behind(rows, xs.length),
+      mean: safeMean(xs, min),
+      median: safeMedian(xs, min),
+      members: behind(rows, xs.length, min),
     }
   })
 }
@@ -240,7 +248,7 @@ export interface EquityByRatingRow {
   members: CompPerson[]
 }
 
-export function equityByRating(people: readonly CompPerson[]): EquityByRatingRow[] {
+export function equityByRating(people: readonly CompPerson[], min = MIN_GROUP): EquityByRatingRow[] {
   return byRating(
     people.filter((p) => p.equityUsd != null && p.baseUsd != null && p.baseUsd > 0),
     (p) => p.rating,
@@ -249,8 +257,8 @@ export function equityByRating(people: readonly CompPerson[]): EquityByRatingRow
     return {
       rating: ratingLabel(rating),
       n: xs.length,
-      median: safeMedian(xs),
-      members: behind(rows, xs.length),
+      median: safeMedian(xs, min),
+      members: behind(rows, xs.length, min),
     }
   })
 }

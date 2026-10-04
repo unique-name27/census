@@ -19,12 +19,15 @@ import { computeNineBox, type NineBoxResult } from './ninebox'
 import { computePerformance, type PerformanceResult } from './performance'
 import { computeOverdue, type OverdueResult } from './promotion'
 import { computeRetention, type RetentionResult } from './retention'
-import { buildRiskModel, type RiskModel } from './risk'
+import { buildRiskModel, type RiskModel, type RiskSettings, riskSettingsKey } from './risk'
+import { TALENT_METRIC, type TalentSettings } from './settings'
 import { computeSuccession, criticalCoverage, type SuccessionResult } from './succession'
 
 export interface TalentModel {
   asOf: ISODate
   has: FieldCoverage
+  /** The calculation settings in force (from the metric dictionary), for wording that follows them. */
+  settings: TalentSettings
   /** Scoped employees active at the as-of date. */
   activeCount: number
   performance: PerformanceResult
@@ -52,10 +55,12 @@ export interface TalentModel {
 const TALENT_DATASETS = ['reviews', 'succession', 'learning', 'employees', 'jobChanges', 'comp'] as const
 
 /**
- * The flight-risk model scores the whole company, so it only depends on the unscoped data and the
- * as-of date. Cache it per dataset object so changing a filter doesn't rebuild it.
+ * The flight-risk model scores the whole company, so it only depends on the unscoped data, the
+ * as-of date and its settings (band shares, high rating, anonymity minimum). Cache it per dataset
+ * object so changing a filter doesn't rebuild it.
  */
-const riskCache = new WeakMap<Datasets, Map<ISODate, RiskModel>>()
+const riskCache = new WeakMap<Datasets, Map<string, RiskModel>>()
+const RISK_CACHE_SIZE = 12
 
 /** Fields the flight-risk model reads, today and at past dates, per model. */
 const riskUsesCache = new WeakMap<RiskModel, { risk: Refs; riskHistory: Refs }>()
@@ -72,14 +77,24 @@ function riskLineage(model: RiskModel, all: Datasets): { risk: Refs; riskHistory
   return u
 }
 
+/** The flight-risk model's settings, from the dictionary values on the base. */
+export const riskSettingsOf = (s: TalentSettings): RiskSettings => ({
+  bands: { high: s.highBand, medium: s.mediumBand },
+  highRating: s.highRating,
+  minGroup: s.minGroup,
+  rates: s.rates,
+})
+
 function riskFor(base: TalentBase): RiskModel {
   const { ctx, asOf } = base
-  let byDate = riskCache.get(ctx.all)
-  if (!byDate) {
-    byDate = new Map()
-    riskCache.set(ctx.all, byDate)
+  const settings = riskSettingsOf(base.settings)
+  let byKey = riskCache.get(ctx.all)
+  if (!byKey) {
+    byKey = new Map()
+    riskCache.set(ctx.all, byKey)
   }
-  let model = byDate.get(asOf)
+  const key = `${asOf}|${riskSettingsKey(settings)}`
+  let model = byKey.get(key)
   if (!model) {
     model = buildRiskModel(
       {
@@ -90,8 +105,11 @@ function riskFor(base: TalentBase): RiskModel {
         has: base.has,
       },
       asOf,
+      settings,
     )
-    byDate.set(asOf, model)
+    byKey.set(key, model)
+    // Keep the few most recent (as-of dates and settings being tried), not every one ever built.
+    while (byKey.size > RISK_CACHE_SIZE) byKey.delete(byKey.keys().next().value!)
   }
   return model
 }
@@ -115,6 +133,7 @@ export function computeTalent(ctx: AnalyticsContext): TalentModel {
   return {
     asOf: ctx.asOf,
     has: base.has,
+    settings: base.settings,
     activeCount: base.active.length,
     performance,
     nineBox,
@@ -138,6 +157,7 @@ export function talentHeadline(ctx: AnalyticsContext): Headline {
   return {
     value: critical ? fmt(covered / critical, 'pct0') : '—',
     label: 'critical roles covered',
+    metricId: TALENT_METRIC.criticalCoverage,
     uses: HEADLINE_USES,
   }
 }

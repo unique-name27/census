@@ -1,7 +1,8 @@
 /**
  * High performers overdue for promotion: active employees below executive level, with the company
- * at least 3 years, rated 4 or 5 in each of the last two annual cycles, and no promotion in the
- * last 36 months. Needs job changes (promotion history) and reviews; null otherwise.
+ * at least the overdue setting's years (3 by default), rated at or above the high performer
+ * rating (4) in each of the last two annual cycles, and no promotion in that many years. Needs
+ * job changes (promotion history) and reviews; null otherwise.
  * Pure: no React, no DOM.
  */
 import type { ISODate } from '@/data/schema'
@@ -10,6 +11,7 @@ import { decomposeRate, type Segment } from '@/lib/decompose'
 import { tenureYears } from '@/lib/people'
 import { type Cycle, lastPromotion, nameOf, normRating, orgDims, reviewIn, type TalentBase } from './base'
 import type { PersonRisk, RiskBand } from './risk'
+import { monthsIn } from './settings'
 
 export interface OverdueRow {
   employeeId: string
@@ -71,7 +73,8 @@ export function computeOverdue(base: TalentBase, risk: Map<string, PersonRisk>):
       reason: 'Two review cycles are needed.',
     }
   }
-  const cutoff = addMonths(asOf, -36)
+  const { highRating, promotionYears } = base.settings
+  const cutoff = addMonths(asOf, -monthsIn(promotionYears))
   const eligible: { id: string; overdue: boolean; row: OverdueRow }[] = []
   for (const e of base.active) {
     if (!e.level || e.level.startsWith('E') || e.hireDate > cutoff) continue
@@ -79,7 +82,7 @@ export function computeOverdue(base: TalentBase, risk: Map<string, PersonRisk>):
     const r2 = normRating(reviewIn(base, e.employeeId, cycles[1].cycle)?.rating)
     if (r1 == null || r2 == null) continue
     const promo = lastPromotion(base, e.employeeId, asOf)
-    const overdue = r1 >= 4 && r2 >= 4 && (!promo || promo <= cutoff)
+    const overdue = r1 >= highRating && r2 >= highRating && (!promo || promo <= cutoff)
     eligible.push({
       id: e.employeeId,
       overdue,

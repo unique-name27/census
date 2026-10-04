@@ -7,10 +7,11 @@ import { drill, openPerson } from '@/drill'
 import { formatDate } from '@/lib/dates'
 import { fmt, plural } from '@/lib/format'
 import type { TalentModel } from '../engine'
+import { FIGURE_METRIC, TALENT_METRIC as M } from '../engine/settings'
 import type { BenchScope, HipoGroupRow, RoleRow } from '../engine/succession'
 import { readinessColors } from './colors'
 import { benchColumns, hipoColumns, ROLE_DETAIL_COLUMNS, roleColumns } from './columns'
-import { DEF } from './defs'
+import { defsFor, TERM } from './defs'
 
 function roleTone(r: RoleRow): Severity | null {
   if (r.status === 'No successor')
@@ -33,6 +34,7 @@ export function SuccessionTab({ m }: { m: TalentModel }) {
   const t = useChartTheme()
   const asOf = formatDate(ctx.asOf)
   const succ = m.succession
+  const minGroup = m.settings.minGroup
   const [scope, setScope] = useState<BenchScope>('All')
   const noPlans = !m.has.succession
     ? 'Upload Succession to see this.'
@@ -64,11 +66,17 @@ export function SuccessionTab({ m }: { m: TalentModel }) {
         <Figure
           id="talent-critical-roles"
           uses={m.uses['talent-critical-roles']}
+          metric={FIGURE_METRIC['talent-critical-roles']}
           title="Critical and key roles"
           subtitle={`Roles in the succession plan with successors still employed, as of ${asOf}`}
           data={succ.roles}
           columns={roleColumns(m.drill)}
-          definitions={[DEF.coverage, DEF.roleStatus, DEF.riskOfLoss]}
+          definitions={defsFor(
+            ctx.metrics,
+            [M.roleStatus, M.criticalCoverage],
+            [TERM.riskOfLoss],
+            [M.riskBands],
+          )}
           note={`${plural(succ.roles.length, 'role')} · ${succ.criticalCovered} of ${succ.critical} critical roles covered${departed}`}
           tableOnly
           table={{
@@ -90,11 +98,12 @@ export function SuccessionTab({ m }: { m: TalentModel }) {
         <Figure
           id="talent-bench-strength"
           uses={m.uses['talent-bench-strength']}
+          metric={FIGURE_METRIC['talent-bench-strength']}
           title="Bench strength by business unit"
           subtitle={`Named successors by readiness, ${BENCH_LABEL[scope]}`}
           data={benchTable}
           columns={benchColumns(m.drill, scope)}
-          definitions={[DEF.bench, DEF.roleStatus]}
+          definitions={defsFor(ctx.metrics, [M.bench, M.roleStatus])}
           note={`${plural(named, 'successor')} named for ${plural(roles, 'role')}, ${fmt(readyNow)} ready now · ${plural(noSuccessor, 'role has', 'roles have')} nobody named · as of ${asOf}`}
           span={12}
           actions={
@@ -135,12 +144,13 @@ export function SuccessionTab({ m }: { m: TalentModel }) {
         <Figure
           id="talent-high-potentials-by-level"
           uses={m.uses['talent-high-potentials-by-level']}
+          metric={FIGURE_METRIC['talent-high-potentials-by-level']}
           title="High potentials by level"
           subtitle={`Share of people assessed who were rated High potential${potCycle ? `, ${potCycle}` : ''}`}
           data={succ.hipoByLevel}
           columns={hipoColumns('Level', m.drill, 'level')}
-          definitions={[DEF.highPotential]}
-          note={`${fmt(succ.hipoHigh)} of ${plural(succ.hipoAssessed, 'person', 'people')} assessed · levels under 5 people are folded into Other`}
+          definitions={defsFor(ctx.metrics, [M.highPotentials])}
+          note={`${fmt(succ.hipoHigh)} of ${plural(succ.hipoAssessed, 'person', 'people')} assessed · levels under ${minGroup} people are folded into Other`}
           span={6}
           empty={noPotential}
         >
@@ -158,12 +168,13 @@ export function SuccessionTab({ m }: { m: TalentModel }) {
         <Figure
           id="talent-high-potentials-by-unit"
           uses={m.uses['talent-high-potentials-by-unit']}
+          metric={FIGURE_METRIC['talent-high-potentials-by-unit']}
           title="High potentials by business unit"
           subtitle={`Share of people assessed who were rated High potential${potCycle ? `, ${potCycle}` : ''}`}
           data={succ.hipoByUnit}
           columns={hipoColumns('Business unit', m.drill, 'businessUnit')}
-          definitions={[DEF.highPotential]}
-          note={`Overall share ${fmt(succ.hipoShare, 'pct')} · units under 5 people are folded into Other`}
+          definitions={defsFor(ctx.metrics, [M.highPotentials])}
+          note={`Overall share ${fmt(succ.hipoShare, 'pct')} · units under ${minGroup} people are folded into Other`}
           span={6}
           empty={noPotential}
         >

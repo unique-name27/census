@@ -27,6 +27,7 @@ import {
   directsDrill,
   entryPoints,
   exportCut,
+  FIGURE_METRIC,
   heldBackNotes,
   layoutTree,
   MOVE_COLUMNS,
@@ -44,9 +45,11 @@ import {
   rosterRows,
   SCENARIO_USES,
   type ScenarioAction,
+  sandboxDefinitions,
   sandboxUses,
   scopeLine,
   shownRows,
+  spanChangeDefinitions,
   spanChangesDrill,
   subtreeOf,
   teamChangeDrill,
@@ -127,8 +130,12 @@ export function SandboxTab() {
     if (first) setCenterReq((r) => ({ id: first, n: (r?.n ?? 0) + 1 }))
   }, [dimKey])
   // Same Job changes as the chart's flags: none when they are below the data standard.
-  const flags = useMemo(() => computeFlags(tree, model.flagJobChanges), [tree, model.flagJobChanges])
-  const diff = useMemo(() => diffTrees(base, tree), [base, tree])
+  const { rules } = model
+  const flags = useMemo(
+    () => computeFlags(tree, model.flagJobChanges, rules),
+    [tree, model.flagJobChanges, rules],
+  )
+  const diff = useMemo(() => diffTrees(base, tree, rules), [base, tree, rules])
   const changed = useMemo(
     () => new Set([...diff.reportingChanges.map((r) => r.id), ...diff.spanChanges.map((s) => s.id)]),
     [diff],
@@ -165,7 +172,7 @@ export function SandboxTab() {
 
   const ripple =
     drag?.over && drag.over !== drag.id
-      ? rippleOf(tree, { kind: 'move', personId: drag.id, toManagerId: drag.over, mode })
+      ? rippleOf(tree, { kind: 'move', personId: drag.id, toManagerId: drag.over, mode }, rules)
       : null
 
   // Trees before each step, for the moves table (who managed whom at the time).
@@ -234,7 +241,7 @@ export function SandboxTab() {
   }
 
   const commit = (action: ScenarioAction) => {
-    const r = rippleOf(tree, action)
+    const r = rippleOf(tree, action, rules)
     if (!r.ok) {
       if (r.code !== 'same-manager' && r.code !== 'self') {
         sc.block({ action, reason: r.reason ?? 'This move is not possible.' })
@@ -444,6 +451,8 @@ export function SandboxTab() {
           subtitle={`The org on ${formatDate(ctx.asOf)} with the scenario applied. Outlined cards changed.`}
           data={rows}
           columns={personColumns(tree, scope)}
+          metric={FIGURE_METRIC['org-sandbox']}
+          definitions={sandboxDefinitions(ctx.metrics, rules)}
           note={`${plural(rows.length, 'person', 'people')} shown. Drag a card onto a new manager; drag the background, or click the chart and scroll, to pan. Click a count on a card to list those people.`}
           tableToggle={false}
           uses={sandboxUses({ ...lineage, colorBy })}
@@ -544,6 +553,7 @@ export function SandboxTab() {
         />
         <DiffPanel
           diff={diff}
+          rules={rules}
           before={base}
           after={tree}
           scope={scope}
@@ -558,6 +568,8 @@ export function SandboxTab() {
           subtitle="Managers whose number of direct reports changes in the scenario"
           data={spanRows}
           columns={spanColumns}
+          metric={FIGURE_METRIC['org-sandbox-spans']}
+          definitions={spanChangeDefinitions(ctx.metrics)}
           uses={SCENARIO_USES}
           tableOnly
           empty={spanRows.length ? null : 'No spans change yet.'}

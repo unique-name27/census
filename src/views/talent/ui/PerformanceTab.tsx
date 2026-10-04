@@ -6,7 +6,8 @@ import { addMonths, formatDate } from '@/lib/dates'
 import { fmt, plural } from '@/lib/format'
 import type { TalentModel } from '../engine'
 import { otherLabel } from '../engine/base'
-import { HIGH_GUIDELINE, type HighShareRow, INFLATION_PTS, RATING_ORDER } from '../engine/performance'
+import { type HighShareRow, RATING_ORDER } from '../engine/performance'
+import { FIGURE_METRIC, highRangeText, highRatingText, TALENT_METRIC as M } from '../engine/settings'
 import { CycleLines } from './CycleLines'
 import {
   calibrationColumns,
@@ -17,19 +18,19 @@ import {
   ratingOf,
 } from './columns'
 import { Dumbbell } from './Dumbbell'
-import { DEF } from './defs'
+import { defsFor, TERM } from './defs'
 import { RatingMix } from './RatingMix'
-
-const GUIDE_REF = { value: HIGH_GUIDELINE, label: `Guideline ${fmt(HIGH_GUIDELINE, 'pct0')}` }
 
 /**
  * The chart keeps the first `top` groups and folds the rest (with any small groups the engine
- * already folded) into one "Other (k)" row: the combined share rated 4-5, not an average of shares.
- * The table and exports keep every group. `rest` is what the chart's own "Other" row combines.
+ * already folded) into one "Other (k)" row: the combined share of high performers, not an average
+ * of shares. The table and exports keep every group. `rest` is what the chart's own "Other" row
+ * combines; it shows its numbers only at the anonymity minimum (`min`) or more.
  */
 function topWithOther(
   rows: readonly HighShareRow[],
   top: number,
+  min: number,
 ): { rows: HighShareRow[]; other: HighShareRow | null; rest: HighShareRow[] } {
   if (rows.length <= top + 1) return { rows: [...rows], other: null, rest: [] }
   const rest = rows.slice(top)
@@ -39,8 +40,8 @@ function topWithOther(
   const other: HighShareRow = {
     group: otherLabel(groups),
     rated,
-    high: rated >= 5 ? high : null,
-    share: rated >= 5 ? high / rated : null,
+    high: rated >= min ? high : null,
+    share: rated >= min ? high / rated : null,
     other: true,
     groups,
   }
@@ -51,18 +52,23 @@ export function PerformanceTab({ m }: { m: TalentModel }) {
   const ctx = useAnalytics()
   const asOf = formatDate(ctx.asOf)
   const perf = m.performance
+  const s = m.settings
+  const rule = s.findings
+  const hi = highRatingText(s.highRating)
+  const range = highRangeText(s.highRating)
+  const guideRef = { value: s.highGuideline, label: `Guideline ${fmt(s.highGuideline, 'pct0')}` }
   const cycle = perf.cycle?.cycle ?? 'the latest cycle'
   const noReviews = !m.has.reviews ? 'Upload Reviews to see this.' : null
   const ratedNote = `${plural(perf.rated, 'person', 'people')} rated in ${cycle}${perf.ratedLeft ? `, including ${fmt(perf.ratedLeft)} who ${perf.ratedLeft === 1 ? 'has' : 'have'} left since` : ''} · as of ${asOf}`
   const tone = (d: HighShareRow) =>
     d.other
       ? ('deemph' as const)
-      : d.share != null && d.share - HIGH_GUIDELINE > INFLATION_PTS && d.rated >= 20
+      : d.share != null && d.share - s.highGuideline > rule.inflationPts && d.rated >= rule.inflationMinRated
         ? ('warning' as const)
         : ('default' as const)
   const calRows = perf.calibration.map((c) => ({ label: c.businessUnit, a: c.proposed, b: c.final, n: c.n }))
-  const departments = topWithOther(perf.byDepartment, 14)
-  // The share rated 4-5 opens the people rated 4 or 5 behind it.
+  const departments = topWithOther(perf.byDepartment, 14, s.minGroup)
+  // The share of high performers opens the people rated high behind it.
   const highOf = (dim: 'department' | 'level', d: HighShareRow) =>
     dim === 'department' && d.other && d.group === departments.other?.group
       ? m.drill.highShare(dim, d, 'high', departments.rest)
@@ -79,17 +85,18 @@ export function PerformanceTab({ m }: { m: TalentModel }) {
     <>
       <Section
         title="Where ratings run high"
-        dek={`The ${cycle} ratings by department and business unit, against the guideline of ${fmt(HIGH_GUIDELINE, 'pct0')} rated 4 or 5. Groups more than ${Math.round(INFLATION_PTS * 100)} pts above it are marked.`}
+        dek={`The ${cycle} ratings by department and business unit, against the guideline of ${fmt(s.highGuideline, 'pct0')} rated ${hi}. Groups more than ${+(rule.inflationPts * 100).toFixed(1)} pts above it are marked.`}
       >
         <Figure
           id="talent-high-share-by-department"
           uses={m.uses['talent-high-share-by-department']}
-          title="Share rated 4-5 by department"
-          subtitle={`People rated 4 or 5 as a share of people rated, ${cycle}`}
+          metric={FIGURE_METRIC['talent-high-share-by-department']}
+          title={`Share rated ${range} by department`}
+          subtitle={`People rated ${hi} as a share of people rated, ${cycle}`}
           data={perf.byDepartment}
-          columns={highShareColumns('Department', m.drill, 'department')}
-          definitions={[DEF.highPerformer, DEF.guideline]}
-          note={`${ratedNote} · departments under 5 rated are folded into Other`}
+          columns={highShareColumns('Department', m.drill, 'department', range)}
+          definitions={defsFor(ctx.metrics, [M.highPerformers, M.ratingDistribution, M.inflationRule])}
+          note={`${ratedNote} · departments under ${s.minGroup} rated are folded into Other`}
           span={6}
           empty={
             noReviews ??
@@ -102,21 +109,22 @@ export function PerformanceTab({ m }: { m: TalentModel }) {
             value="share"
             format="pct"
             sort="none"
-            ref={GUIDE_REF}
+            ref={guideRef}
             tone={tone}
             secondary={(d) => `n = ${fmt(d.rated)}`}
             onSelect={(d) => drill(highOf('department', d))}
-            ariaLabel="Share rated 4 or 5 by department"
+            ariaLabel={`Share rated ${hi} by department`}
           />
         </Figure>
         <Figure
           id="talent-rating-mix"
           uses={m.uses['talent-rating-mix']}
+          metric={FIGURE_METRIC['talent-rating-mix']}
           title="Rating mix by business unit"
           subtitle={`Share of people at each rating, ${cycle}, with the guideline on top`}
           data={perf.mix}
           columns={mixColumns(m.drill)}
-          definitions={[DEF.guideline]}
+          definitions={defsFor(ctx.metrics, [M.ratingDistribution])}
           note={ratedNote}
           span={6}
           empty={noReviews ?? (perf.mix.length ? null : 'Nobody in this scope is rated in the latest cycle.')}
@@ -128,6 +136,8 @@ export function PerformanceTab({ m }: { m: TalentModel }) {
               shares: [r.r1, r.r2, r.r3, r.r4, r.r5],
             }))}
             drillFor={(group, rating) => m.drill.mix(group, rating)}
+            guideline={s.guideline}
+            minGroup={s.minGroup}
             ariaLabel="Rating mix by business unit compared with the guideline"
           />
         </Figure>
@@ -140,11 +150,12 @@ export function PerformanceTab({ m }: { m: TalentModel }) {
         <Figure
           id="talent-calibration-shift"
           uses={m.uses['talent-calibration-shift']}
+          metric={FIGURE_METRIC['talent-calibration-shift']}
           title="Calibration shift by business unit"
           subtitle={`Average manager-proposed rating and average final rating, ${cycle}`}
           data={perf.calibration}
           columns={calibrationColumns(m.drill)}
-          definitions={[DEF.calibration]}
+          definitions={defsFor(ctx.metrics, [M.calibrationShift], [], [M.calibrationRule])}
           note={
             perf.calibrationCompany
               ? `All business units: shift ${fmt(perf.calibrationCompany.shift, 'num2')}, n = ${fmt(perf.calibrationCompany.n)} · as of ${asOf}`
@@ -165,24 +176,26 @@ export function PerformanceTab({ m }: { m: TalentModel }) {
             aLabel="Manager proposed"
             bLabel="Final"
             drillFor={(r) => m.drill.calibration(r.label, 'all')}
+            minGroup={s.minGroup}
             ariaLabel="Average proposed and final rating by business unit"
           />
         </Figure>
         <Figure
           id="talent-average-rating-by-cycle"
           uses={m.uses['talent-average-rating-by-cycle']}
+          metric={FIGURE_METRIC['talent-average-rating-by-cycle']}
           title="Average rating by cycle"
           subtitle="Mean final rating per business unit in each review cycle"
           data={perf.cycles}
           columns={cycleColumns(m.drill)}
-          definitions={[DEF.latestCycle]}
+          definitions={defsFor(ctx.metrics, [M.averageRating], [TERM.latestCycle], [M.inflationRule])}
           note={`${
             perf.outlierUnit
               ? perf.outlierWhy === 'inflation'
-                ? `${perf.outlierUnit} is highlighted: its share rated 4-5 runs above the guideline. `
+                ? `${perf.outlierUnit} is highlighted: its share rated ${range} runs above the guideline. `
                 : `${perf.outlierUnit} is highlighted: its average strays furthest from the rest. `
               : ''
-          }Groups under 5 rated are hidden`}
+          }Groups under ${s.minGroup} rated are hidden`}
           span={6}
           empty={noReviews ?? (perf.cycles.length ? null : 'No review cycles have closed yet.')}
         >
@@ -204,12 +217,13 @@ export function PerformanceTab({ m }: { m: TalentModel }) {
         <Figure
           id="talent-high-share-by-level"
           uses={m.uses['talent-high-share-by-level']}
-          title="Share rated 4-5 by level"
-          subtitle={`People rated 4 or 5 as a share of people rated, ${cycle}`}
+          metric={FIGURE_METRIC['talent-high-share-by-level']}
+          title={`Share rated ${range} by level`}
+          subtitle={`People rated ${hi} as a share of people rated, ${cycle}`}
           data={perf.byLevel}
-          columns={highShareColumns('Level', m.drill, 'level')}
-          definitions={[DEF.highPerformer]}
-          note={`${ratedNote} · levels under 5 rated are folded into Other`}
+          columns={highShareColumns('Level', m.drill, 'level', range)}
+          definitions={defsFor(ctx.metrics, [M.highPerformers, M.ratingDistribution, M.inflationRule])}
+          note={`${ratedNote} · levels under ${s.minGroup} rated are folded into Other`}
           span={6}
           empty={
             noReviews ?? (perf.byLevel.length ? null : 'Nobody in this scope is rated in the latest cycle.')
@@ -221,16 +235,17 @@ export function PerformanceTab({ m }: { m: TalentModel }) {
             value="share"
             format="pct"
             sort="none"
-            ref={GUIDE_REF}
+            ref={guideRef}
             tone={tone}
             secondary={(d) => `n = ${fmt(d.rated)}`}
             onSelect={(d) => drill(highOf('level', d))}
-            ariaLabel="Share rated 4 or 5 by level"
+            ariaLabel={`Share rated ${hi} by level`}
           />
         </Figure>
         <Figure
           id="talent-exit-by-rating"
           uses={m.uses['talent-exit-by-rating']}
+          metric={FIGURE_METRIC['talent-exit-by-rating']}
           title="Exit rate within 12 months by rating"
           subtitle={
             exitCycle
@@ -239,10 +254,10 @@ export function PerformanceTab({ m }: { m: TalentModel }) {
           }
           data={perf.exitByRating}
           columns={exitByRatingColumns(m.drill)}
-          definitions={[DEF.exitWithin12]}
+          definitions={defsFor(ctx.metrics, [M.exitByRating])}
           note={
             exitCycle
-              ? `Uses the latest cycle with a full year of follow-up · ratings held by fewer than 5 people are hidden, counts included`
+              ? `Uses the latest cycle with a full year of follow-up · ratings held by fewer than ${s.minGroup} people are hidden, counts included`
               : undefined
           }
           span={6}
@@ -253,7 +268,7 @@ export function PerformanceTab({ m }: { m: TalentModel }) {
               : !m.has.terminationType
                 ? 'Upload Employees with a termination type to split exits.'
                 : perf.exitByRating.every((r) => r.rate == null)
-                  ? 'Fewer than 5 people hold each rating in this scope, so the exit rates are hidden.'
+                  ? `Fewer than ${s.minGroup} people hold each rating in this scope, so the exit rates are hidden.`
                   : null)
           }
         >

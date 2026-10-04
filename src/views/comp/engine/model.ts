@@ -1,13 +1,18 @@
 /**
- * computeComp(ctx, settings): every number the Compensation view shows, computed once per
- * analytics context and settings. Pure (no React, no DOM).
+ * computeComp(ctx): every number the Compensation view shows, computed once per analytics
+ * context. Every threshold and setting comes from the metric dictionary (`ctx.metrics`, read in
+ * `rules.ts`), and the KPI and figure wording from its definitions (`definitions.ts`). Pure (no
+ * React, no DOM).
  */
+import type { Definition } from '@/charts/types'
 import type { Finding, Kpi } from '@/components/types'
 import type { AnalyticsContext } from '@/data/context'
 import { BELOW_STANDARD_TEXT } from '@/data/quality'
 import { SAMPLE_AS_OF } from '@/data/sample'
 import { type ISODate, LEVELS } from '@/data/schema'
 import { daysBetween } from '@/lib/dates'
+import { minGroupOf } from '@/metrics/privacy'
+import type { MetricsApi } from '@/metrics/types'
 import {
   type Bin,
   binBy,
@@ -24,11 +29,12 @@ import {
   type SpendSummary,
   spendBy,
 } from './cycle'
+import { figureDefinitions } from './definitions'
 import { tagFindings } from './drillUses'
 import { buildFindings } from './findings'
 import { safeMedian, values } from './groups'
 import { buildCycleKpis, buildKpis } from './kpis'
-import { type FigureUses, figureUses, meetsFor, PROMOTED } from './lineage'
+import { type FigureId, type FigureUses, figureUses, meetsFor, PROMOTED } from './lineage'
 import {
   type JobMarketRow,
   jobsBelowMarket,
@@ -74,6 +80,7 @@ import {
   type TenureDot,
   tenureDots,
 } from './ranges'
+import { type CompRules, compRulesOf } from './rules'
 import type { CycleSettings } from './settings'
 
 export interface PersonRow {
@@ -87,7 +94,14 @@ export interface PersonRow {
 }
 
 export interface CompModel {
+  /** The cycle settings in force (merit budget, healthy band, guideline): `rules.cycle`. */
   settings: CycleSettings
+  /** Every setting in force, from the metric dictionary. */
+  rules: CompRules
+  /** The metric dictionary the wording comes from (with your changes). */
+  metrics: Pick<MetricsApi, 'def'>
+  /** Each figure's definitions panel, from the dictionary. */
+  definitions: Record<FigureId, Definition[]>
   asOf: string
   /**
    * The date the pay data describes, when known: the sample's reference date, or the day the
@@ -196,13 +210,19 @@ function personRows(people: readonly CompPerson[]): PersonRow[] {
     }))
 }
 
-export function computeComp(ctx: AnalyticsContext, settings: CycleSettings): CompModel {
+/**
+ * Every number the view shows. The settings come from `ctx.metrics`; `settings`, when given,
+ * replaces only the three cycle settings (engine tests that pass their own).
+ */
+export function computeComp(ctx: AnalyticsContext, settings?: CycleSettings): CompModel {
   const pop = buildPopulation(ctx.data, ctx.asOf)
   const payAsOf = payAsOfDate(ctx)
   const payStale = payAsOf != null && Math.abs(daysBetween(payAsOf, ctx.asOf)) > PAY_SNAPSHOT_TOLERANCE
   const company = ctx.isCompany ? pop : buildPopulation(ctx.all, ctx.asOf)
   const people = pop.people
-  const s = settings
+  const rules = compRulesOf(ctx.metrics, settings)
+  const s = rules.cycle
+  const min = rules.minGroup
 
   const compas = values(people, (p) => p.compa)
   const histDomain = binDomain(compas, COMPA_STEP)
@@ -213,64 +233,77 @@ export function computeComp(ctx: AnalyticsContext, settings: CycleSettings): Com
   const below = belowMinimum(people)
 
   const performance = {
-    compaByRating: compaByRating(people),
+    compaByRating: compaByRating(people, min),
     ratingDots: ratingDots(people),
-    meritByRating: meritByRating(people, s),
-    matrix: meritMatrix(people, s),
-    differentiation: differentiation(people),
-    companyDifferentiation: ctx.isCompany ? differentiation(people) : differentiation(company.people),
-    byDepartment: differentiationBy(people, (p) => p.department),
-    bonus: bonusByRating(people),
-    equity: equityByRating(people),
+    meritByRating: meritByRating(people, s, min),
+    matrix: meritMatrix(people, s, min),
+    differentiation: differentiation(people, min),
+    companyDifferentiation: ctx.isCompany
+      ? differentiation(people, min)
+      : differentiation(company.people, min),
+    byDepartment: differentiationBy(people, (p) => p.department, min),
+    bonus: bonusByRating(people, min),
+    equity: equityByRating(people, min),
   }
-  const spend = meritSpend(people, s)
-  const companySpend = ctx.isCompany ? spend : meritSpend(company.people, s)
+  const spend = meritSpend(people, s, min)
+  const companySpend = ctx.isCompany ? spend : meritSpend(company.people, s, min)
   const cycle = {
     spend,
     companySpend,
-    byBu: spendBy(people, (p) => p.businessUnit, s),
+    byBu: spendBy(people, (p) => p.businessUnit, s, min),
     hist: meritDomain ? binBy(proposed, (p) => p.merit!, meritDomain[0], meritDomain[1], MERIT_STEP) : [],
     histDomain: meritDomain,
-    exceptions: guidelineExceptions(people, s, ratingPeerStats(company.people)),
-    promotions: promotions(people),
-    mix: rewardsMix(people, pop.has.equity),
+    exceptions: guidelineExceptions(people, s, ratingPeerStats(company.people), rules.exceptions),
+    promotions: promotions(people, min),
+    mix: rewardsMix(people, pop.has.equity, min),
   }
   const ranges = {
-    penetration: penetrationByLevel(people),
+    penetration: penetrationByLevel(people, min),
     below,
     above: aboveMaximum(people),
     costToMin: costToMinimum(below),
     tenure: tenureDots(people),
-    compression: compression(people),
+    compression: compression(people, rules.compression.minGroup, rules.compression.gap),
   }
   const market = {
-    total: marketTotal(people),
-    byFamily: marketBy(people, (p) => p.jobFamily),
-    familyChart: marketLowest(people, (p) => p.jobFamily, 15),
-    byLocation: marketBy(people, (p) => p.location),
-    byLevel: marketByLevel(people),
-    jobs: jobsBelowMarket(people),
+    total: marketTotal(people, 'All', min),
+    byFamily: marketBy(people, (p) => p.jobFamily, undefined, min),
+    familyChart: marketLowest(people, (p) => p.jobFamily, 15, rules.marketGap.minFamily, min),
+    byLocation: marketBy(people, (p) => p.location, undefined, min),
+    byLevel: marketByLevel(people, min),
+    jobs: jobsBelowMarket(people, 15, min),
   }
   const overview = {
     hist: histDomain ? binBy(valued, (p) => p.compa!, histDomain[0], histDomain[1], COMPA_STEP) : [],
     histDomain,
-    median: safeMedian(compas),
-    companyMedian: safeMedian(values(company.people, (p) => p.compa)),
+    median: safeMedian(compas, min),
+    companyMedian: safeMedian(
+      values(company.people, (p) => p.compa),
+      min,
+    ),
     people: personRows(people),
-    positionByBu: positionMix(people, (p) => p.businessUnit),
-    positionAll: positionTotal(people, ctx.isCompany ? 'Whole company' : ctx.scopeLabel),
-    byLocation: compaBy(people, (p) => p.location, s),
-    byLevel: compaBy(people, (p) => p.level, s, LEVELS),
-    byDepartment: compaBy(people, (p) => p.department, s),
+    positionByBu: positionMix(people, (p) => p.businessUnit, undefined, min),
+    positionAll: positionTotal(people, ctx.isCompany ? 'Whole company' : ctx.scopeLabel, min),
+    byLocation: compaBy(people, (p) => p.location, s, undefined, min),
+    byLevel: compaBy(people, (p) => p.level, s, LEVELS, min),
+    byDepartment: compaBy(people, (p) => p.department, s, undefined, min),
   }
 
   const scopeLabel = ctx.isCompany ? 'Whole company' : ctx.scopeLabel
   const cycleModel = {
     ...cycle,
-    kpis: buildCycleKpis(pop, cycle, { scopeLabel, asOf: ctx.asOf, settings: s, pop }),
+    kpis: buildCycleKpis(
+      pop,
+      cycle,
+      { scopeLabel, asOf: ctx.asOf, settings: s, pop },
+      { rules, metrics: ctx.metrics },
+    ),
   }
   const core = {
     settings: s,
+    rules,
+    metrics: ctx.metrics,
+    definitions: figureDefinitions(ctx.metrics, rules),
     asOf: ctx.asOf,
     payAsOf,
     payStale,
@@ -301,5 +334,8 @@ export function compaHeadline(ctx: AnalyticsContext): number | null {
     { employees: ctx.data.employees, comp: ctx.data.comp, reviews: [], jobChanges: [] },
     ctx.asOf,
   )
-  return safeMedian(values(pop.people, (p) => p.compa))
+  return safeMedian(
+    values(pop.people, (p) => p.compa),
+    minGroupOf(ctx.metrics),
+  )
 }

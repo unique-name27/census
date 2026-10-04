@@ -40,9 +40,12 @@ export function Dumbbell({
   bLabel,
   format = 'num2',
   drillFor,
+  minGroup = 5,
   ariaLabel,
 }: {
   data: readonly DumbbellRow[]
+  /** The anonymity minimum in force, for the hidden-row note. */
+  minGroup?: number
   /** The records behind a row; clicking it opens them. */
   drillFor?: (d: DumbbellRow) => DrillSource
   /** Name of the first value (drawn in series 2, the "before"). */
@@ -138,7 +141,7 @@ export function Dumbbell({
       ...(r.a == null ? [] : [{ value: fmt(r.n), label: r.n === 1 ? 'person' : 'people' }]),
     ],
     // Without a note the chart says "Click to see the records" on rows that open them.
-    note: r.a == null ? 'Hidden to protect anonymity (n < 5)' : undefined,
+    note: r.a == null ? `Hidden to protect anonymity (n < ${minGroup})` : undefined,
   })
 
   return (

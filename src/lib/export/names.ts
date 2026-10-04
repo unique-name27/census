@@ -6,6 +6,7 @@
 import type { ExportMeta } from '@/charts/types'
 import { type DataStandard, STANDARD_LABEL, TIER_LABEL, type Tier } from '@/data/quality/tier'
 import { formatDate, isValidDate } from '@/lib/dates'
+import { definitionsChanged } from './definitions'
 
 const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec']
 
@@ -91,7 +92,8 @@ export function viewLine(meta: Pick<ExportMeta, 'view' | 'tab'>): string {
 
 /**
  * Footer under exported chart images: "Whole company · As of 30 Sep 2026 · Production standard ·
- * Tier: Gold · Census · Sample data" (the standard and the tier when known), as sheets and slides
+ * Tier: Gold · Census · Sample data" (the standard and the tier when known, and "Definitions
+ * changed from defaults: 3" when someone changed the metric dictionary), as sheets and slides
  * state them.
  */
 export function imageFooter(
@@ -103,11 +105,18 @@ export function imageFooter(
     asOfPart(meta.asOf),
     meta.standard ? `${STANDARD_LABEL[meta.standard]} standard` : '',
     tier ? `Tier: ${TIER_LABEL[tier]}` : '',
+    changedDefinitions(meta),
     'Census',
     meta.isSample ? 'Sample data' : '',
   ]
     .filter(Boolean)
     .join(' · ')
+}
+
+/** "Definitions changed from defaults: 3" on an image footer, or '' (none changed, or no data context). */
+function changedDefinitions(meta: Pick<ExportMeta, 'scope' | 'asOf'>): string {
+  const n = meta.scope || meta.asOf ? definitionsChanged() : 0
+  return n ? `Definitions changed from defaults: ${n.toLocaleString('en-US')}` : ''
 }
 
 const STANDARD_RANGE: Record<DataStandard, string> = {

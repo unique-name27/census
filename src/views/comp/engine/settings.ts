@@ -1,7 +1,12 @@
 /**
  * Merit cycle settings: the budget, the healthy compa-ratio band and the merit guideline by
- * rating. Engines take them as a parameter; the UI persists them per browser. Pure.
+ * rating, in the engine's shape. They are settings of three Compensation metrics in the metric
+ * dictionary (`COMP_CYCLE` in '@/metrics/compCycle'); the engine reads them from `ctx.metrics`
+ * (`engine/rules.ts`), and the defaults and limits here come from the same registry. Pure.
  */
+import { defaultMetrics } from '@/metrics/api'
+import { COMP_CYCLE, cycleSettingsOf } from '@/metrics/compCycle'
+import type { ParamDef } from '@/metrics/types'
 
 export const RATINGS = [5, 4, 3, 2, 1] as const
 export type RatingKey = (typeof RATINGS)[number]
@@ -16,18 +21,19 @@ export interface CycleSettings {
   guideline: Record<RatingKey, number>
 }
 
-export const DEFAULT_SETTINGS: CycleSettings = {
-  meritBudget: 0.035,
-  bandLow: 0.9,
-  bandHigh: 1.1,
-  guideline: { 5: 0.06, 4: 0.045, 3: 0.03, 2: 0.01, 1: 0 },
+/** The registered defaults (Metric definitions, with nothing changed). */
+export const DEFAULT_SETTINGS: CycleSettings = cycleSettingsOf(defaultMetrics())
+
+const bounds = (where: { metricId: string; key: string }): { min: number; max: number } => {
+  const def: ParamDef | undefined = defaultMetrics().paramDef(where.metricId, where.key)
+  return { min: def?.min ?? 0, max: def?.max ?? Number.POSITIVE_INFINITY }
 }
 
-/** Accepted ranges, also used by the settings form for input limits. */
+/** Accepted ranges: the bounds of the three settings in the metric dictionary. */
 export const LIMITS = {
-  meritBudget: { min: 0, max: 0.2 },
-  band: { min: 0.5, max: 1.5 },
-  guideline: { min: 0, max: 0.3 },
+  meritBudget: bounds(COMP_CYCLE.meritBudget),
+  band: bounds(COMP_CYCLE.healthyBand),
+  guideline: bounds(COMP_CYCLE.guideline),
 } as const
 
 const finiteIn = (v: unknown, min: number, max: number): v is number =>

@@ -7,6 +7,7 @@
  */
 import type { ExportMeta } from '@/charts/types'
 import { plainText, visibleColumns } from './columns'
+import { definitionsLineFor } from './definitions'
 import { downloadBlob, MIME } from './download'
 import { dataLine, fileStem, metaLine, stampLine } from './names'
 import type { ExportOptions, ExportTable } from './types'
@@ -61,6 +62,7 @@ export function csvPreamble(table: ExportTable, meta: ExportMeta): string[] {
     table.subtitle ?? '',
     metaLine(meta),
     dataLine(meta.standard, table.tier, table.withheld) ?? '',
+    definitionsLineFor(meta) ?? '',
     stampLine(meta),
   ].filter(Boolean)
 }

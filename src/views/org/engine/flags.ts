@@ -1,15 +1,16 @@
 /**
  * Card flags carried over from the old org chart tool's hotspot rules, aligned with the HR business
- * partners view's org design definitions:
+ * partners view's org design definitions. Every threshold is a setting in the metric dictionary
+ * (`OrgRules`, read through `ctx.metrics`); the defaults are in brackets:
  *
- *  - wide span: 12 or more direct reports;
- *  - narrow span: exactly 1 direct report;
- *  - single-report chain: exactly 1 direct report who leads 5 or more people (an extra layer above
- *    a whole team);
- *  - new manager with a large team: managing for under 12 months, with 8 or more direct reports.
- *    "Managing since" is the move from an individual contributor level to a manager level in Job
- *    changes, otherwise the hire date;
- *  - new hire: joined in the last 90 days;
+ *  - wide span: the wide-span number of direct reports or more (12);
+ *  - narrow span: at least one direct report and no more than the narrow-span number (1);
+ *  - single-report chain: exactly 1 direct report who leads the team-below number of people or more
+ *    (5): an extra layer above a whole team;
+ *  - new manager with a large team: managing for under the new-manager window (12 months), with the
+ *    large-team number of direct reports or more (8). "Managing since" is the move from an individual
+ *    contributor level to a manager level in Job changes, otherwise the hire date;
+ *  - new hire: joined within the new-hire window (90 days);
  *  - placement: the data's manager is not active on the as-of date, or the data had a reporting loop.
  *
  * Spans count active reports of every worker type.
@@ -18,6 +19,7 @@ import type { Severity } from '@/components/types'
 import type { Employee, ISODate, JobChange } from '@/data/schema'
 import { addDays, addMonths, daysBetween, formatDate } from '@/lib/dates'
 import { plural } from '@/lib/format'
+import { defaultOrgRules, narrowSpanLabel, type OrgRules, wideSpanLabel } from './rules'
 import type { OrgTree } from './tree'
 
 export type FlagKind =
@@ -30,6 +32,8 @@ export type FlagKind =
 
 export interface Flag {
   kind: FlagKind
+  /** The kind's name with the setting in force, for tables and drills: "Wide span (12+)". */
+  name: string
   severity: Severity
   /** Short label for a pill: "14 direct reports". */
   label: string
@@ -37,20 +41,33 @@ export interface Flag {
   detail: string
 }
 
-export const FLAG_LABELS: Record<FlagKind, string> = {
-  'wide-span': 'Wide span (12+)',
-  'narrow-span': 'Span of 1',
-  'single-report-chain': 'Single-report chain',
-  'new-manager-large-team': 'New manager, large team',
-  'new-hire': 'New hire (90 days)',
-  placement: 'Reporting line note',
-}
+/** Flag kinds in display order. */
+export const FLAG_KINDS: readonly FlagKind[] = [
+  'wide-span',
+  'narrow-span',
+  'single-report-chain',
+  'new-manager-large-team',
+  'new-hire',
+  'placement',
+]
 
-export const WIDE_SPAN = 12
-export const CHAIN_MIN_BELOW = 5
-export const NEW_MANAGER_MONTHS = 12
-export const LARGE_TEAM = 8
-export const NEW_HIRE_DAYS = 90
+/** A kind's name with the settings in force: "Wide span (12+)", "Span of 1", "New hire (90 days)". */
+export function flagName(kind: FlagKind, rules: OrgRules = defaultOrgRules()): string {
+  switch (kind) {
+    case 'wide-span':
+      return wideSpanLabel(rules)
+    case 'narrow-span':
+      return narrowSpanLabel(rules)
+    case 'single-report-chain':
+      return 'Single-report chain'
+    case 'new-manager-large-team':
+      return 'New manager, large team'
+    case 'new-hire':
+      return `New hire (${rules.newHireDays} days)`
+    case 'placement':
+      return 'Reporting line note'
+  }
+}
 
 const isIcLevel = (l: string | null | undefined) => !!l && l.startsWith('L')
 const isMgrLevel = (l: string | null | undefined) => !!l && (l.startsWith('M') || l.startsWith('E'))
@@ -80,39 +97,49 @@ const PLACEMENT_TEXT = {
   'self-manager': 'They are listed as their own manager, so they are shown at the top level.',
 } as const
 
-export function computeFlags(tree: OrgTree, jobChanges: readonly JobChange[] = []): Map<string, Flag[]> {
+export function computeFlags(
+  tree: OrgTree,
+  jobChanges: readonly JobChange[] = [],
+  rules: OrgRules = defaultOrgRules(),
+): Map<string, Flag[]> {
   const out = new Map<string, Flag[]>()
-  const add = (id: string, f: Flag) => {
+  const add = (id: string, f: Omit<Flag, 'name'>) => {
+    const flag = { ...f, name: flagName(f.kind, rules) }
     const arr = out.get(id)
-    if (arr) arr.push(f)
-    else out.set(id, [f])
+    if (arr) arr.push(flag)
+    else out.set(id, [flag])
   }
   const asOf = tree.asOf
   const became = becameManagerDates(jobChanges)
-  const newMgrCutoff = addMonths(asOf, -NEW_MANAGER_MONTHS)
-  const newHireCutoff = addDays(asOf, -NEW_HIRE_DAYS)
+  const newMgrCutoff = addMonths(asOf, -rules.newManagerMonths)
+  const newHireCutoff = addDays(asOf, -rules.newHireDays)
   const nameOf = (id: string) => tree.people.get(id)?.name ?? id
 
   for (const [id, e] of tree.people) {
     const n = tree.directs.get(id) ?? 0
-    if (n >= WIDE_SPAN) {
+    if (n >= rules.wideSpan) {
       add(id, {
         kind: 'wide-span',
         severity: 'warning',
         label: `${n} direct reports`,
-        detail: `${e.name} has ${n} direct reports, at or above the ${WIDE_SPAN} where time per person gets thin.`,
+        detail: `${e.name} has ${n} direct reports, at or above the ${rules.wideSpan} where time per person gets thin.`,
+      })
+    }
+    if (n >= 1 && n <= rules.narrowSpan) {
+      add(id, {
+        kind: 'narrow-span',
+        severity: 'info',
+        label: n === 1 ? '1 direct report' : `${n} direct reports`,
+        detail:
+          n === 1
+            ? `${e.name} has one direct report, ${nameOf(tree.children.get(id)![0])}.`
+            : `${e.name} has ${n} direct reports, at or below the ${rules.narrowSpan} that counts as a narrow span.`,
       })
     }
     if (n === 1) {
       const only = tree.children.get(id)![0]
       const below = tree.total.get(only) ?? 0
-      add(id, {
-        kind: 'narrow-span',
-        severity: 'info',
-        label: '1 direct report',
-        detail: `${e.name} has one direct report, ${nameOf(only)}.`,
-      })
-      if (below >= CHAIN_MIN_BELOW) {
+      if (below >= rules.chainMinBelow) {
         add(id, {
           kind: 'single-report-chain',
           severity: 'warning',
@@ -121,7 +148,7 @@ export function computeFlags(tree: OrgTree, jobChanges: readonly JobChange[] = [
         })
       }
     }
-    if (n >= LARGE_TEAM) {
+    if (n >= rules.largeTeam) {
       const since = managingSince(e, became)
       if (since > newMgrCutoff) {
         add(id, {
@@ -174,10 +201,16 @@ export function flagSummary(
   ids?: Iterable<string>,
 ): FlagSummaryRow[] {
   const counts = new Map<FlagKind, number>()
+  const names = new Map<FlagKind, string>()
   const pick = ids ? [...ids] : [...flags.keys()]
   for (const id of pick)
-    for (const f of flags.get(id) ?? []) counts.set(f.kind, (counts.get(f.kind) ?? 0) + 1)
-  return (Object.keys(FLAG_LABELS) as FlagKind[])
-    .filter((k) => counts.has(k))
-    .map((k) => ({ kind: k, label: FLAG_LABELS[k], people: counts.get(k)! }))
+    for (const f of flags.get(id) ?? []) {
+      counts.set(f.kind, (counts.get(f.kind) ?? 0) + 1)
+      if (!names.has(f.kind)) names.set(f.kind, f.name)
+    }
+  return FLAG_KINDS.filter((k) => counts.has(k)).map((k) => ({
+    kind: k,
+    label: names.get(k)!,
+    people: counts.get(k)!,
+  }))
 }

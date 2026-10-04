@@ -1,7 +1,7 @@
 /**
  * Sources & offers: which channels bring people who get hired, how volume moved, where offers are
  * accepted or declined and why, and why candidates leave the process. Every number opens the
- * applications behind it; hidden rates (under 5) don't.
+ * applications behind it; hidden rates (under the anonymity minimum) don't.
  */
 import { useState } from 'react'
 import { BarList, type Column, Figure, HBars, Lines } from '@/charts'
@@ -19,9 +19,11 @@ import {
   sourceMonthDrill,
 } from '../engine/drills'
 import { FIGURE_USES } from '../engine/lineage'
+import { FIGURE_METRICS } from '../engine/metricLinks'
 import type { ExitReasonRow, GroupAcceptance, ReasonRow, SourceMonthRow, SourceRow } from '../engine/sources'
+import { RM } from '../metrics'
 import { useRecruitingUi } from '../state'
-import { asOfNote, drillIf, NEED_CANDIDATES, NoRecruitingData, windowText } from './common'
+import { asOfNote, defOf, drillIf, NEED_CANDIDATES, NoRecruitingData, windowText } from './common'
 import { useRecruiting } from './hooks'
 
 type ExitKind = 'Rejected' | 'Withdrawn'
@@ -37,6 +39,7 @@ export function SourcesTab() {
   const chosenBasis = useRecruitingUi((s) => s.acceptanceBasis)
   const setBasis = useRecruitingUi((s) => s.setAcceptanceBasis)
   if (!b.apps.length && !b.reqs.length) return <NoRecruitingData />
+  const { minGroup, locationGapPts } = b.settings
 
   const noCands = b.apps.length === 0
   const cohortHired = b.cohort.filter((a) => a.furthest === 5).length
@@ -64,7 +67,8 @@ export function SourcesTab() {
   const offersN = byLocation.reduce((n, r) => n + r.offers, 0)
   const periodWords = b.windowWords[0].toUpperCase() + b.windowWords.slice(1)
 
-  // Drills. A hidden rate or median (under 5) has no records behind it, so it never drills.
+  // Drills. A hidden rate or median (under the anonymity minimum) has no records behind it, so it
+  // never drills.
   const src = (measure: SourceMeasure, n: (r: SourceRow) => number | boolean | null) => (r: SourceRow) =>
     drillIf(n(r), () => sourceDrill(b, r, measure))
   const basisWindow = basis === 'quarter' ? { start: q.start, end: q.end } : b.window
@@ -89,6 +93,7 @@ export function SourcesTab() {
         <Figure
           id="recruiting-source-effectiveness"
           uses={FIGURE_USES['recruiting-source-effectiveness']}
+          metric={FIGURE_METRICS['recruiting-source-effectiveness']}
           title="Source effectiveness"
           subtitle={`Share of applications hired, by source, applications received ${windowText(b.window)}. The table view has volume, offer acceptance, time to hire and change.`}
           data={m.sources}
@@ -147,19 +152,18 @@ export function SourcesTab() {
               term: 'Hired',
               text: 'Applications received in the period that ended in an accepted offer, whenever it was accepted. Offers accepted on the Overview counts by the accept date instead, so the two can differ.',
             },
-            {
+            defOf(b, RM.sourceHireRate, {
               term: 'Hire rate',
-              text: 'Applications from the source that ended in a hire. Candidates still in process count as not hired yet, so short or recent periods read low. Blank under 5 applications.',
-              formula: 'hired ÷ applications',
-            },
+              extra: `Blank under ${minGroup} applications.`,
+            }),
             {
               term: 'Offer acceptance',
-              text: 'Offers accepted ÷ offers accepted or declined, for these applications. Blank below 5 offers.',
+              text: `Offers accepted ÷ offers accepted or declined, for these applications. Blank below ${minGroup} offers.`,
               formula: 'hired ÷ (hired + declined)',
             },
             {
               term: 'Median time to hire',
-              text: 'Days from application to offer accepted, for the applications hired.',
+              text: `Days from application to offer accepted, for the applications hired. Blank under ${minGroup} hires.`,
             },
             {
               term: 'Change in applications',
@@ -183,7 +187,7 @@ export function SourcesTab() {
                 ? { value: overallRate, label: `Overall ${fmt(overallRate, 'pct')}` }
                 : undefined
             }
-            nullNote="Fewer than 5 applications"
+            nullNote={`Fewer than ${minGroup} applications`}
             onSelect={(d) => drill(src('hireRate', (r) => r.hireRate != null && r.hires)(d))}
             ariaLabel="Source effectiveness: hire rate by source"
           />
@@ -191,6 +195,7 @@ export function SourcesTab() {
         <Figure
           id="recruiting-applications-source-month"
           uses={FIGURE_USES['recruiting-applications-source-month']}
+          metric={FIGURE_METRICS['recruiting-applications-source-month']}
           title="Applications by source by month"
           subtitle={`Applications received per month, 24 months to ${formatDate(b.window.end)}${changed?.change != null ? `. ${changed.source}: ${signedPct(changed.change)} ${b.compareLabel}, the biggest move against the overall trend` : ''}`}
           data={m.sourcesByMonth}
@@ -208,13 +213,7 @@ export function SourcesTab() {
           }
           span={6}
           empty={noCands ? NEED_CANDIDATES : null}
-          definitions={[
-            { term: 'Applications', text: 'Applications by the month they were received.' },
-            {
-              term: 'Highlighted source',
-              text: 'The source (with at least 30 applications in the prior period) whose change in volume differs most from the change in all applications.',
-            },
-          ]}
+          definitions={[defOf(b, RM.sourceApplications)]}
           note={asOfNote(b.asOf)}
         >
           <Lines
@@ -238,6 +237,7 @@ export function SourcesTab() {
         <Figure
           id="recruiting-offer-acceptance-location"
           uses={FIGURE_USES['recruiting-offer-acceptance-location']}
+          metric={FIGURE_METRICS['recruiting-offer-acceptance-location']}
           title="Offer acceptance by location"
           subtitle={`Offers accepted ÷ offers resolved ${basis === 'quarter' ? `in ${quarterWords}` : windowText(b.window)}, by work site, largest first`}
           data={byLocation}
@@ -274,15 +274,10 @@ export function SourcesTab() {
                   : 'No offers resolved in this period.'
           }
           definitions={[
-            {
+            defOf(b, RM.acceptanceByLocation, {
               term: 'Offer acceptance',
-              text: 'Offers accepted ÷ offers accepted or declined, by the req’s location and the date each offer was resolved. Sites under 5 resolved offers fold into Other; a row still under 5 shows only its offer count.',
-              formula: 'hired ÷ (hired + declined)',
-            },
-            {
-              term: 'Amber',
-              text: 'At least 10 pts below the company for the same period.',
-            },
+              extra: `Sites under ${minGroup} resolved offers fold into Other; a row still under ${minGroup} shows only its offer count.`,
+            }),
           ]}
           note={`${plural(offersN, 'offer')} resolved · company ${fmt(companyAcc, 'pct')} · ${asOfNote(b.asOf)}`}
         >
@@ -304,9 +299,11 @@ export function SourcesTab() {
                 : undefined
             }
             tone={(d) =>
-              d.rate != null && companyAcc != null && d.rate <= companyAcc - 0.1 ? 'warning' : 'default'
+              d.rate != null && companyAcc != null && d.rate <= companyAcc - locationGapPts
+                ? 'warning'
+                : 'default'
             }
-            nullNote="Fewer than 5 resolved offers"
+            nullNote={`Fewer than ${minGroup} resolved offers`}
             onSelect={(d) => drill(locDrill()(d))}
             ariaLabel="Offer acceptance by location"
           />
@@ -314,6 +311,7 @@ export function SourcesTab() {
         <Figure
           id="recruiting-decline-reasons"
           uses={FIGURE_USES['recruiting-decline-reasons']}
+          metric={FIGURE_METRICS['recruiting-decline-reasons']}
           title="Why offers were declined"
           subtitle={`Declined offers ${windowText(b.window)}, by reason`}
           data={m.declineReasons}
@@ -328,9 +326,7 @@ export function SourcesTab() {
           empty={
             noCands ? NEED_CANDIDATES : m.declineReasons.length ? null : 'No declined offers in this period.'
           }
-          definitions={[
-            { term: 'Reason', text: 'The rejection reason recorded on applications with status Declined.' },
-          ]}
+          definitions={[defOf(b, RM.declineReasons, { term: 'Reason' })]}
           note={`${plural(declinedTotal, 'declined offer')} · ${asOfNote(b.asOf)}`}
         >
           <BarList
@@ -352,6 +348,7 @@ export function SourcesTab() {
         <Figure
           id="recruiting-exit-reasons"
           uses={FIGURE_USES['recruiting-exit-reasons']}
+          metric={FIGURE_METRICS['recruiting-exit-reasons']}
           title={exitKind === 'Rejected' ? 'Why candidates were rejected' : 'Why candidates withdrew'}
           subtitle={`${exitKind} ${windowText(b.window)}, by reason and the stage they left from`}
           data={m.exitReasons}
@@ -383,6 +380,7 @@ export function SourcesTab() {
                 : `No ${exitKind.toLowerCase()} candidates in this period.`
           }
           definitions={[
+            defOf(b, RM.exitReasons),
             { term: 'Rejected', text: 'The company ended the process.' },
             { term: 'Withdrawn', text: 'The candidate left the process.' },
             { term: 'Stage', text: 'The furthest stage the candidate reached before leaving.' },
