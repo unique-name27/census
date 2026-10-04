@@ -6,8 +6,7 @@ import { MIN_GROUP } from '@/data/schema'
 import { formatDate } from '@/lib/dates'
 import { fmt } from '@/lib/format'
 import type { HrbpModel } from '../engine'
-import { isMaterialGap } from '../engine/base'
-import { priorLabel } from '../engine/kpis'
+import { count, isMaterialGap } from '../engine/base'
 import { SINCE_BANDS } from '../engine/movement'
 import { DEF } from './defs'
 
@@ -36,7 +35,7 @@ export function Movement({ m }: { m: HrbpModel }) {
       value: mv.promotions.promotions,
       format: 'int',
       delta: mv.promotions.promotions - mv.priorPromotions.promotions,
-      deltaLabel: priorLabel(ctx.filters.period, ctx.window.months),
+      deltaLabel: mv.priorLabel,
       goodDirection: null,
       note: window,
       definition: 'Promotion events in the period. A person promoted twice counts twice.',
@@ -47,9 +46,10 @@ export function Movement({ m }: { m: HrbpModel }) {
       value: mv.promotions.rate,
       format: 'pct',
       delta,
-      deltaLabel: ctx.isCompany ? priorLabel(ctx.filters.period, ctx.window.months) : 'vs company',
+      deltaLabel: ctx.isCompany ? mv.priorLabel : 'vs company',
       goodDirection: null,
       deltaMaterial: isMaterialGap(delta, ref),
+      note: `Over an average headcount of ${Math.round(mv.promotions.avgHeadcount).toLocaleString('en-US')}`,
       suppressed: mv.promotions.avgHeadcount > 0 && mv.promotions.avgHeadcount < MIN_GROUP,
       definition: DEF.promotionRate.text,
     },
@@ -58,7 +58,7 @@ export function Movement({ m }: { m: HrbpModel }) {
       label: 'Transfers and lateral moves',
       value: mv.transfers + mv.lateral,
       format: 'int',
-      note: `${mv.transfers} transfers, ${mv.lateral} lateral moves`,
+      note: `${count(mv.transfers, 'transfer', 'transfers')}, ${count(mv.lateral, 'lateral move', 'lateral moves')}`,
       definition: 'Transfer and Lateral move events in the period.',
     },
     {
@@ -66,7 +66,7 @@ export function Movement({ m }: { m: HrbpModel }) {
       label: 'Internal mobility',
       value: mv.mobility.rate,
       format: 'pct',
-      note: `${mv.mobility.movers} people moved at least once`,
+      note: `${count(mv.mobility.movers, 'person', 'people')} moved at least once`,
       suppressed: mv.mobility.rate == null && mv.promotions.avgHeadcount > 0,
       definition: DEF.mobility.text,
     },
@@ -107,7 +107,7 @@ export function Movement({ m }: { m: HrbpModel }) {
             { key: 'end', label: 'To', format: 'date' },
             { key: 'promotions', label: 'Promotions', format: 'int' },
             { key: 'avgHeadcount', label: 'Average headcount', format: 'num1' },
-            { key: 'rate', label: 'Annualized rate', format: 'pct' },
+            { key: 'rate', label: 'Promotion rate', format: 'pct' },
           ]}
           definitions={[DEF.promotionRate, DEF.avgHeadcount]}
           note={`${qPromos} promotions in 8 quarters · as of ${asOf}`}
@@ -119,7 +119,7 @@ export function Movement({ m }: { m: HrbpModel }) {
         <Figure
           id="hrbp-promotion-level"
           title="Promotion rate by level"
-          subtitle={`Promotions from each level ÷ average headcount at that level, annualized, ${window}`}
+          subtitle={`Promotions from each level ÷ average headcount at that level, ${window}`}
           data={mv.byLevel}
           columns={[
             { key: 'level', label: 'Level promoted from', format: 'text' },
@@ -147,7 +147,7 @@ export function Movement({ m }: { m: HrbpModel }) {
             value="rate"
             format="pct"
             sort="none"
-            secondary={(d) => `${d.promotions}`}
+            secondary={(d) => count(d.promotions, 'promotion', 'promotions')}
             ref={
               companyRate != null
                 ? { value: companyRate, label: `Company ${fmt(companyRate, 'pct')}` }

@@ -7,7 +7,7 @@ import { type ISODate, LEVELS, MIN_GROUP, RATING_GUIDELINE, RATING_LABELS, type 
 import { addMonths } from '@/lib/dates'
 import { isEmployee } from '@/lib/people'
 import { mean } from '@/lib/stats'
-import { type Cycle, normRating, type TalentBase } from './base'
+import { type Cycle, foldSmallGroups, normRating, type TalentBase } from './base'
 
 export const RATINGS = [1, 2, 3, 4, 5] as const
 export const ratingLabel = (r: number): string => `${r} ${RATING_LABELS[r] ?? ''}`.trim()
@@ -39,8 +39,13 @@ export interface DistributionLong {
 export interface HighShareRow {
   group: string
   rated: number
-  high: number
+  /** Null on a folded "Other (k)" row still under 5 people. */
+  high: number | null
   share: number | null
+  /** Groups under 5 people folded together ("Other (k)"). */
+  other?: boolean
+  /** How many groups a folded row holds. */
+  groups?: number
 }
 
 export interface MixRow {
@@ -77,8 +82,9 @@ export interface CycleRow {
 export interface ExitByRatingRow {
   rating: string
   rated: number
-  voluntary: number
-  involuntary: number
+  /** Null when fewer than 5 people had the rating (the rate is hidden too). */
+  voluntary: number | null
+  involuntary: number | null
   voluntaryRate: number | null
   involuntaryRate: number | null
   rate: number | null
@@ -106,14 +112,17 @@ export interface PerformanceResult {
   rated: number
   /** Scoped active employees with a rating in the latest cycle. */
   ratedActive: number
+  /** People rated in the latest cycle who have left since (they still count in the distribution). */
+  ratedLeft: number
   activeCount: number
   coverage: number | null
   highShare: number | null
   distribution: DistributionRow[]
   distributionLong: DistributionLong[]
+  /** Groups under 5 rated fold into a last "Other (k)" row. */
   byDepartment: HighShareRow[]
   byBusinessUnit: HighShareRow[]
-  /** In level order. */
+  /** In level order, small levels folded into a last "Other (k)" row. */
   byLevel: HighShareRow[]
   mix: MixRow[]
   calibration: CalibrationRow[]
@@ -162,6 +171,26 @@ function highShares(
     .sort((a, b) => (b.share ?? -1) - (a.share ?? -1) || b.rated - a.rated)
 }
 
+/** Small groups folded into "Other (k)" so no count over fewer than 5 people is exported. */
+export function foldHighShares(rows: readonly HighShareRow[]): HighShareRow[] {
+  return foldSmallGroups(
+    rows,
+    (r) => r.rated,
+    (folded, label) => {
+      const rated = folded.reduce((s, r) => s + r.rated, 0)
+      const high = folded.reduce((s, r) => s + (r.high ?? 0), 0)
+      return {
+        group: label,
+        rated,
+        high: rated >= MIN_GROUP ? high : null,
+        share: share(high, rated),
+        other: true,
+        groups: folded.length,
+      }
+    },
+  )
+}
+
 function calibrationRow(businessUnit: string, rows: Review[]): CalibrationRow {
   const pairs = rows
     .map((r) => [normRating(r.preCalibrationRating), normRating(r.rating)] as const)
@@ -205,6 +234,10 @@ export function computePerformance(base: TalentBase): PerformanceResult {
   const high = ratings.filter((r) => r >= 4).length
   const ratedIds = new Set(rows.map((r) => r.employeeId))
   const ratedActive = base.active.filter((e) => ratedIds.has(e.employeeId)).length
+  const ratedLeft = rows.filter((r) => {
+    const t = base.byId.get(r.employeeId)?.terminationDate
+    return normRating(r.rating) != null && !!t && t <= asOf
+  }).length
 
   // Rating mix by business unit.
   const byUnit = new Map<string, Review[]>()
@@ -307,11 +340,12 @@ export function computePerformance(base: TalentBase): PerformanceResult {
     const hasType = base.has.terminationType
     RATINGS.forEach((r, i) => {
       const g = groups[i]
+      const shown = g.rated >= MIN_GROUP
       exitByRating.push({
         rating: ratingLabel(r),
         rated: g.rated,
-        voluntary: g.voluntary,
-        involuntary: g.involuntary,
+        voluntary: shown ? g.voluntary : null,
+        involuntary: shown ? g.involuntary : null,
         voluntaryRate: hasType ? share(g.voluntary, g.rated) : null,
         involuntaryRate: hasType ? share(g.involuntary, g.rated) : null,
         rate: hasType ? share(g.voluntary + g.involuntary, g.rated) : null,
@@ -324,10 +358,16 @@ export function computePerformance(base: TalentBase): PerformanceResult {
   ])
 
   // Rating inflation: a business unit's share rated 4-5 more than 8 pts above the guideline.
-  const byBusinessUnit = highShares(base, rows, 'businessUnit')
+  const unitShares = highShares(base, rows, 'businessUnit')
   const inflation: InflationFlag[] = []
-  for (const g of byBusinessUnit) {
-    if (g.share == null || g.rated < INFLATION_MIN_N || g.share - HIGH_GUIDELINE <= INFLATION_PTS) continue
+  for (const g of unitShares) {
+    if (
+      g.share == null ||
+      g.high == null ||
+      g.rated < INFLATION_MIN_N ||
+      g.share - HIGH_GUIDELINE <= INFLATION_PTS
+    )
+      continue
     const restRated = n - g.rated
     const restHigh = high - g.high
     inflation.push({
@@ -353,14 +393,17 @@ export function computePerformance(base: TalentBase): PerformanceResult {
     cycle,
     rated: n,
     ratedActive,
+    ratedLeft,
     activeCount: base.active.length,
     coverage: base.active.length ? ratedActive / base.active.length : null,
     highShare: share(high, n),
     distribution,
     distributionLong,
-    byDepartment: highShares(base, rows, 'department'),
-    byLevel: highShares(base, rows, 'level').sort((a, b) => levelRank(a.group) - levelRank(b.group)),
-    byBusinessUnit,
+    byDepartment: foldHighShares(highShares(base, rows, 'department')),
+    byLevel: foldHighShares(
+      highShares(base, rows, 'level').sort((a, b) => levelRank(a.group) - levelRank(b.group)),
+    ),
+    byBusinessUnit: foldHighShares(unitShares),
     mix,
     calibration,
     calibrationCompany,

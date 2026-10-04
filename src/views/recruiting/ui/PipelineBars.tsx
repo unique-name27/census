@@ -1,16 +1,23 @@
 /**
  * "Pipeline today": one bar per stage of the active candidates, split by next-step state. The
- * states that need someone to act sit at the left in the series blue (darker = more urgent);
- * scheduled candidates, already in motion, close the bar in gray. A warning mark at the end of
- * each bar counts the candidates who lack a timely next step. Segments open the action queue.
+ * three states that need someone to act sit at the left in categorical slots 1-3; scheduled
+ * candidates, already in motion, close the bar in gray. A warning diamond at the end of each bar
+ * counts the candidates who lack a next step (past the usual time). Segments with such candidates
+ * open them in the action queue; scheduled segments are never in the queue, so they don't click.
  */
-import { color as d3color } from 'd3'
 import { type FocusEvent, type KeyboardEvent, type PointerEvent, useRef, useState } from 'react'
-import { glyphPath, Legend, type LegendSpec, textWidth, useChartTheme } from '@/charts'
-import { LEGEND_ATTR } from '@/charts/core/legend'
-import { useFontsVersion } from '@/charts/core/measure'
-import { TIP_CLASS, type TipContent } from '@/charts/core/tooltip'
-import { fmt } from '@/lib/format'
+import {
+  glyphPath,
+  LEGEND_ATTR,
+  Legend,
+  type LegendSpec,
+  TIP_CLASS,
+  type TipContent,
+  textWidth,
+  useChartTheme,
+  useFontsVersion,
+} from '@/charts'
+import { fmt, plural } from '@/lib/format'
 import { STATE_NAME } from '../engine/nextStep'
 import type { PipelineCell, PipelineStage } from '../engine/pipeline'
 import { NEXT_STATES, type NextState } from '../engine/types'
@@ -20,12 +27,18 @@ const ROW = 52
 const BAR = 22
 const GAP = 2
 
+/** The legend words for the diamond; the state names never use "lack". */
+export const LACKS_LABEL = 'Lacks a next step (past the usual time)'
+
+/** Only segments with candidates in the action queue open it (scheduled ones never are). */
+const opens = (c: PipelineCell) => c.state !== 'scheduled' && c.lacking > 0
+
 function cellTip(c: PipelineCell, total: number): TipContent {
   return {
     title: `${c.stage} · ${c.label}`,
     rows: [
       { value: fmt(c.candidates, 'int'), label: `of ${fmt(total, 'int')} active at this stage` },
-      { value: fmt(c.lacking, 'int'), label: 'lack a timely next step' },
+      { value: fmt(c.lacking, 'int'), label: 'lack a next step (past the usual time)' },
       {
         value: c.medianDaysWaiting != null ? fmt(Math.round(c.medianDaysWaiting), 'days') : '—',
         label: c.state === 'scheduled' ? 'median days in stage' : 'median days waiting',
@@ -34,7 +47,9 @@ function cellTip(c: PipelineCell, total: number): TipContent {
     note:
       c.state === 'scheduled'
         ? 'In motion: not in the action queue.'
-        : 'Click to open these in the action queue.',
+        : opens(c)
+          ? `Click to open the ${plural(c.lacking, 'candidate')} who ${c.lacking === 1 ? 'lacks' : 'lack'} a next step in the action queue.`
+          : 'None past the usual time: nothing to open in the action queue.',
   }
 }
 
@@ -54,17 +69,17 @@ export function PipelineBars({
   const tip = useTip()
   const [hover, setHover] = useState<string | null>(null)
 
-  const blue = t.series[0]
-  const shade = (o: number) => d3color(blue)?.copy({ opacity: o }).formatRgb() ?? blue
+  // Categorical identities (slots 1-3), not opacity steps of one blue: those blur in dark mode.
   const fill: Record<NextState, string> = {
-    'needs-step': blue,
-    'awaiting-feedback': shade(0.62),
-    'offer-out': shade(0.34),
+    'needs-step': t.series[0],
+    'awaiting-feedback': t.series[1],
+    'offer-out': t.series[2],
     scheduled: t.deemph,
   }
   const totals = new Map<NextState, number>()
   for (const s of stages)
     for (const c of s.cells) totals.set(c.state, (totals.get(c.state) ?? 0) + c.candidates)
+  const lackingTotal = stages.reduce((n, s) => n + s.lacking, 0)
   const legend: LegendSpec = {
     kind: 'swatch',
     items: NEXT_STATES.filter((s) => totals.get(s)).map((s) => ({
@@ -72,6 +87,22 @@ export function PipelineBars({
       color: fill[s],
       shape: 'rect' as const,
     })),
+  }
+  // Exported images get the diamond as a status dot (the shared legend has no diamond swatch).
+  const exportLegend: LegendSpec = {
+    kind: 'swatch',
+    items: [
+      ...legend.items,
+      ...(lackingTotal
+        ? [
+            {
+              label: `${LACKS_LABEL} ${fmt(lackingTotal, 'int')}`,
+              color: t.status.warning,
+              shape: 'dot' as const,
+            },
+          ]
+        : []),
+    ],
   }
 
   const W = Math.max(280, width)
@@ -103,6 +134,7 @@ export function PipelineBars({
   const scale = barMax / maxActive
 
   const onKey = (e: KeyboardEvent, c: PipelineCell) => {
+    if (!opens(c)) return
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault()
       onOpen(c.stageIndex, c.state)
@@ -111,14 +143,24 @@ export function PipelineBars({
 
   return (
     <div>
-      <Legend spec={legend} className="mb-3" />
+      <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1">
+        <Legend spec={legend} />
+        {lackingTotal > 0 && (
+          <span className="inline-flex items-center gap-1.5 text-[12px] text-ink-2">
+            <svg aria-hidden="true" width={10} height={10} viewBox="0 0 10 10" className="shrink-0">
+              <path d={glyphPath('diamond', 5, 5, 10)} fill={t.status.warning} />
+            </svg>
+            {LACKS_LABEL} {fmt(lackingTotal, 'int')}
+          </span>
+        )}
+      </div>
       <div ref={wrapRef} className="min-w-0">
         <div ref={tip.boxRef} className="relative">
           {width > 0 && (
             // biome-ignore lint/a11y/useSemanticElements: an SVG group of interactive marks, not a form fieldset
             <svg
               data-chart=""
-              {...{ [LEGEND_ATTR]: JSON.stringify(legend) }}
+              {...{ [LEGEND_ATTR]: JSON.stringify(exportLegend) }}
               width={W}
               height={height}
               viewBox={`0 0 ${W} ${height}`}
@@ -156,6 +198,26 @@ export function PipelineBars({
                       const d = last
                         ? `M${sx},${y}H${sx + inner - r}Q${sx + inner},${y} ${sx + inner},${y + r}V${y + BAR - r}Q${sx + inner},${y + BAR} ${sx + inner - r},${y + BAR}H${sx}Z`
                         : `M${sx},${y}H${sx + inner}V${y + BAR}H${sx}Z`
+                      if (!opens(c)) {
+                        return (
+                          <path
+                            key={id}
+                            d={d}
+                            fill={fill[c.state]}
+                            opacity={hover && hover !== id ? 0.5 : 1}
+                            aria-label={`${c.stage}, ${c.label}: ${c.candidates} candidates`}
+                            onPointerEnter={(e: PointerEvent) => {
+                              setHover(id)
+                              tip.show(cellTip(c, s.active), e)
+                            }}
+                            onPointerMove={(e: PointerEvent) => tip.show(cellTip(c, s.active), e)}
+                            onPointerLeave={() => {
+                              setHover(null)
+                              tip.hide()
+                            }}
+                          />
+                        )
+                      }
                       return (
                         // biome-ignore lint/a11y/useSemanticElements: SVG marks can't be HTML buttons; the path takes the button role and keys
                         <path
@@ -165,7 +227,7 @@ export function PipelineBars({
                           opacity={hover && hover !== id ? 0.5 : 1}
                           role="button"
                           tabIndex={0}
-                          aria-label={`${c.stage}, ${c.label}: ${c.candidates} candidates, ${c.lacking} lack a next step`}
+                          aria-label={`${c.stage}, ${c.label}: ${c.candidates} candidates, ${c.lacking} lack a next step. Open them in the action queue.`}
                           style={{ cursor: 'pointer', outline: 'none' }}
                           onPointerEnter={(e: PointerEvent) => {
                             setHover(id)

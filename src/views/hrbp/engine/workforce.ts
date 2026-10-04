@@ -2,8 +2,8 @@
  * Workforce shape at asOf and how headcount moved: breakdowns, tenure, worker mix, growth,
  * the 24-month headcount line, hires and exits by month, and the headcount bridge.
  */
-import { EMPLOYMENT_TYPES, type Employee, LEVELS } from '@/data/schema'
-import { addDays, formatDate, monthKey, monthsBetween } from '@/lib/dates'
+import { EMPLOYMENT_TYPES, type Employee, type ISODate, LEVELS } from '@/data/schema'
+import { addDays, addMonths, formatDate, monthEnd, monthKey, monthsBetween } from '@/lib/dates'
 import {
   activeAt,
   exitsIn,
@@ -24,10 +24,18 @@ export interface CountRow {
 }
 
 export interface MixRow {
-  businessUnit: string
+  /** Location or business unit. */
+  group: string
   workerType: string
   people: number
+  /** Share of the group's active workers. */
   share: number
+}
+
+/** Active workers of every type by location and by business unit (contractors cluster by site). */
+export interface WorkerMix {
+  location: MixRow[]
+  businessUnit: MixRow[]
 }
 
 export interface GrowthRow {
@@ -41,6 +49,15 @@ export interface GrowthRow {
 
 export interface HeadcountPoint {
   date: string
+  headcount: number
+  period: string
+}
+
+/** A point of the year-over-year chart: the year before is drawn on the same months, a year on. */
+export interface OverlayPoint {
+  /** Where the point sits on the month axis (the year-earlier line is moved forward 12 months). */
+  x: ISODate
+  date: ISODate
   headcount: number
   period: string
 }
@@ -72,10 +89,11 @@ export interface WorkforceModel {
   byLevel: CountRow[]
   tenure: CountRow[]
   avgTenure: number | null
-  mix: MixRow[]
+  mix: WorkerMix
   growth: GrowthRow[]
   engineering: EngineeringShare
   series: HeadcountPoint[]
+  overlay: OverlayPoint[]
   flows: FlowRow[]
   bridge: BridgeRow[]
 }
@@ -89,7 +107,8 @@ export const WORKER_LABEL: Record<string, string> = {
 export const WORKER_ORDER = ['Employees', 'Contractors', 'Interns', 'Type not recorded']
 
 export const LAST_YEAR = 'Last 12 months'
-export const YEAR_BEFORE = '12 months before'
+export const YEAR_BEFORE = 'A year earlier'
+export const CONTINGENT = ['Contractors', 'Interns'] as const
 export const NO_LEVEL = 'Not recorded'
 
 /** Engineering disciplines for a fabless chip company, matched on department (or business unit) names. */
@@ -98,6 +117,51 @@ const ENGINEERING =
 
 export const isEngineering = (e: Employee): boolean =>
   ENGINEERING.test(e.department ?? '') || ENGINEERING.test(e.businessUnit ?? '')
+
+/** Worker types per group, all types for every group, groups with the most contractors and interns first. */
+function mixBy(workers: readonly Employee[], key: (e: Employee) => string): MixRow[] {
+  const totals = new Map<string, number>()
+  const contingent = new Map<string, number>()
+  const cells = new Map<string, number>()
+  for (const w of workers) {
+    const g = key(w) || 'Not recorded'
+    const type = w.employmentType ?? 'Not recorded'
+    totals.set(g, (totals.get(g) ?? 0) + 1)
+    if (type !== 'Employee') contingent.set(g, (contingent.get(g) ?? 0) + 1)
+    const k = `${g}\u0000${type}`
+    cells.set(k, (cells.get(k) ?? 0) + 1)
+  }
+  const groups = [...totals.keys()].sort(
+    (a, b) =>
+      (contingent.get(b) ?? 0) - (contingent.get(a) ?? 0) ||
+      (totals.get(b) ?? 0) - (totals.get(a) ?? 0) ||
+      a.localeCompare(b),
+  )
+  const types = [...EMPLOYMENT_TYPES, 'Not recorded']
+  const out: MixRow[] = []
+  for (const g of groups) {
+    for (const t of types) {
+      const n = cells.get(`${g}\u0000${t}`) ?? 0
+      if (!n && t === 'Not recorded') continue
+      out.push({ group: g, workerType: WORKER_LABEL[t] ?? t, people: n, share: n / (totals.get(g) ?? 1) })
+    }
+  }
+  return out
+}
+
+/** The 24-month series as two lines on one 12-month axis: the year before moved forward a year. */
+export function yearOverlay(series: readonly HeadcountPoint[]): OverlayPoint[] {
+  const ahead = (d: ISODate) => (monthEnd(d) === d ? monthEnd(addMonths(d, 12)) : addMonths(d, 12))
+  const before = series.filter((r) => r.period === YEAR_BEFORE)
+  const last = series.filter((r) => r.period === LAST_YEAR)
+  // The last point of the year before is also where the last 12 months start, so both lines span 12 months.
+  const start = before.at(-1)
+  return [
+    ...before.map((r) => ({ x: ahead(r.date), date: r.date, headcount: r.headcount, period: YEAR_BEFORE })),
+    ...(start ? [{ x: start.date, date: start.date, headcount: start.headcount, period: LAST_YEAR }] : []),
+    ...last.map((r) => ({ x: r.date, date: r.date, headcount: r.headcount, period: LAST_YEAR })),
+  ]
+}
 
 function counts(list: readonly Employee[], key: (e: Employee) => string): CountRow[] {
   const m = new Map<string, number>()
@@ -126,30 +190,11 @@ export function computeWorkforce(p: Prep): WorkforceModel {
     (b) => bands.find((r) => r.label === b) ?? { label: b, headcount: 0, share: 0 },
   )
 
-  // Worker mix: every worker type, active today, by business unit.
+  // Worker mix: every worker type, active today, by site and by business unit.
   const workers = activeWorkers(people, asOf)
-  const buTotals = new Map<string, number>()
-  const mixCounts = new Map<string, number>()
-  for (const w of workers) {
-    const type = w.employmentType ?? 'Not recorded'
-    buTotals.set(w.businessUnit, (buTotals.get(w.businessUnit) ?? 0) + 1)
-    const k = `${w.businessUnit}\u0000${type}`
-    mixCounts.set(k, (mixCounts.get(k) ?? 0) + 1)
-  }
-  const mix: MixRow[] = []
-  const types = [...EMPLOYMENT_TYPES, 'Not recorded']
-  const bus = [...buTotals.entries()].sort((a, b) => b[1] - a[1]).map(([bu]) => bu)
-  for (const bu of bus) {
-    for (const t of types) {
-      const n = mixCounts.get(`${bu}\u0000${t}`) ?? 0
-      if (!n && t === 'Not recorded') continue
-      mix.push({
-        businessUnit: bu,
-        workerType: WORKER_LABEL[t] ?? t,
-        people: n,
-        share: n / (buTotals.get(bu) ?? 1),
-      })
-    }
+  const mix: WorkerMix = {
+    location: mixBy(workers, (w) => w.location),
+    businessUnit: mixBy(workers, (w) => w.businessUnit),
   }
 
   // Growth by business unit (or department when the scope sits inside one unit).
@@ -241,6 +286,7 @@ export function computeWorkforce(p: Prep): WorkforceModel {
     growth,
     engineering,
     series,
+    overlay: yearOverlay(series),
     flows,
     bridge,
   }

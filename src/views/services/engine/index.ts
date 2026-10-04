@@ -4,13 +4,15 @@
  */
 import type { Finding, Kpi } from '@/components/types'
 import type { AnalyticsContext } from '@/data/context'
-import { CASE_OPEN_STATUSES } from '@/data/schema'
+import { CASE_OPEN_STATUSES, MIN_GROUP } from '@/data/schema'
 import type { Window } from '@/data/scope'
 import { dateOf, monthsBetween } from '@/lib/dates'
 import {
   type AgedCaseRow,
+  type AgedPrivateRow,
   type ArrivalRow,
   agedCases,
+  agedPrivate,
   arrivals,
   type BacklogRow,
   backlogByAge,
@@ -47,21 +49,32 @@ import {
   finalPayByJurisdiction,
   newHireByRegion,
   newHireBySite,
+  onTimeByMonth,
   onTimeByType,
   type RetroMonthRow,
   retroByMonth,
+  retroShare,
   type SiteRow,
   type TimingRow,
+  type TxMonthRow,
   type TypeRow,
   timingBins,
 } from './transactions'
-import { trailingMonths } from './util'
+import { peopleIn, trailingMonths } from './util'
 
 export interface ServicesModel {
   asOf: string
   window: Window
   hasCases: boolean
   hasTx: boolean
+  /** Distinct people behind the scoped cases and transactions. */
+  people: number
+  /**
+   * Fewer than MIN_GROUP people in scope: row-level lists and detail exports are withheld and
+   * every rate is hidden (each rate also checks its own people), so a small team or a handful of
+   * executives can't be read case by case.
+   */
+  small: boolean
   caseCols: CaseColumns
   txCols: TxColumns
   cases: CaseFact[]
@@ -78,6 +91,8 @@ export interface ServicesModel {
   backlog: BacklogRow[]
   backlogTotal: number
   aged: AgedCaseRow[]
+  /** Aged employee relations cases: counted, never listed. */
+  agedPrivate: AgedPrivateRow[]
   resolve: ResolveRow[]
   arrivals: ArrivalRow[]
   channels: ChannelRow[]
@@ -88,7 +103,11 @@ export interface ServicesModel {
   newHireSites: SiteRow[]
   newHireRegions: SiteRow[]
   timing: TimingRow[]
+  /** Transactions on time by due month, 24 months. */
+  txMonths: TxMonthRow[]
   retro: RetroMonthRow[]
+  /** Retro share over the window (DS-01); the count is hidden with the share. */
+  retroSummary: { rate: number | null; retro: number | null; n: number }
   levels: LevelRow[]
   processes: ProcessRow[]
 }
@@ -102,6 +121,8 @@ export function compute(ctx: AnalyticsContext): ServicesModel {
   const tx = txFacts(ctx.data.transactions, asOf, ctx.org.byId)
   const hasCases = cases.length > 0
   const hasTx = tx.length > 0
+  const people = peopleIn([...cases, ...tx])
+  const small = (hasCases || hasTx) && people < MIN_GROUP
   const months = trailingMonths(asOf, 24)
   const slaMonths = slaByMonth(cases, months)
   const last12 = slaMonths.slice(-12)
@@ -113,6 +134,7 @@ export function compute(ctx: AnalyticsContext): ServicesModel {
   const newHireRegions = newHireByRegion(tx, window)
   const windowMonths = monthsBetween(window.start, window.end)
   const backlogFacts = openAt(cases, asOf)
+  const txMonths = onTimeByMonth(tx, months)
 
   const kpis = buildKpis({
     facts: cases,
@@ -127,6 +149,7 @@ export function compute(ctx: AnalyticsContext): ServicesModel {
     sparkOpened: last12.map((m) => m.opened),
     sparkSla: last12.map((m) => m.slaRate),
     sparkResponse: last12.map((m) => m.responseRate),
+    sparkTx: txMonths.slice(-12).map((m) => m.rate),
   })
 
   const findings = buildFindings({
@@ -141,6 +164,7 @@ export function compute(ctx: AnalyticsContext): ServicesModel {
     finalPay,
     newHireSites,
     newHireRegions,
+    small,
   })
 
   return {
@@ -148,6 +172,8 @@ export function compute(ctx: AnalyticsContext): ServicesModel {
     window,
     hasCases,
     hasTx,
+    people,
+    small,
     caseCols,
     txCols,
     cases,
@@ -162,7 +188,8 @@ export function compute(ctx: AnalyticsContext): ServicesModel {
     categories,
     backlog: backlogByAge(cases),
     backlogTotal: backlogFacts.length,
-    aged: agedCases(cases, 14),
+    aged: small ? [] : agedCases(cases, 14),
+    agedPrivate: agedPrivate(cases, 14),
     resolve: caseCols.resolvedAt ? timeToResolve(cases, window) : [],
     arrivals: arrivals(cases, window),
     channels,
@@ -173,7 +200,9 @@ export function compute(ctx: AnalyticsContext): ServicesModel {
     newHireSites,
     newHireRegions,
     timing: timingBins(tx, window),
+    txMonths,
     retro: retroByMonth(tx, windowMonths),
+    retroSummary: retroSummary(tx, window),
     levels: scorecard({
       cases,
       tx,
@@ -185,6 +214,11 @@ export function compute(ctx: AnalyticsContext): ServicesModel {
     }),
     processes: processCoverage(cases, tx, window),
   }
+}
+
+function retroSummary(tx: readonly TxFact[], window: Window): ServicesModel['retroSummary'] {
+  const r = retroShare(tx, window)
+  return { rate: r.rate, retro: r.rate == null ? null : r.retro, n: r.n }
 }
 
 const OPEN = new Set<string>(CASE_OPEN_STATUSES)

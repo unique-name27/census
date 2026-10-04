@@ -66,10 +66,11 @@ describe('computeSuccession', () => {
       'Ready in 3+ years': 1,
       'No successor': 1,
     })
-    expect(r.benchTable.find((b) => b.businessUnit === 'Ops')?.noSuccessor).toBe(1)
-    expect(
-      r.pipeline.find((p) => p.readiness === 'Ready now' && p.criticality === 'Critical')?.successors,
-    ).toBe(1)
+    expect(r.benchTable.All.find((b) => b.businessUnit === 'Ops')?.noSuccessor).toBe(1)
+    const readyNow = (scope: 'All' | 'Critical' | 'Key') =>
+      r.bench[scope].filter((b) => b.readiness === 'Ready now').reduce((s, b) => s + b.successors, 0)
+    expect(readyNow('Critical')).toBe(1)
+    expect(readyNow('All')).toBe(readyNow('Critical') + readyNow('Key'))
   })
 
   it('gives the cheap headline the same answer', () => {

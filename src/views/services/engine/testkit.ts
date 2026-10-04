@@ -15,6 +15,7 @@ import type { SourceMeta } from '@/data/store'
 let caseSeq = 0
 let txSeq = 0
 
+/** A case; without a `requesterId` it counts as its own person (unknown requester). */
 export function kase(p: Partial<HrCase> = {}): HrCase {
   caseSeq++
   return {
@@ -34,12 +35,13 @@ export function kase(p: Partial<HrCase> = {}): HrCase {
   }
 }
 
+/** A transaction; each one is for a different employee unless `employeeId` is given. */
 export function tx(p: Partial<HrTransaction> = {}): HrTransaction {
   txSeq++
   return {
     transactionId: `TX-${txSeq}`,
     type: 'New hire',
-    employeeId: 'E1',
+    employeeId: `TXE${txSeq}`,
     submittedDate: '2026-08-01',
     effectiveDate: '2026-09-07',
     dueDate: '2026-09-02',

@@ -71,6 +71,65 @@ describe('KPI tiles', () => {
     expect(vol.value).toBeNull()
   })
 
+  it('compares first-year attrition with the cohort a year earlier in every period', () => {
+    // Cohort at 30 Sep 2026: hired Oct 2024 to Sep 2025 (10, 2 left). A year earlier: hired Oct 2023 to Sep 2024 (10, 1 left).
+    // Three months earlier (30 Jun 2026) the cohort would be hired Jul 2024 to Jun 2025: a different group.
+    const cohorts = [
+      ...many(8, { hireDate: '2025-03-03' }),
+      ...Array.from({ length: 2 }, () => leaver('2025-11-03', 'Voluntary', { hireDate: '2025-03-03' })),
+      ...many(9, { hireDate: '2024-03-04' }),
+      leaver('2024-12-02', 'Voluntary', { hireDate: '2024-03-04' }),
+      ...many(30),
+    ]
+    for (const period of ['t12m', 't3m', 'lastQuarter', 'ytd'] as const) {
+      const fy = computeHrbp(ctxOf({ employees: cohorts }, { period })).kpi.kpis.find(
+        (k) => k.id === 'first-year',
+      )!
+      expect(fy.value).toBeCloseTo(0.2, 10)
+      expect(fy.delta).toBeCloseTo(0.2 - 0.1, 10)
+      expect(fy.deltaLabel).toBe('vs a year earlier')
+    }
+  })
+
+  it('does not annualize the promotion rate and compares short periods with the same months last year', () => {
+    const staff = many(50)
+    const promo = (i: number, date: string) =>
+      change({
+        employeeId: staff[i].employeeId,
+        effectiveDate: date,
+        changeType: 'Promotion',
+        fromLevel: 'L3',
+        toLevel: 'L4',
+      })
+    // Five promotions on 1 Sep 2026, four on 1 Sep 2025, none in between.
+    const jobChanges = [0, 1, 2, 3, 4]
+      .map((i) => promo(i, '2026-09-01'))
+      .concat([5, 6, 7, 8].map((i) => promo(i, '2025-09-01')))
+    const m = computeHrbp(ctxOf({ employees: staff, jobChanges }, { period: 't3m' }))
+    const tile = m.kpi.kpis.find((k) => k.id === 'promotion-rate')!
+    expect(tile.value).toBeCloseTo(5 / 50, 10)
+    expect(tile.delta).toBeCloseTo(5 / 50 - 4 / 50, 10)
+    expect(tile.deltaLabel).toBe('vs same period last year')
+    expect(tile.note).toBe('5 promotions over an average headcount of 50')
+    expect(m.movement.mobility.rate).toBeCloseTo(5 / 50, 10)
+  })
+
+  it('writes notes with the right plural', () => {
+    const one = [...many(20), leaver('2026-02-02', 'Voluntary')]
+    const m = computeHrbp(
+      ctxOf({
+        employees: one,
+        jobChanges: [
+          change({ employeeId: one[0].employeeId, effectiveDate: '2026-03-02', changeType: 'Promotion' }),
+        ],
+      }),
+    )
+    expect(m.kpi.kpis.find((k) => k.id === 'voluntary')!.note).toMatch(
+      /^1 voluntary exit over an average headcount of 20, annualized$/,
+    )
+    expect(m.kpi.kpis.find((k) => k.id === 'promotion-rate')!.note).toMatch(/^1 promotion over/)
+  })
+
   it('returns finite or null values for an empty roster', () => {
     const m = computeHrbp(ctxOf({}))
     for (const k of m.kpi.kpis) expect(k.value === null || Number.isFinite(k.value)).toBe(true)

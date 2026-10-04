@@ -1,10 +1,11 @@
 /** Range position: penetration by level, compa-ratio by tenure, who is outside the range, compression. */
-import { DotStrip, Figure, RangeBars } from '@/charts'
+import { Figure, RangeBars } from '@/charts'
 import type { Severity } from '@/components'
 import { Section } from '@/components'
 import { formatDate } from '@/lib/dates'
 import { fmt } from '@/lib/format'
 import { Dumbbell } from '../charts/Dumbbell'
+import { PositionStrip } from '../charts/PositionStrip'
 import {
   ABOVE_MAX_COLUMNS,
   BELOW_MIN_COLUMNS,
@@ -19,11 +20,8 @@ import {
   TENURE_DOT_COLUMNS,
 } from '../columns'
 import type { CompModel } from '../engine/model'
-import { type OutsideRangeRow, TENURE_ORDER, type TenureDot } from '../engine/ranges'
-import { emptyIf, MISSING, note } from '../shared'
-
-const positionTone = (d: TenureDot) =>
-  d.position === 'Below minimum' ? 'serious' : d.position === 'Above maximum' ? 'warning' : 'default'
+import { type OutsideRangeRow, TENURE_ORDER } from '../engine/ranges'
+import { asOfNote, emptyIf, MISSING, note } from '../shared'
 
 const COMPRESSION_SHOWN = 20
 
@@ -73,7 +71,7 @@ export function Ranges({ m }: { m: CompModel }) {
         <Figure
           id="comp-compa-by-tenure"
           title="Compa-ratio by tenure"
-          subtitle={`One dot per person, tick at the median, as of ${asOf}`}
+          subtitle={`One mark per person, tick at the median; shape shows range position, as of ${asOf}`}
           data={r.tenure}
           columns={TENURE_DOT_COLUMNS}
           definitions={[DEF_COMPA, DEF_POSITION]}
@@ -81,17 +79,10 @@ export function Ranges({ m }: { m: CompModel }) {
           span={5}
           empty={emptyIf(r.tenure, null, 'No compa-ratios in this scope.')}
         >
-          <DotStrip
+          <PositionStrip
             data={r.tenure}
-            x="compa"
-            y="tenureBand"
-            id="id"
-            label="name"
-            xFormat="ratio"
             yOrder={TENURE_ORDER}
-            tone={positionTone}
-            ref={{ value: 1, label: 'Midpoint' }}
-            median
+            ariaLabel="Compa-ratio of each person by tenure band, shaped by range position"
           />
         </Figure>
       </Section>
@@ -137,7 +128,7 @@ export function Ranges({ m }: { m: CompModel }) {
           ]}
           note={note(m, r.above.length, 'people', m.showPay)}
           tableOnly
-          table={{ rowTone: () => 'warning', search: 'Search people', maxRows: 12 }}
+          table={{ search: 'Search people', maxRows: 12 }}
           empty={emptyIf(r.above, noRanges, 'Nobody in this scope is paid above range maximum.')}
         />
       </Section>
@@ -153,7 +144,7 @@ export function Ranges({ m }: { m: CompModel }) {
           data={r.compression}
           columns={COMPRESSION_COLUMNS}
           definitions={[DEF_COMPRESSION, DEF_COMPA]}
-          note={`${fmt(r.compression.length, 'int')} department and level pairs with 5 or more people on each side${r.compression.length > COMPRESSION_SHOWN ? `; the chart shows the ${COMPRESSION_SHOWN} largest gaps and the table has them all` : ''} · as of ${asOf}`}
+          note={`${fmt(r.compression.length, 'int')} department and level pairs with 5 or more people on each side${r.compression.length > COMPRESSION_SHOWN ? `; the chart shows the ${COMPRESSION_SHOWN} largest gaps and the table has them all` : ''} · ${asOfNote(m)}`}
           empty={emptyIf(
             r.compression,
             null,

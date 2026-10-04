@@ -1,7 +1,7 @@
 /**
  * Candidate flow for a cohort of applications (those applied in the window): how many reached
  * each stage, advanced, left (rejected, withdrawn, declined) or are still active there, the pass
- * rate, and the days each transition took. Also the "days per transition by application month" grid.
+ * rate, and the days each transition took. Also the "days per transition by month" grid.
  */
 import type { Window } from '@/data/scope'
 import { addMonths, formatMonthShort, monthKey, monthStart, monthsBetween } from '@/lib/dates'
@@ -142,23 +142,33 @@ export interface SpeedCell {
   n: number
 }
 
-/** Median days per transition for applications grouped by the month they applied (12 months). */
+/**
+ * Median days per transition by the month the step was completed (12 months to `end`), the same
+ * rule as the bottleneck check. Grouping by completion month keeps recent months honest: grouping
+ * by application month would leave only the fast candidates in recent cohorts and hide a slowdown.
+ */
 export function speedByMonth(apps: readonly App[], end: string): SpeedCell[] {
   const months = monthsBetween(addMonths(monthStart(end), -11), end)
-  const byMonth = new Map<string, App[]>()
-  for (const m of months) byMonth.set(m, [])
-  for (const a of apps) byMonth.get(monthKey(a.appliedDate))?.push(a)
+  const cells = new Map<string, number[]>()
+  for (const m of months) for (let i = 0; i <= LAST_OPEN_STAGE; i++) cells.set(`${m}|${i}`, [])
+  for (const a of apps) {
+    for (let i = 0; i <= LAST_OPEN_STAGE; i++) {
+      const done = a.dates[i + 1]
+      if (!done || done > end) continue
+      const d = transitionDays(a, i)
+      if (d != null) cells.get(`${monthKey(done)}|${i}`)?.push(d)
+    }
+  }
   const out: SpeedCell[] = []
   for (const m of months) {
-    const list = byMonth.get(m) ?? []
     for (let i = 0; i <= LAST_OPEN_STAGE; i++) {
-      const t = medianTransition(list, i)
+      const xs = cells.get(`${m}|${i}`) ?? []
       out.push({
         month: m,
         monthLabel: formatMonthShort(`${m}-01`, true),
         transition: TRANSITIONS[i],
-        days: t.n >= 5 ? t.median : null,
-        n: t.n,
+        days: xs.length >= 5 ? median(xs) : null,
+        n: xs.length,
       })
     }
   }

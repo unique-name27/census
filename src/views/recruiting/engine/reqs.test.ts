@@ -1,8 +1,17 @@
 import { describe, expect, it } from 'vitest'
 import { computeBase } from './base'
+import { allProblemFindings } from './findings'
 import { AS_OF, cand, ctxOf, req } from './fixtures'
 import { recruitingKpis } from './kpis'
-import { EMPTY_FUNNEL_DAYS, filledIn, medianTtf, openByDepartment, recruiterLoad, ttfBy } from './reqs'
+import {
+  EMPTY_FUNNEL_DAYS,
+  filledIn,
+  medianTtf,
+  NOT_CHECKED,
+  openByDepartment,
+  recruiterLoad,
+  ttfBy,
+} from './reqs'
 
 describe('open requisitions and health', () => {
   const ctx = ctxOf({
@@ -45,6 +54,39 @@ describe('open requisitions and health', () => {
     expect(openByDepartment(b.req.open, AS_OF)).toEqual([
       { department: 'Design Verification', open: 3, oldest: 121, medianAge: 121 },
     ])
+  })
+})
+
+describe('when candidates can’t describe the reqs', () => {
+  const reqs = [req('REQ-OLD', { openedDate: '2026-04-01' }), req('REQ-NEW', { openedDate: '2026-09-20' })]
+
+  it('does not call every old req an empty funnel when no candidates are loaded', () => {
+    const b = computeBase(ctxOf({ requisitions: reqs }))
+    expect(b.req.funnelChecked).toBe(false)
+    expect(b.req.emptyFunnel).toEqual([])
+    expect(b.req.rows.map((r) => r.health)).toEqual([NOT_CHECKED, NOT_CHECKED])
+    expect(allProblemFindings(b).find((f) => f.id === 'rec-empty-funnel')).toBeUndefined()
+  })
+
+  it('skips the check and says why when most applications match no req ID', () => {
+    const candidates = [
+      cand('REQ-OLD', { appliedDate: '2026-04-05' }),
+      ...Array.from({ length: 3 }, () => cand('REQ-GONE', { appliedDate: '2026-04-05' })),
+    ]
+    const b = computeBase(ctxOf({ requisitions: reqs, candidates }))
+    expect(b.join).toEqual({ candidates: 4, matched: 1 })
+    expect(b.joinNote).toBe('1 of 4 applications match a requisition ID')
+    expect(b.req.emptyFunnel).toEqual([])
+    expect(recruitingKpis(b).find((k) => k.id === 'open-reqs')!.note).toBe(b.joinNote)
+    const f = allProblemFindings(b).find((x) => x.id === 'rec-data-join')!
+    expect(f.title).toMatch(/^1 of 4 applications match a requisition ID, so req health/)
+  })
+
+  it('checks the funnel when at least half the applications match', () => {
+    const candidates = [cand('REQ-OLD', { appliedDate: '2026-04-05' }), cand('REQ-GONE')]
+    const b = computeBase(ctxOf({ requisitions: reqs, candidates }))
+    expect(b.joinNote).toBeNull()
+    expect(b.req.emptyFunnel.map((r) => r.reqId)).toEqual(['REQ-OLD'])
   })
 })
 
@@ -101,7 +143,25 @@ describe('recruiter load', () => {
     const b = computeBase(ctx)
     const { rows, teamMedianWait } = recruiterLoad(b.req.open, b.actives, b.apps, b.window)
     expect(teamMedianWait).toBe(6)
-    expect(rows.find((r) => r.recruiter === 'Cy')!.flagged).toBe(true)
+    expect(rows.find((r) => r.recruiter === 'Cy')!.flag).toBe('Long waits')
     expect(rows.find((r) => r.recruiter === 'Ana')!.flagged).toBe(false)
+  })
+
+  it('flags a heavy load: open reqs or active candidates above 1.5× the team median', () => {
+    const ctx = ctxOf({
+      requisitions: [
+        ...['A1', 'A2', 'A3', 'A4'].map((id) => req(id, { recruiter: 'Ana' })),
+        req('B1', { recruiter: 'Ben' }),
+        req('B2', { recruiter: 'Ben' }),
+        req('C1', { recruiter: 'Cy' }),
+        req('C2', { recruiter: 'Cy' }),
+      ],
+      candidates: ['A1', 'B1', 'C1'].map((r) => cand(r, { recruiter: null, appliedDate: '2026-09-25' })),
+    })
+    const b = computeBase(ctx)
+    const load = recruiterLoad(b.req.open, b.actives, b.apps, b.window)
+    expect(load.teamMedianOpen).toBe(2)
+    expect(load.rows[0]).toMatchObject({ recruiter: 'Ana', openReqs: 4, flag: 'Heavy load', flagged: true })
+    expect(load.rows.filter((r) => r.flagged)).toHaveLength(1)
   })
 })

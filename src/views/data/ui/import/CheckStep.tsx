@@ -7,10 +7,19 @@ import { DataTable } from '@/charts'
 import { IconDownload, IconGood, IconInfoFilled } from '@/components/icons'
 import { Button, cx, SeverityIcon } from '@/components/ui'
 import { type ImportResult, ISSUE_COLUMNS, issueTableRows, summarizeIssues } from '@/data/import'
-import { type DatasetDef, datasetDef } from '@/data/schema'
+import { type DatasetDef, type DatasetKey, datasetDef } from '@/data/schema'
 import { useCensus } from '@/data/store'
 import { fmt } from '@/lib/format'
-import { actionSeverity, issueCounts, issuesFileStem, redactPayIssues } from '../../engine/flow'
+import { countUnlinked, LINKS } from '../../engine/checks'
+import {
+  actionSeverity,
+  isAllClear,
+  issueCounts,
+  issuesFileStem,
+  payLeftOut,
+  quietFills,
+  redactPayIssues,
+} from '../../engine/flow'
 import { sourceInfo } from '../../engine/manifest'
 import { type Draft, type SessionSheet, useImportSession } from '../../state/session'
 import { downloadIssuesCsv } from '../downloads'
@@ -40,7 +49,7 @@ function Stats({ result }: { result: ImportResult }) {
       <Stat label="Rows to import" value={s.rowsOut} />
       <Stat label="Skipped, required value missing" value={s.skippedMissingRequired} tone="attention" />
       <Stat label="Duplicates merged" value={s.duplicates} />
-      <Stat label="Blanks filled by a default" value={s.defaulted} />
+      <Stat label="Values filled by a default" value={s.defaulted} />
       <Stat
         label="Values left blank"
         value={counts.byAction['left-blank'] + counts.byAction.cleared}
@@ -63,6 +72,60 @@ function ReplaceNote({ def }: { def: DatasetDef }) {
   )
 }
 
+/** Pay amounts missing from the file, most likely a Census download made with pay amounts off. */
+export function PayLeftOutNote() {
+  return (
+    <p className="flex gap-2 text-[13px]">
+      <IconInfoFilled className="mt-0.5 size-3.5 shrink-0 text-s1" />
+      <span>
+        Pay amounts are missing from this file. If it came from Census, they were left out because pay amounts
+        were switched off. Switch on Show and export pay amounts under Pay amounts, download the file again
+        and add that copy.
+      </span>
+    </p>
+  )
+}
+
+/** Before applying: do this sheet's references find their people or requisitions? */
+function LinkLine({ dataset, rows }: { dataset: DatasetKey; rows: readonly object[] }) {
+  const data = useCensus((s) => s.data)
+  const sources = useCensus((s) => s.sources)
+  const link = LINKS[dataset]
+  const counts = countUnlinked(dataset, rows, data)
+  if (!link || !counts || counts.withRef === 0) return null
+  const def = datasetDef(dataset)
+  const target = datasetDef(link.target)
+  const labels = link.fields.map((k) => def.fields.find((f) => f.key === k)?.label ?? k).join(' and ')
+  const found = counts.withRef - counts.rows
+  const short = counts.rows > 0
+  if (!data[link.target].length)
+    return (
+      <p className="flex gap-2 text-[13px]">
+        <SeverityIcon severity="warning" className="mt-0.5 size-3.5 shrink-0" />
+        <span>
+          {target.label} has no rows loaded, so {labels} can’t be checked. Add {target.label} as well.
+        </span>
+      </p>
+    )
+  return (
+    <p className={cx('flex gap-2 text-[13px]', !short && 'text-ink-2')}>
+      {short ? (
+        <SeverityIcon severity="warning" className="mt-0.5 size-3.5 shrink-0" />
+      ) : (
+        <IconGood className="mt-0.5 size-3.5 shrink-0 text-good" />
+      )}
+      <span>
+        {labels}: {fmt(found, 'int')} of {fmt(counts.withRef, 'int')} {counts.withRef === 1 ? 'row' : 'rows'}{' '}
+        found in {target.label}.
+        {short && sources[link.target]?.kind !== 'upload'
+          ? ` ${target.label} is still the sample; upload yours as well.`
+          : ''}
+        {short && found === 0 ? ` Check that the right column feeds ${labels}.` : ''}
+      </span>
+    </p>
+  )
+}
+
 export function CheckStep({
   item,
   draft,
@@ -80,16 +143,18 @@ export function CheckStep({
   const showPay = useCensus((s) => s.showPay)
   if (!draft.dataset) return null
   const def = datasetDef(draft.dataset)
-  const rosterPending =
-    def.key !== 'employees' &&
-    sheets.some((s) => s.id !== item.id && s.dataset === 'employees' && status[s.id] === 'pending')
+  // The dataset this one links to is in the same upload but not applied yet.
+  const linkTarget = LINKS[def.key]?.target ?? (def.key !== 'employees' ? 'employees' : null)
+  const targetPending =
+    linkTarget != null &&
+    sheets.some((s) => s.id !== item.id && s.dataset === linkTarget && status[s.id] === 'pending')
 
   const profileNote = draft.fromProfile && (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-control bg-sheet-2 px-3 py-2 text-[13px]">
       <IconInfoFilled className="size-3.5 shrink-0 text-s1" />
-      <span className="min-w-0 flex-1">Using the mapping you saved for this layout.</span>
+      <span className="min-w-0 flex-1">Using the column choices you saved for files with these columns.</span>
       <Button size="sm" variant="ghost" onClick={() => update(item.id, () => ({ step: 'columns' }))}>
-        Edit mapping
+        Edit column choices
       </Button>
     </div>
   )
@@ -106,38 +171,42 @@ export function CheckStep({
 
   const issues = redactPayIssues(result.issues, def, showPay)
   const summaries = summarizeIssues(issues)
+  const quiet = quietFills(def, result)
   const managers = result.stats.managers
   const tableRows = issueTableRows(issues)
+  const none = result.rows.length === 0
 
   return (
     <div className="space-y-5">
       {profileNote}
       <Stats result={result} />
       <div className="space-y-1.5">
-        {result.rows.length === 0 ? (
+        {none ? (
           <p className="text-[13px] font-medium">
             No rows can be imported from this sheet. Check the columns or skip it.
           </p>
         ) : (
           <ReplaceNote def={def} />
         )}
-        {managers && (
+        {payLeftOut(def, [], result) && <PayLeftOutNote />}
+        {managers && !none && (
           <p className="text-[13px] text-ink-2">
             Managers: {fmt(managers.byId, 'int')} linked by ID, {fmt(managers.byName, 'int')} by name,{' '}
             {fmt(managers.cleared, 'int')} cleared, {fmt(managers.topLevel, 'int')} at the top of the
             organization.
           </p>
         )}
-        {rosterPending && (
+        {!none && <LinkLine dataset={def.key} rows={result.rows} />}
+        {targetPending && linkTarget && (
           <p className="text-[13px] text-ink-2">
-            The Employees sheet in this upload is not applied yet, so people are checked against the roster
-            loaded now.
+            The {datasetDef(linkTarget).label} sheet in this upload is not applied yet, so links are checked
+            against the {datasetDef(linkTarget).label.toLowerCase()} loaded now.
           </p>
         )}
       </div>
       <div>
         <h3 className="cut-head text-[16px] font-semibold">What changes on the way in</h3>
-        {summaries.length ? (
+        {summaries.length + quiet.length > 0 && (
           <ul className="mt-2 space-y-1.5">
             {summaries.map((m) => (
               <li key={`${m.code}|${m.field}|${m.action}`} className="flex gap-2 text-[13px]">
@@ -145,8 +214,15 @@ export function CheckStep({
                 <span>{m.message}</span>
               </li>
             ))}
+            {quiet.map((q) => (
+              <li key={`quiet|${q.field}`} className="flex gap-2 text-[13px]">
+                <SeverityIcon severity="info" className="mt-0.5 size-3.5 shrink-0" />
+                <span>{q.message}</span>
+              </li>
+            ))}
           </ul>
-        ) : (
+        )}
+        {isAllClear(result) && (
           <p className="mt-2 flex items-center gap-2 text-[13px] text-ink-2">
             <IconGood className="size-3.5 text-good" />
             No issues. Every row imports as it is in the file.

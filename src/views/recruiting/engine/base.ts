@@ -5,6 +5,7 @@
 import type { AnalyticsContext } from '@/data/context'
 import type { ISODate, Requisition } from '@/data/schema'
 import type { Window } from '@/data/scope'
+import { fmt } from '@/lib/format'
 import { cohort, type Flow, stageFlow } from './flow'
 import { activeItems } from './nextStep'
 import { coverage, inWin, prepareApps, reqIndex, stageNorms } from './prepare'
@@ -40,7 +41,14 @@ export interface RecruitingBase {
   offers: App[]
   offersPrior: App[]
   req: ReqFacts
+  /** How many candidate rows (company-wide) carry a req ID that exists in Requisitions. */
+  join: { candidates: number; matched: number }
+  /** "0 of 9,279 applications match a requisition ID" when fewer than half match; else null. */
+  joinNote: string | null
 }
+
+/** Below this share of applications matching a req ID, per-req health is not read. */
+export const MIN_JOIN_SHARE = 0.5
 
 const COMPARE: Record<string, [string, string]> = {
   t12m: ['vs prior 12 months', 'last 12 months'],
@@ -64,6 +72,14 @@ export function computeBase(ctx: AnalyticsContext): RecruitingBase {
   const norms = stageNorms(companyApps)
   const cov = coverage(ctx.all.candidates, companyReqs)
   const actives = activeItems(apps, asOf, norms)
+  let matched = 0
+  for (const c of ctx.all.candidates) if (companyIndex.has(c.reqId)) matched++
+  const join = { candidates: ctx.all.candidates.length, matched }
+  const joins = join.candidates > 0 && matched / join.candidates >= MIN_JOIN_SHARE
+  const joinNote =
+    join.candidates > 0 && companyReqs.length > 0 && !joins
+      ? `${fmt(matched, 'int')} of ${fmt(join.candidates, 'int')} applications match a requisition ID`
+      : null
   const current = cohort(apps, window)
   const priorCohort = cohort(apps, prior)
   const [compareLabel, windowWords] = COMPARE[ctx.filters.period] ?? COMPARE.custom
@@ -91,6 +107,8 @@ export function computeBase(ctx: AnalyticsContext): RecruitingBase {
     hiresPrior: apps.filter((a) => a.outcome === 'Hired' && inWin(a.exitDate, prior)),
     offers: resolvedOffers(apps, window),
     offersPrior: resolvedOffers(apps, prior),
-    req: reqFacts(reqs, apps, actives, asOf),
+    req: reqFacts(reqs, apps, actives, asOf, joins),
+    join,
+    joinNote,
   }
 }

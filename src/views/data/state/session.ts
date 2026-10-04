@@ -8,8 +8,17 @@ import { toast } from '@/components/toast'
 import type { ApplyOptions, FileFormat, ImportResult, Mapping, ParsedSheet } from '@/data/import'
 import { DATASET_KEYS, type DatasetKey, datasetDef } from '@/data/schema'
 import { useCensus } from '@/data/store'
+import { defaultFills } from '../engine/fills'
 import { blockingFields, learnedPicks, replacedMessage, type Step } from '../engine/flow'
-import { nextPending, type PlannedSheet, planSheets, type SheetInfo, type SheetStatus } from '../engine/plan'
+import {
+  isNotCensus,
+  nextPending,
+  type PlannedSheet,
+  planSheets,
+  type SheetInfo,
+  type SheetStatus,
+  usableSheets,
+} from '../engine/plan'
 import { useImportLogs } from './importLog'
 
 type ImportLib = typeof import('@/data/import')
@@ -85,6 +94,16 @@ const IDLE = {
 /** Let the browser paint progress between heavy steps. */
 const nextFrame = () => new Promise<void>((r) => setTimeout(r, 0))
 
+/**
+ * An .xlsx or .xlsm file is a zip archive, so it starts with "PK". A text file renamed to .xlsx
+ * would otherwise be read as one blank sheet. Other types are left to the reader.
+ */
+function looksLikeItsType(fileName: string, buffer: ArrayBuffer): boolean {
+  if (!/\.(xlsx|xlsm)$/i.test(fileName)) return true
+  const head = new Uint8Array(buffer, 0, Math.min(2, buffer.byteLength))
+  return head.length === 2 && head[0] === 0x50 && head[1] === 0x4b
+}
+
 async function makeDraft(lib: ImportLib, item: SessionSheet, dataset: DatasetKey | null): Promise<Draft> {
   const base = {
     options: {},
@@ -155,16 +174,29 @@ export const useImportSession = create<SessionState>((set, get) => {
         continue
       }
       try {
-        const book = lib.readWorkbook(await file.arrayBuffer(), file.name)
-        const sheets = book.sheets.filter((s) => !lib.isTemplateHelpSheet(s.name))
+        const buffer = await file.arrayBuffer()
+        if (!looksLikeItsType(file.name, buffer)) {
+          toast(`"${file.name}" could not be read. It is not an Excel workbook inside.`, {
+            tone: 'critical',
+            description: 'Open it in Excel and save it again as .xlsx or .csv.',
+          })
+          continue
+        }
+        const book = lib.readWorkbook(buffer, file.name)
+        const { sheets, noRows } = usableSheets(book, lib.isTemplateHelpSheet)
         if (!sheets.length) {
-          toast(`"${file.name}" has no rows to import.`, { tone: 'critical' })
+          toast(`"${file.name}" has no rows to import.`, {
+            tone: 'critical',
+            description: noRows.length
+              ? 'Its sheets have column headers but no rows. Fill in at least one sheet and add it again.'
+              : undefined,
+          })
           continue
         }
         books.push({ fileName: file.name, format: book.format, sheets })
-        if (book.emptySheets.length)
+        if (noRows.length)
           notes.push(
-            `Empty ${book.emptySheets.length === 1 ? 'sheet' : 'sheets'} in ${file.name} left out: ${book.emptySheets.join(', ')}.`,
+            `${noRows.length === 1 ? 'A sheet' : `${noRows.length} sheets`} in ${file.name} had no rows and ${noRows.length === 1 ? 'was' : 'were'} left out: ${noRows.join(', ')}.`,
           )
       } catch (err) {
         toast(err instanceof lib.WorkbookReadError ? err.message : `"${file.name}" could not be read.`, {
@@ -207,9 +239,34 @@ export const useImportSession = create<SessionState>((set, get) => {
       const parsed = byId.get(p.id)
       return parsed ? [{ ...p, ...parsed }] : []
     })
-    set({ sheets, notes, status: Object.fromEntries(sheets.map((s) => [s.id, 'pending' as const])) })
-    await show(sheets[0].id)
-    set({ phase: 'review', reading: null })
+    const open = async () => {
+      set({ sheets, notes, status: Object.fromEntries(sheets.map((s) => [s.id, 'pending' as const])) })
+      await show(sheets[0].id)
+      set({ phase: 'review', reading: null })
+    }
+    // Nothing that looks like HR data: say so in one line instead of a dialog of 0% matches.
+    if (!target && isNotCensus(sheets)) {
+      set({ ...IDLE })
+      const names = [...new Set(sheets.map((s) => s.fileName))]
+      toast(
+        `${names.length === 1 ? names[0] : `${names.length} files`} ${names.length === 1 ? 'doesn’t' : 'don’t'} match any Census dataset. Nothing was imported.`,
+        {
+          description:
+            'Census reads rosters, job changes, requisitions, candidates, HR cases and the other datasets listed below.',
+          action: {
+            label: 'Import anyway',
+            onClick: () => {
+              if (get().phase !== 'idle') return
+              set({ phase: 'reading' })
+              void open().catch(() => set({ ...IDLE }))
+            },
+          },
+          timeout: 10_000,
+        },
+      )
+      return
+    }
+    await open()
   }
 
   return {
@@ -285,6 +342,7 @@ export const useImportSession = create<SessionState>((set, get) => {
           importedAt,
           stats: result.stats,
           issues: result.issues,
+          fills: defaultFills(def, result.rows, result.issues, draft.mapping),
         })
         toast(replacedMessage(def.label, result.rows.length), { tone: 'good' })
         set((s) => ({ status: { ...s.status, [id]: 'applied' } }))

@@ -38,7 +38,8 @@ export interface ScoreRow {
   /** Patch that rescopes the app to this row; null for Other and Company. */
   filter: Partial<Filters> | null
   headcount: number
-  netChange: number
+  /** Null when no row has a termination date (past headcount would count survivors only). */
+  netChange: number | null
   voluntary: number | null
   regretted: number | null
   firstYear: number | null
@@ -79,20 +80,21 @@ function metrics(
   changesById: Map<string, JobChange[]>,
 ): Omit<ScoreRow, 'key' | 'label' | 'sublabel' | 'kind' | 'filter' | 'shade'> {
   const emps = people.filter((e) => e.employmentType === 'Employee')
-  const typed = p.has.terminationType
+  const left = p.has.terminationDate
+  const typed = left && p.has.terminationType
   const changes: JobChange[] = []
   for (const e of emps) for (const c of changesById.get(e.employeeId) ?? []) changes.push(c)
   const active = people.filter((e) => isActiveAt(e, p.asOf))
-  const spans = [...activeChildren(active).values()].map((k) => k.length)
+  const spans = [...activeChildren(active, p.asOf).values()].map((k) => k.length)
   const vol = attrition(emps, p.window, 'voluntary')
   const reg = attrition(emps, p.window, 'regretted')
   const hc = headcountAt(emps, p.asOf)
   return {
     headcount: hc,
-    netChange: hc - headcountAt(emps, addDays(p.t12.start, -1)),
+    netChange: left ? hc - headcountAt(emps, addDays(p.t12.start, -1)) : null,
     voluntary: typed && vol.avgHeadcount >= 5 ? vol.rate : null,
     regretted: typed && p.has.regrettable && reg.avgHeadcount >= 5 ? reg.rate : null,
-    firstYear: cohortSummary(emps, p.asOf).rate,
+    firstYear: left ? cohortSummary(emps, p.asOf).rate : null,
     promotionRate: promotionRate(emps, changes, p.window, p.has.jobChanges).rate,
     avgSpan: spans.length ? mean(spans) : null,
   }

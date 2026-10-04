@@ -1,11 +1,13 @@
 import { useState } from 'react'
-import { BarList, Columns, Figure } from '@/charts'
+import { BarList, Columns, Figure, useChartTheme } from '@/charts'
 import { Section, Segmented } from '@/components'
 import { useAnalytics } from '@/data/context'
 import { formatDate } from '@/lib/dates'
 import { fmt, plural } from '@/lib/format'
 import type { TalentModel } from '../engine'
+import { listText } from '../engine/base'
 import { backTestSummary, factorDef, RISK_BANDS } from '../engine/risk'
+import { scopeColors } from './colors'
 import {
   BACKTEST_COLUMNS,
   BAND_COLUMNS,
@@ -13,69 +15,149 @@ import {
   EVIDENCE_COLUMNS,
   EXIT_PERSON_COLUMNS,
   PROMOTION_OVERDUE_COLUMNS,
-  RISK_PERSON_FULL_COLUMNS,
+  riskPersonColumns,
 } from './columns'
 import { DEF } from './defs'
 
-type WatchBand = 'High' | 'Medium'
+type PeopleView = 'key' | 'high' | 'watch'
+
+const POINT_SOURCE: Record<string, string> = {
+  learned: 'Learned from exits',
+  default: 'Default (no history to learn from)',
+  fixed: 'Fixed (pay history is not kept)',
+  off: 'Switched off',
+}
 
 export function RetentionTab({ m }: { m: TalentModel }) {
   const ctx = useAnalytics()
+  const t = useChartTheme()
   const asOf = formatDate(ctx.asOf)
   const ret = m.retention
   const risk = m.risk
   const bt = risk.backTest
-  const [watch, setWatch] = useState<WatchBand>('High')
+  const [view, setView] = useState<PeopleView>('key')
   const highCount = ret.bands.find((b) => b.band === 'High')?.people ?? 0
   const drivers = ret.drivers
     .filter((d) => d.anyReason > 0)
     .map((d) => ({ ...d, share: highCount >= 5 ? d.anyReason / highCount : null }))
-  const evidence = risk.evidence.map((e) => ({ ...e, definition: factorDef.get(e.key)?.text ?? '' }))
-  const watchRows = watch === 'High' ? ret.watchList.filter((r) => r.band === 'High') : ret.watchList
+  const evidence = risk.evidence.map((e) => ({
+    ...e,
+    how: POINT_SOURCE[e.source],
+    definition: factorDef.get(e.key)?.text ?? '',
+  }))
   const noPeople = ret.scored ? null : 'Nobody in this scope is an active employee at the as-of date.'
+  const who = risk.exitKind === 'voluntary' ? 'voluntary exits' : 'exits'
+  const learnedFrom = risk.learnedFrom
   const pointsNote = risk.learned
-    ? 'Points come from voluntary exits over the last 12 months'
-    : 'Default points: there were fewer than 20 exits or 100 people a year ago to learn from'
+    ? `Points come from ${fmt(risk.learnedLeavers)} people who left within 12 months of the month-ends ${formatDate(learnedFrom[0])} to ${formatDate(learnedFrom.at(-1))} (${plural(risk.learnedPeople, 'person', 'people')} in all)`
+    : 'Default points: there were fewer than 20 leavers or 100 people in the history to learn from'
   const offNote = risk.off.length
     ? ` · switched off: ${risk.off.map((o) => `${factorDef.get(o.key)?.label.toLowerCase()} (${o.why.toLowerCase()})`).join('; ')}`
     : ''
+  const highShare = fmt(risk.highShare, 'pct0')
+  const mediumShare = fmt(risk.mediumShare, 'pct0')
+
+  // Factors the data says did not go with more exits, in one plain sentence.
+  const zero = risk.evidence.filter((e) => e.source === 'learned' && e.points === 0)
+  const promoZero = zero.some((e) => e.key === 'promotionGap') && zero.some((e) => e.key === 'highNoPromo')
+  const otherZero = zero.filter((e) => !promoZero || (e.key !== 'promotionGap' && e.key !== 'highNoPromo'))
+  const zeroText = [
+    promoZero
+      ? 'Time since the last promotion did not go with more voluntary exits in this data, for high performers or anyone else, so it adds no points.'
+      : '',
+    otherZero.length
+      ? `${promoZero ? 'Nor did' : 'In this data,'} ${listText(otherZero.map((e) => `“${e.label.toLowerCase()}”`))}${promoZero ? '.' : ` did not go with more voluntary exits, so ${otherZero.length === 1 ? 'it adds' : 'they add'} no points.`}`
+      : '',
+  ]
+    .filter(Boolean)
+    .join(' ')
+
+  // Band chart: under a filter, the scope's shares against the company's.
+  const bandLong = ret.bands.flatMap((b) => [
+    { band: b.band, series: 'This scope', share: b.share },
+    { band: b.band, series: 'Company', share: b.companyShare },
+  ])
+
+  // One people table, three views.
+  const peopleRows =
+    view === 'key'
+      ? ret.keyTalent
+      : view === 'high'
+        ? ret.watchList.filter((r) => r.band === 'High')
+        : ret.watchList
+  const peopleTitle = view === 'key' ? 'Key talent at risk' : 'Flight risk by person'
+  const peopleSub =
+    view === 'key'
+      ? `Rated 4-5 and in the high flight-risk band, as of ${asOf}`
+      : view === 'high'
+        ? `Everyone in the high band, any rating, as of ${asOf}`
+        : `Everyone in the high and medium bands, any rating, as of ${asOf}`
+  const overdueLow = m.overdue.rows.filter((r) => r.riskBand === 'Low').length
+  const regret = ret.regrettedHigh
 
   return (
     <>
       <Section
         title="Who is at risk of leaving"
-        dek="Every active employee gets a flight-risk score from plain factors. The bands are checked against real exits a year later, so you can judge how far to trust them."
+        dek="Every active employee gets a flight-risk score from plain factors. The bands are checked against real exits a year later, using only what was known then, so you can judge how far to trust them."
       >
         <Figure
           id="talent-risk-bands"
           title="People by risk band"
-          subtitle={`Active employees by flight-risk band, scored as of ${asOf}`}
+          subtitle={
+            ctx.isCompany
+              ? `Active employees by flight-risk band, scored as of ${asOf}`
+              : `Share of active employees in each band, ${ctx.scopeLabel} against the company, as of ${asOf}`
+          }
           data={ret.bands}
           columns={BAND_COLUMNS}
           definitions={[DEF.flightRisk, DEF.bands]}
-          note={`${plural(ret.scored, 'person', 'people')} scored · high band starts at a score of ${fmt(risk.cutHigh)}`}
+          note={`${plural(ret.scored, 'person', 'people')} scored · company-wide the high band is the top ${highShare} (score ${fmt(risk.cutHigh)} and up) and the medium band the next ${mediumShare}`}
           span={4}
           empty={noPeople}
         >
-          <Columns
-            data={ret.bands}
-            x="band"
-            y="people"
-            xOrder={RISK_BANDS}
-            tone={(d) => (d.band === 'High' ? 'default' : 'deemph')}
-            labels
-            height={220}
-            ariaLabel="People by flight-risk band"
-          />
+          {ctx.isCompany ? (
+            <Columns
+              data={ret.bands}
+              x="band"
+              y="people"
+              xOrder={RISK_BANDS}
+              tone={(d) => (d.band === 'High' ? 'default' : 'deemph')}
+              labels
+              height={220}
+              ariaLabel="People by flight-risk band"
+            />
+          ) : (
+            <Columns
+              data={bandLong}
+              x="band"
+              y="share"
+              series="series"
+              seriesOrder={['This scope', 'Company']}
+              colors={scopeColors(t)}
+              xOrder={RISK_BANDS}
+              format="pct0"
+              height={220}
+              ariaLabel="Share of people in each flight-risk band, this scope against the company"
+            />
+          )}
         </Figure>
         <Figure
           id="talent-risk-back-test"
           title="Exit rate by risk band, back-tested"
-          subtitle={`Scored as of ${formatDate(bt.scoredOn)}; ${bt.exitKind === 'voluntary' ? 'voluntary exits' : 'exits'} ${bt.outcome.label}, whole company`}
+          subtitle={`Scored as of ${formatDate(bt.scoredOn)} with points learned only from exits known by then; ${who} ${bt.outcome.label}, whole company`}
           data={bt.bands}
           columns={BACKTEST_COLUMNS}
           definitions={[DEF.backTest, DEF.bands]}
-          note={`${backTestSummary(bt)} ${plural(bt.population, 'person', 'people')} scored, ${fmt(bt.leavers)} left.`}
+          note={`${backTestSummary(bt)} ${plural(bt.population, 'person', 'people')} scored, ${fmt(bt.leavers)} left.${
+            bt.learned
+              ? ` Points learned from ${fmt(bt.learnedLeavers)} leavers before ${formatDate(bt.scoredOn)}.`
+              : ' Default points: too little history before the scoring date to learn from.'
+          }${
+            bt.defaults.length
+              ? ` ${listText(bt.defaults.map((k) => factorDef.get(k)!.label.toLowerCase())).replace(/^./, (c) => c.toUpperCase())} used default points: the data does not reach back far enough.`
+              : ''
+          }`}
           span={4}
           empty={bt.population ? null : 'There is no workforce history 12 months back to test against.'}
         >
@@ -102,8 +184,8 @@ export function RetentionTab({ m }: { m: TalentModel }) {
           subtitle="Share of people in the high band with each factor"
           data={drivers}
           columns={DRIVER_COLUMNS}
-          definitions={[DEF.flightRisk]}
-          note={`${plural(highCount, 'person', 'people')} in the high band · secondary text: how often the factor is the top reason`}
+          definitions={[DEF.flightRisk, DEF.mainReason]}
+          note={`${plural(highCount, 'person', 'people')} in the high band · the number after each bar counts people for whom it is the main reason`}
           span={4}
           empty={noPeople ?? (drivers.length ? null : 'No factor earned points.')}
         >
@@ -113,7 +195,7 @@ export function RetentionTab({ m }: { m: TalentModel }) {
             value="share"
             format="pct0"
             domain={[0, 1]}
-            secondary={(d) => (d.topReason ? `top for ${fmt(d.topReason)}` : null)}
+            secondary={(d) => (d.topReason ? `main for ${fmt(d.topReason)}` : null)}
             ariaLabel="Share of high-band people with each factor"
           />
         </Figure>
@@ -121,16 +203,20 @@ export function RetentionTab({ m }: { m: TalentModel }) {
 
       <Section
         title="How the score works"
-        dek="Each factor's points come from the last 12 months: a factor earns points in proportion to how much more often people with it left. Factors that did not go with more exits get no points."
+        dek={`Each factor's points come from the last two years of exits: at every month-end 12 to 23 months back, a factor earns points in proportion to how much more often people with it left in the next 12 months. ${zeroText}`.trim()}
       >
         <Figure
           id="talent-risk-factors"
           title="Flight-risk factors and their evidence"
-          subtitle={`People active on ${formatDate(bt.scoredOn)}, by whether they had each factor then, and the share who left voluntarily by ${asOf}`}
+          subtitle={
+            learnedFrom.length
+              ? `People active at each month-end from ${formatDate(learnedFrom[0])} to ${formatDate(learnedFrom.at(-1))}, by whether they had each factor then, and the share who left voluntarily in the next 12 months`
+              : 'Not enough exit history to learn from: every factor keeps its default points'
+          }
           data={evidence}
           columns={EVIDENCE_COLUMNS}
           definitions={[DEF.flightRisk, DEF.lift, DEF.backTest]}
-          note={`${pointsNote}${offNote}`}
+          note={`${pointsNote}. A person counts once at each month-end they were active.${offNote}`}
           tableOnly
           table={{ maxRows: 12 }}
           empty={
@@ -141,24 +227,43 @@ export function RetentionTab({ m }: { m: TalentModel }) {
 
       <Section
         title="People to talk with"
-        dek="Names for the next talent review: key talent at risk, high performers waiting for a promotion, everyone in the high band, and the high performers who already left."
+        dek="Names for the next talent review: key talent at risk (or everyone in the high band), high performers waiting for a promotion, and the high performers who already left."
       >
         <Figure
           id="talent-key-talent-at-risk"
-          title="Key talent at risk"
-          subtitle={`Rated 4-5 and in the high flight-risk band, as of ${asOf}, with their top two reasons`}
-          data={ret.keyTalent}
-          columns={RISK_PERSON_FULL_COLUMNS}
-          definitions={[DEF.keyTalent, DEF.flightRisk]}
-          note={`${plural(ret.keyTalent.length, 'person', 'people')} of ${fmt(ret.highPerformers)} rated 4-5`}
+          title={peopleTitle}
+          subtitle={peopleSub}
+          data={peopleRows}
+          columns={riskPersonColumns(peopleRows, { full: true })}
+          definitions={[DEF.keyTalent, DEF.flightRisk, DEF.mainReason, DEF.bands]}
+          note={
+            view === 'key'
+              ? `${plural(ret.keyTalent.length, 'person', 'people')} of ${fmt(ret.highPerformers)} active people rated 4-5 · high band = top ${highShare} of scores company-wide`
+              : `${plural(peopleRows.length, 'person', 'people')} · high band = top ${highShare}, medium = next ${mediumShare} company-wide`
+          }
           tableOnly
-          table={{ maxRows: 10, search: ret.keyTalent.length > 10 ? 'Search people' : undefined }}
+          actions={
+            <Segmented<PeopleView>
+              label="People shown"
+              value={view}
+              onChange={setView}
+              options={[
+                { value: 'key', label: 'Rated 4-5' },
+                { value: 'high', label: 'High band' },
+                { value: 'watch', label: 'High and medium' },
+              ]}
+            />
+          }
+          table={{ maxRows: 12, search: peopleRows.length > 12 ? 'Search people' : undefined }}
           empty={
-            !m.has.reviews
+            noPeople ??
+            (view === 'key' && !m.has.reviews
               ? 'Upload Reviews to see who is rated 4 or 5.'
-              : ret.keyTalent.length
+              : peopleRows.length
                 ? null
-                : 'Nobody rated 4 or 5 is in the high flight-risk band in this scope.'
+                : view === 'key'
+                  ? 'Nobody rated 4 or 5 is in the high flight-risk band in this scope.'
+                  : 'Nobody in this scope is in these bands.')
           }
         />
         <Figure
@@ -172,7 +277,11 @@ export function RetentionTab({ m }: { m: TalentModel }) {
           data={m.overdue.rows}
           columns={PROMOTION_OVERDUE_COLUMNS}
           definitions={[DEF.overduePromotion]}
-          note={`${plural(m.overdue.rows.length, 'person', 'people')} of ${fmt(m.overdue.eligible)} with 3+ years and both ratings`}
+          note={`${plural(m.overdue.rows.length, 'person', 'people')} of ${fmt(m.overdue.eligible)} with 3+ years and both ratings${
+            promoZero && overdueLow
+              ? ` · ${fmt(overdueLow)} of them are in the low flight-risk band because time since promotion did not go with more exits here; the wait is still worth a conversation`
+              : ''
+          }`}
           tableOnly
           table={{ maxRows: 10, search: m.overdue.rows.length > 10 ? 'Search people' : undefined }}
           empty={
@@ -184,42 +293,23 @@ export function RetentionTab({ m }: { m: TalentModel }) {
           }
         />
         <Figure
-          id="talent-flight-risk-list"
-          title="Flight risk by person"
-          subtitle={`${watch === 'High' ? 'High band' : 'High and medium bands'}, highest scores first, as of ${asOf}`}
-          data={watchRows}
-          columns={RISK_PERSON_FULL_COLUMNS}
-          definitions={[DEF.flightRisk, DEF.bands]}
-          note={`${plural(watchRows.length, 'person', 'people')}`}
-          tableOnly
-          actions={
-            <Segmented<WatchBand>
-              label="Bands shown"
-              value={watch}
-              onChange={setWatch}
-              options={[
-                { value: 'High', label: 'High' },
-                { value: 'Medium', label: 'High and medium' },
-              ]}
-            />
-          }
-          table={{ maxRows: 15, search: 'Search people' }}
-          empty={noPeople ?? (watchRows.length ? null : 'Nobody in this scope is in these bands.')}
-        />
-        <Figure
           id="talent-regretted-high-performers"
           title="Regretted exits of high performers"
           subtitle={`Voluntary regretted exits whose last rating was 4 or 5, ${ctx.window.label}`}
-          data={ret.regrettedHigh.current}
+          data={regret.current}
           columns={EXIT_PERSON_COLUMNS}
           definitions={[DEF.regrettedHigh]}
-          note={`${plural(ret.regrettedHigh.current.length, 'exit')} · ${fmt(ret.regrettedHigh.prior.length)} in the prior period`}
+          note={
+            regret.available
+              ? `${plural(regret.current.length, 'exit')} · ${fmt(regret.prior.length)} in the prior period`
+              : undefined
+          }
           tableOnly
           table={{ maxRows: 10 }}
           empty={
-            !m.has.regrettable
-              ? 'Upload Employees with a regrettable flag on leavers to see this.'
-              : ret.regrettedHigh.current.length
+            !regret.available
+              ? `${regret.missing ?? 'A column is missing'}, so regretted exits of high performers can't be counted. Upload Employees with a termination type and a regrettable flag on leavers, and Reviews.`
+              : regret.current.length
                 ? null
                 : 'No regretted exits of high performers in this period.'
           }

@@ -115,4 +115,16 @@ describe('windows', () => {
     const aug = cells.find((c) => c.month === '2026-08' && c.transition === 'Applied to screen')!
     expect(aug).toMatchObject({ days: null, n: 1 })
   })
+
+  it('counts each step in the month it was completed, not the month the candidate applied', () => {
+    // Applied in July, screened in September after 60+ days: the slowdown shows in September.
+    const slow = Array.from({ length: 5 }, (_, i) =>
+      cand('REQ-1', { appliedDate: '2026-07-01', currentStage: 'Screen', screenDate: `2026-09-0${1 + i}` }),
+    )
+    const cells = speedByMonth(prep(slow), AS_OF)
+    const sep = cells.find((c) => c.month === '2026-09' && c.transition === 'Applied to screen')!
+    expect(sep).toMatchObject({ days: 64, n: 5 })
+    const jul = cells.find((c) => c.month === '2026-07' && c.transition === 'Applied to screen')!
+    expect(jul.n).toBe(0)
+  })
 })

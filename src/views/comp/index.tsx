@@ -4,9 +4,9 @@
  */
 import { fmt } from '@/lib/format'
 import type { ViewDef } from '../types'
-import { compaHeadline } from './engine/model'
+import { type CompModel, compaHeadline } from './engine/model'
 import { CompHeaderActions } from './HeaderActions'
-import { NoCompData, useCompModel } from './shared'
+import { NoCompData, PayNotice, useCompModel } from './shared'
 import { Cycle } from './tabs/Cycle'
 import { Market } from './tabs/Market'
 import { Overview } from './tabs/Overview'
@@ -21,9 +21,7 @@ const TABS = [
   { key: 'cycle', label: 'Merit cycle' },
 ]
 
-function View({ tab }: { tab: string }) {
-  const m = useCompModel()
-  if (!m.pop.people.length) return <NoCompData m={m} />
+function Body({ tab, m }: { tab: string; m: CompModel }) {
   switch (tab) {
     case 'ranges':
       return <Ranges m={m} />
@@ -36,6 +34,17 @@ function View({ tab }: { tab: string }) {
     default:
       return <Overview m={m} />
   }
+}
+
+function View({ tab }: { tab: string }) {
+  const m = useCompModel()
+  if (!m.pop.people.length) return <NoCompData m={m} />
+  return (
+    <>
+      <PayNotice m={m} />
+      <Body tab={tab} m={m} />
+    </>
+  )
 }
 
 export const view: ViewDef = {

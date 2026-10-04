@@ -47,15 +47,32 @@ describe('HRBP engine on the sample company', () => {
     expect(f.title).toContain(planted.name)
     expect(f.title).toContain('5 regretted exits')
     expect(f.filter).toEqual({ leaderId: plantedId })
-    expect(f.people!.length).toBeLessThanOrEqual(50)
+    // The people chip lists the 5 behind the headline, not every manager's leavers.
+    expect(f.people).toHaveLength(5)
+    expect(f.detail).toContain('“My manager” (5 of 5)')
   })
 
   it('story 2: Bengaluru voluntary attrition 18.8% against 9.4% for the company', () => {
     const f = find('hrbp-voluntary-location')
     expect(f.title).toBe('Voluntary attrition in Bengaluru is 18.8%, 9.4 pts above the company')
-    expect(f.detail).toContain('Career growth or promotion (20)')
-    expect(f.detail).toContain('Base salary (18)')
+    expect(f.detail).toContain('“Career growth or promotion” (20)')
+    expect(f.detail).toContain('“Base salary” (18)')
     expect(f.filter).toEqual({ location: ['Bengaluru'] })
+    // Every one of the 57 leavers is listed, so the chip agrees with the number.
+    expect(f.detail).toMatch(/^57 voluntary exits/)
+    expect(f.people).toHaveLength(57)
+  })
+
+  it('judges Physical Design on its exits outside Bengaluru, so the two findings do not repeat the same leavers', () => {
+    const f = find('hrbp-voluntary-department')
+    expect(f.title).toMatch(/^Voluntary attrition in Physical Design is/)
+    expect(f.detail).toContain('Outside Bengaluru it is')
+    expect(f.detail).not.toContain('Bengaluru accounts for')
+    expect(f.severity).toBe('warning')
+    expect(m.findings.filter((x) => x.severity === 'critical').map((x) => x.id)).toEqual([
+      'hrbp-voluntary-location',
+      'hrbp-regretted-cluster',
+    ])
   })
 
   it('story 3: first-year attrition in Go-to-Market 27.0% (10 of 37) against 8.3% elsewhere', () => {
@@ -98,13 +115,13 @@ describe('HRBP engine on the sample company', () => {
     expect(kpi('voluntary').value).toBe(attrition(ctx.data.employees, ctx.window, 'voluntary').rate)
   })
 
-  it('ranks findings by severity and keeps people lists at 50 or fewer', () => {
+  it('ranks findings by severity and keeps people lists at 100 or fewer', () => {
     const rank = { critical: 0, warning: 1, info: 2, good: 3 }
     for (let i = 1; i < m.findings.length; i++) {
       expect(rank[m.findings[i].severity]).toBeGreaterThanOrEqual(rank[m.findings[i - 1].severity])
     }
     for (const f of m.findings) {
-      expect((f.people ?? []).length).toBeLessThanOrEqual(50)
+      expect((f.people ?? []).length).toBeLessThanOrEqual(100)
       expect(f.action).toBeTruthy()
       expect(`${f.title} ${f.detail ?? ''} ${f.action ?? ''}`).not.toMatch(/—|!/)
     }
@@ -132,7 +149,10 @@ describe('HRBP engine on the sample company', () => {
       .filter((l) => l.startsWith('- '))
     expect(lines.length).toBeGreaterThanOrEqual(5)
     expect(lines.length).toBeLessThanOrEqual(7)
-    expect(lines.join('\n')).toContain('most under Heather Hayes (5)')
+    expect(lines.join('\n')).toContain(
+      "66 regretted exits over the last 12 months. The largest group, 5 of 66, left Heather Hayes's team.",
+    )
+    expect(lines.join('\n')).not.toContain('most under')
   })
 
   it('folds sub-orgs under 5 employees and benchmarks against the company', () => {
@@ -147,6 +167,29 @@ describe('HRBP engine on the sample company', () => {
     const scoped = computeHrbp(sampleCtx({ leaderId: ceo.employeeId }))
     expect(scoped.scorecard.rows.filter((r) => r.kind === 'leader').length).toBeGreaterThan(3)
     expect(scoped.kpi.kpis.find((k) => k.id === 'voluntary')!.deltaLabel).toBe('vs company')
+  })
+
+  it('keeps every period honest: first-year a year back, promotions not annualized', () => {
+    for (const period of ['t3m', 'lastQuarter', 't6m', 'ytd'] as const) {
+      const pm = computeHrbp(sampleCtx({ period }))
+      const fy = pm.kpi.kpis.find((k) => k.id === 'first-year')!
+      expect(fy.deltaLabel).toBe('vs a year earlier')
+      expect(fy.delta).toBeCloseTo(kpi('first-year').delta as number, 10)
+      const promo = pm.kpi.kpis.find((k) => k.id === 'promotion-rate')!
+      // Promotions are a subset of moves: the promotion rate can never pass internal mobility.
+      expect(promo.value as number).toBeLessThanOrEqual(pm.movement.mobility.rate as number)
+      expect(promo.value).toBeCloseTo(
+        pm.movement.promotions.promotions / pm.movement.promotions.avgHeadcount,
+        10,
+      )
+    }
+    // Last 3 months: 75 promotions over 1,427.75 average headcount, against the same months a year earlier.
+    const q = computeHrbp(sampleCtx({ period: 't3m' }))
+    expect(q.movement.promotions.promotions).toBe(75)
+    expect(q.kpi.kpis.find((k) => k.id === 'promotion-rate')!).toMatchObject({
+      deltaLabel: 'vs same period last year',
+    })
+    expect(q.kpi.kpis.find((k) => k.id === 'promotion-rate')!.value).toBeCloseTo(75 / 1427.75, 10)
   })
 
   it('computes the folder-tab headline cheaply', () => {

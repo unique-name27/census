@@ -6,15 +6,22 @@
  */
 import type { Finding, FindingPerson, Severity } from '@/components/types'
 import type { Employee } from '@/data/schema'
+import { employeeMatcher } from '@/data/scope'
 import { addDays, daysBetween, formatDate } from '@/lib/dates'
 import { type Dimension, decomposeRate } from '@/lib/decompose'
 import { fmt } from '@/lib/format'
 import { exitsIn, inWindow, isActiveAt } from '@/lib/people'
-import { type AttritionModel, cohortSummary, firstYearCohort, type GroupRateRow } from './attrition'
-import { listJoin, nameList, type Prep, possessive, trailing } from './base'
+import {
+  type AttritionModel,
+  cohortSummary,
+  exitsByDepartment,
+  firstYearCohort,
+  type GroupRateRow,
+} from './attrition'
+import { buildHistory, count, listJoin, nameList, type Prep, possessive, quoted, trailing } from './base'
 import { type KpiModel, windowPhrase } from './kpis'
 import type { OrgModel } from './org'
-import { leftInFirstYear } from './rates'
+import { annualRate, leftInFirstYear } from './rates'
 import type { WorkforceModel } from './workforce'
 
 interface Ranked extends Finding {
@@ -22,11 +29,14 @@ interface Ranked extends Finding {
 }
 
 const SEVERITY_ORDER: Record<Severity, number> = { critical: 0, warning: 1, info: 2, good: 3 }
-const MAX_PEOPLE = 50
+/**
+ * Everyone behind a finding's number is listed (the readout shows 5 and "and N more"), so the
+ * people chip and the number agree. The cap only guards very large groups.
+ */
+export const MAX_PEOPLE = 100
 
 const pct = (v: number) => fmt(v, 'pct')
 const pts = (v: number) => `${fmt(Math.abs(v) * 100, 'num1')} pts`
-const count = (n: number, one: string, many: string) => `${n.toLocaleString('en-US')} ${n === 1 ? one : many}`
 
 function leaverNote(e: Employee, p: Prep): string {
   const parts = [`Left ${formatDate(e.terminationDate)}`]
@@ -51,7 +61,7 @@ function topReasons(list: readonly Employee[], n = 2): { reason: string; count: 
 function reasonClause(list: readonly Employee[]): string {
   const top = topReasons(list).filter((r) => r.count >= 2)
   if (!top.length) return ''
-  return `, most often ${listJoin(top.map((r) => `${r.reason} (${r.count})`))}`
+  return `, most often ${listJoin(top.map((r) => `${quoted(r.reason)} (${r.count})`))}`
 }
 
 /* ───────── 1. regretted exits clustered under a manager ───────── */
@@ -78,7 +88,7 @@ function regrettedClusters(p: Prep): Ranked | null {
   const dates = top.list.map((e) => e.terminationDate as string).sort()
   const detail = [
     reason && reason.count >= 2
-      ? `The most common reason given was ${reason.reason} (${reason.count} of ${top.list.length}).`
+      ? `The most common reason given was ${quoted(reason.reason)} (${reason.count} of ${top.list.length}).`
       : `They left between ${formatDate(dates[0])} and ${formatDate(dates.at(-1))}.`,
     others.length
       ? `${count(others.length, 'other manager', 'other managers')} also had 2 or more: ${nameList(
@@ -95,10 +105,8 @@ function regrettedClusters(p: Prep): Ranked | null {
     title: `${possessive(top.name)} team${where} had ${top.list.length} regretted exits in the last 12 months`,
     detail,
     action: `Hold stay conversations with the rest of ${possessive(top.name)} team this month.`,
-    people: people(
-      teams.flatMap((t) => t.list),
-      (e) => leaverNote(e, p),
-    ),
+    // The people behind the headline number: this manager's regretted leavers.
+    people: people(top.list, (e) => leaverNote(e, p)),
     filter: mgr ? { leaderId: top.managerId } : undefined,
     tab: 'attrition',
     impact: top.list.length * 2,
@@ -155,7 +163,10 @@ function attritionVsCompany(p: Prep, kpi: KpiModel, att: AttritionModel): Ranked
         id: 'hrbp-voluntary-scope',
         severity: kpi.vol.rate >= company * 1.75 && leavers.length >= 10 ? 'critical' : 'warning',
         title: `Voluntary attrition in ${p.ctx.scopeLabel} is ${pct(kpi.vol.rate)}, ${pts(diff)} above the company`,
-        detail: [`${leavers.length} voluntary exits in ${phrase}${reasonClause(leavers)}.`, conc]
+        detail: [
+          `${count(leavers.length, 'voluntary exit', 'voluntary exits')} in ${phrase}${reasonClause(leavers)}.`,
+          conc,
+        ]
           .filter(Boolean)
           .join(' '),
         action: `Review the top exit reasons with ${
@@ -170,12 +181,29 @@ function attritionVsCompany(p: Prep, kpi: KpiModel, att: AttritionModel): Ranked
         id: 'hrbp-voluntary-good',
         severity: 'good',
         title: `Voluntary attrition in ${p.ctx.scopeLabel} is ${pct(kpi.vol.rate)}, ${pts(diff)} below the company`,
-        detail: `${leavers.length} voluntary exits in ${phrase}, against ${pct(company)} for the company.`,
+        detail: `${count(leavers.length, 'voluntary exit', 'voluntary exits')} in ${phrase}, against ${pct(company)} for the company.`,
         action: 'Ask the leader what is working so other teams can learn from it.',
         tab: 'attrition',
         impact: 0,
       })
     }
+  }
+
+  /** The location flagged first; a department whose excess sits mostly there is judged on the rest. */
+  let flaggedLocation: string | null = null
+  /** The department's voluntary rate outside the flagged location, when that location holds a large share of its leavers. */
+  const outsideFlagged = (dept: string, leavers: readonly Employee[]) => {
+    if (!flaggedLocation) return undefined
+    const loc = flaggedLocation
+    const shared = leavers.filter((e) => e.location === loc).length
+    if (shared < 3 || shared / leavers.length < 0.3) return undefined
+    const rest = exitsByDepartment(
+      p.emps.filter((e) => e.location !== loc),
+      p.window,
+      p.history.deptAt,
+    ).get(dept)
+    const rate = rest ? annualRate(rest.voluntary, rest.avgHeadcount, p.window) : null
+    return { location: loc, rate, exits: rest?.voluntary ?? 0 }
   }
 
   const dimension = (rows: GroupRateRow[], key: 'location' | 'department') => {
@@ -190,32 +218,43 @@ function attritionVsCompany(p: Prep, kpi: KpiModel, att: AttritionModel): Ranked
       )
       .map((r) => ({ ...r, excess: ((r.voluntaryRate as number) - company) * r.avgHeadcount }))
       .sort((a, b) => b.excess - a.excess)
-    const top = hits[0]
-    if (!top) return
-    const rate = top.voluntaryRate as number
-    const list = p.emps.filter((e) => (key === 'location' ? e.location : e.department) === top.group)
-    const leavers = exitsIn(list, p.window).filter((e) => e.terminationType === 'Voluntary')
-    const within = key === 'location' ? [DIMS.department, DIMS.level] : [DIMS.location, DIMS.level]
-    const conc = concentration(p, list, within, leavers.length)
-    const also = hits.slice(1).map((h) => h.group)
-    const second =
-      conc ||
-      (also.length
-        ? `${listJoin(also.slice(0, 3))} ${also.length === 1 ? 'is' : 'are'} also 3 pts or more above.`
-        : '')
-    out.push({
-      id: `hrbp-voluntary-${key}`,
-      severity: rate >= company * 1.75 && leavers.length >= 10 ? 'critical' : 'warning',
-      title: `Voluntary attrition in ${top.group} is ${pct(rate)}, ${pts(rate - company)} above the company`,
-      detail: [`${leavers.length} voluntary exits in ${phrase}${reasonClause(leavers)}.`, second]
-        .filter(Boolean)
-        .join(' '),
-      action: `Review the top exit reasons with the ${top.group} leaders and hold stay conversations in the most affected teams.`,
-      people: people(leavers, (e) => leaverNote(e, p)),
-      filter: key === 'location' ? { location: [top.group] } : { department: [top.group] },
-      tab: 'attrition',
-      impact: top.excess,
-    })
+    for (const top of hits) {
+      const rate = top.voluntaryRate as number
+      const list = p.emps.filter((e) => (key === 'location' ? e.location : e.department) === top.group)
+      const leavers = exitsIn(list, p.window).filter((e) => e.terminationType === 'Voluntary')
+      const outside = key === 'department' ? outsideFlagged(top.group, leavers) : undefined
+      // Explained by the flagged location: outside it the department sits within 3 pts of the company.
+      if (outside && (outside.rate == null || outside.rate - company < 0.03)) continue
+      const within = key === 'location' ? [DIMS.department, DIMS.level] : [DIMS.location, DIMS.level]
+      const also = hits.filter((h) => h !== top).map((h) => h.group)
+      const second =
+        outside?.rate != null
+          ? `Outside ${outside.location} it is ${pct(outside.rate)}, ${pts(outside.rate - company)} above the company.`
+          : concentration(p, list, within, leavers.length) ||
+            (also.length
+              ? `${listJoin(also.slice(0, 3))} ${also.length === 1 ? 'is' : 'are'} also 3 pts or more above.`
+              : '')
+      const judged =
+        outside?.rate != null ? { rate: outside.rate, n: outside.exits } : { rate, n: leavers.length }
+      out.push({
+        id: `hrbp-voluntary-${key}`,
+        severity: judged.rate >= company * 1.75 && judged.n >= 10 ? 'critical' : 'warning',
+        title: `Voluntary attrition in ${top.group} is ${pct(rate)}, ${pts(rate - company)} above the company`,
+        detail: [
+          `${count(leavers.length, 'voluntary exit', 'voluntary exits')} in ${phrase}${reasonClause(leavers)}.`,
+          second,
+        ]
+          .filter(Boolean)
+          .join(' '),
+        action: `Review the top exit reasons with the ${top.group} leaders and hold stay conversations in the most affected teams.`,
+        people: people(leavers, (e) => leaverNote(e, p)),
+        filter: key === 'location' ? { location: [top.group] } : { department: [top.group] },
+        tab: 'attrition',
+        impact: top.excess,
+      })
+      if (key === 'location') flaggedLocation = top.group
+      return
+    }
   }
   dimension(att.byLocation, 'location')
   dimension(att.byDepartment, 'department')
@@ -238,6 +277,7 @@ function mostIn(list: readonly Employee[], dim: Dimension<Employee>): string {
 }
 
 function firstYear(p: Prep, kpi: KpiModel): Ranked | null {
+  if (!p.has.terminationDate) return null
   const fy = kpi.firstYear
   const range = `${formatDate(addDays(fy.from, 1))} to ${formatDate(fy.to)}`
   const cohort = firstYearCohort(p.emps, p.asOf)
@@ -444,16 +484,44 @@ function orgDepth(p: Prep, org: OrgModel): Ranked | null {
 
 /* ───────── 8-10. growth and new hires ───────── */
 
+/**
+ * Who was in the scope on `since`: the whole company, or, under an org filter, company employees
+ * whose department, business unit and level on that date match it. The scoped roster holds
+ * today's members only, so people who have since moved out of a filtered department would
+ * otherwise drop out of the earlier headcount (the survivor bias the earlier tool had).
+ */
+function scopeAt(p: Prep, since: string): { people: readonly Employee[]; deptAt: (e: Employee) => string } {
+  if (p.ctx.isCompany) return { people: p.emps, deptAt: (e) => p.history.deptAt(e, since) }
+  const history = buildHistory(p.companyChanges)
+  const unitOf = new Map<string, string>()
+  for (const e of p.companyEmps)
+    if (e.department && !unitOf.has(e.department)) unitOf.set(e.department, e.businessUnit)
+  const inScope = employeeMatcher(p.ctx.filters, p.ctx.org)
+  const people = p.companyEmps.filter((e) => {
+    if (!isActiveAt(e, since)) return false
+    const department = history.deptAt(e, since)
+    return inScope({
+      ...e,
+      department,
+      businessUnit: unitOf.get(department) ?? e.businessUnit,
+      level: history.levelAt(e, since),
+    })
+  })
+  return { people, deptAt: (e) => history.deptAt(e, since) }
+}
+
 /** Department headcount now vs 6 months ago, true headcount at both dates (department at each date from transfers). */
 export function departmentGrowth(p: Prep): { dept: string; now: number; before: number; growth: number }[] {
   const since = addDays(trailing(p.asOf, 6).start, -1)
   const before = new Map<string, number>()
   const now = new Map<string, number>()
+  const then = scopeAt(p, since)
+  for (const e of then.people) {
+    if (!isActiveAt(e, since)) continue
+    const d = then.deptAt(e)
+    before.set(d, (before.get(d) ?? 0) + 1)
+  }
   for (const e of p.emps) {
-    if (isActiveAt(e, since)) {
-      const d = p.history.deptAt(e, since)
-      before.set(d, (before.get(d) ?? 0) + 1)
-    }
     if (isActiveAt(e, p.asOf)) now.set(e.department, (now.get(e.department) ?? 0) + 1)
   }
   return [...now.entries()]
@@ -464,6 +532,7 @@ export function departmentGrowth(p: Prep): { dept: string; now: number; before: 
 }
 
 function rapidGrowth(p: Prep): Ranked | null {
+  if (!p.has.terminationDate) return null
   const since = addDays(trailing(p.asOf, 6).start, -1)
   const grown = departmentGrowth(p).filter((g) => g.growth >= 0.35)
   const top = grown[0]
@@ -507,7 +576,7 @@ function newHireConcentration(p: Prep): Ranked | null {
     .sort((a, b) => b.share - a.share || b.size - a.size)
   if (!flagged.length) return null
   const top = flagged[0]
-  const list = flagged.map((t) => `${t.name} ${t.recent} of ${t.size}`)
+  const list = flagged.map((t) => `${possessive(t.name)} team ${t.recent} of ${t.size}`)
   return {
     id: 'hrbp-new-hire-concentration',
     severity: flagged.some((t) => t.share >= 0.65) ? 'warning' : 'info',
@@ -515,7 +584,7 @@ function newHireConcentration(p: Prep): Ranked | null {
       flagged.length === 1
         ? `${top.recent} of ${possessive(top.name)} ${top.size} direct reports were hired in the last 6 months`
         : `${flagged.length} teams have at least half their people hired in the last 6 months`,
-    detail: `Teams of 5 or more employees, hired since ${formatDate(since)}: ${nameList(list, 5)}.`,
+    detail: `New hires since ${formatDate(since)}: ${nameList(list, 5)}.`,
     action:
       "Pair each new hire with an experienced buddy and keep these managers' other commitments light this quarter.",
     people: flagged.slice(0, MAX_PEOPLE).map((t) => ({
@@ -529,6 +598,7 @@ function newHireConcentration(p: Prep): Ranked | null {
 }
 
 function unevenGrowth(p: Prep, wf: WorkforceModel): Ranked | null {
+  if (!p.has.terminationDate) return null
   const rows = wf.growth.filter((g) => g.growth != null)
   if (rows.length < 2) return null
   const top = rows[0]

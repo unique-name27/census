@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import type { DatasetKey } from '@/data/schema'
-import { matchStrength, nextPending, orderPlan, pendingImports, planSheets, sameTarget } from './plan'
+import {
+  isNotCensus,
+  matchStrength,
+  nextPending,
+  orderPlan,
+  pendingImports,
+  planSheets,
+  sameTarget,
+  usableSheets,
+} from './plan'
 
 /** Guesses for a sheet: the named dataset first at `c`, everything else trailing. */
 const guesses = (key: DatasetKey, c: number, second: DatasetKey = 'learning', c2 = 0.2) => [
@@ -71,6 +80,32 @@ describe('planSheets', () => {
   it('returns nothing for no sheets', () => {
     expect(planSheets([])).toEqual([])
     expect(planSheets([], 'employees')).toEqual([])
+  })
+})
+
+describe('which sheets to walk', () => {
+  const isHelp = (n: string) => n === 'Read me' || n === 'Fields'
+  const book = (name: string, rows: number) => ({ name, rows: Array.from({ length: rows }, () => ({})) })
+
+  it('leaves out help sheets and sheets with headers but no rows, and names them', () => {
+    const wb = {
+      sheets: [book('Read me', 30), book('Employees', 3), book('Job changes', 0), book('Fields', 90)],
+      emptySheets: ['Sheet3'],
+    }
+    const { sheets, noRows } = usableSheets(wb, isHelp)
+    expect(sheets.map((s) => s.name)).toEqual(['Employees'])
+    expect(noRows).toEqual(['Job changes', 'Sheet3'])
+  })
+
+  it('finds nothing to walk in a blank template', () => {
+    const wb = { sheets: [book('Employees', 0), book('Requisitions', 0)], emptySheets: [] }
+    expect(usableSheets(wb, isHelp)).toEqual({ sheets: [], noRows: ['Employees', 'Requisitions'] })
+  })
+
+  it('calls an upload not Census data only when every sheet is a weak match', () => {
+    expect(isNotCensus([{ reason: 'not-census' }, { reason: 'not-census' }])).toBe(true)
+    expect(isNotCensus([{ reason: 'not-census' }, { reason: 'uncertain' }])).toBe(false)
+    expect(isNotCensus([])).toBe(false)
   })
 })
 

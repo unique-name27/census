@@ -3,7 +3,7 @@ import { useAnalytics } from '@/data/context'
 import { formatDate } from '@/lib/dates'
 import { plural } from '@/lib/format'
 import type { TalentModel } from '../engine'
-import { NINE_BOX_COLUMNS, NINE_BOX_DETAIL_COLUMNS, type NineBoxRow } from './columns'
+import { NINE_BOX_COLUMNS, type NineBoxRow, nineBoxDetailColumns } from './columns'
 import { DEF } from './defs'
 import { NineBox } from './NineBox'
 
@@ -33,11 +33,11 @@ export function NineBoxFigure({ m, span }: { m: TalentModel; span: FigureSpan })
       empty={empty}
       detail={{
         label: 'People',
-        columns: NINE_BOX_DETAIL_COLUMNS,
+        columns: nineBoxDetailColumns(cycle),
         rows: () => nb.cells.flatMap((c) => c.people.map((p) => ({ box: c.label, ...p }))),
       }}
     >
-      <NineBox cells={nb.cells} />
+      <NineBox cells={nb.cells} cycle={cycle} />
     </Figure>
   )
 }

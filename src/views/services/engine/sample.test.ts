@@ -101,7 +101,7 @@ describe('employee services on the sample company', () => {
   })
 
   it('scores every Atlas service level with an actual', () => {
-    expect(model.levels).toHaveLength(13)
+    expect(model.levels).toHaveLength(14)
     for (const l of model.levels) {
       expect(l.actual, l.id).not.toBeNull()
       expect(l.status, l.id).not.toBeNull()
@@ -131,5 +131,63 @@ describe('employee services on the sample company', () => {
     const scoped = compute(sampleContext({ location: ['Bengaluru'] }))
     expect(scoped.findings.some((f) => f.id === 'services-final-pay-in')).toBe(true)
     for (const k of scoped.kpis) expect(k.value === null || Number.isFinite(k.value)).toBe(true)
+  })
+})
+
+describe('employee services on small scopes and short periods', () => {
+  it('hides every rate and sensitive count behind the four executives at level E2', () => {
+    const m = compute(sampleContext({ level: ['E2'] }))
+    expect(m.people).toBe(4)
+    expect(m.small).toBe(true)
+    const rates = ['resolution-sla', 'response-sla', 'time-to-resolve', 'csat', 'tx-on-time']
+    for (const id of rates) expect(m.kpis.find((k) => k.id === id)?.value, id).toBeNull()
+    // Breakdowns fold into a single "Other (k)" with no rate; no process shows a count of 1 or 2.
+    for (const rows of [m.categories, m.types, m.channels])
+      for (const r of rows as { rate?: number | null; slaRate?: number | null }[])
+        expect(r.rate ?? r.slaRate ?? null).toBeNull()
+    expect(m.categories.map((r) => r.category)).toEqual([expect.stringMatching(/^Other \(\d+\)$/)])
+    for (const p of m.processes) {
+      expect(p.cases === 0 || p.cases === null, p.processId).toBe(true)
+      expect(p.transactions === 0 || p.transactions === null, p.processId).toBe(true)
+    }
+    expect(m.opened.series).toEqual(['All categories'])
+    expect(m.aged).toEqual([])
+    expect(m.findings).toEqual([])
+    for (const l of m.levels) expect(l.n === 0 || l.n === null, l.id).toBe(true)
+    expect(m.timing.every((r) => r.share === null)).toBe(true)
+    expect(m.arrivals.every((r) => r.share === null)).toBe(true)
+    expect(m.levels.every((l) => l.actual === null)).toBe(true)
+  })
+
+  it('raises payroll once and does not flag a region that beats the others, last 3 months', () => {
+    const m = compute(sampleContext({ period: 't3m' }))
+    expect(m.findings.filter((f) => f.id.includes('payroll')).map((f) => f.id)).toEqual([
+      'services-spike-payroll',
+    ])
+    expect(m.findings.some((f) => f.id === 'services-new-hire-americas')).toBe(false)
+    expect(m.findings.some((f) => f.id === 'services-new-hire-apac')).toBe(true)
+    for (const f of m.findings) expect(f.detail ?? '', f.id).not.toMatch(/^0 of the/)
+    const ds01 = m.levels.find((l) => l.id === 'ds01-retro-share')!
+    expect(ds01.actual).toBeGreaterThan(0.06)
+    expect(ds01.status).toBe('Missed')
+  })
+
+  it('does not build a channel finding on a handful of responses (Vancouver)', () => {
+    const m = compute(sampleContext({ location: ['Vancouver'] }))
+    expect(m.findings.some((f) => f.id.startsWith('services-csat'))).toBe(false)
+  })
+
+  it('agrees with the readout on leave: the scorecard misses LV-01 designation', () => {
+    const lv = model.levels.find((l) => l.id === 'lv01-leave-designation-5bd')!
+    expect(lv.status).toBe('Missed')
+    expect(lv.caseSla).toBeCloseTo(156 / 236, 3)
+    const py = model.levels.find((l) => l.id === 'py05-payroll-2bd')!
+    expect(py.caseSla).toBeCloseTo(554 / 637, 3)
+    expect(py.caseSlaTarget).toBe('48 h')
+  })
+
+  it('never lists an employee relations case row by row', () => {
+    expect(model.aged.some((r) => r.category === 'Employee relations')).toBe(false)
+    expect(model.agedPrivate.map((r) => r.category)).toEqual(['Employee relations'])
   })
 })

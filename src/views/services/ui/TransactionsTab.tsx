@@ -1,12 +1,14 @@
-import { BarList, Columns, Figure, type FigureSpan } from '@/charts'
-import { Section } from '@/components'
+import { BarList, Columns, Figure, type Tone } from '@/charts'
+import { Section, type Span } from '@/components'
 import type { AnalyticsContext } from '@/data/context'
 import { fmt } from '@/lib/format'
 import type { ServicesModel } from '../engine'
-import { TRANSACTION_ON_TIME_TARGET } from '../engine/catalog'
+import { FINAL_PAY_RULES, TRANSACTION_ON_TIME_TARGET } from '../engine/catalog'
 import type { TxFact } from '../engine/facts'
 import { onTimeRate } from '../engine/facts'
+import type { FinalPayRow } from '../engine/transactions'
 import { TIMING_BINS } from '../engine/transactions'
+import { isOther } from '../engine/util'
 import { asOfNote, count, DEF, NeedData, NO_TX, period, rateTone } from './shared'
 
 const TX_DETAIL_COLUMNS = [
@@ -38,18 +40,20 @@ const txDetail = (rows: readonly TxFact[]) => () =>
 const inWindow = (m: ServicesModel) =>
   m.tx.filter((f) => f.due != null && f.due >= m.window.start && f.due <= m.window.end)
 
-export function TypeOnTimeFigure({
+/** Final pay status: under 95% critical (the readout's threshold), under 100% warning. */
+const finalPayTone = (rate: number | null): Tone =>
+  rate == null ? 'deemph' : rate < 0.95 ? 'critical' : rate < 1 ? 'warning' : 'default'
+
+function TypeOnTimeFigure({
   id,
   m,
   ctx,
   span,
-  onSelect,
 }: {
   id: string
   m: ServicesModel
   ctx: AnalyticsContext
-  span: FigureSpan
-  onSelect?: () => void
+  span: Span
 }) {
   const due = inWindow(m)
   const all = onTimeRate(due)
@@ -76,16 +80,10 @@ export function TypeOnTimeFigure({
         count(all.n, 'transaction'),
         `target ${fmt(TRANSACTION_ON_TIME_TARGET, 'pct0')}`,
       )}
-      empty={
-        !m.hasTx
-          ? 'Upload HR transactions to see this.'
-          : !m.txCols.dueDate
-            ? 'Upload HR transactions with a due date column to see this.'
-            : m.types.length
-              ? null
-              : 'No transactions were due in this period.'
+      empty={m.types.length ? null : 'No transactions were due in this period.'}
+      detail={
+        m.small ? undefined : { label: 'Transactions', columns: TX_DETAIL_COLUMNS, rows: txDetail(due) }
       }
-      detail={{ label: 'Transactions', columns: TX_DETAIL_COLUMNS, rows: txDetail(due) }}
     >
       <BarList
         data={m.types}
@@ -98,11 +96,29 @@ export function TypeOnTimeFigure({
           value: TRANSACTION_ON_TIME_TARGET,
           label: `Target ${fmt(TRANSACTION_ON_TIME_TARGET, 'pct0')}`,
         }}
-        secondary={(d) => `n = ${fmt(d.due, 'int')}`}
+        secondary={(d) => `${fmt(d.due, 'int')} due`}
         tone={(d) => rateTone(d.rate, TRANSACTION_ON_TIME_TARGET)}
-        onSelect={onSelect}
       />
     </Figure>
+  )
+}
+
+/** The deadline rule for each jurisdiction in the chart, beside it. */
+function FinalPayRules({ rows }: { rows: readonly FinalPayRow[] }) {
+  const named = rows.filter((r) => !isOther(r.name) && FINAL_PAY_RULES.has(r.jurisdiction))
+  if (!named.length) return null
+  return (
+    <div className="min-w-0 lg:border-l lg:border-rule lg:pl-4">
+      <h4 className="eyebrow mb-1.5">Deadline rule</h4>
+      <dl className="m-0 grid grid-cols-[minmax(6rem,auto)_1fr] gap-x-3 text-[12px] leading-snug">
+        {named.map((r) => (
+          <div key={r.jurisdiction} className="contents">
+            <dt className="border-t border-rule py-1.5 font-semibold text-ink">{r.name}</dt>
+            <dd className="m-0 border-t border-rule py-1.5 text-ink-2">{r.rule}</dd>
+          </div>
+        ))}
+      </dl>
+    </div>
   )
 }
 
@@ -119,11 +135,14 @@ export function TransactionsTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsCo
   const due = inWindow(m)
   const exits = due.filter((f) => f.type === 'Termination')
   const hires = due.filter((f) => f.type === 'New hire')
-  const hireAll = onTimeRate(hires)
-  const hireRate = hireAll.n >= 5 ? (hireAll.n - hireAll.late) / hireAll.n : null
+  const hireRate = onTimeRate(hires).rate
+  const hireN = onTimeRate(hires).n
+  const finalPayN = m.finalPay.reduce((a, r) => a + r.exits, 0)
   const completed = m.timing.reduce((a, r) => a + r.transactions, 0)
-  const retroTotal = m.retro.reduce((a, r) => a + r.retro, 0)
-  const retroChanges = m.retro.reduce((a, r) => a + r.changes, 0)
+  const timingHidden = m.timing.length > 0 && m.timing.every((r) => r.share == null)
+  const { retro: retroTotal, n: retroChanges, rate: retroRate } = m.retroSummary
+  const retroRows = m.retro.filter((r) => r.changes > 0)
+  const retroShown = retroRows.some((r) => r.share != null)
 
   return (
     <>
@@ -152,7 +171,13 @@ export function TransactionsTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsCo
             },
           ]}
           note={asOfNote(m.asOf, count(completed, 'completed transaction'))}
-          empty={m.timing.length ? null : 'No completed transactions were due in this period.'}
+          empty={
+            !m.timing.length
+              ? 'No completed transactions were due in this period.'
+              : timingHidden
+                ? 'Fewer than 5 people are behind these transactions, so their timing is hidden to protect anonymity.'
+                : null
+          }
         >
           <Columns
             data={m.timing}
@@ -166,74 +191,68 @@ export function TransactionsTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsCo
 
       <Section
         title="Final pay"
-        dek="Final pay against each jurisdiction's deadline (Atlas OF-05). The rule comes from the Atlas jurisdiction notes and depends on the exit type."
+        dek="Final pay against each jurisdiction's deadline (Atlas OF-05, target 100%). The rule comes from the Atlas jurisdiction notes and depends on the exit type."
       >
         <Figure
-          id="services-final-pay-table"
-          span={7}
-          title="Final pay timeliness by jurisdiction"
-          subtitle={`Termination transactions due in the ${per}, on time against the local final pay deadline`}
+          id="services-final-pay"
+          span={12}
+          title="Final pay on time by jurisdiction"
+          subtitle={`Termination transactions due in the ${per}, paid by the local final pay deadline, lowest first`}
           data={m.finalPay}
           columns={[
             { key: 'name', label: 'Jurisdiction' },
             { key: 'sites', label: 'Sites' },
-            { key: 'rule', label: 'Deadline rule' },
             { key: 'exits', label: 'Exits', format: 'int' },
             { key: 'late', label: 'Late', format: 'int' },
             { key: 'rate', label: 'On time', format: 'pct' },
             { key: 'involuntaryRate', label: 'Involuntary on time', format: 'pct' },
             { key: 'voluntaryRate', label: 'Voluntary on time', format: 'pct' },
             { key: 'medianDaysLate', label: 'Median days late', format: 'days' },
+            { key: 'rule', label: 'Deadline rule' },
           ]}
           definitions={[
             {
               term: 'Final pay on time',
-              text: "Termination transactions completed on or before the final pay deadline for the leaver's site and exit type. Target 100% (Atlas OF-05).",
+              text: "Termination transactions completed on or before the final pay deadline for the leaver's site and exit type. Target 100% (Atlas OF-05). Under 95% is marked critical, as in the readout.",
               formula: 'completedDate ≤ dueDate',
             },
             {
               term: 'Jurisdiction',
-              text: "From the leaver's site in the roster (San Jose is California, Bengaluru is India, and so on).",
+              text: "From the leaver's site in the roster (San Jose is California, Bengaluru is India, and so on). Jurisdictions with fewer than 5 leavers are folded into Other.",
             },
             DEF.anonymity,
           ]}
-          note={asOfNote(m.asOf, count(exits.length, 'exit'))}
-          tableOnly
-          table={{
-            rowTone: (r) =>
-              r.rate == null ? null : r.rate < 0.95 ? 'critical' : r.rate < 1 ? 'warning' : 'good',
-            maxRows: 15,
-          }}
+          note={asOfNote(
+            m.asOf,
+            count(finalPayN, 'exit'),
+            'target 100%',
+            'the table view adds exit types and days late',
+          )}
           empty={m.finalPay.length ? null : 'No final pay was due in this period.'}
-          detail={{ label: 'Exits', columns: TX_DETAIL_COLUMNS, rows: txDetail(exits) }}
-        />
-        <Figure
-          id="services-final-pay-chart"
-          span={5}
-          title="Final pay on time by jurisdiction"
-          subtitle={`Share of exits paid by the deadline, ${per}, lowest first`}
-          data={m.finalPay}
-          columns={[
-            { key: 'name', label: 'Jurisdiction' },
-            { key: 'exits', label: 'Exits', format: 'int' },
-            { key: 'rate', label: 'On time', format: 'pct' },
-          ]}
-          definitions={[DEF.onTime, DEF.anonymity]}
-          note={asOfNote(m.asOf, count(exits.length, 'exit'), 'target 100%')}
-          empty={m.finalPay.length ? null : 'No final pay was due in this period.'}
+          detail={m.small ? undefined : { label: 'Exits', columns: TX_DETAIL_COLUMNS, rows: txDetail(exits) }}
         >
-          <BarList
-            data={m.finalPay}
-            label="name"
-            value="rate"
-            format="pct"
-            sort="asc"
-            domain={[0, 1]}
-            secondary={(d) => `n = ${fmt(d.exits, 'int')}`}
-            tone={(d) =>
-              d.rate == null ? 'deemph' : d.rate < 0.95 ? 'critical' : d.rate < 1 ? 'warning' : 'default'
-            }
-          />
+          <div className="grid grid-cols-1 gap-x-6 gap-y-4 lg:grid-cols-12">
+            <div className="min-w-0 lg:col-span-7">
+              <BarList
+                data={m.finalPay}
+                label="name"
+                value="rate"
+                format="pct"
+                sort="asc"
+                domain={[0, 1]}
+                secondary={(d) =>
+                  d.late == null
+                    ? count(d.exits, 'exit')
+                    : `${fmt(d.late, 'int')} of ${count(d.exits, 'exit')} late`
+                }
+                tone={(d) => (d.rate == null ? 'deemph' : 'default')}
+                glyphTone={(d) => finalPayTone(d.rate)}
+              />
+            </div>
+            <div className="min-w-0 lg:col-span-5">
+              <FinalPayRules rows={m.finalPay} />
+            </div>
+          </div>
         </Figure>
       </Section>
 
@@ -263,9 +282,11 @@ export function TransactionsTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsCo
             },
             DEF.anonymity,
           ]}
-          note={asOfNote(m.asOf, count(hireAll.n, 'new hire'))}
+          note={asOfNote(m.asOf, count(hireN, 'new hire'))}
           empty={m.newHireSites.length ? null : 'No new hires were due in this period.'}
-          detail={{ label: 'New hires', columns: TX_DETAIL_COLUMNS, rows: txDetail(hires) }}
+          detail={
+            m.small ? undefined : { label: 'New hires', columns: TX_DETAIL_COLUMNS, rows: txDetail(hires) }
+          }
         >
           <BarList
             data={m.newHireSites}
@@ -277,7 +298,7 @@ export function TransactionsTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsCo
             ref={
               hireRate == null ? undefined : { value: hireRate, label: `All sites ${fmt(hireRate, 'pct')}` }
             }
-            secondary={(d) => `n = ${fmt(d.starts, 'int')}`}
+            secondary={(d) => count(d.starts, 'hire')}
             tone={(d) =>
               d.rate == null ? 'deemph' : d.rate < 0.85 ? 'critical' : d.rate < 0.95 ? 'warning' : 'default'
             }
@@ -287,7 +308,7 @@ export function TransactionsTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsCo
           id="services-retro-by-month"
           span={6}
           title="Retro adjustments by month"
-          subtitle={`Job and pay changes completed after their payroll cut-off, by cut-off month, ${per}`}
+          subtitle={`Share of job and pay changes completed after their payroll cut-off, by cut-off month, ${per}`}
           data={m.retro}
           columns={[
             { key: 'month', label: 'Cut-off month' },
@@ -298,24 +319,37 @@ export function TransactionsTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsCo
           definitions={[
             {
               term: 'Retro adjustment',
-              text: 'A job or compensation change processed after the payroll cut-off for its effective month, so pay had to be corrected on a later payslip. Atlas DS-01 target: under 2% of changes.',
+              text: 'A job or compensation change processed after the payroll cut-off for its effective month, so pay had to be corrected on a later payslip. Atlas DS-01 target: under 2% of changes. The counts are in the table view.',
               formula: 'retro ÷ job and pay changes',
             },
+            DEF.anonymity,
           ]}
           note={asOfNote(
             m.asOf,
-            `${fmt(retroTotal, 'int')} of ${count(retroChanges, 'change')}`,
-            retroChanges ? `${fmt(retroTotal / retroChanges, 'pct')} retro` : null,
+            retroTotal == null
+              ? count(retroChanges, 'change')
+              : `${fmt(retroTotal, 'int')} of ${count(retroChanges, 'change')}`,
+            retroRate == null ? null : `${fmt(retroRate, 'pct')} retro`,
+            'target under 2%',
           )}
           empty={
             !m.txCols.retro
               ? 'Upload HR transactions with a retro column to see this.'
-              : retroChanges
-                ? null
-                : 'No job or pay changes were due in this period.'
+              : !retroChanges
+                ? 'No job or pay changes were due in this period.'
+                : retroShown
+                  ? null
+                  : 'Each month has fewer than 5 changes or 5 people behind it, so monthly shares are hidden to protect anonymity.'
           }
         >
-          <Columns data={m.retro} x="month" y="retro" xType="month" />
+          <Columns
+            data={retroRows}
+            x="month"
+            y="share"
+            xType="month"
+            format="pct"
+            ref={{ value: 0.02, label: 'DS-01 target 2%' }}
+          />
         </Figure>
       </Section>
     </>

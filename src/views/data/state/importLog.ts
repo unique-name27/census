@@ -8,6 +8,7 @@ import { create } from 'zustand'
 import type { ImportIssue, ImportStats } from '@/data/import'
 import { DATASET_KEYS, type DatasetKey } from '@/data/schema'
 import type { SourceMeta } from '@/data/store'
+import type { FieldFills } from '../engine/coverage'
 
 export interface ImportLog {
   dataset: DatasetKey
@@ -18,6 +19,8 @@ export interface ImportLog {
   issues: ImportIssue[]
   /** More issues were found than are kept (the first `MAX_LOGGED_ISSUES` are). */
   truncated: number
+  /** Values the importer filled itself, per field (absent in logs saved before it was kept). */
+  fills?: FieldFills
 }
 
 /** Issues kept per dataset; a file with more keeps the first ones and says how many were left out. */

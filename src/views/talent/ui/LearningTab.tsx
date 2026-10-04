@@ -20,7 +20,7 @@ type Dim = 'department' | 'location'
 /** Groups ordered by how many overdue assignments they hold, most first. */
 function groupOrder(cells: readonly OverdueCell[]): string[] {
   const totals = new Map<string, number>()
-  for (const c of cells) totals.set(c.group, (totals.get(c.group) ?? 0) + c.overdue)
+  for (const c of cells) totals.set(c.group, (totals.get(c.group) ?? 0) + (c.overdue ?? 0))
   return [...totals.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([g]) => g)
 }
 
@@ -113,7 +113,7 @@ export function LearningTab({ m }: { m: TalentModel }) {
 
       <Section
         title="Overdue today"
-        dek={`Required assignments past their due date and not completed, as of ${asOf}, for people still employed. The grid shows where each course is behind.`}
+        dek={`Required assignments past their due date and not completed, as of ${asOf}, for employees still employed. The grid shows where each course is behind.`}
       >
         <Figure
           id="talent-overdue-by-course"
@@ -122,7 +122,7 @@ export function LearningTab({ m }: { m: TalentModel }) {
           data={cells}
           columns={overdueCellColumns(dim === 'department' ? 'Department' : 'Location')}
           definitions={[DEF.overdue]}
-          note={`${plural(totalOverdue, 'assignment')} overdue · cells under 5 assignments are hidden`}
+          note={`${plural(totalOverdue, 'assignment')} overdue · cells under 5 assignments are hidden, counts included`}
           span={12}
           actions={
             <Segmented<Dim>
@@ -160,7 +160,11 @@ export function LearningTab({ m }: { m: TalentModel }) {
           data={l.overdue}
           columns={TRAINING_OVERDUE_COLUMNS}
           definitions={[DEF.overdue]}
-          note={`${plural(totalOverdue, 'assignment')} for ${plural(new Set(l.overdue.map((o) => o.employeeId)).size, 'person', 'people')}`}
+          note={`${plural(totalOverdue, 'assignment')} for ${plural(new Set(l.overdue.map((o) => o.employeeId)).size, 'employee')}${
+            l.otherWorkersOverdue
+              ? ` · ${plural(l.otherWorkersOverdue, 'assignment')} of contractors and interns also overdue, not listed`
+              : ''
+          }`}
           span={8}
           tableOnly
           table={{
@@ -179,6 +183,7 @@ export function LearningTab({ m }: { m: TalentModel }) {
           definitions={[DEF.hours]}
           note="Employees only · units under 5 people are hidden"
           span={4}
+          className="self-start"
           empty={
             !m.has.learningHours
               ? 'Upload Learning with hours to see this.'
@@ -191,7 +196,7 @@ export function LearningTab({ m }: { m: TalentModel }) {
             data={l.hours}
             label="businessUnit"
             value="perEmployee"
-            format="num1"
+            format="hours"
             ariaLabel="Learning hours per employee by business unit"
           />
         </Figure>

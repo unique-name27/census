@@ -1,9 +1,10 @@
 /**
  * The merit cycle: spend against budget (USD, eligible base), the spend the guideline itself
- * implies (prorated for partial-year service), guideline exceptions, robust merit outliers within
- * each rating, promotions (kept apart from merit) and the total rewards mix. Pure.
+ * implies, guideline exceptions, robust merit outliers within each rating, promotions (kept apart
+ * from merit) and the total rewards mix. Pure.
  */
-import { LEVELS } from '@/data/schema'
+import type { Severity } from '@/components/types'
+import { LEVELS, MIN_GROUP } from '@/data/schema'
 import { isNum } from '@/lib/format'
 import { median, sum } from '@/lib/stats'
 import { groupRows, safeMedian, safeShare, values } from './groups'
@@ -19,8 +20,14 @@ export const OUTLIER_Z = 3.5
 export const MAD_FLOOR = 0.0025
 /** Peer groups smaller than this get no outlier test. */
 export const OUTLIER_MIN_PEERS = 10
-/** A business unit this far over budget (fraction points) is flagged. */
+/** A business unit or scope this far over budget (fraction points) is flagged. */
 export const OVER_BUDGET = 0.002
+/** This far over budget (fraction points) the flag becomes critical, at any level. */
+export const OVER_BUDGET_CRITICAL = 0.01
+
+/** One severity rule for overspend, so a business unit and a whole scope are judged alike. */
+export const overBudgetSeverity = (delta: number): Severity =>
+  delta >= OVER_BUDGET_CRITICAL - 1e-9 ? 'critical' : 'warning'
 
 export interface SpendSummary {
   /** People with a merit proposal. */
@@ -37,8 +44,14 @@ export interface SpendSummary {
   delta: number | null
   /** spendUsd − budgetUsd. */
   overUsd: number | null
-  /** Spend the guideline implies, prorated for service in the last 12 months. */
+  /** Eligible, priced people with a rating: the people the guideline spend covers. */
+  rated: number
+  /**
+   * Spend the guideline implies: each rated proposal at the guideline for its rating, weighted by
+   * base like the actual spend (not prorated, so it compares like with like). Null under 5 people.
+   */
   guidelinePct: number | null
+  /** Mean merit % over people with a proposal; null under 5 people. */
   meanMerit: number | null
 }
 
@@ -49,7 +62,7 @@ export function meritSpend(people: readonly CompPerson[], s: CycleSettings): Spe
   const spend = sum(priced.map((p) => p.baseUsd! * p.merit!))
   const rated = priced.filter((p) => guidelineFor(s, p.rating) != null)
   const ratedBase = sum(rated.map((p) => p.baseUsd!))
-  const guided = sum(rated.map((p) => p.baseUsd! * guidelineFor(s, p.rating)! * p.service))
+  const guided = sum(rated.map((p) => p.baseUsd! * guidelineFor(s, p.rating)!))
   const spendPct = base > 0 ? spend / base : null
   return {
     eligible: eligible.length,
@@ -62,8 +75,9 @@ export function meritSpend(people: readonly CompPerson[], s: CycleSettings): Spe
     budgetUsd: base * s.meritBudget,
     delta: spendPct == null ? null : spendPct - s.meritBudget,
     overUsd: base > 0 ? spend - base * s.meritBudget : null,
-    guidelinePct: ratedBase > 0 ? guided / ratedBase : null,
-    meanMerit: eligible.length ? sum(eligible.map((p) => p.merit!)) / eligible.length : null,
+    rated: rated.length,
+    guidelinePct: ratedBase > 0 && rated.length >= MIN_GROUP ? guided / ratedBase : null,
+    meanMerit: eligible.length >= MIN_GROUP ? sum(eligible.map((p) => p.merit!)) / eligible.length : null,
   }
 }
 
@@ -87,7 +101,7 @@ export function spendBy(
   const eligible = people.filter((p) => p.merit != null)
   return groupRows(eligible, key).map((g) => {
     const m = meritSpend(g.rows, s)
-    const ok = m.priced >= 5
+    const ok = m.priced >= MIN_GROUP
     return {
       group: g.label,
       n: g.rows.length,

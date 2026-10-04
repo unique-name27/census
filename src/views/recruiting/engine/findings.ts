@@ -116,6 +116,8 @@ function person(x: ActiveItem, note: string): FindingPerson {
 
 /** A step must run at least this many days slower than the comparison to count as a bottleneck. */
 const MIN_GAP_DAYS = 5
+/** A segment bottleneck is critical only over at least this many completed transitions. */
+export const MIN_CRITICAL_TRANSITIONS = 10
 
 function recentWindow(b: RecruitingBase): { start: string; end: string; words: string } {
   const threeMonths = addDays(addMonths(b.window.end, -3), 1)
@@ -173,6 +175,8 @@ function bottleneck(b: RecruitingBase): Scored | null {
       .map((e) => e.days),
   )
   const ratio = seg ? seg.s.segValue / Math.max(seg.s.compValue, 0.5) : stage!.ratio
+  // A segment median over a handful of transitions is a hint, not an alarm.
+  const solid = !seg || seg.s.affected >= MIN_CRITICAL_TRANSITIONS
   const stageWord = STAGE_AT[i]
   const title = seg
     ? `${step} is the bottleneck ${where(seg.s)}: median ${days(seg.s.segValue)} vs ${days(seg.s.compValue)} elsewhere over ${recent.words}.`
@@ -188,13 +192,11 @@ function bottleneck(b: RecruitingBase): Scored | null {
       : ''
   return {
     id: 'rec-bottleneck',
-    severity: ratio >= 3 ? 'critical' : 'warning',
+    severity: ratio >= 3 && solid ? 'critical' : 'warning',
     title,
     detail: [waitText, prevText].filter(Boolean).join(' ') || undefined,
     action: `Resolve the ${lower(step)} bottleneck.${seg ? ` ${startWith(seg.s)}` : ''}`,
-    people: waiting
-      .slice(0, 50)
-      .map((x) => person(x, `${x.app.reqId} · ${days(x.daysInStage)} at ${stageWord}`)),
+    people: waiting.map((x) => person(x, `${x.app.reqId} · ${days(x.daysInStage)} at ${stageWord}`)),
     filter: seg ? filterFor(seg.s, b.apps) : undefined,
     tab: 'pipeline',
     score: 100 + ratio,
@@ -207,17 +209,19 @@ function lacksNextStep(b: RecruitingBase): Scored | null {
   const lacking = b.actives.filter((x) => x.tier)
   if (!lacking.length) return null
   const n = lacking.length
-  const decisions = lacking.filter((x) => x.state === 'awaiting-feedback').length
-  const awaiting = b.actives.filter((x) => x.state === 'awaiting-feedback')
+  // Concentration is read over the same decisions the title counts (overdue ones), so the names
+  // and counts match the action queue and the copied notes.
+  const overdue = lacking.filter((x) => x.state === 'awaiting-feedback')
+  const decisions = overdue.length
   const byHm = new Map<string, number>()
-  for (const x of awaiting)
+  for (const x of overdue)
     if (x.owner && x.ownerRole === 'Hiring manager') byHm.set(x.owner, (byHm.get(x.owner) ?? 0) + 1)
   const top = [...byHm]
     .sort((a, c) => c[1] - a[1] || a[0].localeCompare(c[0]))
     .slice(0, 2)
-    .filter(([, k]) => k >= Math.max(3, 0.2 * awaiting.length))
-  const topShare = top.reduce((s, [, k]) => s + k, 0) / Math.max(1, awaiting.length)
-  const concentrated = awaiting.length >= 6 && top.length > 0 && topShare >= 0.5
+    .filter(([, k]) => k >= Math.max(3, 0.2 * decisions))
+  const topShare = top.reduce((s, [, k]) => s + k, 0) / Math.max(1, decisions)
+  const concentrated = decisions >= 6 && top.length > 0 && topShare >= 0.5
   const seg = decomposeRate(
     b.actives,
     dims((x: ActiveItem) => x.app, FILTERABLE),
@@ -230,8 +234,8 @@ function lacksNextStep(b: RecruitingBase): Scored | null {
   const parts = `${cap(joinAnd(breakdownParts(lacking)))}.`
   const conc = concentrated
     ? top.length === 2
-      ? `${top[0][0]} has ${n0(top[0][1])} candidates waiting on a decision and ${top[1][0]} ${n0(top[1][1])}, ${pct0(topShare)} of the ${n0(awaiting.length)} waiting.`
-      : `${top[0][0]} has ${n0(top[0][1])} of the ${n0(awaiting.length)} candidates waiting on a decision.`
+      ? `${top[0][0]} has ${n0(top[0][1])} of the ${n0(decisions)} decisions and ${top[1][0]} ${n0(top[1][1])}, ${pct0(topShare)} together.`
+      : `${top[0][0]} has ${n0(top[0][1])} of the ${n0(decisions)} decisions.`
     : seg
       ? `${cap(where(seg).replace(/^in |^at |^on |^among /, ''))} has ${n0(seg.affected)} of them, ${pct0(seg.segValue)} of its active candidates vs ${pct0(seg.compValue)} elsewhere.`
       : ''
@@ -253,9 +257,7 @@ function lacksNextStep(b: RecruitingBase): Scored | null {
     title,
     detail: [parts, conc].filter(Boolean).join(' '),
     action,
-    people: ordered
-      .slice(0, 50)
-      .map((x) => person(x, `${x.label} · ${days(x.days)} · ${x.owner ?? 'no owner'}`)),
+    people: ordered.map((x) => person(x, `${x.label} · ${days(x.days)} · ${x.owner ?? 'no owner'}`)),
     filter: concentrated
       ? filterFor({ dim: 'hiringManager', value: top[0][0] }, b.apps)
       : seg
@@ -273,36 +275,54 @@ function offersWaiting(b: RecruitingBase): { items: ActiveItem[]; oldest: number
   return items.length >= 2 ? { items, oldest: items[0].days } : null
 }
 
-function offerAcceptance(b: RecruitingBase, waiting: ReturnType<typeof offersWaiting>): Scored | null {
+export interface AcceptanceDrop {
+  /** 'quarter' when the latest quarter fell vs the one before; 'period' when the window fell vs the prior. */
+  basis: 'quarter' | 'period'
+  offers: App[]
+  now: number
+  before: number
+  nowWords: string
+  beforeWords: string
+}
+
+/**
+ * Has offer acceptance fallen 5 pts or more (10+ offers each side)? The latest quarter against the
+ * quarter before comes first; otherwise the window against the prior window.
+ */
+export function acceptanceDrop(b: RecruitingBase): AcceptanceDrop | null {
   if (!b.cov.hasDeclined) return null
   const [q0, q1] = quarterWindows(b.window.end, 2)
   const cur = resolvedOffers(b.apps, q1)
   const prev = resolvedOffers(b.apps, q0)
   const a1 = acceptance(cur)
   const a0 = acceptance(prev)
-  let period: { offers: App[]; now: number; before: number; nowWords: string; beforeWords: string } | null =
-    null
   const big = (x: typeof a1) => x.hired + x.declined >= 10
   if (big(a1) && big(a0) && a0.rate! - a1.rate! >= 0.05) {
-    period = {
+    return {
+      basis: 'quarter',
       offers: cur,
       now: a1.rate!,
       before: a0.rate!,
       nowWords: `in ${qLabel(q1.key)}`,
       beforeWords: `in ${qLabel(q0.key)}`,
     }
-  } else {
-    const w1 = acceptance(b.offers)
-    const w0 = acceptance(b.offersPrior)
-    if (big(w1) && big(w0) && w0.rate! - w1.rate! >= 0.05)
-      period = {
-        offers: b.offers,
-        now: w1.rate!,
-        before: w0.rate!,
-        nowWords: `in the ${b.windowWords}`,
-        beforeWords: b.compareLabel.replace(/^vs /, 'in the '),
-      }
   }
+  const w1 = acceptance(b.offers)
+  const w0 = acceptance(b.offersPrior)
+  if (big(w1) && big(w0) && w0.rate! - w1.rate! >= 0.05)
+    return {
+      basis: 'period',
+      offers: b.offers,
+      now: w1.rate!,
+      before: w0.rate!,
+      nowWords: `in the ${b.windowWords}`,
+      beforeWords: b.compareLabel.replace(/^vs /, 'in the '),
+    }
+  return null
+}
+
+function offerAcceptance(b: RecruitingBase, waiting: ReturnType<typeof offersWaiting>): Scored | null {
+  const period = acceptanceDrop(b)
   if (!period) return null
   const drop = period.before - period.now
   const seg = decomposeRate(
@@ -339,7 +359,7 @@ function offerAcceptance(b: RecruitingBase, waiting: ReturnType<typeof offersWai
     title: `Offer acceptance fell to ${pct0(period.now)} ${period.nowWords} from ${pct0(period.before)} ${period.beforeWords}${seg ? `, mostly ${where(seg)}` : ''}.`,
     detail: [segText, waitText].filter(Boolean).join(' ') || undefined,
     action: `Review ${segName}offer positioning and pay with the compensation team${waiting ? ', and follow up on the open offers this week' : ''}.`,
-    people: segDeclines.slice(0, 50).map((a) => ({
+    people: segDeclines.map((a) => ({
       id: a.id,
       name: a.name,
       note: `Declined · ${a.reason ?? 'no reason given'} · ${a.reqId}`,
@@ -369,12 +389,36 @@ function offersWaitingFinding(waiting: NonNullable<ReturnType<typeof offersWaiti
 
 /* ───────── requisitions ───────── */
 
-function emptyFunnel(b: RecruitingBase): { finding: Scored; department: string | null } | null {
+/** A group that fills slowly: median time to fill ≥ 1.5 × the scope's, over 5+ filled reqs. */
+interface SlowGroup {
+  dim: DimKey
+  value: string
+  days: number
+  n: number
+  impact: number
+}
+
+interface SlowFill {
+  top: SlowGroup
+  /** The biggest slow group on another dimension, if any. */
+  second: SlowGroup | null
+  overall: number
+}
+
+const reqName = (r: { reqId: string; title: string | null }) => (r.title ? `${r.reqId} ${r.title}` : r.reqId)
+
+function emptyFunnel(
+  b: RecruitingBase,
+  slow: SlowFill | null = null,
+): { finding: Scored; department: string | null } | null {
   const rows = b.req.emptyFunnel
   if (!rows.length) return null
   const n = rows.length
   const byDept = new Map<string, typeof rows>()
-  for (const r of rows) byDept.set(r.department, [...(byDept.get(r.department) ?? []), r])
+  for (const r of rows) {
+    const d = r.department ?? 'Not set'
+    byDept.set(d, [...(byDept.get(d) ?? []), r])
+  }
   const [dept, deptRows] = [...byDept].sort((a, c) => c[1].length - a[1].length)[0]
   const concentrated = deptRows.length >= 2 && deptRows.length / n >= 0.5
   const k = deptRows.length
@@ -383,21 +427,27 @@ function emptyFunnel(b: RecruitingBase): { finding: Scored; department: string |
   const span = `${n0(Math.min(...ages))} to ${n0(Math.max(...ages))} days`
   const title =
     n === 1
-      ? `${rows[0].reqId} ${rows[0].title} has had nobody past the screen in ${n0(rows[0].daysOpen)} days.`
+      ? `${reqName(rows[0])} has had nobody past the screen in ${n0(rows[0].daysOpen)} days.`
       : concentrated && k === n
         ? `${n0(n)} open ${allCritical ? 'critical ' : ''}${dept} reqs have nobody past the screen after ${span}.`
         : concentrated
           ? `${n0(n)} open reqs have nobody past the screen, ${n0(k)} of them ${allCritical ? 'critical ' : ''}${dept} roles open ${span}.`
           : `${n0(n)} open reqs have nobody past the screen after ${span}.`
   const oldest = rows.reduce((a, r) => (r.daysOpen > a.daysOpen ? r : a), rows[0])
+  // The department's time to fill against the whole company (never against itself).
   const deptFilled = concentrated ? b.filled.filter((r) => r.department === dept) : []
   const deptTtf = deptFilled.length >= 5 ? median(deptFilled.map(ttfDays)) : null
-  const detail = [
-    n > 1 ? `The oldest is ${oldest.reqId} ${oldest.title} at ${n0(oldest.daysOpen)} days.` : '',
-    deptTtf != null
-      ? `${dept} reqs filled in the ${b.windowWords} took a median ${days(deptTtf)} to fill, vs ${days(median(b.filled.map(ttfDays)))} overall.`
-      : '',
-  ]
+  const companyTtf = median(b.companyFilled.map(ttfDays))
+  const vsCompany = deptTtf != null && companyTtf != null && b.companyFilled.length > deptFilled.length
+  // Merged with the slow time-to-fill story (company scope only, where "overall" is the company).
+  const ttfText = vsCompany
+    ? slow
+      ? `${dept} reqs filled in the ${b.windowWords} took a median ${days(deptTtf)} to fill and ${slow.top.value} reqs ${days(slow.top.days)}, vs ${days(companyTtf)} for the company.`
+      : `${dept} reqs filled in the ${b.windowWords} took a median ${days(deptTtf)} to fill, vs ${days(companyTtf)} for the company.`
+    : slow
+      ? `${slow.top.value} reqs filled in the ${b.windowWords} took a median ${days(slow.top.days)} to fill, vs ${days(slow.overall)} for the company.`
+      : ''
+  const detail = [n > 1 ? `The oldest is ${reqName(oldest)} at ${n0(oldest.daysOpen)} days.` : '', ttfText]
     .filter(Boolean)
     .join(' ')
   return {
@@ -415,12 +465,12 @@ function emptyFunnel(b: RecruitingBase): { finding: Scored; department: string |
   }
 }
 
-function slowTimeToFill(b: RecruitingBase, skipDept: string | null): Scored | null {
+function slowFill(b: RecruitingBase, skipDept: string | null): SlowFill | null {
   const filled = b.filled
   if (filled.length < 10) return null
   const overall = median(filled.map(ttfDays))
   if (overall == null || overall <= 0) return null
-  const groups: { dim: DimKey; value: string; days: number; n: number; impact: number }[] = []
+  const groups: SlowGroup[] = []
   const keyOf: Record<'department' | 'level' | 'location', (r: Requisition) => string | null> = {
     department: (r) => r.department,
     level: (r) => r.level,
@@ -452,19 +502,40 @@ function slowTimeToFill(b: RecruitingBase, skipDept: string | null): Scored | nu
     .sort((a, c) => c.impact - a.impact)
   const top = ranked[0]
   if (!top) return null
-  const second = ranked.find((g) => g.dim !== top.dim)
+  return { top, second: ranked.find((g) => g.dim !== top.dim) ?? null, overall }
+}
+
+function slowTimeToFill(b: RecruitingBase, slow: SlowFill): Scored {
+  const { top, second, overall } = slow
   const ratio = top.days / overall
   return {
     id: 'rec-time-to-fill',
     severity: 'warning',
     title: `${top.value} reqs took a median ${days(top.days)} to fill in the ${b.windowWords}, vs ${days(overall)} overall.`,
+    // "Also": the second group is picked by impact, and a slower department may sit in the
+    // empty-funnel finding, so it is never called the slowest.
     detail: second
-      ? `By ${lower(DIM_LABEL[second.dim])}, ${second.value} is slowest at ${days(second.days)} over ${plural(second.n, 'req')}.`
+      ? `By ${lower(DIM_LABEL[second.dim])}, ${second.value} also runs long at ${days(second.days)} over ${plural(second.n, 'req')}.`
       : `${plural(top.n, 'req')} filled.`,
     action: `Review the sourcing plan and interview loop for ${top.value} roles with the recruiters.`,
     filter: filterFor(top, b.apps),
     tab: 'requisitions',
     score: 65 + 10 * (ratio - 1),
+  }
+}
+
+/** Candidates that don't match any req make every per-req figure unreliable; say so first. */
+function dataJoin(b: RecruitingBase): Scored | null {
+  if (!b.joinNote) return null
+  return {
+    id: 'rec-data-join',
+    severity: 'warning',
+    title: `${b.joinNote}, so req health and candidate breakdowns by department, location and level can’t be read.`,
+    detail:
+      'Hires, offers and next steps still count every candidate, but empty funnels are not checked and candidates outside a matching req drop out of any filtered view.',
+    action:
+      'Check that Candidates and Requisitions use the same req IDs, then upload them again in the Data room.',
+    score: 99,
   }
 }
 
@@ -533,9 +604,12 @@ function withdrawalsRising(b: RecruitingBase): Scored | null {
   }
 }
 
+/** Hire rates over shorter windows mostly measure how many applications are still open. */
+export const MIN_GOOD_SOURCE_MONTHS = 6
+
 function bestSource(b: RecruitingBase): Scored | null {
   const total = b.cohort.length
-  if (total < 30) return null
+  if (total < 30 || b.window.months < MIN_GOOD_SOURCE_MONTHS) return null
   const hired = b.cohort.filter((a) => a.furthest === 5).length
   const overall = hired / total
   if (overall <= 0) return null
@@ -556,35 +630,51 @@ function bestSource(b: RecruitingBase): Scored | null {
 
 /* ───────── assembly ───────── */
 
-/** Every problem finding that fires, most severe first, before the readout cap (for tests and audits). */
+/** Every problem finding that fires, most severe first, before any merge or cap (for tests and audits). */
 export function allProblemFindings(b: RecruitingBase): Finding[] {
-  return problemFindings(b).map(toFinding)
+  return problemFindings(b, Number.POSITIVE_INFINITY).map(toFinding)
 }
 
-function problemFindings(b: RecruitingBase): Scored[] {
+const byRank = (a: Scored, c: Scored) =>
+  SEVERITY_RANK[a.severity] - SEVERITY_RANK[c.severity] || c.score - a.score
+
+/**
+ * The problem findings, most severe first. When more fire than `slots`, the slow time-to-fill
+ * story folds into the empty-funnel one (both say reqs take too long, README story 6), so a
+ * lower-ranked story such as a source drying up keeps its place in the readout.
+ */
+function problemFindings(b: RecruitingBase, slots: number): Scored[] {
   if (!b.apps.length && !b.reqs.length) return []
   const waiting = offersWaiting(b)
   const acc = offerAcceptance(b, waiting)
   const empty = emptyFunnel(b)
-  const problems = [
+  const slow = slowFill(b, empty?.department ?? null)
+  const rest = [
+    dataJoin(b),
     bottleneck(b),
     lacksNextStep(b),
     acc,
     acc || !waiting ? null : offersWaitingFinding(waiting),
-    empty?.finding ?? null,
-    slowTimeToFill(b, empty?.department ?? null),
     sourceDryingUp(b),
     withdrawalsRising(b),
   ].filter((f): f is Scored => f != null)
-  return problems.sort((a, c) => SEVERITY_RANK[a.severity] - SEVERITY_RANK[c.severity] || c.score - a.score)
+  const separate = [...rest, empty?.finding ?? null, slow ? slowTimeToFill(b, slow) : null].filter(
+    (f): f is Scored => f != null,
+  )
+  // Merge only on the company view, where the scope's median and the company's are one number.
+  if (separate.length > slots && empty && slow && b.isCompany) {
+    const merged = emptyFunnel(b, slow)
+    if (merged) return [...rest, merged.finding].sort(byRank)
+  }
+  return separate.sort(byRank)
 }
 
 /** The readout: up to six findings, the good one last. */
 export function recruitingFindings(b: RecruitingBase): Finding[] {
   if (!b.apps.length && !b.reqs.length) return []
-  const problems = problemFindings(b)
   const good = bestSource(b)
-  const kept = problems.slice(0, good ? MAX_FINDINGS - 1 : MAX_FINDINGS)
+  const slots = good ? MAX_FINDINGS - 1 : MAX_FINDINGS
+  const kept = problemFindings(b, slots).slice(0, slots)
   return [...kept, ...(good ? [good] : [])].map(toFinding)
 }
 

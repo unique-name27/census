@@ -16,7 +16,11 @@ let data: Datasets
 let ctx: AnalyticsContext
 let m: CompModel
 
-function sampleContext(filters: Partial<Filters> = {}, showPay = false): AnalyticsContext {
+function sampleContext(
+  filters: Partial<Filters> = {},
+  showPay = false,
+  asOfOverride: string | null = null,
+): AnalyticsContext {
   const sources = Object.fromEntries(
     DATASET_KEYS.map((k) => [k, { kind: 'sample', rowCount: data[k].length }]),
   ) as Record<(typeof DATASET_KEYS)[number], SourceMeta>
@@ -24,7 +28,7 @@ function sampleContext(filters: Partial<Filters> = {}, showPay = false): Analyti
     data,
     sources,
     filters: { ...DEFAULT_FILTERS, ...filters },
-    asOfOverride: null,
+    asOfOverride,
     showPay,
   })
 }
@@ -75,8 +79,12 @@ describe('compensation on the sample company', () => {
     expect(kpi('below-min').value).toBeCloseTo(78 / 1450, 4)
     const below = finding('comp-below-min')
     expect(below.title).toBe('78 people are paid below range minimum, 5.4% of 1,450')
-    expect(below.detail).toContain('41 are in Bengaluru')
-    expect(below.detail).toMatch(/\d+ were promoted in the last 12 months/)
+    // Exclusive counts that add up to 76 of 78: the planted split between Bengaluru ranges and
+    // promotions elsewhere that missed the new minimum.
+    expect(below.detail).toBe(
+      '41 are in Bengaluru, and 35 of the other 37 were promoted in the last 12 months.',
+    )
+    expect(below.people).toHaveLength(78)
     const outside = m.ranges.below.filter((r) => r.location !== 'Bengaluru')
     expect(outside.filter((r) => r.promoted === 'Yes').length).toBeGreaterThanOrEqual(35)
 
@@ -92,7 +100,10 @@ describe('compensation on the sample company', () => {
     expect(f.title).toBe(
       'New hires in Design Verification L3-L4 are paid at a median compa-ratio of 1.04 vs 0.95 for incumbents',
     )
-    expect(f.detail).toBe('33 people hired in the last 12 months against 33 already in those roles.')
+    expect(f.detail).toBe(
+      '33 people hired in the last 12 months against 33 already in those roles, 32 of whom are paid below the new-hire median.',
+    )
+    expect(f.people).toHaveLength(32)
     expect(f.filter).toEqual({ department: ['Design Verification'], level: ['L3', 'L4'] })
     expect(m.findings.filter((x) => x.id.startsWith('comp-compression'))).toHaveLength(1)
   })
@@ -106,16 +117,22 @@ describe('compensation on the sample company', () => {
       expect(r.spendPct!).toBeLessThan(0.036)
     const f = finding('comp-over-budget-Go-to-Market')
     expect(f.title).toBe(
-      'Go-to-Market merit proposals cost 4.3% of eligible base, 0.8 pts over the 3.50% budget',
+      'Go-to-Market merit proposals cost 4.31% of eligible base, 0.81 pts over the 3.50% budget',
     )
+    expect(f.severity).toBe('warning')
+    expect(kpi('merit-spend').format).toBe('pct2')
+    expect(kpi('merit-spend').value!).toBeCloseTo(0.03544, 5)
     expect(m.findings.some((x) => x.id === 'comp-over-budget-total')).toBe(false)
 
     const rules = m.cycle.exceptions.filter((e) => e.kind !== 'outlier')
     expect(rules.filter((e) => e.kind === 'top-low')).toHaveLength(5)
     expect(rules.filter((e) => e.kind === 'low-high')).toHaveLength(6)
-    expect(finding('comp-exceptions').title).toBe(
+    const ex = finding('comp-exceptions')
+    expect(ex.title).toBe(
       '11 merit proposals break the guideline rules: 5 rated 5 below 2% and 6 rated 1-2 above 3%',
     )
+    // The Firmware outliers are counted in the Firmware differentiation finding, not named twice.
+    expect(ex.detail).toBe('Another 25 proposals are unusual for the rating.')
     expect(m.cycle.promotions.rows).toHaveLength(104)
   })
 
@@ -138,6 +155,12 @@ describe('compensation on the sample company', () => {
     const fw = m.performance.byDepartment.find((r) => r.group === 'Firmware')!
     expect(fw.ratio!).toBeLessThan(1.1)
     const f = finding('comp-no-differentiation-Firmware')
+    expect(f.title).toBe(
+      'Firmware merit barely follows ratings: people rated 4-5 get 1.00× the merit of people rated 3',
+    )
+    expect(f.detail).toBe(
+      'Mean merit is 2.85% for ratings 4-5 and 2.85% for rating 3, against 1.58× across the company. 21 of its proposals are unusual for the rating.',
+    )
     expect(f.filter).toEqual({ department: ['Firmware'] })
     expect(f.tab).toBe('performance')
     expect(m.findings.filter((x) => x.id.startsWith('comp-no-differentiation'))).toHaveLength(1)
@@ -150,7 +173,6 @@ describe('compensation on the sample company', () => {
     expect(text(m.findings)).not.toContain('$')
     const paid = computeComp(sampleContext({}, true), DEFAULT_SETTINGS)
     expect(text(paid.findings)).toMatch(/Bringing them to minimum costs \$[\d.]+K a year/)
-    for (const f of m.findings) expect((f.people ?? []).length).toBeLessThanOrEqual(50)
   })
 
   it('works on a filtered scope and compares with the company', () => {
@@ -161,6 +183,52 @@ describe('compensation on the sample company', () => {
     expect(k.delta!).toBeLessThan(-0.05)
     for (const x of [...scoped.kpis, ...scoped.cycle.kpis])
       expect(x.value === null || Number.isFinite(x.value)).toBe(true)
+  })
+
+  it('hides averages over 1-4 people on every tile and in the findings', () => {
+    for (const filters of [
+      { department: ['Facilities'], level: ['L4'] },
+      { department: ['DFT'], level: ['M2'] },
+      { department: ['IT'], level: ['M2'] },
+    ] as Partial<Filters>[]) {
+      const s = computeComp(sampleContext(filters, true), DEFAULT_SETTINGS)
+      expect(s.pop.people.length).toBeLessThan(5)
+      for (const k of [...s.kpis, ...s.cycle.kpis]) {
+        if (['eligible', 'promotions', 'exceptions', 'below-min', 'above-max'].includes(k.id)) continue
+        if (k.value != null) throw new Error(`${k.id} shows ${k.value} for ${s.pop.people.length} people`)
+      }
+      for (const id of ['merit-spend', 'spend', 'guideline-spend']) {
+        const k = [...s.kpis, ...s.cycle.kpis].find((x) => x.id === id)!
+        if (s.cycle.spend.priced > 0) expect(k.suppressed, id).toBe(true)
+      }
+      const text = s.findings.map((f) => `${f.title} ${f.detail ?? ''}`).join(' ')
+      expect(text).not.toMatch(/\d% of \d/)
+      expect(s.cycle.spend.meanMerit).toBeNull()
+    }
+  })
+
+  it('says when pay data and people are from different dates, and who has no comp record', () => {
+    const past = computeComp(sampleContext({}, false, '2025-12-31'), DEFAULT_SETTINGS)
+    expect(past.payAsOf).toBe('2026-09-30')
+    expect(past.payStale).toBe(true)
+    expect(past.pop.missingComp).toBeGreaterThan(0)
+    const note = past.kpis.find((k) => k.id === 'median-compa')!.note!
+    expect(note).toContain('as of 31 Dec 2025')
+    expect(note).toContain('pay data from 30 Sep 2026')
+    expect(note).toMatch(/\d+ active employees have no comp record/)
+    expect(m.payStale).toBe(false)
+    expect(kpi('median-compa').note).toBe('1,450 people · as of 30 Sep 2026')
+  })
+
+  it('names the rating behind pay for performance', () => {
+    expect(kpi('p4p').format).toBe('times')
+    expect(kpi('p4p').note).toBe('Rated 4-5 vs rated 3, latest rating (2026 Mid-year)')
+  })
+
+  it('ranks only job families of 10 or more on the market chart', () => {
+    const ranked = m.market.familyChart.filter((r) => !r.group.startsWith('Other ('))
+    expect(ranked.every((r) => r.n >= 10)).toBe(true)
+    expect(ranked[0].group).toBe('Firmware')
   })
 
   it('computes the folder-tab headline', () => {

@@ -16,7 +16,7 @@ import {
 import { generateSample, SAMPLE_AS_OF } from '@/data/sample'
 import { DATASET_KEYS, type DatasetKey, type Datasets, datasetDef } from '@/data/schema'
 import type { SourceMeta } from '@/data/store'
-import { blockingFields, issueCounts, openValues, valueFields } from './flow'
+import { blockingFields, issueCounts, openValues, sampleWorkbookDatasets, valueFields } from './flow'
 import { buildManifest } from './manifest'
 import { planSheets } from './plan'
 
@@ -86,5 +86,37 @@ describe('sample workbook round trip', () => {
 
     const manifest = buildManifest({ data: loaded, sources, asOf: SAMPLE_AS_OF })
     expect(manifest.every((r) => r.source.kind === 'upload' && r.checks.length === 0)).toBe(true)
+  }, 60_000)
+
+  it('with pay amounts off, leaves Compensation out and every other sheet still imports cleanly', async () => {
+    const sample = generateSample()
+    const blob = await buildTemplateWorkbook({
+      sample,
+      datasets: sampleWorkbookDatasets(false),
+      sampleRows: Number.MAX_SAFE_INTEGER,
+      includePay: false,
+    })
+    const book = readWorkbook(new Uint8Array(await blob.arrayBuffer()), 'census-sample.xlsx')
+    const sheets = book.sheets.filter((s) => !isTemplateHelpSheet(s.name))
+    expect(sheets).toHaveLength(9)
+    const plan = planSheets([
+      {
+        fileName: book.fileName,
+        sheets: sheets.map((s) => ({ sheetName: s.name, rows: s.rows.length, guesses: guessDataset(s) })),
+      },
+    ])
+    expect(plan.map((p) => p.dataset)).not.toContain('comp')
+    let roster = sample.employees
+    for (const p of plan) {
+      const key = p.dataset as DatasetKey
+      const sheet = sheets.find((s) => s.name === p.sheetName)!
+      const def = datasetDef(key)
+      const mapping = autoMap(sheet.headers, sheet.rows, def)
+      expect(blockingFields(applyMapping, sheet, def, mapping), key).toEqual([])
+      const result = applyMapping({ sheet, def, mapping, roster: key === 'employees' ? undefined : roster })
+      expect(issueCounts(result.issues).total, key).toBe(0)
+      expect(result.rows.length, key).toBe(sample[key].length)
+      if (key === 'employees') roster = result.rows as typeof roster
+    }
   }, 60_000)
 })

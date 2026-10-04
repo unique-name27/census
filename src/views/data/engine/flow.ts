@@ -15,9 +15,17 @@ import type {
   ParsedSheet,
   ValueSummary,
 } from '@/data/import'
-import { type DatasetDef, type FieldDef, LEVELS } from '@/data/schema'
+import {
+  DATASET_KEYS,
+  type DatasetDef,
+  type DatasetKey,
+  datasetDef,
+  type FieldDef,
+  LEVELS,
+} from '@/data/schema'
 import { fmt } from '@/lib/format'
-import { requirementOf } from './coverage'
+import { isFilled, requirementOf } from './coverage'
+import { DERIVED_WITHOUT_COLUMN } from './fills'
 
 export type Step = 'columns' | 'values' | 'check'
 
@@ -211,6 +219,112 @@ export function actionSeverity(action: IssueAction): Exclude<Severity, 'good'> {
   return 'info'
 }
 
+/**
+ * Nothing changes on the way in: rows come through, no default fills a blank and nothing is
+ * logged. Only then may the check step say so.
+ */
+export function isAllClear(result: Pick<ImportResult, 'issues' | 'stats'>): boolean {
+  return result.stats.rowsOut > 0 && result.stats.defaulted === 0 && result.issues.length === 0
+}
+
+/** How the importer fills a blank without logging it, mid-sentence after "was". */
+const QUIET_FILL: Partial<Record<DatasetKey, Record<string, string>>> = {
+  employees: {
+    name: 'built from the first and last name columns',
+    country: 'taken from the work site',
+  },
+  requisitions: { openings: 'set to 1' },
+  candidates: {
+    candidateName: 'built from the first and last name columns',
+    stageEnteredDate: 'set to the date of the current stage',
+  },
+  cases: {
+    processId: 'taken from the case category',
+    team: 'taken from the case category',
+    responseTargetHours: 'taken from the case category',
+    resolutionTargetHours: 'taken from the case category',
+  },
+  transactions: { processId: 'taken from the transaction type' },
+  learning: { required: 'treated as not required' },
+  comp: {
+    currency: 'taken from the employee’s work site',
+    fxToUsd: 'set to 1 for pay in USD',
+  },
+}
+
+export interface QuietFill {
+  field: string
+  label: string
+  count: number
+  message: string
+}
+
+/**
+ * Blanks the importer filled without a line in the log (derivations such as country from the
+ * work site), one sentence per field, so the check step accounts for every default it counts.
+ */
+export function quietFills(
+  def: Pick<DatasetDef, 'key' | 'fields'>,
+  result: Pick<ImportResult, 'issues' | 'stats' | 'rows'>,
+): QuietFill[] {
+  const rowLevel = new Map<string, number>()
+  const sheetLevel = new Set<string>()
+  for (const i of result.issues) {
+    if (i.code !== 'defaulted') continue
+    if (i.row === 0) sheetLevel.add(i.field)
+    else rowLevel.set(i.field, (rowLevel.get(i.field) ?? 0) + 1)
+  }
+  const rows = result.rows as unknown as readonly Record<string, unknown>[]
+  const out: QuietFill[] = []
+  for (const [field, n] of Object.entries(result.stats.defaults)) {
+    // A field can mix quiet fills with logged ones (country from the site, else Unknown): count
+    // only the quiet part, since the log's own sentence covers the rest.
+    let count = n
+    if (sheetLevel.has(field)) {
+      const derived = DERIVED_WITHOUT_COLUMN[def.key]?.[field]
+      count = derived ? rows.filter((r) => isFilled(r[field]) && derived(r)).length : 0
+    } else count = n - (rowLevel.get(field) ?? 0)
+    if (count <= 0) continue
+    const label = def.fields.find((f) => f.key === field)?.label ?? field
+    const how = QUIET_FILL[def.key]?.[field] ?? 'filled by a documented default'
+    out.push({
+      field,
+      label,
+      count,
+      message: `${label} was ${how} in ${fmt(count, 'int')} ${count === 1 ? 'row' : 'rows'}.`,
+    })
+  }
+  return out.sort((a, b) => b.count - a.count)
+}
+
+/**
+ * Pay amounts are missing from the sheet: required pay columns are unmapped, or most rows were
+ * skipped for a blank pay amount. A Census download made while pay amounts are off looks like this.
+ */
+export function payLeftOut(
+  def: Pick<DatasetDef, 'fields'>,
+  blockers: readonly string[],
+  result: Pick<ImportResult, 'issues' | 'stats'> | null,
+): boolean {
+  const pay = new Set(def.fields.filter((f) => f.pay && f.required).map((f) => f.key))
+  if (!pay.size) return false
+  if (blockers.some((k) => pay.has(k))) return true
+  if (!result?.stats.rowsIn) return false
+  const rows = new Set(
+    result.issues.filter((i) => i.code === 'missing-required' && pay.has(i.field)).map((i) => i.row),
+  )
+  return rows.size >= result.stats.rowsIn / 2
+}
+
+/**
+ * Datasets in the sample workbook. Compensation needs its pay amounts to be uploaded again (base
+ * salary and range midpoint are required), so while pay amounts are off it is left out rather
+ * than written with blank amounts that would stop the upload.
+ */
+export function sampleWorkbookDatasets(includePay: boolean): DatasetKey[] {
+  return DATASET_KEYS.filter((k) => includePay || !datasetDef(k).fields.some((f) => f.pay && f.required))
+}
+
 /** Toast after an apply: "Employees replaced: 1,912 rows". */
 export function replacedMessage(datasetLabel: string, rows: number): string {
   return `${datasetLabel} replaced: ${fmt(rows, 'int')} ${rows === 1 ? 'row' : 'rows'}`
@@ -248,8 +362,10 @@ export function learnedPicks(
 export const PAY_HIDDEN_ISSUE = 'Details are hidden while pay amounts are off.'
 
 /**
- * Issues about pay amount fields lose their source value and wording (both can quote an amount)
- * unless pay amounts are switched on. Everything else is unchanged.
+ * Issues about a pay amount that quote a value lose the value and the wording (both can show an
+ * amount) unless pay amounts are switched on. An issue about a blank amount has nothing to hide
+ * and keeps its own sentence ("Base salary is blank, and it is required."). Everything else is
+ * unchanged.
  */
 export function redactPayIssues(
   issues: readonly ImportIssue[],
@@ -259,5 +375,7 @@ export function redactPayIssues(
   if (showPay) return [...issues]
   const pay = new Set(def.fields.filter((f) => f.pay).map((f) => f.key))
   if (!pay.size) return [...issues]
-  return issues.map((i) => (pay.has(i.field) ? { ...i, value: '', issue: PAY_HIDDEN_ISSUE } : i))
+  return issues.map((i) =>
+    pay.has(i.field) && i.value.trim() !== '' ? { ...i, value: '', issue: PAY_HIDDEN_ISSUE } : i,
+  )
 }

@@ -24,6 +24,13 @@ describe('spans and flags', () => {
     expect(managerFlag(5, true)).toBe('New')
     expect(managerFlag(5, false)).toBe('Healthy')
   })
+
+  it('does not flag executives for span: their team size is set by the org design', () => {
+    expect(managerFlag(9, false, 'E1')).toBe('Healthy')
+    expect(managerFlag(14, false, 'E2')).toBe('Healthy')
+    expect(managerFlag(2, true, 'E3')).toBe('New')
+    expect(managerFlag(9, false, 'M2')).toBe('Heavy')
+  })
 })
 
 describe('computeOrg', () => {

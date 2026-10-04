@@ -3,7 +3,7 @@
  * figures, and the chart tooltip (the same floating sheet the chart kit uses).
  */
 import { type RefObject, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { placeTip, renderTip, type TipContent } from '@/charts/core/tooltip'
+import { placeTip, renderTip, type TipContent } from '@/charts'
 import { useAnalytics } from '@/data/context'
 import { computeRecruiting, type RecruitingModel } from '../engine'
 

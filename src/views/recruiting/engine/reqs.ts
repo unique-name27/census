@@ -8,21 +8,24 @@ import { MIN_GROUP } from '@/data/schema'
 import type { Window } from '@/data/scope'
 import { addMonths, daysBetween, monthKey, monthStart, monthsBetween } from '@/lib/dates'
 import { median } from '@/lib/stats'
-import { inWin } from './prepare'
+import { inWin, isOpenAt } from './prepare'
 import type { ActiveItem, App } from './types'
 
 /** Days an open req may go with nobody past the screen before it reads as an empty funnel. */
 export const EMPTY_FUNNEL_DAYS = 30
 
+const UNASSIGNED = 'Unassigned'
+
 export interface OpenReqRow {
   reqId: string
-  title: string
-  department: string
-  location: string
-  level: string
-  priority: string
-  hiringManager: string
-  recruiter: string
+  /** Missing values are null (tables render "—"; exports leave the cell empty). */
+  title: string | null
+  department: string | null
+  location: string | null
+  level: string | null
+  priority: string | null
+  hiringManager: string | null
+  recruiter: string | null
   daysOpen: number
   applied: number
   screen: number
@@ -36,21 +39,33 @@ export interface OpenReqRow {
 }
 
 export interface ReqFacts {
-  /** Open reqs on the as-of date. */
+  /** Reqs open on the as-of date (opened by then, not yet filled, closed or cancelled). */
   open: Requisition[]
   onHold: Requisition[]
   rows: OpenReqRow[]
   /** Open longer than 30 days with no candidate ever past the screen. */
   emptyFunnel: OpenReqRow[]
+  /** False when candidates are missing or mostly don't match a req, so funnel health can't be read. */
+  funnelChecked: boolean
 }
 
+/** Health text when the candidate data can't say whether a req's funnel is empty. */
+export const NOT_CHECKED = 'Not checked'
+
+/**
+ * Open reqs on the as-of date with their active pipeline and health. Open means open ON that date
+ * (`isOpenAt`), so an as-of date in the past counts reqs that have since been filled or cancelled.
+ * Pass `checkFunnel: false` when the candidates can't be trusted to describe the reqs (none loaded,
+ * or most match no req ID): every old req would otherwise read as an empty funnel.
+ */
 export function reqFacts(
   reqs: readonly Requisition[],
   apps: readonly App[],
   actives: readonly ActiveItem[],
   asOf: ISODate,
+  checkFunnel = true,
 ): ReqFacts {
-  const open = reqs.filter((r) => r.status === 'Open' && r.openedDate <= asOf)
+  const open = reqs.filter((r) => isOpenAt(r, asOf))
   const onHold = reqs.filter((r) => r.status === 'On hold' && r.openedDate <= asOf)
   const pastScreen = new Set<string>()
   for (const a of apps) if (a.furthest >= 2) pastScreen.add(a.reqId)
@@ -69,21 +84,23 @@ export function reqFacts(
       if (x.tier) lacking++
     }
     const daysOpen = Math.max(0, daysBetween(r.openedDate, asOf))
-    const empty = daysOpen > EMPTY_FUNNEL_DAYS && !pastScreen.has(r.reqId)
+    const empty = checkFunnel && daysOpen > EMPTY_FUNNEL_DAYS && !pastScreen.has(r.reqId)
     const health = empty
       ? 'Empty funnel'
       : lacking
         ? `${lacking} lack${lacking === 1 ? 's' : ''} a next step`
-        : 'On track'
+        : checkFunnel
+          ? 'On track'
+          : NOT_CHECKED
     return {
       reqId: r.reqId,
-      title: r.jobTitle || '—',
-      department: r.department || '—',
-      location: r.location || '—',
-      level: r.level ?? '—',
-      priority: r.priority ?? '—',
-      hiringManager: r.hiringManager ?? '—',
-      recruiter: r.recruiter ?? '—',
+      title: r.jobTitle || null,
+      department: r.department || null,
+      location: r.location || null,
+      level: r.level || null,
+      priority: r.priority || null,
+      hiringManager: r.hiringManager || null,
+      recruiter: r.recruiter || null,
       daysOpen,
       applied: per[0],
       screen: per[1],
@@ -98,7 +115,13 @@ export function reqFacts(
   })
   const rank = (s: Severity | null) => (s === 'critical' ? 0 : s === 'warning' ? 1 : 2)
   rows.sort((a, b) => rank(a.severity) - rank(b.severity) || b.daysOpen - a.daysOpen)
-  return { open, onHold, rows, emptyFunnel: rows.filter((r) => r.health === 'Empty funnel') }
+  return {
+    open,
+    onHold,
+    rows,
+    emptyFunnel: rows.filter((r) => r.health === 'Empty funnel'),
+    funnelChecked: checkFunnel,
+  }
 }
 
 /** Days from opened to filled for reqs filled in the window (cancelled reqs excluded). */
@@ -202,16 +225,32 @@ export interface RecruiterRow {
   hires: number
   medianWait: number | null
   lacking: number
-  /** Median wait above 1.5 × the team median. */
+  /** "Heavy load", "Long waits" or both; null when neither. */
+  flag: string | null
   flagged: boolean
 }
 
+export interface RecruiterLoad {
+  rows: RecruiterRow[]
+  teamMedianWait: number | null
+  teamMedianOpen: number | null
+  teamMedianActive: number | null
+}
+
+/** A recruiter's load or wait above this multiple of the team median is flagged. */
+export const LOAD_FLAG_RATIO = 1.5
+
+/**
+ * Open reqs, active candidates, hires and waiting per recruiter. Flags a heavy load (open reqs or
+ * active candidates above 1.5× the team median) and long waits (median days waiting above 1.5×
+ * the team median). Team medians are over named recruiters.
+ */
 export function recruiterLoad(
   open: readonly Requisition[],
   actives: readonly ActiveItem[],
   apps: readonly App[],
   w: Pick<Window, 'start' | 'end'>,
-): { rows: RecruiterRow[]; teamMedianWait: number | null } {
+): RecruiterLoad {
   const rows = new Map<
     string,
     { open: number; active: number; hires: number; waits: number[]; lacking: number }
@@ -224,19 +263,26 @@ export function recruiterLoad(
     }
     return e
   }
-  for (const r of open) get(r.recruiter || 'Unassigned').open++
+  for (const r of open) get(r.recruiter || UNASSIGNED).open++
   for (const x of actives) {
-    const e = get(x.app.recruiter || 'Unassigned')
+    const e = get(x.app.recruiter || UNASSIGNED)
     e.active++
     e.waits.push(x.daysInStage)
     if (x.tier) e.lacking++
   }
   for (const a of apps)
-    if (a.outcome === 'Hired' && inWin(a.exitDate, w)) get(a.recruiter || 'Unassigned').hires++
-  const medians = [...rows.values()].map((e) => median(e.waits)).filter((v): v is number => v != null)
+    if (a.outcome === 'Hired' && inWin(a.exitDate, w)) get(a.recruiter || UNASSIGNED).hires++
+  const named = [...rows].filter(([k]) => k !== UNASSIGNED).map(([, e]) => e)
+  const medians = named.map((e) => median(e.waits)).filter((v): v is number => v != null)
   const team = median(medians)
+  const teamOpen = median(named.map((e) => e.open))
+  const teamActive = median(named.map((e) => e.active))
+  const above = (v: number, m: number | null) => m != null && m > 0 && v > LOAD_FLAG_RATIO * m
   const out = [...rows].map(([recruiter, e]) => {
     const m = median(e.waits)
+    const heavy = recruiter !== UNASSIGNED && (above(e.open, teamOpen) || above(e.active, teamActive))
+    const slow = recruiter !== UNASSIGNED && m != null && above(m, team)
+    const flag = heavy && slow ? 'Heavy load, long waits' : heavy ? 'Heavy load' : slow ? 'Long waits' : null
     return {
       recruiter,
       openReqs: e.open,
@@ -244,9 +290,10 @@ export function recruiterLoad(
       hires: e.hires,
       medianWait: m,
       lacking: e.lacking,
-      flagged: m != null && team != null && m > 1.5 * team,
+      flag,
+      flagged: flag != null,
     }
   })
   out.sort((a, b) => b.openReqs - a.openReqs || b.active - a.active || a.recruiter.localeCompare(b.recruiter))
-  return { rows: out, teamMedianWait: team }
+  return { rows: out, teamMedianWait: team, teamMedianOpen: teamOpen, teamMedianActive: teamActive }
 }

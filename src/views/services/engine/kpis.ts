@@ -5,6 +5,7 @@
  */
 import type { Kpi } from '@/components/types'
 import type { Window } from '@/data/scope'
+import { formatDate } from '@/lib/dates'
 import { fmt } from '@/lib/format'
 import { isMaterialChange } from '@/lib/stats'
 import { csat, medianHours, openedIn, resolutionSla, resolvedIn, responseSla } from './cases'
@@ -63,6 +64,8 @@ export interface KpiInputs {
   sparkOpened: number[]
   sparkSla: (number | null)[]
   sparkResponse: (number | null)[]
+  /** Monthly transactions on time, oldest first. */
+  sparkTx?: (number | null)[]
 }
 
 export function buildKpis(x: KpiInputs): Kpi[] {
@@ -95,7 +98,7 @@ export function buildKpis(x: KpiInputs): Kpi[] {
     value: x.hasCases ? backlog.length : null,
     format: 'int',
     delta: x.hasCases ? backlog.length - backlogPrev.length : null,
-    deltaLabel: 'vs end of prior period',
+    deltaLabel: `vs ${formatDate(x.prior.end)}`,
     goodDirection: 'down',
     deltaMaterial: isMaterialChange(backlog.length, backlogPrev.length, backlog.length, backlogPrev.length),
     note: x.hasCases
@@ -210,13 +213,14 @@ export function buildKpis(x: KpiInputs): Kpi[] {
   kpis.push({
     id: 'tx-on-time',
     label: 'Transactions on time',
-    value: txOk && t.n >= 5 ? (t.n - t.late) / t.n : null,
+    value: txOk ? t.rate : null,
     format: 'pct',
-    delta: txOk && t.n >= 5 && tp.n >= 5 ? (t.n - t.late) / t.n - (tp.n - tp.late) / tp.n : null,
+    delta: txOk ? diff(t.rate, tp.rate) : null,
     deltaLabel: vs,
     goodDirection: 'up',
     deltaMaterial: rateMaterial(t, tp),
-    suppressed: txOk && t.n > 0 && t.n < 5,
+    spark: x.sparkTx,
+    suppressed: txOk && t.rate == null && t.n > 0,
     note: !x.hasTx
       ? 'Upload HR transactions to see this'
       : !x.txCols.dueDate

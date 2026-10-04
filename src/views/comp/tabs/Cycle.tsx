@@ -3,7 +3,7 @@ import { BarList, Figure, HBars, Histogram } from '@/charts'
 import { KpiStrip, Section, type Severity } from '@/components'
 import { LEVELS } from '@/data/schema'
 import { formatDate } from '@/lib/dates'
-import { fmt, fmtDelta } from '@/lib/format'
+import { fmt } from '@/lib/format'
 import {
   budgetDefinition,
   DEF_EXCEPTIONS,
@@ -18,13 +18,15 @@ import {
   SPEND_COLUMNS,
 } from '../columns'
 import { type ExceptionRow, OVER_BUDGET, type SpendRow } from '../engine/cycle'
+import { smallSpend } from '../engine/kpis'
 import { type CompModel, MERIT_STEP } from '../engine/model'
-import { pct2 } from '../engine/text'
+import { pts2 } from '../engine/text'
 import { emptyIf, MISSING, note } from '../shared'
 import { edges } from './Overview'
 
 const spendTone = (d: SpendRow) => (d.delta != null && d.delta >= OVER_BUDGET ? 'warning' : 'default')
-const spendGap = (d: SpendRow) => (d.delta == null ? null : `${fmtDelta(d.delta, 'pts')} vs budget`)
+const spendGap = (d: SpendRow) => (d.delta == null ? null : pts2(d.delta))
+const pct2 = (v: number | null) => fmt(v, 'pct2')
 const exceptionTone = (r: ExceptionRow): Severity => (r.kind === 'outlier' ? 'info' : 'warning')
 const MIX_SERIES = ['Base', 'Target bonus', 'Equity']
 
@@ -41,8 +43,11 @@ export function Cycle({ m }: { m: CompModel }) {
       { level: r.level, part: 'Equity', share: r.equity },
     ].filter((x) => x.share != null),
   )
+  // Totals over 1-4 proposals would give away individual merit: no overall rate or amount.
+  const hide = smallSpend(c.spend)
+  const overall = hide || c.spend.spendPct == null ? '' : ` · ${pct2(c.spend.spendPct)} overall`
   const money =
-    m.showPay && c.spend.overUsd != null
+    !hide && m.showPay && c.spend.overUsd != null
       ? ` · ${fmt(Math.abs(c.spend.overUsd), 'money')} ${c.spend.overUsd > 0 ? 'over' : 'under'} budget`
       : ''
 
@@ -61,7 +66,7 @@ export function Cycle({ m }: { m: CompModel }) {
           data={c.byBu}
           columns={SPEND_COLUMNS}
           definitions={[DEF_SPEND, budgetDefinition(s), DEF_FX]}
-          note={`${note(m, c.spend.eligible, 'proposals', true)} · ${pct2(c.spend.spendPct)} overall${money}`}
+          note={`${note(m, c.spend.eligible, 'proposals', true)}${overall}${money}`}
           span={6}
           empty={emptyIf(c.byBu, noMerit, 'No merit proposals in this scope.')}
         >
@@ -69,7 +74,7 @@ export function Cycle({ m }: { m: CompModel }) {
             data={c.byBu}
             label="group"
             value="spendPct"
-            format="pct"
+            format="pct2"
             ref={{ value: s.meritBudget, label: `Budget ${pct2(s.meritBudget)}` }}
             tone={spendTone}
             secondary={spendGap}
@@ -82,7 +87,7 @@ export function Cycle({ m }: { m: CompModel }) {
           data={c.hist}
           columns={MERIT_BIN_COLUMNS}
           definitions={[DEF_SPEND, guidelineDefinition(s)]}
-          note={`${note(m, merits.length, 'proposals')} · mean ${fmt(c.spend.meanMerit, 'pct')}`}
+          note={`${note(m, merits.length, 'proposals')}${c.spend.meanMerit == null ? '' : ` · mean ${pct2(c.spend.meanMerit)}`}`}
           span={6}
           empty={emptyIf(c.hist, noMerit, 'No merit proposals in this scope.')}
         >
@@ -90,7 +95,7 @@ export function Cycle({ m }: { m: CompModel }) {
             values={merits}
             thresholds={edges(c.histDomain, MERIT_STEP)}
             domain={c.histDomain ?? undefined}
-            format="pct"
+            format="pct2"
             refs={[{ value: s.meritBudget, label: `Budget ${pct2(s.meritBudget)}` }]}
             unit="proposals"
           />
@@ -126,11 +131,7 @@ export function Cycle({ m }: { m: CompModel }) {
         <Figure
           id="comp-promotions"
           title="Promotions in this cycle"
-          subtitle={
-            c.promotions.rows.length
-              ? `${fmt(c.promotions.rows.length, 'int')} people${c.promotions.share != null ? `, ${fmt(c.promotions.share, 'pct')} of eligible` : ''}${c.promotions.median != null ? `, median increase ${fmt(c.promotions.median, 'pct')}` : ''}`
-              : 'Promotion increases proposed this cycle'
-          }
+          subtitle="Promotion increases proposed this cycle, kept apart from merit"
           data={c.promotions.rows}
           columns={PROMOTION_COLUMNS}
           definitions={[

@@ -2,6 +2,9 @@
  * HR transaction metrics. The population is every transaction whose deadline (dueDate) falls in
  * the window. On time = completed on or before the due date; open past the due date counts as
  * late; open and not yet due is left out.
+ *
+ * Privacy: a rate needs at least MIN_GROUP transactions for MIN_GROUP distinct employees, and
+ * every breakdown folds groups behind fewer than MIN_GROUP employees into "Other (k)".
  */
 
 import {
@@ -15,41 +18,44 @@ import type { Window } from '@/data/scope'
 import { groupBy, median } from '@/lib/stats'
 import { FINAL_PAY_RULES, TRANSACTION_DEADLINES } from './catalog'
 import { dueIn, onTimeRate, type TxFact } from './facts'
-import { foldSmall, share } from './util'
+import { foldGroups, hitsOf, isShowable, peopleIn, shareOf } from './util'
 
 export interface TypeRow {
   type: string
   processId: string | null
   deadline: string
   due: number
-  onTime: number
-  late: number
-  open: number
+  /** On time, completed late and open past due: hidden (null) with the rate. */
+  onTime: number | null
+  late: number | null
+  open: number | null
   rate: number | null
 }
 
+const typeOrder = (t: string) => {
+  const i = TRANSACTION_TYPES.indexOf(t as TransactionType)
+  return i < 0 ? 99 : i
+}
+
+/** On time by transaction type, in the catalog order; types behind fewer than 5 employees fold into Other. */
 export function onTimeByType(facts: readonly TxFact[], w: Window): TypeRow[] {
-  const groups = groupBy(dueIn(facts, w), (f) => f.type)
-  const order = (t: string) => {
-    const i = TRANSACTION_TYPES.indexOf(t as TransactionType)
-    return i < 0 ? 99 : i
-  }
-  return [...groups]
-    .map(([type, list]) => {
-      const r = onTimeRate(list)
-      return {
-        type,
-        processId: TRANSACTION_PROCESS[type as TransactionType] ?? list[0].processId,
-        deadline: TRANSACTION_DEADLINES[type as TransactionType] ?? 'Due date in the file',
-        due: r.n,
-        onTime: r.n - r.late,
-        late: list.filter((f) => f.outcome === 'late').length,
-        open: list.filter((f) => f.outcome === 'overdue').length,
-        rate: share(r.n - r.late, r.n).rate,
-      }
-    })
-    .filter((r) => r.due > 0)
-    .sort((a, b) => order(a.type) - order(b.type))
+  const judged = dueIn(facts, w).filter((f) => f.outcome !== 'pending' && f.outcome != null)
+  const groups = [...groupBy(judged, (f) => f.type)].sort((a, b) => typeOrder(a[0]) - typeOrder(b[0]))
+  return foldGroups(groups).map(({ key, rows, folded }) => {
+    const r = onTimeRate(rows)
+    return {
+      type: key,
+      processId: folded ? null : (TRANSACTION_PROCESS[key as TransactionType] ?? rows[0].processId),
+      deadline: folded
+        ? 'Varies by type'
+        : (TRANSACTION_DEADLINES[key as TransactionType] ?? 'Due date in the file'),
+      due: r.n,
+      onTime: hitsOf(r.rate, r.onTime),
+      late: hitsOf(r.rate, rows.filter((f) => f.outcome === 'late').length),
+      open: hitsOf(r.rate, rows.filter((f) => f.outcome === 'overdue').length),
+      rate: r.rate,
+    }
+  })
 }
 
 /* ───────────── final pay ───────────── */
@@ -60,14 +66,15 @@ export interface FinalPayRow {
   sites: string
   rule: string
   exits: number
-  onTime: number
-  late: number
+  /** Hidden (null) with the rate. */
+  onTime: number | null
+  late: number | null
   rate: number | null
   involuntaryRate: number | null
   involuntaryN: number
   voluntaryRate: number | null
   voluntaryN: number
-  /** Median days past the deadline, late payments only. */
+  /** Median days past the deadline, late payments only (null below 5 late payments or people). */
   medianDaysLate: number | null
 }
 
@@ -76,12 +83,20 @@ const sitesOf = (jur: string) =>
     .map((s) => s.location)
     .join(', ')
 
+/**
+ * Final pay on time by jurisdiction, most exits first. Jurisdictions behind fewer than 5 leavers
+ * fold into "Other (k)", so a single exit's timing never shows on its own.
+ */
 export function finalPayByJurisdiction(facts: readonly TxFact[], w: Window): FinalPayRow[] {
-  const exits = dueIn(facts, w).filter((f) => f.type === 'Termination' && f.outcome !== 'pending')
-  const groups = groupBy(exits, (f) => f.jurisdiction ?? 'unknown')
-  const rows = [...groups].map(([jur, list]) => finalPayRow(jur, list))
-  rows.sort((a, b) => b.exits - a.exits)
-  return rows
+  const exits = dueIn(facts, w).filter(
+    (f) => f.type === 'Termination' && f.outcome !== 'pending' && f.outcome != null,
+  )
+  const groups = [...groupBy(exits, (f) => f.jurisdiction ?? 'unknown')].sort(
+    (a, b) => b[1].length - a[1].length,
+  )
+  return foldGroups(groups).map(({ key, rows, folded }) =>
+    folded ? { ...finalPayRow('other', rows), jurisdiction: 'other', name: key } : finalPayRow(key, rows),
+  )
 }
 
 export function finalPayRow(jur: string, list: readonly TxFact[]): FinalPayRow {
@@ -89,21 +104,23 @@ export function finalPayRow(jur: string, list: readonly TxFact[]): FinalPayRow {
   const r = onTimeRate(list)
   const inv = onTimeRate(list.filter((f) => f.exitType === 'Involuntary'))
   const vol = onTimeRate(list.filter((f) => f.exitType === 'Voluntary'))
-  const lateDays = list.flatMap((f) => (f.outcome === 'late' && f.daysVsDue != null ? [f.daysVsDue] : []))
+  const late = list.filter((f) => f.outcome === 'late' && f.daysVsDue != null)
+  const lateDays = late.map((f) => f.daysVsDue as number)
+  const other = jur === 'other'
   return {
     jurisdiction: jur,
     name: rule?.name ?? (jur === 'unknown' ? 'Unknown site' : jur),
-    sites: jur === 'unknown' ? '—' : sitesOf(jur),
-    rule: rule?.rule ?? 'Due date in the file',
+    sites: jur === 'unknown' || other ? '—' : sitesOf(jur),
+    rule: rule?.rule ?? (other ? 'Varies by jurisdiction' : 'Due date in the file'),
     exits: r.n,
-    onTime: r.n - r.late,
-    late: r.late,
-    rate: share(r.n - r.late, r.n).rate,
-    involuntaryRate: share(inv.n - inv.late, inv.n).rate,
+    onTime: hitsOf(r.rate, r.onTime),
+    late: hitsOf(r.rate, r.late),
+    rate: r.rate,
+    involuntaryRate: inv.rate,
     involuntaryN: inv.n,
-    voluntaryRate: share(vol.n - vol.late, vol.n).rate,
+    voluntaryRate: vol.rate,
     voluntaryN: vol.n,
-    medianDaysLate: lateDays.length ? median(lateDays) : null,
+    medianDaysLate: isShowable(lateDays.length, peopleIn(late)) ? median(lateDays) : null,
   }
 }
 
@@ -113,8 +130,9 @@ export interface SiteRow {
   location: string
   region: Region | '—'
   starts: number
-  ready: number
-  late: number
+  /** Hidden (null) with the rate. */
+  ready: number | null
+  late: number | null
   rate: number | null
 }
 
@@ -124,41 +142,31 @@ const siteRow = (location: string, region: Region | '—', list: readonly TxFact
     location,
     region,
     starts: r.n,
-    ready: r.n - r.late,
-    late: r.late,
-    rate: share(r.n - r.late, r.n).rate,
+    ready: hitsOf(r.rate, r.onTime),
+    late: hitsOf(r.rate, r.late),
+    rate: r.rate,
   }
 }
 
 const newHires = (facts: readonly TxFact[], w: Window) =>
-  dueIn(facts, w).filter((f) => f.type === 'New hire' && f.outcome !== 'pending')
+  dueIn(facts, w).filter((f) => f.type === 'New hire' && f.outcome !== 'pending' && f.outcome != null)
 
-/** New hire Day −3 readiness by site; sites with fewer than 5 starts fold into Other. */
+/** New hire Day −3 readiness by site; sites with fewer than 5 new hires fold into Other. */
 export function newHireBySite(facts: readonly TxFact[], w: Window): SiteRow[] {
-  const groups = groupBy(newHires(facts, w), (f) => f.location ?? 'Unknown site')
-  const rows = [...groups].map(([loc, list]) => siteRow(loc, list[0].region ?? '—', list))
-  rows.sort((a, b) => b.starts - a.starts)
-  return foldSmall(
-    rows,
-    (r) => r.starts,
-    (rest, label) => {
-      const starts = rest.reduce((a, r) => a + r.starts, 0)
-      const ready = rest.reduce((a, r) => a + r.ready, 0)
-      return {
-        location: label,
-        region: '—',
-        starts,
-        ready,
-        late: starts - ready,
-        rate: share(ready, starts).rate,
-      }
-    },
+  const groups = [...groupBy(newHires(facts, w), (f) => f.location ?? 'Unknown site')].sort(
+    (a, b) => b[1].length - a[1].length,
+  )
+  return foldGroups(groups).map(({ key, rows, folded }) =>
+    siteRow(key, folded ? '—' : (rows[0].region ?? '—'), rows),
   )
 }
 
+/** New hire Day −3 readiness by region; regions with fewer than 5 new hires fold into Other. */
 export function newHireByRegion(facts: readonly TxFact[], w: Window): SiteRow[] {
-  const groups = groupBy(newHires(facts, w), (f) => f.region ?? '—')
-  return [...groups].map(([region, list]) => siteRow(region, region as Region | '—', list))
+  const groups = [...groupBy(newHires(facts, w), (f) => f.region ?? '—')]
+  return foldGroups(groups).map(({ key, rows, folded }) =>
+    siteRow(key, folded ? '—' : (key as Region | '—'), rows),
+  )
 }
 
 /* ───────────── timing ───────────── */
@@ -183,25 +191,50 @@ export interface TimingRow {
   late: boolean
 }
 
-/** completed − due in calendar days, for completed transactions due in the window. */
+/** completed − due in calendar days; shares are hidden behind fewer than 5 people. */
 export function timingBins(facts: readonly TxFact[], w: Window): TimingRow[] {
   const counts = TIMING_BINS.map(() => 0)
-  let n = 0
+  const done: TxFact[] = []
   for (const f of dueIn(facts, w)) {
     const d = f.daysVsDue
     if (d == null) continue
     const i = TIMING_BINS.findIndex((b) => d >= b.lo && d <= b.hi)
     if (i < 0) continue
     counts[i]++
-    n++
+    done.push(f)
   }
+  const n = done.length
   if (!n) return []
+  const shown = isShowable(n, peopleIn(done))
   return TIMING_BINS.map((b, i) => ({
     timing: b.label,
     transactions: counts[i],
-    share: counts[i] / n,
+    share: shown ? counts[i] / n : null,
     late: b.lo > 0,
   }))
+}
+
+/* ───────────── on time by month ───────────── */
+
+export interface TxMonthRow {
+  month: string
+  due: number
+  /** Hidden (null) with the rate. */
+  onTime: number | null
+  late: number | null
+  rate: number | null
+}
+
+/** Transactions on time by the month of their due date (pending ones left out). */
+export function onTimeByMonth(facts: readonly TxFact[], months: readonly string[]): TxMonthRow[] {
+  const groups = groupBy(
+    facts.filter((f) => f.due != null),
+    (f) => (f.due as string).slice(0, 7),
+  )
+  return months.map((month) => {
+    const r = onTimeRate(groups.get(month) ?? [])
+    return { month, due: r.n, onTime: hitsOf(r.rate, r.onTime), late: hitsOf(r.rate, r.late), rate: r.rate }
+  })
 }
 
 /* ───────────── retro adjustments ───────────── */
@@ -215,7 +248,9 @@ export const retroCandidates = (facts: readonly TxFact[]): TxFact[] =>
 export interface RetroMonthRow {
   month: string
   changes: number
-  retro: number
+  /** Hidden (null) with the share. */
+  retro: number | null
+  /** Retro ÷ changes; null below 5 changes or 5 employees. */
   share: number | null
 }
 
@@ -226,17 +261,15 @@ export function retroByMonth(facts: readonly TxFact[], months: readonly string[]
     (f) => (f.due as string).slice(0, 7),
   )
   return months.map((month) => {
-    const list = groups.get(month) ?? []
-    const retro = list.filter((f) => f.retro).length
-    return { month, changes: list.length, retro, share: share(retro, list.length).rate }
+    const s = shareOf(groups.get(month) ?? [], (f) => f.retro)
+    return { month, changes: s.n, retro: hitsOf(s.rate, s.hits), share: s.rate }
   })
 }
 
 export function retroShare(
   facts: readonly TxFact[],
   w: Window,
-): { rate: number | null; retro: number; n: number } {
-  const list = retroCandidates(dueIn(facts, w))
-  const retro = list.filter((f) => f.retro).length
-  return { rate: share(retro, list.length).rate, retro, n: list.length }
+): { rate: number | null; retro: number; n: number; people: number } {
+  const s = shareOf(retroCandidates(dueIn(facts, w)), (f) => f.retro)
+  return { rate: s.rate, retro: s.hits, n: s.n, people: s.people }
 }

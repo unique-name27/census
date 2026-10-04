@@ -7,13 +7,29 @@ import { IconDownload, IconFile, IconLock, IconReset, IconWarning } from '@/comp
 import { toast } from '@/components/toast'
 import { Button } from '@/components/ui'
 import { useAnalytics } from '@/data/context'
+import { type DatasetKey, datasetDef } from '@/data/schema'
 import { useCensus } from '@/data/store'
-import { formatDate } from '@/lib/dates'
 import { fmt } from '@/lib/format'
 import type { ManifestSummary } from '../engine/manifest'
 import { useImportLogs } from '../state/importLog'
 import { downloadSampleWorkbook, downloadTemplate } from './downloads'
 import { useBusy } from './useBusy'
+
+const COUNT_WORDS = ['No', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten']
+
+/** "Nine datasets, 39,994 rows. Compensation was left out because pay amounts are off; …" */
+export function sampleToastText(done: {
+  rows: number
+  datasets: readonly DatasetKey[]
+  leftOut: readonly DatasetKey[]
+}): string {
+  const n = done.datasets.length
+  const head = `${done.leftOut.length ? (COUNT_WORDS[n] ?? n) : 'All ten'} datasets, ${fmt(done.rows, 'int')} rows.`
+  if (!done.leftOut.length) return head
+  const names = done.leftOut.map((k) => datasetDef(k).label).join(' and ')
+  const were = done.leftOut.length === 1 ? `${names} was` : `${names} were`
+  return `${head} ${were} left out because pay amounts are off; switch them on to include ${done.leftOut.length === 1 ? 'it' : 'them'}.`
+}
 
 function ResetConfirm({ uploaded, onDone }: { uploaded: number; onDone: () => void }) {
   const resetAll = useCensus((s) => s.resetAllToSample)
@@ -43,7 +59,7 @@ function ResetConfirm({ uploaded, onDone }: { uploaded: number; onDone: () => vo
       <p className="min-w-0 flex-1 basis-[320px] text-[13px]">
         <span className="font-semibold">Reset everything to the sample company?</span>{' '}
         <span className="text-ink-2">
-          This removes {what.join(' and ')} from this browser. Saved column mappings are kept.
+          This removes {what.join(' and ')} from this browser. Saved column choices are kept.
         </span>
       </p>
       <div className="flex gap-2">
@@ -74,9 +90,7 @@ export function DataRoomHeader({ summary }: { summary: ManifestSummary }) {
             Files you add stay in this browser. Census reads them on this device and never sends them
             anywhere.
           </p>
-          <p className="mt-1 text-[13px] text-ink-2">
-            {summary.text} · {fmt(summary.totalRows, 'int')} rows · as of {formatDate(ctx.asOf)}
-          </p>
+          <p className="mt-1 text-[13px] text-ink-2">{summary.text}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Button
@@ -86,10 +100,10 @@ export function DataRoomHeader({ summary }: { summary: ManifestSummary }) {
               run(
                 'sample',
                 async () => {
-                  const rows = await downloadSampleWorkbook(ctx.showPay)
+                  const done = await downloadSampleWorkbook(ctx.showPay)
                   toast('Sample workbook downloaded', {
                     tone: 'good',
-                    description: `All ten datasets, ${fmt(rows, 'int')} rows${ctx.showPay ? '' : ', pay amounts left blank'}.`,
+                    description: sampleToastText(done),
                   })
                 },
                 'The sample workbook could not be prepared. Try again.',

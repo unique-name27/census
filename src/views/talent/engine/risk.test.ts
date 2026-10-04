@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { AnalyticsContext } from '@/data/context'
 import type { Employee, JobChange } from '@/data/schema'
+import { addMonths } from '@/lib/dates'
 import { buildBase } from './base'
 import {
   type BackTest,
@@ -8,10 +9,16 @@ import {
   bandCuts,
   bandFor,
   buildRiskModel,
+  FACTORS,
+  type FactorKey,
+  type LearningSample,
   learnPoints,
+  monthsBack,
   type PersonSignals,
   type RiskInput,
+  roundPoints,
   type Signal,
+  type SignalSet,
   signalsAt,
   stateAt,
 } from './risk'
@@ -73,28 +80,55 @@ describe('stateAt', () => {
 })
 
 describe('bands', () => {
-  it('puts the top 10% of scores in High and the next 25% in Medium', () => {
+  it('cuts where each band comes closest to its target share (10% high, 35% high or medium)', () => {
     const scores = [0, 0, 0, 0, 0, 10, 10, 20, 30, 40]
-    expect(bandCuts(scores)).toEqual({ cutHigh: 40, cutMedium: 10 })
-    expect(bandFor(40, 40, 10)).toBe('High')
-    expect(bandFor(30, 40, 10)).toBe('Medium')
-    expect(bandFor(10, 40, 10)).toBe('Medium')
-    expect(bandFor(0, 40, 10)).toBe('Low')
+    expect(bandCuts(scores)).toEqual({ cutHigh: 40, cutMedium: 20, highShare: 0.1, mediumShare: 0.2 })
+    expect(bandFor(40, 40, 20)).toBe('High')
+    expect(bandFor(30, 40, 20)).toBe('Medium')
+    expect(bandFor(10, 40, 20)).toBe('Low')
+    expect(bandFor(0, 40, 20)).toBe('Low')
   })
-  it('gives ties at a cut the higher band and keeps 0 in Low', () => {
+  it('keeps people with the same score in one band and reports the real share', () => {
+    // 5% score 60 and 20% score 50: a high band of 5% is closer to 10% than one of 25%.
+    const scores = [...Array(5).fill(60), ...Array(20).fill(50), ...Array(75).fill(0)]
+    const cuts = bandCuts(scores)
+    expect(cuts.cutHigh).toBe(60)
+    expect(cuts.highShare).toBeCloseTo(0.05, 9)
+    // The 50s all go to Medium together (25% total, against a 35% target).
+    expect(cuts.cutMedium).toBe(50)
+    expect(cuts.mediumShare).toBeCloseTo(0.2, 9)
+  })
+  it('never leaves the high band empty while someone scores above 0, and keeps 0 in Low', () => {
     const scores = [50, 50, 50, 0, 0, 0, 0, 0, 0, 0]
-    const { cutHigh, cutMedium } = bandCuts(scores)
+    const { cutHigh, cutMedium, highShare } = bandCuts(scores)
     expect(cutHigh).toBe(50)
+    expect(highShare).toBeCloseTo(0.3, 9)
     expect(scores.filter((s) => bandFor(s, cutHigh, cutMedium) === 'High')).toHaveLength(3)
+    expect(scores.filter((s) => bandFor(s, cutHigh, cutMedium) === 'Low')).toHaveLength(7)
   })
   it('returns no cuts when nobody scores', () => {
-    expect(bandCuts([0, 0, 0])).toEqual({ cutHigh: null, cutMedium: null })
-    expect(bandCuts([])).toEqual({ cutHigh: null, cutMedium: null })
+    expect(bandCuts([0, 0, 0])).toEqual({ cutHigh: null, cutMedium: null, highShare: 0, mediumShare: 0 })
+    expect(bandCuts([])).toEqual({ cutHigh: null, cutMedium: null, highShare: null, mediumShare: null })
     expect(bandFor(5, null, null)).toBe('Low')
   })
 })
 
+describe('roundPoints', () => {
+  it('rounds to multiples of 5 that still add up to the total', () => {
+    const r = roundPoints({ tenurePeak: 52.4, deptAttrition: 23.3, ratingDrop: 14.3, lowCompa: 10 }, 100)
+    expect(r).toEqual({ tenurePeak: 50, deptAttrition: 25, ratingDrop: 15, lowCompa: 10 })
+    expect(roundPoints({ lowCompa: 10 }, 10)).toEqual({ lowCompa: 10 })
+  })
+})
+
 describe('learnPoints', () => {
+  const set = (people: PersonSignals[], off: FactorKey[] = []): SignalSet => ({
+    date: '2025-09-30',
+    people,
+    off: off.map((key) => ({ key, why: 'test' })),
+    companyVoluntary: null,
+    levelNorms: new Map(),
+  })
   // 200 people: 80 with tenurePeak (24 left), 80 with ratingDrop (4 left), 40 with nothing (2 left).
   const people: PersonSignals[] = Array.from({ length: 200 }, (_, i) => ({
     employeeId: `P${i}`,
@@ -111,10 +145,13 @@ describe('learnPoints', () => {
     'P160',
     'P161',
   ])
-  const left = (id: string) => leftIds.has(id)
+  const sample = (list = people, off: FactorKey[] = []): LearningSample => ({
+    signals: set(list, off),
+    left: (id) => leftIds.has(id),
+  })
 
   it('gives points only to factors that went with more exits', () => {
-    const r = learnPoints(people, left, new Set(), { compaOn: false })
+    const r = learnPoints([sample()], new Set(), { compaOn: false })
     expect(r.learned).toBe(true)
     expect(r.points.tenurePeak).toBe(100)
     expect(r.points.ratingDrop).toBe(0)
@@ -125,25 +162,51 @@ describe('learnPoints', () => {
     const peak = r.evidence.find((e) => e.key === 'tenurePeak')!
     expect(peak.withRate).toBeCloseTo(0.3, 6)
     expect(peak.withoutRate).toBeCloseTo(0.05, 6)
+    expect(peak.source).toBe('learned')
+    expect(r.people).toBe(200)
+    expect(r.leavers).toBe(30)
+  })
+  it('pools several month-ends, counting each person once per month-end', () => {
+    const r = learnPoints([sample(), sample()], new Set(), { compaOn: false })
+    expect(r.evidence.find((e) => e.key === 'tenurePeak')?.withFactor).toBe(160)
+    expect(r.people).toBe(200)
+    expect(r.leavers).toBe(30)
   })
   it('keeps 10 fixed points for the untestable pay factor', () => {
-    const r = learnPoints(people, left, new Set(), { compaOn: true })
+    const r = learnPoints([sample()], new Set(), { compaOn: true })
     expect(r.points.tenurePeak).toBe(90)
     expect(r.points.lowCompa).toBe(10)
-    expect(r.evidence.find((e) => e.key === 'lowCompa')?.tested).toBe(false)
+    expect(r.evidence.find((e) => e.key === 'lowCompa')).toMatchObject({ tested: false, source: 'fixed' })
   })
-  it('falls back to default points with too little history', () => {
-    const few = people.slice(0, 50)
-    const r = learnPoints(few, left, new Set(), { compaOn: false })
+  it('falls back to default points, rounded to 5, with too little history', () => {
+    const r = learnPoints([sample(people.slice(0, 50))], new Set(), { compaOn: false })
     expect(r.learned).toBe(false)
-    // Defaults of the testable factors add up to 90; tenure's 10 scale to 11 of 100.
-    expect(r.points.tenurePeak).toBe(11)
-    expect(r.points.promotionGap).toBe(17)
+    // The testable defaults add up to 90 and are rescaled to 100, then rounded to multiples of 5.
+    expect(r.points.promotionGap).toBe(15)
+    expect(r.points.tenurePeak).toBe(10)
+    expect(Object.values(r.points).reduce((a, b) => a + b, 0)).toBe(100)
+    expect(Object.values(r.points).every((p) => p % 5 === 0)).toBe(true)
+    expect(r.evidence.every((e) => e.source === 'default')).toBe(true)
   })
-  it('skips factors that are switched off', () => {
-    const r = learnPoints(people, left, new Set(['tenurePeak']), { compaOn: false })
+  it('keeps default points for a factor whose data does not reach back, and learns the rest', () => {
+    // ratingDrop is switched off at the learning month-end (no reviews yet) but is on today.
+    const r = learnPoints([sample(people, ['ratingDrop'])], new Set(), { compaOn: false })
+    const drop = r.evidence.find((e) => e.key === 'ratingDrop')!
+    expect(drop.tested).toBe(false)
+    expect(drop.source).toBe('default')
+    expect(r.points.ratingDrop).toBe(10)
+    expect(r.points.tenurePeak).toBe(90)
+  })
+  it('skips factors that are switched off today', () => {
+    const r = learnPoints([sample()], new Set(['tenurePeak']), { compaOn: false })
     expect(r.evidence.some((e) => e.key === 'tenurePeak')).toBe(false)
     expect(r.points.tenurePeak).toBe(0)
+  })
+  it('returns default points when there is nothing to learn from', () => {
+    const r = learnPoints([], new Set(), { compaOn: false })
+    expect(r.learned).toBe(false)
+    expect(r.snapshots).toEqual([])
+    expect(Object.values(r.points).reduce((a, b) => a + b, 0)).toBe(100)
   })
 })
 
@@ -303,59 +366,133 @@ describe('signalsAt', () => {
       bare.people.every((p) => p.signals.every((s) => s.key === 'tenurePeak' || s.key === 'peersLeft')),
     ).toBe(true)
   })
+  it('switches rating factors off before enough review cycles had closed', () => {
+    const before = signalsAt(input, '2025-12-01', { useComp: false })
+    const off = new Map(before.off.map((o) => [o.key, o.why]))
+    expect(off.get('ratingDrop')).toBe('No review cycle had closed by 1 Dec 2025')
+    expect(off.get('highNoPromo')).toBe('No review cycle had closed by 1 Dec 2025')
+    const one = signalsAt(input, '2026-01-31', { useComp: false })
+    expect(one.off.find((o) => o.key === 'ratingDrop')?.why).toBe(
+      'Only one review cycle had closed by 31 Jan 2026',
+    )
+    expect(one.off.some((o) => o.key === 'highNoPromo')).toBe(false)
+  })
+  it('counts exits only from the first one in the file, and needs 6 months of them', () => {
+    const short = signalsAt(input, AS_OF, { useComp: false, historyStart: '2026-05-01' })
+    expect(short.off.find((o) => o.key === 'deptAttrition')?.why).toBe(
+      'Less than 6 months of exits before 30 Sep 2026',
+    )
+    expect(short.off.some((o) => o.key === 'peersLeft')).toBe(true)
+    const clipped = signalsAt(input, AS_OF, { useComp: false, historyStart: '2026-01-15' })
+    expect(signalOf(clipped.people, 'Q1', 'peersLeft')?.reason).toBe(
+      '2 of 4 people under the same manager left since 15 Jan 2026',
+    )
+    expect(signalOf(clipped.people, 'X0', 'deptAttrition')).toBeDefined()
+  })
   it('handles an empty roster', () => {
     const empty = signalsAt(inputFor(ctxFor({})), AS_OF, { useComp: true })
     expect(empty.people).toEqual([])
   })
 })
 
-describe('buildRiskModel back-test', () => {
-  // 150 people in their second year a year ago (60 resign), 150 long-tenured (6 resign).
-  const employees: Employee[] = [
-    ...Array.from({ length: 150 }, (_, i) =>
-      emp(`M${i}`, {
-        hireDate: '2023-06-05',
-        managerId: 'BOSS',
-        ...(i < 60 ? { terminationDate: '2026-03-02', terminationType: 'Voluntary' as const } : {}),
-      }),
-    ),
-    ...Array.from({ length: 150 }, (_, i) =>
-      emp(`O${i}`, {
-        hireDate: '2015-01-05',
-        managerId: 'BOSS',
-        ...(i < 6 ? { terminationDate: '2026-03-02', terminationType: 'Voluntary' as const } : {}),
-      }),
-    ),
-  ]
-  const model = buildRiskModel(inputFor(ctxFor({ employees })), AS_OF)
+describe('buildRiskModel', () => {
+  /*
+   * A company where what predicts exits changes a year ago:
+   *  - before 1 Oct 2025, people left at 18 months of tenure (cohorts hired up to Mar 2024), and a
+   *    group that got a new manager in Jan 2024 stayed;
+   *  - after it, tenure stops mattering and 40 long-tenured people who got a new manager in
+   *    Jul 2025 resign in the first half of 2026.
+   * An honest back-test (points learned only from outcomes known by 30 Sep 2025) cannot see the
+   * new-manager effect; today's points can.
+   */
+  const employees: Employee[] = []
+  const jobChanges: JobChange[] = []
+  for (let q = 0; q < 22; q++) {
+    const hire = addMonths('2021-01-04', q * 3)
+    for (let i = 0; i < 30; i++) {
+      const leaves = hire <= '2024-03-31' && i < 15
+      employees.push(
+        emp(`C${q}-${i}`, {
+          hireDate: hire,
+          ...(leaves ? { terminationDate: addMonths(hire, 18), terminationType: 'Voluntary' as const } : {}),
+        }),
+      )
+    }
+  }
+  for (let i = 0; i < 300; i++) {
+    const o: Partial<Employee> = { hireDate: '2015-01-05' }
+    if (i < 50)
+      Object.assign(o, { terminationDate: addMonths('2022-07-15', i), terminationType: 'Voluntary' })
+    else if (i < 90) o.managerId = 'MOLD'
+    else if (i < 130)
+      Object.assign(o, {
+        managerId: 'MNEW',
+        terminationDate: addMonths('2026-01-12', (i - 90) % 6),
+        terminationType: 'Voluntary',
+      })
+    employees.push(emp(`B${i}`, o))
+    if (i >= 50 && i < 130) {
+      const recent = i >= 90
+      jobChanges.push({
+        employeeId: `B${i}`,
+        effectiveDate: recent ? '2025-07-01' : '2024-01-08',
+        changeType: 'Manager change',
+        fromLevel: 'L3',
+        toLevel: 'L3',
+        fromManagerId: 'MPREV',
+        toManagerId: recent ? 'MNEW' : 'MOLD',
+      })
+    }
+  }
+  const model = buildRiskModel(inputFor(ctxFor({ employees, jobChanges })), AS_OF)
+  const bt = model.backTest
 
-  it('learns points from who actually left', () => {
+  it('learns today’s points from the 12 month-ends 12 to 23 months back', () => {
     expect(model.learned).toBe(true)
-    expect(model.points.tenurePeak).toBe(100)
-    expect(model.points.peersLeft).toBe(0)
+    expect(model.learnedFrom).toHaveLength(12)
+    expect(model.learnedFrom[0]).toBe('2024-10-31')
+    expect(model.learnedFrom[11]).toBe('2025-09-30')
+    expect(model.points.newManager).toBeGreaterThan(0)
+    expect(Object.values(model.points).every((p) => p % 5 === 0)).toBe(true)
   })
-  it('reports out-of-sample exit rates per band a year later', () => {
-    const bt = model.backTest
+  it('back-tests with points learned only from outcomes known at the scoring date', () => {
     expect(bt.scoredOn).toBe('2025-09-30')
-    expect(bt.population).toBe(300)
-    expect(bt.leavers).toBe(66)
-    const [low, medium, high] = bt.bands
-    expect(high.people).toBe(150)
-    expect(high.rate).toBeCloseTo(0.4, 6)
-    expect(low.rate).toBeCloseTo(0.04, 6)
-    expect(medium.people).toBe(0)
-    expect(medium.rate).toBeNull()
-    expect(bt.lift).toBeCloseTo(10, 6)
+    expect(bt.learned).toBe(true)
+    // Every month-end's 12-month outcome ended by the scoring date.
+    expect(bt.learnedFrom.length).toBeGreaterThan(0)
+    for (const d of bt.learnedFrom) expect(monthsBack(d, -12) <= bt.scoredOn).toBe(true)
+    expect(bt.learnedFrom.at(-1)).toBe('2024-09-30')
+    // So the new-manager exits after it can't have taught the back-test any points...
+    expect(bt.points.newManager).toBe(0)
+    expect(bt.points.tenurePeak).toBeGreaterThan(0)
+    // ...and the honest result is that the bands did not separate the leavers.
+    const [low, , high] = bt.bands
+    expect(high.rate!).toBeLessThan(low.rate!)
+    expect(bt.ordered).toBe(false)
+    expect(backTestSummary(bt)).toMatch(/^The bands did not separate leavers from stayers/)
   })
-  it('scores today with the learned points', () => {
-    // Today the remaining 90 second-year hires are past 3 years, so nobody carries the factor.
-    expect(model.population).toBe(234)
-    expect([...model.scores.values()].every((s) => s.score === 0 && s.band === 'Low')).toBe(true)
+  it('reports the real band shares and scores everyone active today', () => {
+    expect(model.population).toBe(
+      employees.filter((e) => !e.terminationDate || e.terminationDate > AS_OF).length,
+    )
+    expect(model.highShare).not.toBeNull()
+    const high = [...model.scores.values()].filter((s) => s.band === 'High').length
+    expect(high / model.population).toBeCloseTo(model.highShare!, 9)
+  })
+  it('uses default points when nobody has left', () => {
+    const none = buildRiskModel(
+      inputFor(ctxFor({ employees: employees.map((e) => ({ ...e, terminationDate: null })) })),
+      AS_OF,
+    )
+    expect(none.learned).toBe(false)
+    expect(none.learnedFrom).toEqual([])
+    expect(none.backTest.lift).toBeNull()
+    expect(FACTORS.every((f) => none.points[f.key] % 5 === 0)).toBe(true)
   })
 })
 
 describe('backTestSummary', () => {
-  const bt = (low: number | null, high: number | null, lift: number | null): BackTest => ({
+  const bt = (low: number | null, high: number | null, lift: number | null, medium = 0.1): BackTest => ({
     scoredOn: '2025-09-30',
     outcome: { start: '2025-10-01', end: AS_OF, months: 12, label: '' },
     exitKind: 'voluntary',
@@ -364,14 +501,29 @@ describe('backTestSummary', () => {
     overallRate: 0.1,
     bands: [
       { band: 'Low', people: 60, leavers: 3, rate: low, shareOfLeavers: null },
-      { band: 'Medium', people: 30, leavers: 3, rate: 0.1, shareOfLeavers: null },
+      { band: 'Medium', people: 30, leavers: 3, rate: medium, shareOfLeavers: null },
       { band: 'High', people: 10, leavers: 4, rate: high, shareOfLeavers: null },
     ],
     lift,
+    ordered: low == null || high == null ? null : high > medium && medium > low,
+    points: Object.fromEntries(FACTORS.map((f) => [f.key, 0])) as BackTest['points'],
+    learned: true,
+    learnedFrom: [],
+    learnedLeavers: 0,
+    defaults: [],
+    highShare: 0.1,
   })
   it('says plainly when the bands separate leavers', () => {
     expect(backTestSummary(bt(0.05, 0.2, 4))).toBe(
-      'People placed in the high band a year ago left voluntarily at 4.0× the rate of the low band (20.0% vs 5.0%).',
+      'People placed in the high band a year ago left voluntarily at 4.0× the rate of the low band (20.0% vs 5.0%). The medium band fell in between at 10.0%.',
+    )
+  })
+  it('says plainly when the bands are out of order', () => {
+    expect(backTestSummary(bt(0.07, 0.15, 2, 0.04))).toBe(
+      'People placed in the high band a year ago left voluntarily at 2.0× the rate of the low band (15.0% vs 7.0%). The medium band left voluntarily at 4.0%, less often than the low band, so only the high band stands out.',
+    )
+    expect(backTestSummary(bt(0.06, 0.12, 2, 0.13))).toMatch(
+      /The medium band left voluntarily at 13\.0%, as often as the high band, so the line between those two bands means little\.$/,
     )
   })
   it('says when the separation is modest', () => {

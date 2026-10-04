@@ -5,8 +5,8 @@
  */
 import type { AnalyticsContext } from '@/data/context'
 import { type Employee, type ISODate, type JobChange, LEVELS, type Level } from '@/data/schema'
-import { periodWindows, type Window } from '@/data/scope'
-import { addDays, addMonths, formatMonthShort, monthEnd, quarterKey, quarterStart } from '@/lib/dates'
+import { type PeriodPreset, periodWindows, type Window } from '@/data/scope'
+import { addDays, addMonths, formatMonthShort, formatRange, monthEnd, quarterStart } from '@/lib/dates'
 import { isActiveAt, isEmployee } from '@/lib/people'
 
 /** A reporting block (quarter or month) with the length used to annualize rates inside it. */
@@ -20,16 +20,23 @@ export function trailing(asOf: ISODate, months: 3 | 6 | 12): Window {
   return periodWindows(preset, asOf).current
 }
 
+/** "Q3 '26": the same words the chart kit puts on quarter ticks, so tables and axes agree. */
+export function quarterName(d: ISODate): string {
+  return `Q${Math.ceil(+d.slice(5, 7) / 3)} '${d.slice(2, 4)}`
+}
+
+/** Whether a block is a calendar quarter (starts on a quarter start, ends on its last day). */
+export const isCalendarQuarter = (w: Window): boolean =>
+  quarterStart(w.start) === w.start && monthEnd(w.end) === w.end && +w.end.slice(5, 7) % 3 === 0
+
 /** The last n three-month blocks ending at asOf, oldest first. Calendar quarters when asOf is a quarter end. */
 export function quarterBlocks(asOf: ISODate, n: number): Block[] {
   const out: Block[] = []
   let end = asOf
   for (let i = 0; i < n; i++) {
     const w = trailing(end, 3)
-    const aligned =
-      quarterStart(w.start) === w.start && monthEnd(w.end) === w.end && +w.end.slice(5, 7) % 3 === 0
-    const label = aligned
-      ? quarterKey(w.end)
+    const label = isCalendarQuarter(w)
+      ? quarterName(w.end)
       : `${formatMonthShort(w.start)}–${formatMonthShort(w.end, true)}`
     out.unshift({ ...w, key: w.end, label })
     end = addDays(w.start, -1)
@@ -43,6 +50,22 @@ export function monthEnds(asOf: ISODate, n: number): ISODate[] {
   for (let i = n - 1; i >= 1; i--) pts.push(monthEnd(addMonths(`${asOf.slice(0, 7)}-01`, -i)))
   pts.push(asOf)
   return pts
+}
+
+/** The delta label for a comparison with `ctx.prior`. */
+export function priorLabel(period: PeriodPreset, months: number): string {
+  if (period === 'ytd') return 'vs same period last year'
+  if (period === 'lastQuarter') return 'vs prior quarter'
+  if (period === 'custom') return 'vs prior period'
+  return `vs prior ${Math.round(months)} months`
+}
+
+/** The same window one year earlier (month ends stay month ends). */
+export function yearEarlier(w: Window): Window {
+  const back = (d: ISODate) => (monthEnd(d) === d ? monthEnd(addMonths(d, -12)) : addMonths(d, -12))
+  const start = addMonths(w.start, -12)
+  const end = back(w.end)
+  return { start, end, months: w.months, label: formatRange(start, end) }
 }
 
 /** Delta coloring floor carried over from the earlier HRBP dashboard: |Δ| ≥ 2% of the reference + 0.15 pts. */
@@ -153,6 +176,8 @@ export interface Prep {
   history: History
   name: (id: string | null | undefined) => string
   has: {
+    /** Some row has a termination date: without leavers every exit rate is unknown, not 0. */
+    terminationDate: boolean
     jobChanges: boolean
     reviews: boolean
     terminationType: boolean
@@ -190,6 +215,7 @@ export function prepare(ctx: AnalyticsContext): Prep {
     history: buildHistory(changes),
     name: (id) => (id ? (org.byId.get(id)?.name ?? id) : '—'),
     has: {
+      terminationDate: all.some((e) => !!e.terminationDate),
       jobChanges: ctx.all.jobChanges.length > 0,
       reviews: ctx.all.reviews.length > 0,
       terminationType: all.some((e) => !!e.terminationType),
@@ -204,6 +230,11 @@ export function prepare(ctx: AnalyticsContext): Prep {
 export const activeWorkers = (people: readonly Employee[], d: ISODate): Employee[] =>
   people.filter((p) => isActiveAt(p, d))
 
+/** Shown in place of every exit rate when the Employees upload has no leavers. */
+export const NO_LEAVERS = 'Add leavers (Termination date) to Employees to see this'
+/** Past headcount from an active-only roster counts only today's survivors, so it is not shown. */
+export const NO_HISTORY = 'Add leavers (Termination date) to Employees to compare with past headcount'
+
 /** "Heather Hayes's" */
 export const possessive = (name: string): string => `${name}'s`
 
@@ -212,6 +243,13 @@ export function listJoin(items: readonly string[]): string {
   if (items.length <= 1) return items.join('')
   return `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`
 }
+
+/** "1 promotion", "149 promotions". */
+export const count = (n: number, one: string, many: string): string =>
+  `${n.toLocaleString('en-US')} ${n === 1 ? one : many}`
+
+/** A reason from the exit taxonomy inside a sentence: quoted, so "My manager" never reads as prose. */
+export const quoted = (reason: string): string => `“${reason}”`
 
 /** Names at most `max` items, then "and N more". */
 export function nameList(items: readonly string[], max = 5): string {

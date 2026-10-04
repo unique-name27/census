@@ -1,13 +1,24 @@
 import { BarList, Columns, Figure, Lines } from '@/charts'
-import { cx, Grid, goTo, KpiStrip, Readout, spanClass } from '@/components'
+import { cx, Grid, KpiStrip, Readout, spanClass } from '@/components'
 import type { AnalyticsContext } from '@/data/context'
 import { formatMonth } from '@/lib/dates'
 import { fmt } from '@/lib/format'
 import type { ServicesModel } from '../engine'
 import { AGE_BUCKETS, BACKLOG_STATUSES } from '../engine/cases'
-import { RESOLUTION_SLA_TARGET } from '../engine/catalog'
-import { asOfNote, count, DEF, NeedData, NO_CASES, period } from './shared'
-import { TypeOnTimeFigure } from './TransactionsTab'
+import { RESOLUTION_SLA_TARGET, TRANSACTION_ON_TIME_TARGET } from '../engine/catalog'
+import { asOfNote, count, DEF, NeedData, NO_CASES, period, rateTone } from './shared'
+
+const hiddenMonths = (what: string) =>
+  `Every month has fewer than 5 ${what} or 5 people behind it, so monthly rates are hidden to protect anonymity.`
+
+/**
+ * A value-axis floor one 5-pt step under the lowest value (or the target), so the line uses the
+ * plot height instead of sitting in its top third.
+ */
+function floorFor(values: readonly number[], target: number): number {
+  const lo = Math.min(...values, target)
+  return Math.max(0, Math.round((Math.floor(lo * 20) / 20 - 0.05) * 100) / 100)
+}
 
 export function Overview({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext }) {
   const per = period(ctx)
@@ -15,8 +26,55 @@ export function Overview({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext }
   const lastMonth = formatMonth(`${m.months[m.months.length - 1]}-01`)
   const slaRows = m.slaMonths.filter((r) => r.opened > 0)
   const slaValues = slaRows.flatMap((r) => (r.slaRate == null ? [] : [r.slaRate]))
-  const slaFloor = Math.min(0.6, Math.floor(Math.min(...slaValues, 1) * 10) / 10)
-  const openCases = (to: string) => () => goTo('services', to)
+  const txRows = m.txMonths.filter((r) => r.due > 0)
+  const txValues = txRows.flatMap((r) => (r.rate == null ? [] : [r.rate]))
+  const txTotal = txRows.reduce((a, r) => a + r.due, 0)
+
+  const txFigure = (
+    <Figure
+      id="services-tx-on-time-by-month"
+      span={m.hasCases ? 6 : 12}
+      title="Transactions on time by month"
+      subtitle={`Share of HR transactions due each month that were completed by their due date, ${firstMonth} to ${lastMonth}`}
+      data={m.txMonths}
+      columns={[
+        { key: 'month', label: 'Due month' },
+        { key: 'due', label: 'Due and judged', format: 'int' },
+        { key: 'onTime', label: 'On time', format: 'int' },
+        { key: 'late', label: 'Late or open past due', format: 'int' },
+        { key: 'rate', label: 'On time %', format: 'pct' },
+      ]}
+      definitions={[DEF.onTime, DEF.anonymity]}
+      note={asOfNote(
+        m.asOf,
+        count(txTotal, 'transaction'),
+        `target ${fmt(TRANSACTION_ON_TIME_TARGET, 'pct0')}`,
+      )}
+      empty={
+        !m.hasTx
+          ? 'Upload HR transactions to see this.'
+          : !m.txCols.dueDate
+            ? 'Upload HR transactions with a due date column to see this.'
+            : txValues.length
+              ? null
+              : hiddenMonths('transactions')
+      }
+    >
+      <Lines
+        data={txRows}
+        x="month"
+        y="rate"
+        format="pct"
+        ref={{
+          value: TRANSACTION_ON_TIME_TARGET,
+          label: `target ${fmt(TRANSACTION_ON_TIME_TARGET, 'pct0')}`,
+        }}
+        yDomain={[floorFor(txValues, TRANSACTION_ON_TIME_TARGET), 1]}
+        xTicks="quarter"
+        height={240}
+      />
+    </Figure>
+  )
 
   return (
     <Grid>
@@ -39,7 +97,7 @@ export function Overview({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext }
               { term: 'Cases opened', text: 'Cases by the month of their opened date, every channel.' },
               {
                 term: 'Other',
-                text: 'Every category outside the five with the most cases over these 24 months.',
+                text: 'Every category outside the five with the most cases over these 24 months, and any category behind fewer than 5 people.',
               },
             ]}
             note={asOfNote(m.asOf, count(m.cases.filter((f) => m.months.includes(f.month)).length, 'case'))}
@@ -52,11 +110,11 @@ export function Overview({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext }
               stack
               xType="month"
               seriesOrder={m.opened.series}
+              labels={false}
               height={300}
-              onSelect={openCases('cases')}
             />
           </Figure>
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-12">
+          <Grid>
             <Figure
               id="services-sla-by-month"
               span={6}
@@ -66,18 +124,24 @@ export function Overview({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext }
               columns={[
                 { key: 'month', label: 'Month' },
                 { key: 'opened', label: 'Cases opened', format: 'int' },
-                { key: 'slaN', label: 'Cases judged', format: 'int' },
+                { key: 'slaN', label: 'Cases with an outcome', format: 'int' },
                 { key: 'slaMet', label: 'Met target', format: 'int' },
                 { key: 'slaRate', label: 'Resolution SLA met', format: 'pct' },
                 { key: 'responseRate', label: 'First response SLA met', format: 'pct' },
               ]}
-              definitions={[DEF.resolutionSla, DEF.responseSla]}
+              definitions={[DEF.resolutionSla, DEF.responseSla, DEF.anonymity]}
               note={asOfNote(
                 m.asOf,
                 `target ${fmt(RESOLUTION_SLA_TARGET, 'pct0')}`,
                 'the latest month still has cases inside their target',
               )}
-              empty={m.caseCols.resolvedAt ? null : 'Upload HR cases with a resolved time to see this.'}
+              empty={
+                !m.caseCols.resolvedAt
+                  ? 'Upload HR cases with a resolved time to see this.'
+                  : slaValues.length
+                    ? null
+                    : hiddenMonths('cases')
+              }
             >
               <Lines
                 data={slaRows}
@@ -88,7 +152,8 @@ export function Overview({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext }
                   value: RESOLUTION_SLA_TARGET,
                   label: `target ${fmt(RESOLUTION_SLA_TARGET, 'pct0')}`,
                 }}
-                yDomain={[slaFloor, 1]}
+                yDomain={[floorFor(slaValues, RESOLUTION_SLA_TARGET), 1]}
+                xTicks="quarter"
                 height={240}
               />
             </Figure>
@@ -107,7 +172,14 @@ export function Overview({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext }
                 { key: 'slaRate', label: 'Resolution SLA met', format: 'pct' },
                 { key: 'open', label: 'Open now', format: 'int' },
               ]}
-              definitions={[DEF.resolutionSla, DEF.anonymity]}
+              definitions={[
+                DEF.resolutionSla,
+                {
+                  term: 'Status mark',
+                  text: `Shown beside the count when the category's resolution SLA is under the ${fmt(RESOLUTION_SLA_TARGET, 'pct0')} target: warning under target, critical 10 pts or more under it (the same marks as on the Cases tab).`,
+                },
+                DEF.anonymity,
+              ]}
               note={asOfNote(m.asOf, count(m.summary.opened, 'case'))}
             >
               <BarList
@@ -115,12 +187,9 @@ export function Overview({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext }
                 label="category"
                 value="cases"
                 secondary={(d) => (d.slaRate == null ? null : `SLA ${fmt(d.slaRate, 'pct0')}`)}
-                tone={(d) => (d.slaRate != null && d.slaRate < 0.8 ? 'critical' : 'default')}
-                onSelect={openCases('cases')}
+                glyphTone={(d) => rateTone(d.slaRate, RESOLUTION_SLA_TARGET)}
               />
             </Figure>
-          </div>
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-12">
             <Figure
               id="services-backlog-by-age"
               span={6}
@@ -144,28 +213,15 @@ export function Overview({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext }
                 stack
                 xOrder={AGE_BUCKETS}
                 seriesOrder={BACKLOG_STATUSES}
-                onSelect={openCases('cases')}
               />
             </Figure>
-            <TypeOnTimeFigure
-              id="services-overview-tx-on-time"
-              m={m}
-              ctx={ctx}
-              span={6}
-              onSelect={() => goTo('services', 'transactions')}
-            />
-          </div>
+            {txFigure}
+          </Grid>
         </div>
       ) : (
         <div className={cx(spanClass(8), 'flex flex-col gap-4')}>
           <NeedData {...NO_CASES} />
-          <TypeOnTimeFigure
-            id="services-overview-tx-on-time"
-            m={m}
-            ctx={ctx}
-            span={12}
-            onSelect={() => goTo('services', 'transactions')}
-          />
+          <Grid>{txFigure}</Grid>
         </div>
       )}
     </Grid>

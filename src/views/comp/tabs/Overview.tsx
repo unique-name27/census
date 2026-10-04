@@ -1,8 +1,9 @@
 /** Overview: headline tiles, the readout, the compa-ratio distribution and where pay sits. */
 import { BarList, Figure, Histogram, type RefLine } from '@/charts'
-import { Grid, KpiStrip, Readout, Section } from '@/components'
+import { cx, Grid, KpiStrip, Readout, Section } from '@/components'
 import { formatDate } from '@/lib/dates'
 import { fmt } from '@/lib/format'
+import { spanClass } from '@/lib/spans'
 import { PositionBars } from '../charts/PositionBars'
 import {
   BIN_COLUMNS,
@@ -49,80 +50,86 @@ export function Overview({ m }: { m: CompModel }) {
   const positionRows = o.positionByBu.length > 1 ? [o.positionAll, ...o.positionByBu] : o.positionByBu
   const compas = o.people.map((p) => p.compa).filter((v): v is number => v != null)
 
+  const location = (
+    <Figure
+      id="comp-compa-by-location"
+      title="Median compa-ratio by location"
+      subtitle={`Lowest first; a square marks ${fmt(LOW_COMPA, 'ratio')} or lower, as of ${asOf}`}
+      data={o.byLocation}
+      columns={COMPA_BY_LOCATION}
+      definitions={[DEF_COMPA, DEF_POPULATION]}
+      note={note(m, n)}
+      empty={emptyIf(o.byLocation, null, 'No compa-ratios in this scope.')}
+    >
+      <BarList
+        data={o.byLocation}
+        label="group"
+        value="median"
+        format="ratio"
+        sort="asc"
+        ref={companyRef(m)}
+        tone={lowTone}
+        secondary={nText}
+      />
+    </Figure>
+  )
+
   return (
     <div>
       <Grid>
         <KpiStrip kpis={m.kpis} />
         <Readout findings={m.findings} span={4} emptyText="Nothing stands out in this scope." />
-        <Figure
-          id="comp-compa-distribution"
-          title="Compa-ratio distribution"
-          subtitle={`Base salary ÷ range midpoint, active employees as of ${asOf}`}
-          data={o.hist}
-          columns={BIN_COLUMNS}
-          definitions={[DEF_COMPA, bandDefinition(s), DEF_POPULATION]}
-          note={`${note(m, n)} · ${fmt(o.median, 'ratio')} median`}
-          span={8}
-          empty={emptyIf(o.hist, null, 'No compa-ratios in this scope.')}
-          detail={{ label: 'People', columns: PERSON_COLUMNS, rows: () => o.people }}
-        >
-          <Histogram
-            values={compas}
-            thresholds={edges(o.histDomain, COMPA_STEP)}
-            domain={o.histDomain ?? undefined}
-            format="ratio"
-            band={[s.bandLow, s.bandHigh]}
-            bandLabel={`Healthy band ${fmt(s.bandLow, 'ratio')}-${fmt(s.bandHigh, 'ratio')}`}
-            refs={refs}
-            height={260}
-            ariaLabel="Histogram of compa-ratios"
-          />
-        </Figure>
+        {/* The readout runs long; the lead figure and the two that explain it stack beside it
+            instead of one chart stretching to the readout's height. */}
+        <div className={cx(spanClass(8), 'grid content-start gap-4')}>
+          <Figure
+            id="comp-compa-distribution"
+            title="Compa-ratio distribution"
+            subtitle={`People per ${fmt(COMPA_STEP, 'ratio')} of compa-ratio (base salary ÷ range midpoint), active employees as of ${asOf}`}
+            data={o.hist}
+            columns={BIN_COLUMNS}
+            definitions={[DEF_COMPA, bandDefinition(s), DEF_POPULATION]}
+            note={`${note(m, n)}${o.median == null ? '' : ` · ${fmt(o.median, 'ratio')} median`}`}
+            empty={emptyIf(o.hist, null, 'No compa-ratios in this scope.')}
+            detail={{ label: 'People', columns: PERSON_COLUMNS, rows: () => o.people }}
+          >
+            <Histogram
+              values={compas}
+              thresholds={edges(o.histDomain, COMPA_STEP)}
+              domain={o.histDomain ?? undefined}
+              format="ratio"
+              band={[s.bandLow, s.bandHigh]}
+              bandLabel={`Healthy band ${fmt(s.bandLow, 'ratio')}-${fmt(s.bandHigh, 'ratio')}`}
+              refs={refs}
+              height={260}
+              unit="people"
+              ariaLabel="Histogram of compa-ratios"
+            />
+          </Figure>
+          <Figure
+            id="comp-position-by-bu"
+            title="Range position by business unit"
+            subtitle="Share of people below minimum, in each quarter of the range and above maximum"
+            data={positionRows}
+            columns={POSITION_COLUMNS}
+            definitions={[DEF_POSITION, DEF_POPULATION]}
+            note={note(m, o.positionAll.n)}
+            empty={emptyIf(
+              positionRows,
+              m.pop.has.ranges ? null : MISSING.ranges,
+              'No range data in this scope.',
+            )}
+          >
+            <PositionBars rows={positionRows} ariaLabel="Range position by business unit" />
+          </Figure>
+          {location}
+        </div>
       </Grid>
 
       <Section
         title="Where pay sits"
-        dek={`Position in the salary range and median compa-ratio by business unit, location, level and department, as of ${asOf}. Orange bars with a square marker sit at a median of ${fmt(LOW_COMPA, 'ratio')} or lower.`}
+        dek={`Median compa-ratio by level and department, as of ${asOf}. Orange bars with a square marker sit at a median of ${fmt(LOW_COMPA, 'ratio')} or lower.`}
       >
-        <Figure
-          id="comp-position-by-bu"
-          title="Range position by business unit"
-          subtitle="Share of people below minimum, in each quarter of the range and above maximum"
-          data={positionRows}
-          columns={POSITION_COLUMNS}
-          definitions={[DEF_POSITION, DEF_POPULATION]}
-          note={note(m, o.positionAll.n)}
-          span={7}
-          empty={emptyIf(
-            positionRows,
-            m.pop.has.ranges ? null : MISSING.ranges,
-            'No range data in this scope.',
-          )}
-        >
-          <PositionBars rows={positionRows} ariaLabel="Range position by business unit" />
-        </Figure>
-        <Figure
-          id="comp-compa-by-location"
-          title="Median compa-ratio by location"
-          subtitle={`Lowest first, as of ${asOf}`}
-          data={o.byLocation}
-          columns={COMPA_BY_LOCATION}
-          definitions={[DEF_COMPA, DEF_POPULATION]}
-          note={note(m, n)}
-          span={5}
-          empty={emptyIf(o.byLocation, null, 'No compa-ratios in this scope.')}
-        >
-          <BarList
-            data={o.byLocation}
-            label="group"
-            value="median"
-            format="ratio"
-            sort="asc"
-            ref={companyRef(m)}
-            tone={lowTone}
-            secondary={nText}
-          />
-        </Figure>
         <Figure
           id="comp-compa-by-level"
           title="Median compa-ratio by level"
@@ -132,6 +139,8 @@ export function Overview({ m }: { m: CompModel }) {
           definitions={[DEF_COMPA, DEF_POPULATION]}
           note={note(m, n)}
           span={5}
+          // Shorter than the department list beside it: end the sheet at its content.
+          className="self-start"
           empty={emptyIf(o.byLevel, null, 'No compa-ratios in this scope.')}
         >
           <BarList

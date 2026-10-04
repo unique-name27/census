@@ -73,7 +73,7 @@ export function prepareApp(c: Candidate, req: Requisition | null, asOf: ISODate)
     name: c.candidateName || c.candidateId || c.applicationId,
     reqId: c.reqId,
     req,
-    title: req?.jobTitle || '—',
+    title: req?.jobTitle || null,
     businessUnit: req?.businessUnit ?? null,
     department: req?.department ?? null,
     location: req?.location ?? null,

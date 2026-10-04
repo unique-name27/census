@@ -55,8 +55,97 @@ describe('regretted exits clustered under a manager', () => {
       regretted('B1', '2026-05-04'),
     ])
     const text = talkingPoints(m)
-    expect(text).toContain('2 regretted exits over the last 12 months, most under Alex Boss (2).')
+    expect(text).toContain(
+      "2 regretted exits over the last 12 months. The largest group, 2 of 2, left Alex Boss's team.",
+    )
     expect(text).not.toContain('Sam Other')
+  })
+
+  it('names no manager when no team lost more than one', () => {
+    const m = run([...base, regretted('B1', '2026-02-02'), regretted('B2', '2026-05-04')])
+    expect(talkingPoints(m)).toContain(
+      "2 regretted exits over the last 12 months, no more than one from any manager's team.",
+    )
+  })
+
+  it('lists only the named team in the people chip', () => {
+    const m = run([
+      ...base,
+      regretted('B1', '2026-02-02'),
+      regretted('B1', '2026-05-04'),
+      regretted('B1', '2026-06-01'),
+      regretted('B2', '2026-02-02'),
+      regretted('B2', '2026-03-02'),
+    ])
+    const f = byId(m, 'hrbp-regretted-cluster')!
+    expect(f.people).toHaveLength(3)
+    expect(f.detail).toContain('“My manager” (3 of 3)')
+    expect(f.detail).toContain('1 other manager also had 2 or more: Sam Other (2).')
+  })
+})
+
+describe('talking points privacy (n < 5)', () => {
+  it('drops the regretted bullet and rates when the scope averages under 5 employees', () => {
+    const people = [
+      ...many(3, { level: 'E3' }),
+      leaver('2026-02-02', 'Voluntary', { level: 'E3', regrettable: true }),
+      ...many(30),
+    ]
+    const text = talkingPoints(run(people, { level: ['E3'] }))
+    expect(text).not.toMatch(/regretted/i)
+    expect(text).not.toMatch(/Voluntary attrition is/)
+    expect(text).toContain('Rates are hidden to protect anonymity')
+  })
+
+  it('names the top reason only when 2 or more of 5 or more leavers gave it', () => {
+    const site = (n: number, reasons: string[]) => [
+      ...many(n, { location: 'Vancouver' }),
+      ...reasons.map((r, i) =>
+        leaver(`2026-0${i + 2}-02`, 'Voluntary', { location: 'Vancouver', terminationReason: r }),
+      ),
+      ...many(40),
+    ]
+    const one = talkingPoints(run(site(14, ['The work itself']), { location: ['Vancouver'] }))
+    expect(one).toContain('Voluntary attrition is')
+    expect(one).not.toContain('The work itself')
+    const few = talkingPoints(
+      run(site(14, ['Base salary', 'Base salary', 'Commute']), { location: ['Vancouver'] }),
+    )
+    expect(few).not.toContain('Base salary')
+    const enough = talkingPoints(
+      run(site(30, ['Base salary', 'Base salary', 'Commute', 'Relocation', 'Base salary']), {
+        location: ['Vancouver'],
+      }),
+    )
+    expect(enough).toContain('The top reason given was “Base salary” (3 of 5 voluntary exits)')
+  })
+})
+
+describe('an Employees upload with no leavers (active roster only)', () => {
+  const active = [...many(40), ...many(10, { hireDate: '2025-03-03' })]
+
+  it('shows every exit rate as null with a note, never 0', () => {
+    const m = run(active)
+    for (const id of ['attrition', 'voluntary', 'regretted', 'first-year']) {
+      const k = m.kpi.kpis.find((x) => x.id === id)!
+      expect(k.value).toBeNull()
+      expect(k.note).toBe('Add leavers (Termination date) to Employees to see this')
+      expect((k.spark ?? []).every((v) => v === null)).toBe(true)
+    }
+    const hc = m.kpi.kpis.find((x) => x.id === 'headcount')!
+    expect(hc.value).toBe(50)
+    expect(hc.delta).toBeNull()
+    expect(
+      m.scorecard.rows.every((r) => r.voluntary === null && r.firstYear === null && r.netChange === null),
+    ).toBe(true)
+    expect(byId(m, 'hrbp-first-year')).toBeUndefined()
+  })
+
+  it('says so in the talking points instead of reporting 0%', () => {
+    const text = talkingPoints(run(active))
+    expect(text).not.toMatch(/0\.0%/)
+    expect(text).toContain('the Employees upload has no leavers')
+    expect(text).toContain('Headcount is 50 employees.')
   })
 })
 
@@ -69,6 +158,32 @@ describe('voluntary attrition above the company', () => {
     ),
     leaver('2026-03-16', 'Voluntary', { location: 'San Jose' }),
   ]
+
+  it('judges a department on the rest when most of its leavers sit in the flagged location', () => {
+    const people = [
+      ...many(100, { location: 'San Jose', department: 'Firmware' }),
+      ...many(20, { location: 'San Jose', department: 'Physical Design' }),
+      ...many(30, { location: 'Bengaluru', department: 'Physical Design' }),
+      ...many(20, { location: 'Bengaluru', department: 'Firmware' }),
+      ...Array.from({ length: 6 }, (_, i) =>
+        leaver(`2026-0${i + 1}-15`, 'Voluntary', { location: 'Bengaluru', department: 'Physical Design' }),
+      ),
+    ]
+    const m = run(people)
+    expect(byId(m, 'hrbp-voluntary-location')?.title).toMatch(/^Voluntary attrition in Bengaluru/)
+    // Every Physical Design leaver is in Bengaluru: outside it the department is at 0%, so no second finding.
+    expect(byId(m, 'hrbp-voluntary-department')).toBeUndefined()
+
+    const spread = [
+      ...people,
+      ...Array.from({ length: 4 }, (_, i) =>
+        leaver(`2026-0${i + 2}-20`, 'Voluntary', { location: 'San Jose', department: 'Physical Design' }),
+      ),
+    ]
+    const f = byId(run(spread), 'hrbp-voluntary-department')!
+    expect(f.title).toMatch(/^Voluntary attrition in Physical Design/)
+    expect(f.detail).toMatch(/Outside Bengaluru it is \d+\.\d%, \d+\.\d pts above the company\./)
+  })
 
   it('names the location 3 pts or more above the company and focuses on it', () => {
     const f = byId(run(company), 'hrbp-voluntary-location')!
@@ -171,6 +286,9 @@ describe('org design rules', () => {
     ]
     const half = byId(run(team('H', 3, 6)), 'hrbp-new-hire-concentration')!
     expect(half.severity).toBe('info')
+    expect(half.title).toBe("3 of H's 6 direct reports were hired in the last 6 months")
+    const two = byId(run([...team('H', 3, 6), ...team('J', 4, 5)]), 'hrbp-new-hire-concentration')!
+    expect(two.detail).toBe("New hires since 1 Apr 2026: J's team 4 of 5 and H's team 3 of 6.")
     const most = byId(run(team('H', 4, 6)), 'hrbp-new-hire-concentration')!
     expect(most.severity).toBe('warning')
     expect(byId(run(team('H', 2, 6)), 'hrbp-new-hire-concentration')).toBeUndefined()
@@ -198,11 +316,48 @@ describe('rapid growth uses true headcount at both dates', () => {
     expect(byId(run(people), 'hrbp-rapid-growth')).toBeUndefined()
   })
 
+  it('finds no growth without leavers in the upload (past headcount would count survivors only)', () => {
+    const people = [
+      ...many(6, { department: 'Firmware' }),
+      ...many(4, { department: 'Firmware', hireDate: '2026-06-01' }),
+    ]
+    expect(byId(run(people), 'hrbp-rapid-growth')).toBeUndefined()
+  })
+
+  it('counts people who have since moved out when a department filter is on (true headcount then)', () => {
+    const people = [
+      ...many(6, { department: 'Firmware' }),
+      // In Firmware on 31 Mar 2026, now in Software: the filtered roster no longer holds them.
+      emp({ employeeId: 'OUT', department: 'Software' }),
+      ...many(3, { department: 'Firmware', hireDate: '2026-06-01' }),
+      ...many(10, { department: 'Software' }),
+    ]
+    const jobChanges = [
+      change({
+        employeeId: 'OUT',
+        effectiveDate: '2026-06-01',
+        changeType: 'Transfer',
+        fromDepartment: 'Firmware',
+        toDepartment: 'Software',
+      }),
+    ]
+    const company = departmentGrowth(prepOf({ employees: people, jobChanges })).find(
+      (x) => x.dept === 'Firmware',
+    )!
+    const filtered = departmentGrowth(
+      prepOf({ employees: people, jobChanges }, { department: ['Firmware'] }),
+    ).find((x) => x.dept === 'Firmware')!
+    expect(company).toMatchObject({ before: 7, now: 9 })
+    expect(filtered).toMatchObject({ before: 7, now: 9 })
+  })
+
   it('fires at 35% growth on a base of 5 or more, following transfers in', () => {
     const people = [
       ...many(6, { department: 'Firmware' }),
       emp({ employeeId: 'MOVER', department: 'Firmware' }),
       ...many(2, { department: 'Firmware', hireDate: '2026-06-01' }),
+      // One leaver elsewhere: without any termination date, past headcount is not trusted.
+      leaver('2025-02-03', 'Voluntary', { department: 'Software' }),
     ]
     const jobChanges = [
       change({

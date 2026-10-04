@@ -9,12 +9,16 @@ import { fmt } from '@/lib/format'
 import type { ExceptionRow, PromotionRow, SpendSummary } from './cycle'
 import { marketTotal } from './market'
 import type { CompModel } from './model'
+import { coverageParts } from './notes'
 import { differentiation } from './performance'
 import type { Population } from './population'
 import { compaRow } from './ranges'
-import { pct2, times } from './text'
+import { pts2 } from './text'
 
-type Core = Pick<CompModel, 'asOf' | 'pop' | 'company' | 'isCompany' | 'settings' | 'performance' | 'market'>
+type Core = Pick<
+  CompModel,
+  'asOf' | 'payAsOf' | 'payStale' | 'pop' | 'company' | 'isCompany' | 'settings' | 'performance' | 'market'
+>
 
 /** A "vs company" delta, material when it clears a domain threshold. */
 function vsCompany(
@@ -30,6 +34,15 @@ function vsCompany(
 
 const share = (n: number, d: number): number | null => (d >= MIN_GROUP ? n / d : null)
 const count = (n: number) => `${fmt(n, 'int')} ${n === 1 ? 'person' : 'people'}`
+const pct2 = (v: number | null | undefined) => fmt(v, 'pct2')
+
+/** Averages over 1-4 priced proposals are hidden, like every other rate (null, never the exact value). */
+export const smallSpend = (spend: Pick<SpendSummary, 'priced'>): boolean =>
+  spend.priced > 0 && spend.priced < MIN_GROUP
+
+/** "latest rating (2026 Mid-year)": the rating merit proposals are drafted against. */
+export const ratingBasis = (latestCycle: string | null): string =>
+  latestCycle ? `latest rating (${latestCycle})` : 'latest rating'
 
 export function buildKpis(m: Core, spend: SpendSummary): Kpi[] {
   const s = m.settings
@@ -45,8 +58,9 @@ export function buildKpis(m: Core, spend: SpendSummary): Kpi[] {
   const mktAll = m.isCompany ? mkt : marketTotal(m.company.people)
   const band = `${fmt(s.bandLow, 'ratio')} to ${fmt(s.bandHigh, 'ratio')}`
   const small = scope.n > 0 && scope.n < MIN_GROUP
-  // A delta that rounds to "+0.0 pts" says nothing; the note carries the exact figures instead.
-  const spendDelta = spend.delta != null && Math.abs(spend.delta) >= 0.0005 ? spend.delta : null
+  const hideSpend = smallSpend(spend)
+  // A delta that rounds to "+0.0 pts" says nothing; the value carries the exact figure instead.
+  const spendDelta = !hideSpend && spend.delta != null && Math.abs(spend.delta) >= 0.0005 ? spend.delta : null
 
   return [
     {
@@ -55,7 +69,7 @@ export function buildKpis(m: Core, spend: SpendSummary): Kpi[] {
       value: scope.median,
       format: 'ratio',
       suppressed: small,
-      note: `${count(scope.n)} · as of ${formatDate(m.asOf)}`,
+      note: [count(scope.n), `as of ${formatDate(m.asOf)}`, ...coverageParts(m)].join(' · '),
       tab: 'ranges',
       definition:
         'Base salary divided by the salary range midpoint, median across active employees with a comp record.',
@@ -100,17 +114,17 @@ export function buildKpis(m: Core, spend: SpendSummary): Kpi[] {
     {
       id: 'merit-spend',
       label: 'Merit spend',
-      value: spend.spendPct,
-      format: 'pct',
+      value: hideSpend ? null : spend.spendPct,
+      format: 'pct2',
       goodDirection: 'down',
       delta: spendDelta,
       deltaLabel: `vs ${pct2(s.meritBudget)} budget`,
       deltaMaterial: spend.delta != null && Math.abs(spend.delta) >= 0.001,
-      suppressed: spend.priced > 0 && spend.priced < MIN_GROUP,
+      suppressed: hideSpend,
       note:
         spend.spendPct == null
           ? 'No merit proposals'
-          : `${pct2(spend.spendPct)} of eligible base vs ${pct2(s.meritBudget)} budget`,
+          : `${fmt(spend.eligible, 'int')} proposals · budget ${pct2(s.meritBudget)}`,
       tab: 'cycle',
       definition:
         'Proposed merit as a share of eligible base salary, both in USD. Eligible means the person has a merit proposal. Promotion increases are not included.',
@@ -119,15 +133,15 @@ export function buildKpis(m: Core, spend: SpendSummary): Kpi[] {
       id: 'p4p',
       label: 'Pay for performance',
       value: diff.ratio,
-      format: 'num2',
+      format: 'times',
       goodDirection: 'up',
       note:
         diff.ratio == null
           ? 'Needs 5 or more rated 3 and rated 4-5'
-          : `Rating 4-5 merit is ${times(diff.ratio)} rating 3`,
+          : `Rated 4-5 vs rated 3, ${ratingBasis(m.pop.latestCycle)}`,
       tab: 'performance',
       definition:
-        'Mean merit % for people rated 4-5 divided by mean merit % for people rated 3, using the latest rating. 1.15 or more shows real differentiation.',
+        'Mean merit % for people rated 4-5 divided by mean merit % for people rated 3, using each person’s latest rating, the one merit proposals are drafted against. 1.15 or more shows real differentiation.',
       ...vsCompany(m.isCompany, diff.ratio, diffAll.ratio, 0.15),
     },
     {
@@ -145,16 +159,34 @@ export function buildKpis(m: Core, spend: SpendSummary): Kpi[] {
   ]
 }
 
+/** "0.15 pts above it" / "level with it": actual spend against the guideline cost. */
+function againstGuideline(actual: number | null, guideline: number | null): string {
+  if (actual == null || guideline == null) return 'Needs 5 or more rated proposals'
+  const d = actual - guideline
+  const gap = pts2(Math.abs(d)).replace('+', '')
+  if (!/[1-9]/.test(gap)) return 'Actual spend is level with it'
+  return `Actual spend is ${gap} ${d > 0 ? 'above' : 'below'} it`
+}
+
 export function buildCycleKpis(
   pop: Population,
   c: {
     spend: SpendSummary
-    promotions: { rows: PromotionRow[]; median: number | null }
+    promotions: { rows: PromotionRow[]; share: number | null; median: number | null }
     exceptions: ExceptionRow[]
   },
 ): Kpi[] {
   const rules = c.exceptions.filter((e) => e.kind !== 'outlier').length
   const outliers = c.exceptions.length - rules
+  const hideSpend = smallSpend(c.spend)
+  const hideGuide = c.spend.rated > 0 && c.spend.rated < MIN_GROUP
+  const spendPct = hideSpend ? null : c.spend.spendPct
+  const guidePct = hideGuide ? null : c.spend.guidelinePct
+  const promo = c.promotions
+  const promoNote = [
+    promo.share == null ? null : `${fmt(promo.share, 'pct')} of eligible`,
+    promo.median == null ? null : `median increase ${fmt(promo.median, 'pct')}`,
+  ].filter(Boolean)
   return [
     {
       id: 'eligible',
@@ -168,29 +200,31 @@ export function buildCycleKpis(
     {
       id: 'spend',
       label: 'Merit spend',
-      value: c.spend.spendPct,
-      format: 'pct',
-      note: `${pct2(c.spend.spendPct)} vs ${pct2(c.spend.budgetPct)} budget`,
+      value: spendPct,
+      format: 'pct2',
+      suppressed: hideSpend,
+      note:
+        spendPct == null || c.spend.delta == null
+          ? `Budget ${pct2(c.spend.budgetPct)}`
+          : `${pts2(c.spend.delta)} vs the ${pct2(c.spend.budgetPct)} budget`,
       definition: 'Σ(base × merit %) ÷ Σ base over eligible people, both in USD.',
     },
     {
       id: 'guideline-spend',
       label: 'Spend at guideline',
-      value: c.spend.guidelinePct,
-      format: 'pct',
-      note: `${pct2(c.spend.guidelinePct)}, prorated for service`,
+      value: guidePct,
+      format: 'pct2',
+      suppressed: hideGuide,
+      note: againstGuideline(spendPct, guidePct),
       definition:
-        'What the merit guideline would cost: each rated person at the guideline for their rating, prorated by the share of the last 12 months they were employed, as a share of eligible base.',
+        'What the merit guideline would cost: each rated proposal at the guideline for its rating, weighted by base salary in USD like the actual spend. Not prorated, so it compares like with like with the proposals and the budget.',
     },
     {
       id: 'promotions',
       label: 'Promotions proposed',
-      value: pop.has.promotion || pop.has.merit ? c.promotions.rows.length : null,
+      value: pop.has.promotion || pop.has.merit ? promo.rows.length : null,
       format: 'int',
-      note:
-        c.promotions.median == null
-          ? 'Kept apart from merit'
-          : `Median increase ${fmt(c.promotions.median, 'pct')}, kept apart from merit`,
+      note: promoNote.length ? promoNote.join(' · ') : 'Kept apart from merit',
       definition:
         'People with a promotion increase in this cycle. Promotion % is reported on its own and never counted as merit.',
     },

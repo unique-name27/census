@@ -1,7 +1,7 @@
 /**
- * View-local selection state shared across the Recruiting tabs: the river ribbon a reader clicked
- * and the action-queue filters (stage, next-step state, owner). Kept out of the global filters
- * because it narrows one table, not the whole app.
+ * View-local selection state shared across the Recruiting tabs: the river ribbon a reader clicked,
+ * the action-queue filters (stage, next-step state, owner) and the basis of the offer acceptance
+ * by location chart. Kept out of the global filters because each narrows one figure, not the app.
  */
 import { create } from 'zustand'
 import type { RibbonKind } from './engine/river'
@@ -19,6 +19,9 @@ interface RecruitingUi {
   owner: string | null
   /** Scroll the action queue into view on the next Pipeline render. */
   focusQueue: boolean
+  /** Offer acceptance by location: the latest quarter or the whole period (null = follow the readout). */
+  acceptanceBasis: 'quarter' | 'period' | null
+  setAcceptanceBasis: (basis: 'quarter' | 'period') => void
   selectFlow: (sel: FlowSelection | null) => void
   filterQueue: (patch: { stage?: number | null; state?: NextState | null; owner?: string | null }) => void
   openQueue: (stage: number | null, state: NextState | null) => void
@@ -38,6 +41,8 @@ export const useRecruitingUi = create<RecruitingUi>((set) => ({
   queueState: null,
   owner: null,
   focusQueue: false,
+  acceptanceBasis: null,
+  setAcceptanceBasis: (basis) => set({ acceptanceBasis: basis }),
   selectFlow: (sel) =>
     set(
       sel

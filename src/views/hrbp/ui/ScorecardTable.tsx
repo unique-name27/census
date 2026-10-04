@@ -2,7 +2,8 @@
  * The sub-org scorecard as a datasheet with benchmark shading: a cell is washed when the org is
  * materially off the company (red for higher attrition, green for lower, amber when the metric
  * has no good direction) and carries an arrow so the state never depends on color. Rows rescope
- * the app on click; the Other and Company rows stay pinned at the bottom.
+ * the app on click; the Other and Company rows stay pinned at the bottom. The organization column
+ * stays put while the rates scroll sideways on a narrow screen.
  */
 import { type KeyboardEvent, useState } from 'react'
 import { IconArrowDown, IconArrowUp } from '@/components/icons'
@@ -66,8 +67,15 @@ export function ScorecardTable({ rows, onPick }: { rows: ScoreRow[]; onPick: (ro
   }
 
   const th =
-    'sticky top-0 z-[1] border-b border-rule-strong bg-sheet px-2 py-1.5 align-bottom first:pl-0 last:pr-0 cut-head text-[12px] font-semibold whitespace-nowrap text-ink-2'
+    'border-b border-rule-strong bg-sheet px-2 py-1.5 align-bottom first:pl-0 last:pr-0 cut-head text-[12px] font-semibold whitespace-nowrap text-ink-2'
   const td = 'border-b border-rule px-2 py-1.5 align-middle first:pl-0 last:pr-0'
+  /**
+   * The organization column: pinned to the left edge of the scroller, with a hairline once rates
+   * pass under it and a 4px bleed of its own fill to the left so no glyph peeks past its edge.
+   */
+  const pin = 'sticky left-0 z-[1]'
+  const edge = 'max-lg:shadow-[1px_0_0_var(--rule),-4px_0_0_var(--sheet)]'
+  const edge2 = 'max-lg:shadow-[1px_0_0_var(--rule),-4px_0_0_var(--sheet-2)]'
   const header = (key: Col['key'], label: string, right: boolean) => {
     const active = sort?.key === key
     return (
@@ -75,7 +83,7 @@ export function ScorecardTable({ rows, onPick }: { rows: ScoreRow[]; onPick: (ro
         key={key}
         scope="col"
         aria-sort={active ? (sort.dir === 1 ? 'ascending' : 'descending') : undefined}
-        className={cx(th, right ? 'text-right' : 'text-left')}
+        className={cx(th, right ? 'text-right' : 'text-left', key === 'label' && `${pin} ${edge}`)}
       >
         <button
           type="button"
@@ -136,11 +144,22 @@ export function ScorecardTable({ rows, onPick }: { rows: ScoreRow[]; onPick: (ro
         tabIndex={clickable ? 0 : undefined}
         aria-label={clickable ? `${row.label}. Focus on this org` : undefined}
         className={cx(
+          'group',
           clickable && 'cursor-pointer hover:bg-hover focus-visible:bg-hover',
           benchmark && 'bg-sheet-2',
         )}
       >
-        <td className={cx(td, 'min-w-44 pr-4')}>
+        <td
+          className={cx(
+            td,
+            pin,
+            'min-w-32 pr-4 sm:min-w-44',
+            benchmark ? `bg-sheet-2 ${edge2}` : `bg-sheet ${edge}`,
+            // The pinned cell is opaque, so it repeats the row's hover wash on top of its own fill.
+            clickable &&
+              'group-hover:bg-[image:linear-gradient(var(--hover-wash),var(--hover-wash))] group-focus-visible:bg-[image:linear-gradient(var(--hover-wash),var(--hover-wash))]',
+          )}
+        >
           <div
             className={cx('leading-snug text-ink', benchmark ? 'font-semibold' : clickable && 'font-medium')}
           >

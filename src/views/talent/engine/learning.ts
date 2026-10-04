@@ -2,11 +2,12 @@
  * Learning: required training on time, what is overdue today and where it concentrates,
  * completions over time and learning hours per employee.
  *
- * Definitions:
+ * Definitions (employees only, like every rate in Census; contractors, interns and people missing
+ * from the roster are left out):
  *  - required = assignments with required = true;
- *  - on time = completed on or before the due date, for assignments due in the window to people
+ *  - on time = completed on or before the due date, for assignments due in the window to employees
  *    still employed on the due date;
- *  - overdue = required, not completed and due before the as-of date, for people active today.
+ *  - overdue = required, not completed and due before the as-of date, for employees active today.
  * Pure: no React, no DOM.
  */
 import type { Employee, ISODate, LearningRecord } from '@/data/schema'
@@ -33,9 +34,10 @@ export interface CourseRow {
 export interface OverdueCell {
   course: string
   group: string
-  /** Required assignments now past due, for people active today. */
+  /** Required assignments now past due, for employees active today. */
   pastDue: number
-  overdue: number
+  /** Null when fewer than 5 assignments are past due (the share is hidden too). */
+  overdue: number | null
   share: number | null
 }
 
@@ -65,6 +67,7 @@ export interface OverdueRow {
 
 export interface OverdueConcentration {
   course: string
+  category: string
   pastDue: number
   overdue: number
   rate: number
@@ -72,7 +75,10 @@ export interface OverdueConcentration {
   top: Segment | null
   /** A second segment on a different dimension, when one stands out too. */
   second: Segment | null
+  /** Everyone overdue on the course. */
   people: OverdueRow[]
+  /** The overdue people inside the top segment (everyone when there is no segment). */
+  segmentPeople: OverdueRow[]
 }
 
 export interface OnTime {
@@ -86,6 +92,13 @@ export interface LearningResult {
   hasDueDates: boolean
   current: OnTime
   prior: OnTime
+  /**
+   * The courses due in the two periods differ a lot (e.g. a compliance campaign against onboarding
+   * courses), so the change in the on-time rate is not like for like.
+   */
+  mixDiffers: boolean
+  /** Overdue required assignments of contractors and interns active today (not in the rates). */
+  otherWorkersOverdue: number
   byCourse: CourseRow[]
   overdueByDepartment: OverdueCell[]
   overdueByLocation: OverdueCell[]
@@ -100,22 +113,43 @@ export interface LearningResult {
 
 const rate = (k: number, n: number) => (n >= MIN_GROUP ? k / n : null)
 
+/** Required assignments due in w (and by asOf) to employees still employed on the due date. */
+function dueIn(
+  rows: readonly LearningRecord[],
+  byId: Map<string, Employee>,
+  w: Pick<Window, 'start' | 'end'>,
+  asOf: ISODate,
+): LearningRecord[] {
+  return rows.filter((l) => {
+    if (!l.dueDate || l.dueDate < w.start || l.dueDate > w.end || l.dueDate > asOf) return false
+    const e = byId.get(l.employeeId)
+    return !!e && isEmployee(e) && isActiveAt(e, l.dueDate)
+  })
+}
+
 function onTimeIn(
   rows: readonly LearningRecord[],
   byId: Map<string, Employee>,
   w: Pick<Window, 'start' | 'end'>,
   asOf: ISODate,
 ): OnTime {
-  let due = 0
-  let onTime = 0
-  for (const l of rows) {
-    if (!l.dueDate || l.dueDate < w.start || l.dueDate > w.end || l.dueDate > asOf) continue
-    const e = byId.get(l.employeeId)
-    if (e && !isActiveAt(e, l.dueDate)) continue
-    due++
-    if (l.completedDate && l.completedDate <= l.dueDate) onTime++
+  const due = dueIn(rows, byId, w, asOf)
+  const onTime = due.filter((l) => l.completedDate && l.completedDate <= l.dueDate!).length
+  return { rate: rate(onTime, due.length), due: due.length, onTime }
+}
+
+/** Half the summed difference in course-category shares: 0 = same mix, 1 = nothing in common. */
+function mixDistance(a: readonly LearningRecord[], b: readonly LearningRecord[]): number {
+  const shares = (rows: readonly LearningRecord[]) => {
+    const m = new Map<string, number>()
+    for (const l of rows) m.set(l.category, (m.get(l.category) ?? 0) + 1 / rows.length)
+    return m
   }
-  return { rate: rate(onTime, due), due, onTime }
+  const pa = shares(a)
+  const pb = shares(b)
+  let d = 0
+  for (const k of new Set([...pa.keys(), ...pb.keys()])) d += Math.abs((pa.get(k) ?? 0) - (pb.get(k) ?? 0))
+  return d / 2
 }
 
 function overdueCells(
@@ -128,10 +162,13 @@ function overdueCells(
     const k = `${l.course}\u0000${group}`
     const c = m.get(k) ?? { course: l.course, group, pastDue: 0, overdue: 0, share: null }
     c.pastDue++
-    if (overdue) c.overdue++
+    if (overdue) c.overdue = (c.overdue ?? 0) + 1
     m.set(k, c)
   }
-  for (const c of m.values()) c.share = rate(c.overdue, c.pastDue)
+  for (const c of m.values()) {
+    c.share = rate(c.overdue ?? 0, c.pastDue)
+    if (c.pastDue < MIN_GROUP) c.overdue = null
+  }
   return [...m.values()]
 }
 
@@ -145,13 +182,13 @@ export function computeLearning(base: TalentBase): LearningResult {
 
   const current = onTimeIn(required, byId, w, asOf)
   const prior = onTimeIn(required, byId, ctx.prior, asOf)
+  const dueNow = dueIn(required, byId, w, asOf)
+  const duePrior = dueIn(required, byId, ctx.prior, asOf)
+  const mixDiffers = dueNow.length > 0 && duePrior.length > 0 && mixDistance(dueNow, duePrior) > 0.25
 
   // By course: assignments due in the window.
   const courses = new Map<string, CourseRow>()
-  for (const l of required) {
-    if (!l.dueDate || l.dueDate < w.start || l.dueDate > w.end || l.dueDate > asOf) continue
-    const e = byId.get(l.employeeId)
-    if (e && !isActiveAt(e, l.dueDate)) continue
+  for (const l of dueNow) {
     const c = courses.get(l.course) ?? {
       course: l.course,
       category: l.category,
@@ -162,7 +199,7 @@ export function computeLearning(base: TalentBase): LearningResult {
       onTimeRate: null,
     }
     c.due++
-    if (l.completedDate && l.completedDate <= l.dueDate) c.onTime++
+    if (l.completedDate && l.completedDate <= l.dueDate!) c.onTime++
     else if (l.completedDate) c.late++
     else c.open++
     courses.set(l.course, c)
@@ -171,12 +208,17 @@ export function computeLearning(base: TalentBase): LearningResult {
     .map((c) => ({ ...c, onTimeRate: rate(c.onTime, c.due) }))
     .sort((a, b) => (a.onTimeRate ?? 2) - (b.onTimeRate ?? 2))
 
-  // Overdue today, for people active today.
+  // Overdue today, for employees active today.
   const pastDue: { l: LearningRecord; e: Employee; overdue: boolean }[] = []
+  let otherWorkersOverdue = 0
   for (const l of required) {
     if (!l.dueDate || l.dueDate >= asOf) continue
     const e = byId.get(l.employeeId)
     if (!e || !isActiveAt(e, asOf)) continue
+    if (!isEmployee(e)) {
+      if (!l.completedDate) otherWorkersOverdue++
+      continue
+    }
     pastDue.push({ l, e, overdue: !l.completedDate })
   }
   const overdue: OverdueRow[] = pastDue
@@ -202,17 +244,20 @@ export function computeLearning(base: TalentBase): LearningResult {
   const topCourse = overdueCourses[0]
   if (topCourse && (overdueByCourse.get(topCourse) ?? 0) >= MIN_GROUP) {
     const rows = pastDue.filter((p) => p.l.course === topCourse)
-    const segs = decomposeRate(
-      rows,
-      orgDims((r) => r.e),
-      (r) => r.overdue,
-      { minDev: 0.05, minPopulation: 10, top: 8 },
-    )
+    const dims = orgDims((r: (typeof rows)[number]) => r.e)
+    const segs = decomposeRate(rows, dims, (r) => r.overdue, { minDev: 0.05, minPopulation: 10, top: 8 })
     const top = segs[0] ?? null
     const second = top ? pickSecond(top, segs) : null
     const k = rows.filter((r) => r.overdue).length
+    const coursePeople = overdue.filter((o) => o.course === topCourse)
+    const topDim = top ? dims.find((d) => d.key === top.dim) : undefined
+    const inTop =
+      top && topDim
+        ? new Set(rows.filter((r) => r.overdue && topDim.get(r) === top.value).map((r) => r.e.employeeId))
+        : null
     concentration = {
       course: topCourse,
+      category: rows[0]?.l.category ?? '',
       pastDue: rows.length,
       overdue: k,
       rate: k / rows.length,
@@ -223,7 +268,8 @@ export function computeLearning(base: TalentBase): LearningResult {
           .pop() ?? null,
       top,
       second,
-      people: overdue.filter((o) => o.course === topCourse),
+      people: coursePeople,
+      segmentPeople: inTop ? coursePeople.filter((o) => inTop.has(o.employeeId)) : coursePeople,
     }
   }
 
@@ -278,6 +324,8 @@ export function computeLearning(base: TalentBase): LearningResult {
     hasDueDates,
     current,
     prior,
+    mixDiffers,
+    otherWorkersOverdue,
     byCourse,
     overdueByDepartment: overdueCells(inOverdueCourse, (e) => e.department),
     overdueByLocation: overdueCells(inOverdueCourse, (e) => e.location),

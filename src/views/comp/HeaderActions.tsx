@@ -153,7 +153,16 @@ export function CompHeaderActions() {
   const [open, setOpen] = useState(false)
   return (
     <>
-      <Switch checked={showPay} onChange={setShowPay} label="Show pay amounts" />
+      {/* Short labels on phones keep the header actions inside a 375px screen. */}
+      <Switch
+        checked={showPay}
+        onChange={setShowPay}
+        label={
+          <span>
+            Show pay<span className="max-sm:hidden"> amounts</span>
+          </span>
+        }
+      />
       <Popover
         title="Cycle settings"
         align="end"
@@ -161,8 +170,9 @@ export function CompHeaderActions() {
         open={open}
         onOpenChange={setOpen}
         trigger={
-          <Button size="md" variant="secondary" caret>
-            Cycle settings
+          <Button size="md" variant="secondary" caret aria-label="Cycle settings">
+            <span className="max-sm:hidden">Cycle settings</span>
+            <span className="sm:hidden">Settings</span>
           </Button>
         }
       >

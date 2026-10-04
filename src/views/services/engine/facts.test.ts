@@ -103,7 +103,23 @@ describe('transaction facts', () => {
     ]
     const out = txFacts(rows, AS_OF, people).map((f) => f.outcome)
     expect(out).toEqual(['on-time', 'late', 'overdue', 'pending', 'pending'])
-    expect(onTimeRate(txFacts(rows, AS_OF, people))).toEqual({ rate: 1 / 3, n: 3, late: 2 })
+    // Three judged items for three people: counted, but no rate below 5.
+    expect(onTimeRate(txFacts(rows, AS_OF, people))).toEqual({
+      rate: null,
+      n: 3,
+      onTime: 1,
+      late: 2,
+      people: 3,
+    })
+  })
+
+  it('needs 5 people, not just 5 transactions, for an on-time rate', () => {
+    const many = Array.from({ length: 6 }, (_, i) =>
+      tx({ dueDate: '2026-09-02', completedDate: i ? '2026-09-02' : '2026-09-05' }),
+    )
+    expect(onTimeRate(txFacts(many, AS_OF, people)).rate).toBeCloseTo(5 / 6)
+    const onePerson = many.map((t) => ({ ...t, employeeId: 'E1' }))
+    expect(onTimeRate(txFacts(onePerson, AS_OF, people))).toMatchObject({ rate: null, n: 6, people: 1 })
   })
 
   it('treats a completion after the as-of date as not completed', () => {
@@ -119,7 +135,11 @@ describe('transaction facts', () => {
   })
 
   it('joins the site, jurisdiction and exit type from the roster', () => {
-    const [f] = txFacts([tx({ type: 'Termination', completedDate: '2026-09-04' })], AS_OF, people)
+    const [f] = txFacts(
+      [tx({ type: 'Termination', employeeId: 'E1', completedDate: '2026-09-04' })],
+      AS_OF,
+      people,
+    )
     expect(f.jurisdiction).toBe('us-ca')
     expect(f.region).toBe('Americas')
     expect(f.exitType).toBe('Involuntary')

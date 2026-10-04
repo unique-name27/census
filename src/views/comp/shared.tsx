@@ -1,29 +1,20 @@
 /**
- * What every Compensation tab shares: the memoized model, notes, empty-state messages and the
- * empty state that names the missing dataset.
+ * What every Compensation tab shares: the memoized model, notes, empty-state messages, the empty
+ * state for a scope with no one in it and the notice for pay data from another date.
  */
 import { useMemo } from 'react'
-import { Button, EmptyState, goTo, IconDatabase } from '@/components'
+import { Button, EmptyState, goTo, IconDatabase, IconFilter, IconInfo } from '@/components'
 import { useAnalytics } from '@/data/context'
-import { formatDate } from '@/lib/dates'
-import { fmt } from '@/lib/format'
 import { type CompModel, computeComp } from './engine/model'
+import { emptyScope, payNotice } from './engine/notes'
 import { useCycleSettings } from './settingsStore'
+
+export { asOfNote, note } from './engine/notes'
 
 export function useCompModel(): CompModel {
   const ctx = useAnalytics()
   const settings = useCycleSettings((s) => s.settings)
   return useMemo(() => computeComp(ctx, settings), [ctx, settings])
-}
-
-/** "1,450 people · as of 30 Sep 2026", plus the FX caveat when it applies to amount totals. */
-export function note(m: CompModel, n: number, unit = 'people', fx = false): string {
-  const parts = [
-    `${fmt(n, 'int')} ${n === 1 && unit === 'people' ? 'person' : unit}`,
-    `as of ${formatDate(m.asOf)}`,
-  ]
-  if (fx && m.pop.noFx > 0) parts.push(`${fmt(m.pop.noFx, 'int')} without an FX rate left out of USD totals`)
-  return parts.join(' · ')
 }
 
 /** Empty-state text for a figure whose input is missing: names the dataset or column. */
@@ -46,20 +37,34 @@ export function emptyIf(rows: readonly unknown[], missing: string | null, none: 
 }
 
 export function NoCompData({ m }: { m: CompModel }) {
-  const reason =
-    m.pop.missingComp > 0
-      ? `${fmt(m.pop.missingComp, 'int')} active employees in this scope have no compensation record.`
-      : 'There are no active employees with a compensation record in this scope.'
+  const e = emptyScope(m)
   return (
     <EmptyState
-      icon={<IconDatabase />}
-      title="Upload Compensation to see this"
-      body={`${reason} Load a Compensation sheet in the Data room, or widen the filters.`}
+      icon={e.dataRoom ? <IconDatabase /> : <IconFilter />}
+      title={e.title}
+      body={e.body}
       action={
-        <Button size="sm" onClick={() => goTo('data')}>
-          Open Data room
-        </Button>
+        e.dataRoom ? (
+          <Button size="sm" onClick={() => goTo('data')}>
+            Open Data room
+          </Button>
+        ) : undefined
       }
     />
+  )
+}
+
+/** Shown above every tab when the pay data describes a different date from the people. */
+export function PayNotice({ m }: { m: CompModel }) {
+  const text = payNotice(m)
+  if (!text) return null
+  return (
+    <p
+      role="note"
+      className="mb-4 flex gap-2 rounded-sheet bg-sheet px-4 py-2.5 text-[13px] leading-snug text-ink-2"
+    >
+      <IconInfo className="mt-px size-4 shrink-0 text-muted" />
+      <span>{text}</span>
+    </p>
   )
 }

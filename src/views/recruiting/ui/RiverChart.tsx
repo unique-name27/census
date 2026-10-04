@@ -6,10 +6,17 @@
  */
 import { color as d3color } from 'd3'
 import { type FocusEvent, type KeyboardEvent, type PointerEvent, useRef, useState } from 'react'
-import { inkOn, Legend, type LegendSpec, textWidth, useChartTheme } from '@/charts'
-import { LEGEND_ATTR } from '@/charts/core/legend'
-import { useFontsVersion } from '@/charts/core/measure'
-import { TIP_CLASS, type TipContent } from '@/charts/core/tooltip'
+import {
+  inkOn,
+  LEGEND_ATTR,
+  Legend,
+  type LegendSpec,
+  TIP_CLASS,
+  type TipContent,
+  textWidth,
+  useChartTheme,
+  useFontsVersion,
+} from '@/charts'
 import { STAGES } from '@/data/schema'
 import { fmt } from '@/lib/format'
 import { type Flow, flowMembers, topReason } from '../engine/flow'

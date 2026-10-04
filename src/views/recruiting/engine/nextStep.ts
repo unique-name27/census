@@ -78,9 +78,12 @@ export function stateLabel(stage: number, state: NextState): string {
   }
 }
 
-/** Short legend names for the four states. */
+/**
+ * Short legend names for the four states. "No step booked" is a state (nothing on the calendar,
+ * no decision owed), not the alarm: the alarm is "lacks a next step", which needs the aging tier.
+ */
 export const STATE_NAME: Record<NextState, string> = {
-  'needs-step': 'Needs action',
+  'needs-step': 'No step booked',
   'awaiting-feedback': 'Needs decision',
   'offer-out': 'Offer extended',
   scheduled: 'Scheduled',
@@ -92,7 +95,7 @@ export function nextStepText(a: App, stage: number, state: NextState): string {
     case 'scheduled':
       return `${EVENT_NAME[stage] ?? 'Event'} on ${formatDate(a.nextEventDate)}`
     case 'awaiting-feedback':
-      return 'Ask the panel for scorecards and a decision'
+      return 'Ask for scorecards and a decision'
     case 'offer-out':
       return 'Follow up on the offer'
     case 'needs-step':

@@ -10,11 +10,19 @@ import type { TalentBase } from './base'
 import type { LearningResult } from './learning'
 import { HIGH_GUIDELINE, type PerformanceResult } from './performance'
 import type { RetentionResult } from './retention'
+import type { RiskModel } from './risk'
 import type { SuccessionResult } from './succession'
 
 /** A change in an on-time rate is called out at 2 pts or more with at least 20 assignments on both sides. */
 const rateMaterial = (cur: number | null, prev: number | null, nCur: number, nPrev: number) =>
   cur != null && prev != null && nCur >= 20 && nPrev >= 20 && Math.abs(cur - prev) >= 0.02
+
+/** "the top 11% of scores company-wide", or the target wording when nobody is scored. */
+export function highBandText(risk: Pick<RiskModel, 'highShare'>): string {
+  return risk.highShare != null && risk.highShare > 0
+    ? `the top ${fmt(risk.highShare, 'pct0')} of scores company-wide`
+    : 'about the top 10% of scores company-wide'
+}
 
 export function buildKpis(x: {
   base: TalentBase
@@ -22,16 +30,18 @@ export function buildKpis(x: {
   succession: SuccessionResult
   retention: RetentionResult
   learning: LearningResult
+  risk: RiskModel
 }): Kpi[] {
-  const { base, performance: perf, succession: succ, retention: ret, learning } = x
+  const { base, performance: perf, succession: succ, retention: ret, learning, risk } = x
   const cycle = perf.cycle?.cycle
   const hasReviews = base.has.reviews
   const small = (n: number) => n > 0 && n < MIN_GROUP
 
   const regretted = ret.regrettedHigh
-  const canRegret = base.has.regrettable && hasReviews
+  const canRegret = regretted.available
   const cur = learning.current
   const prior = learning.prior
+  const left = perf.ratedLeft
 
   return [
     {
@@ -39,9 +49,12 @@ export function buildKpis(x: {
       label: 'Rated in latest cycle',
       value: hasReviews && base.active.length ? perf.coverage : null,
       format: 'pct',
+      suppressed: small(perf.activeCount),
       note: hasReviews
         ? cycle
-          ? `${fmt(perf.ratedActive)} of ${fmt(perf.activeCount)} employees · ${cycle}`
+          ? small(perf.activeCount)
+            ? `${cycle}`
+            : `${fmt(perf.ratedActive)} of ${fmt(perf.activeCount)} active employees · ${cycle}`
           : 'No cycle closed by the as-of date'
         : 'Upload Reviews to see this',
       tab: 'performance',
@@ -58,9 +71,11 @@ export function buildKpis(x: {
       goodDirection: null,
       spark: perf.highTrend.map((t) => t.share),
       suppressed: small(perf.rated),
-      note: hasReviews ? `Rated 4-5 · n = ${fmt(perf.rated)}` : 'Upload Reviews to see this',
+      note: hasReviews
+        ? `${fmt(perf.rated)} rated${left ? `, incl. ${fmt(left)} who ${left === 1 ? 'has' : 'have'} left` : ''}`
+        : 'Upload Reviews to see this',
       tab: 'performance',
-      definition: `Share of people rated in ${cycle ?? 'the latest cycle'} who received a 4 or 5. The guideline is ${fmt(HIGH_GUIDELINE, 'pct0')} (25% rated 4, 10% rated 5).`,
+      definition: `Share of people rated in ${cycle ?? 'the latest cycle'} who received a 4 or 5, including people who have left since the cycle closed. The guideline is ${fmt(HIGH_GUIDELINE, 'pct0')} (25% rated 4, 10% rated 5).`,
     },
     {
       id: 'talent-high-potentials',
@@ -69,7 +84,9 @@ export function buildKpis(x: {
       format: 'pct',
       suppressed: small(succ.hipoAssessed),
       note: succ.potentialCycle
-        ? `${fmt(succ.hipoHigh)} of ${fmt(succ.hipoAssessed)} · ${succ.potentialCycle.cycle}`
+        ? small(succ.hipoAssessed)
+          ? succ.potentialCycle.cycle
+          : `${fmt(succ.hipoHigh)} of ${fmt(succ.hipoAssessed)} assessed · ${succ.potentialCycle.cycle}`
         : 'No potential ratings loaded',
       tab: 'succession',
       definition:
@@ -107,10 +124,10 @@ export function buildKpis(x: {
           regretted.prior.length,
         ),
       spark: canRegret ? regretted.byQuarter : undefined,
-      note: canRegret ? base.ctx.window.label : 'Needs reviews and a regrettable flag on leavers',
+      note: canRegret ? base.ctx.window.label : (regretted.missing ?? undefined),
       tab: 'retention',
       definition:
-        'Voluntary exits in the period marked regrettable whose last rating before leaving was 4 or 5. The trend shows the last 8 quarters.',
+        'Voluntary exits in the period marked regrettable whose last rating before leaving was 4 or 5. Needs termination type, the regrettable flag and reviews. The trend shows the last 8 quarters.',
     },
     {
       id: 'talent-training-on-time',
@@ -118,9 +135,9 @@ export function buildKpis(x: {
       value: cur.rate,
       format: 'pct',
       delta: cur.rate != null && prior.rate != null ? cur.rate - prior.rate : null,
-      deltaLabel: 'vs prior period',
+      deltaLabel: learning.mixDiffers ? 'vs prior period, different courses' : 'vs prior period',
       goodDirection: 'up',
-      deltaMaterial: rateMaterial(cur.rate, prior.rate, cur.due, prior.due),
+      deltaMaterial: !learning.mixDiffers && rateMaterial(cur.rate, prior.rate, cur.due, prior.due),
       spark: learning.trend.some((v) => v != null) ? learning.trend : undefined,
       suppressed: small(cur.due),
       note: base.has.learning
@@ -130,7 +147,7 @@ export function buildKpis(x: {
         : 'Upload Learning to see this',
       tab: 'learning',
       definition:
-        'Required assignments due in the period that were completed on or before the due date, for people still employed on the due date.',
+        'Required assignments due in the period that were completed on or before the due date, for employees still employed on the due date (contractors and interns are not counted). When the courses due in the two periods differ a lot, the change is shown in gray.',
     },
     {
       id: 'talent-key-talent-risk',
@@ -138,12 +155,13 @@ export function buildKpis(x: {
       value: hasReviews && ret.scored ? ret.keyTalent.length : null,
       format: 'int',
       note:
-        hasReviews && ret.highPerformers
-          ? `${fmt(ret.keyTalent.length / ret.highPerformers, 'pct')} of ${fmt(ret.highPerformers)} rated 4-5`
-          : undefined,
+        hasReviews && ret.highPerformers >= MIN_GROUP
+          ? `${fmt(ret.keyTalent.length / ret.highPerformers, 'pct')} of ${fmt(ret.highPerformers)} active people rated 4-5`
+          : hasReviews && ret.highPerformers
+            ? 'Fewer than 5 active people rated 4-5'
+            : undefined,
       tab: 'retention',
-      definition:
-        'Active employees whose latest rating is 4 or 5 and whose flight-risk score is in the high band (the top 10% of scores company-wide).',
+      definition: `Active employees whose latest rating is 4 or 5 and whose flight-risk score is in the high band: ${highBandText(risk)}. People with the same score share a band, so the band is not exactly 10%.`,
     },
   ]
 }

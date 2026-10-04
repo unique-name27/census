@@ -1,8 +1,10 @@
 /**
  * Who left, when, why, and from where. Rates are annualized exits ÷ average headcount
- * (`@/lib/people` conventions); groups under 5 average headcount are suppressed (null).
+ * (`@/lib/people` conventions); groups under 5 average headcount are suppressed (null), and every
+ * rate is null when no Employees row has a termination date (an active-only roster).
  */
 import { type Employee, type ISODate, LEVELS, RATING_LABELS, VOLUNTARY_REASONS } from '@/data/schema'
+import type { Window } from '@/data/scope'
 import { addMonths } from '@/lib/dates'
 import {
   attrition,
@@ -127,21 +129,36 @@ export function cohortSummary(emps: readonly Employee[], asOf: ISODate): CohortS
 }
 
 function groupRows(map: ReturnType<typeof exitsByGroup>, p: Prep, typed: boolean): GroupRateRow[] {
+  const left = p.has.terminationDate
   return [...map.values()]
     .map((g) => ({
       group: g.key,
       avgHeadcount: g.avgHeadcount,
       exits: g.exits,
       voluntary: g.voluntary,
-      rate: annualRate(g.exits, g.avgHeadcount, p.window),
+      rate: left ? annualRate(g.exits, g.avgHeadcount, p.window) : null,
       voluntaryRate: typed ? annualRate(g.voluntary, g.avgHeadcount, p.window) : null,
     }))
     .sort((a, b) => b.avgHeadcount - a.avgHeadcount)
 }
 
+/**
+ * Voluntary exits and average headcount by department, counting each person in the department
+ * they were in at each month end (transfers rebuilt from Job changes), as the level chart does.
+ */
+export function exitsByDepartment(emps: readonly Employee[], w: Window, deptAt: Prep['history']['deptAt']) {
+  return exitsByGroup(
+    emps,
+    w,
+    (e) => e.department || 'Not recorded',
+    (e, d) => deptAt(e, d) || 'Not recorded',
+  )
+}
+
 export function computeAttrition(p: Prep): AttritionModel {
   const { emps, window, asOf, ctx } = p
-  const typed = p.has.terminationType
+  const left = p.has.terminationDate
+  const typed = left && p.has.terminationType
   const blocks = quarterBlocks(asOf, 8)
 
   const quarters: QuarterExitRow[] = []
@@ -161,7 +178,7 @@ export function computeAttrition(p: Prep): AttritionModel {
         type,
         exits: n,
         avgHeadcount: avg,
-        rate: annualRate(n, avg, b),
+        rate: left ? annualRate(n, avg, b) : null,
       })
     }
     if (typed && p.has.regrettable) {
@@ -200,11 +217,7 @@ export function computeAttrition(p: Prep): AttritionModel {
     .map(([reason, n]) => ({ reason, exits: n, share: withReason ? n / withReason : 0 }))
     .sort((a, b) => b.exits - a.exits || taxonomy.indexOf(a.reason) - taxonomy.indexOf(b.reason))
 
-  const byDepartment = groupRows(
-    exitsByGroup(emps, window, (e) => e.department || 'Not recorded'),
-    p,
-    typed,
-  )
+  const byDepartment = groupRows(exitsByDepartment(emps, window, p.history.deptAt), p, typed)
   const byLocation = groupRows(
     exitsByGroup(emps, window, (e) => e.location || 'Not recorded'),
     p,
@@ -288,7 +301,7 @@ export function computeAttrition(p: Prep): AttritionModel {
     byRating,
     regrettedLeavers,
     company: {
-      all: companyRate('all'),
+      all: left ? companyRate('all') : null,
       voluntary: typed ? companyRate('voluntary') : null,
       regretted: typed && p.has.regrettable ? companyRate('regretted') : null,
     },

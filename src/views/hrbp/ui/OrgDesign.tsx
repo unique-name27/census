@@ -55,7 +55,10 @@ export function OrgDesign({ m }: { m: HrbpModel }) {
       label: 'Median span',
       value: org.medianSpan,
       format: 'num1',
-      note: 'Half of managers have more',
+      note:
+        org.medianSpan != null
+          ? `Half of managers have ${Math.ceil(org.medianSpan)} or more direct reports`
+          : 'Direct reports per manager',
       definition: DEF.span.text,
     },
     {
@@ -159,7 +162,7 @@ export function OrgDesign({ m }: { m: HrbpModel }) {
             DEF.newManager,
             {
               term: 'Flag',
-              text: 'Overloaded at 12 or more direct reports, Heavy at 9 to 11, Light under 3, New when managing for under 12 months, otherwise Healthy.',
+              text: 'Overloaded at 12 or more direct reports, Heavy at 9 to 11, Light under 3, New when managing for under 12 months, otherwise Healthy. Executives (E levels) lead leadership teams and are flagged only when new.',
             },
           ]}
           note={`${managers.length} of ${org.managers.length} managers · as of ${asOf}`}

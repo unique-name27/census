@@ -4,10 +4,13 @@ import { generateSample } from '@/data/sample'
 import { DATASET_KEYS, type DatasetKey, type Datasets } from '@/data/schema'
 import { DEFAULT_FILTERS } from '@/data/scope'
 import type { SourceMeta } from '@/data/store'
+import { rowFormat } from '@/lib/export/columns'
+import { VIEWS } from '@/views/registry'
 import {
   buildManifest,
   COVERAGE_COLUMNS,
   coverageExportRows,
+  feedsFromViews,
   feedsLine,
   feedsText,
   MANIFEST_COLUMNS,
@@ -32,6 +35,25 @@ describe('labels', () => {
       'Recruiting, HR business partners, Employee services, Talent, Compensation',
     )
     expect(feedsLine(['recruiting'])).toBe('Feeds Recruiting')
+  })
+
+  it('adds the datasets each view declares to the schema’s lists', () => {
+    const feeds = feedsFromViews(VIEWS)
+    const rows = buildManifest({
+      data: generateSample(),
+      sources: sampleSources(generateSample()),
+      asOf: '2026-09-30',
+      feeds,
+    })
+    const text = Object.fromEntries(rows.map((r) => [r.key, r.feedsText]))
+    expect(text.jobChanges).toBe('HR business partners, Org chart, Talent, Compensation')
+    expect(text.comp).toBe('Talent, Compensation')
+    expect(text.requisitions).toBe('Recruiting, Org chart')
+    expect(text.reviews).toBe('HR business partners, Org chart, Talent, Compensation')
+    expect(text.employees).toBe('All six views')
+    // Every view's declared datasets are listed as feeding it.
+    for (const v of VIEWS)
+      for (const d of v.datasets) expect(rows.find((r) => r.key === d)?.feeds).toContain(v.key)
   })
 
   it('describes where a dataset came from', () => {
@@ -60,15 +82,13 @@ describe('labels', () => {
   it('summarizes the manifest in one line', () => {
     const row = (kind: 'sample' | 'upload', status: 'good' | 'warning' | 'info') =>
       ({ source: { kind }, status, rows: 10 }) as Parameters<typeof manifestSummary>[0][number]
+    // Which datasets are uploads is in the masthead and on each row, so the line doesn't repeat it.
     expect(manifestSummary([row('sample', 'good'), row('sample', 'info')]).text).toBe(
-      'All 2 datasets are sample data',
+      '20 rows across 2 datasets',
     )
     const mixed = manifestSummary([row('upload', 'warning'), row('sample', 'good'), row('upload', 'info')])
     expect(mixed).toMatchObject({ uploaded: 2, needsLook: 1, totalRows: 30 })
-    expect(mixed.text).toBe('2 of 3 datasets are your uploads, the rest are sample data · 1 needs a look')
-    expect(manifestSummary([row('upload', 'good'), row('sample', 'good')]).text).toBe(
-      '1 of 2 datasets is your upload, the rest are sample data',
-    )
+    expect(mixed.text).toBe('30 rows across 3 datasets · 1 needs a look')
   })
 })
 
@@ -105,7 +125,7 @@ describe('the sample company in the Data room', () => {
       learning: 10964,
       comp: 1450,
     })
-    expect(manifestSummary(rows).text).toBe('All 10 datasets are sample data')
+    expect(manifestSummary(rows).text).toBe('41,444 rows across 10 datasets')
     expect(manifestSummary(rows).totalRows).toBe(41_444)
   })
 
@@ -117,6 +137,38 @@ describe('the sample company in the Data room', () => {
       expect(r.status).toBe('good')
       expect(r.source.kind).toBe('sample')
     }
+  })
+
+  it('measures fields that apply to some rows over those rows only', () => {
+    const field = (key: string, f: string) =>
+      rows.find((r) => r.key === key)?.coverage.fields.find((x) => x.key === f)
+    expect(field('employees', 'terminationType')).toMatchObject({ expected: 446, filled: 446, share: 1 })
+    expect(field('employees', 'terminationReason')).toMatchObject({ expected: 446, share: 1 })
+    expect(field('employees', 'regrettable')).toMatchObject({ expected: 311, filled: 311, share: 1 })
+    // The CEO has no manager by design.
+    expect(field('employees', 'managerId')).toMatchObject({ expected: 2003, filled: 2003, share: 1 })
+    expect(field('candidates', 'offerDate')).toMatchObject({ expected: 641, filled: 641 })
+    expect(field('candidates', 'coordinator')).toMatchObject({ expected: 1800, filled: 1800 })
+    expect(field('candidates', 'hiredDate')).toMatchObject({ expected: 525, filled: 525 })
+    expect(field('candidates', 'rejectedDate')).toMatchObject({ expected: 8297, filled: 8297 })
+    expect(field('requisitions', 'filledDate')).toMatchObject({ expected: 399, filled: 399 })
+    expect(field('requisitions', 'closedDate')).toMatchObject({ expected: 427, filled: 427 })
+    expect(field('jobChanges', 'fromManagerId')).toMatchObject({ expected: 1032, filled: 1032 })
+    expect(field('succession', 'readiness')).toMatchObject({ expected: 84, filled: 84 })
+    expect(rows.find((r) => r.key === 'employees')?.coverage.core).toBe(1)
+  })
+
+  it('warns when a roster has no termination type or regrettable flag', () => {
+    const stripped = {
+      ...data,
+      employees: data.employees.map((e) => ({ ...e, terminationType: null, regrettable: null })),
+    }
+    const after = buildManifest({ data: stripped, sources: sampleSources(stripped), asOf: ctx.asOf })
+    const emp = after.find((r) => r.key === 'employees')!
+    expect(emp.status).toBe('warning')
+    expect(emp.checks.map((c) => c.text)).toEqual([
+      'Termination type is blank for all 446 leavers, so voluntary and regretted attrition can’t be shown.',
+    ])
   })
 
   it('reports coverage as a finite share for every dataset', () => {
@@ -154,5 +206,10 @@ describe('the sample company in the Data room', () => {
     expect(cov).toHaveLength(rows.reduce((a, r) => a + r.coverage.fields.length, 0))
     expect(Object.keys(cov[0])).toEqual(COVERAGE_COLUMNS.map((c) => c.key))
     for (const c of cov) expect(c.share === null || Number.isFinite(c.share)).toBe(true)
+    // A share just short of whole keeps two decimals in exports instead of rounding to 100%.
+    const col = MANIFEST_COLUMNS.find((c) => c.key === 'coverage')!
+    expect(rowFormat(col, { coverage: 0.999937 })).toBe('pct2')
+    expect(rowFormat(col, { coverage: 0.9546 })).toBe('pct')
+    expect(rowFormat(col, { coverage: 1 })).toBe('pct')
   })
 })

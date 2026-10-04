@@ -1,13 +1,35 @@
 import { BarList, Figure } from '@/charts'
-import { Section } from '@/components'
+import { Section, StatusPill } from '@/components'
 import type { AnalyticsContext } from '@/data/context'
 import { fmt } from '@/lib/format'
 import type { ServicesModel } from '../engine'
-import { ATLAS_PROCESSES, SERVICE_LEVELS } from '../engine/catalog'
-import type { LevelRow } from '../engine/levels'
+import { SERVICE_LEVELS, type ServiceLevelId } from '../engine/catalog'
+import type { LevelRow, LevelStatus, ProcessRow } from '../engine/levels'
+import { isOther } from '../engine/util'
+import { type AtlasColumn, AtlasTable, ProcessId } from './AtlasTable'
 import { asOfNote, count, DEF, period, STATUS_SEVERITY, STATUS_TONE } from './shared'
 
-const actualText = (r: LevelRow) => fmt(r.actual, r.unit === 'days' ? 'days' : 'pct')
+/** Short names for chart labels, unique per measure (LV-01 has two). */
+const SHORT: Record<ServiceLevelId, string> = {
+  'py05-payroll-2bd': 'payroll cases',
+  'ds07-verification-2bd': 'verifications',
+  'lv01-leave-response-1bd': 'leave first response',
+  'lv01-leave-designation-5bd': 'leave resolution',
+  'on03-hire-day-minus-3': 'hire entry',
+  'of05-final-pay': 'final pay',
+  'ds01-retro-share': 'retro share',
+  'ds04-access-2bd': 'access cases',
+  'er02-median-days': 'ER median days',
+  'bn03-benefits-5bd': 'benefits cases',
+  'mv06-immigration-response-1bd': 'immigration first response',
+  'mv04-location-cutoff': 'location changes',
+  'mv05-job-change-cutoff': 'job changes',
+  'lv03-return-ready': 'returns from leave',
+}
+
+const STATUS_ORDER: Record<LevelStatus, number> = { Missed: 0, 'At risk': 1, Met: 2 }
+
+const unitFormat = (r: LevelRow) => (r.unit === 'days' ? 'days' : 'pct')
 
 function gapText(r: LevelRow): string {
   if (r.gap == null) return '—'
@@ -17,51 +39,138 @@ function gapText(r: LevelRow): string {
 
 const STATUS_DEF = {
   term: 'Status',
-  text: 'Met when the actual reaches the target. At risk when it is within 5 pts of a percentage target, or within 10% of a day target. Missed otherwise. Fewer than 5 cases or transactions give no status.',
+  text: 'Met when the actual reaches the target. At risk when it is within 5 pts below a percentage target, within 10% above a day target, or within a quarter above a ceiling such as "under 2%" (up to 2.5%). Missed otherwise. A ceiling uses a relative band because 5 pts would be more than twice the target itself. No status below 5 cases or transactions, or 5 people.',
 }
 
 const BUSINESS_DAYS_DEF = {
   term: 'Business days',
-  text: 'Monday to Friday from the opened date to the resolved (or first response) date, with no holiday calendar. A case still open past the clock counts as missed.',
+  text: 'Monday to Friday between the opened date and the resolved (or first response) date, with no holiday calendar. Counted by date, not by hour. A case still open past the clock counts as missed.',
   formula: 'business days(opened, resolved) ≤ target',
+}
+
+const CASE_SLA_DEF = {
+  term: 'Case SLA (calendar hours)',
+  text: "The help desk's own resolution target for the category, in calendar hours from the opened time, as on the Cases tab and in the readout (Payroll 48 h, Leave 7 d). The Atlas clocks count business days between dates, so they are more lenient: a payroll case opened Thursday afternoon and resolved Monday morning is within 2 business days but past 48 hours. That is why PY-05 can be Met while Payroll misses the 90% case SLA.",
+  formula: 'resolvedAt − openedAt ≤ category target (hours)',
+}
+
+const ON_TIME_DEF = {
+  term: 'On time (transactions)',
+  text: "A transaction is on time when it was completed on or before its due date (Day −3 for new hires, the final pay deadline for exits, the payroll cut-off for changes, the return date for returns from leave). Each row's target is in its Target column.",
+  formula: 'completedDate ≤ dueDate',
 }
 
 export function LevelsTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext }) {
   const per = period(ctx)
-  const rows = m.levels.map((r) => ({
-    ...r,
-    actualText: actualText(r),
-    gapText: gapText(r),
-    statusText: r.status ?? 'No data',
-  }))
+  const order = new Map(SERVICE_LEVELS.map((d, i) => [d.id, i]))
+  const rank = (r: LevelRow) => (r.status ? STATUS_ORDER[r.status] : 3)
+  const rows = m.levels
+    .map((r) => ({ ...r, label: `${r.processId} ${SHORT[r.id]}`, statusText: r.status ?? 'No data' }))
+    .sort((a, b) => rank(a) - rank(b) || (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0))
+  type Row = (typeof rows)[number]
   const scored = m.levels.filter((r) => r.status != null)
   const missed = scored.filter((r) => r.status === 'Missed').length
-  const gaps = m.levels
-    .filter((r) => r.unit === 'share' && r.gap != null)
-    .map((r) => ({
-      label: `${r.processId} ${ATLAS_PROCESSES.get(r.processId)?.short ?? ''}`.trim(),
-      processId: r.processId,
-      measure: r.measure,
-      target: r.target,
-      actual: r.actual,
-      gap: r.gap,
-      status: r.status,
-    }))
+  const gaps = rows.filter((r) => r.unit === 'share' && r.gap != null)
   const dayRows = m.levels.filter((r) => r.unit === 'days')
   const adaptations = SERVICE_LEVELS.filter((d) => d.adaptation).map((d) => ({
     term: `${d.processId} ${d.measure}`,
     text: d.adaptation as string,
   }))
   const response = m.categories
-    .filter((c) => !c.category.startsWith('Other ('))
-    .slice()
+    .filter((c) => !isOther(c.category))
     .sort((a, b) => (a.responseRate ?? 2) - (b.responseRate ?? 2))
+
+  const screen: AtlasColumn<Row>[] = [
+    {
+      key: 'process',
+      label: 'Process',
+      className: 'w-[22%] min-w-40',
+      render: (r) => (
+        <>
+          <ProcessId id={r.processId} />
+          <div className="mt-0.5 text-[12px] text-ink-2">{r.process}</div>
+        </>
+      ),
+    },
+    {
+      key: 'measure',
+      label: 'Measure',
+      className: 'min-w-48',
+      render: (r) => (
+        <>
+          {r.measure}
+          <div className="mt-0.5 text-[12px] text-muted">
+            {r.team}
+            {r.basis === 'Atlas KPI' ? '' : ` · ${r.basis}`}
+          </div>
+        </>
+      ),
+    },
+    { key: 'target', label: 'Target', className: 'whitespace-nowrap', render: (r) => r.target },
+    { key: 'actual', label: 'Actual', align: 'right', render: (r) => fmt(r.actual, unitFormat(r)) },
+    { key: 'gap', label: 'Gap', align: 'right', render: gapText },
+    {
+      key: 'status',
+      label: 'Status',
+      className: 'whitespace-nowrap',
+      render: (r) =>
+        r.status ? (
+          <StatusPill severity={STATUS_SEVERITY[r.status]} label={r.status} />
+        ) : (
+          <span className="text-[12px] text-muted">No data</span>
+        ),
+    },
+    {
+      key: 'caseSla',
+      label: 'Case SLA',
+      align: 'right',
+      render: (r) =>
+        r.caseSlaTarget ? (
+          <>
+            {fmt(r.caseSla, 'pct')}
+            <div className="mt-0.5 text-[12px] text-muted">within {r.caseSlaTarget}</div>
+          </>
+        ) : (
+          <span className="text-muted">—</span>
+        ),
+    },
+    { key: 'n', label: 'n', align: 'right', render: (r) => fmt(r.n, 'int') },
+  ]
+
+  const processColumns: AtlasColumn<ProcessRow>[] = [
+    {
+      key: 'processId',
+      label: 'Process ID',
+      className: 'whitespace-nowrap',
+      render: (r) => <ProcessId id={r.processId} />,
+    },
+    {
+      key: 'process',
+      label: 'Process',
+      className: 'min-w-44',
+      render: (r) => (
+        <>
+          {r.process}
+          <div className="mt-0.5 text-[12px] text-muted">{r.owner}</div>
+        </>
+      ),
+    },
+    { key: 'covers', label: 'Covers', className: 'min-w-44 text-ink-2', render: (r) => r.covers },
+    { key: 'cases', label: 'Cases', align: 'right', render: (r) => fmt(r.cases, 'int') },
+    { key: 'transactions', label: 'Transactions', align: 'right', render: (r) => fmt(r.transactions, 'int') },
+    {
+      key: 'sla',
+      label: 'Atlas service level',
+      className: 'min-w-64 text-[12px] text-ink-2',
+      render: (r) => r.sla,
+    },
+  ]
 
   return (
     <>
       <Section
         title="Scorecard"
-        dek={`Each row is a measurable KPI from the Hire-to-Retire Atlas, scored on the ${per}. The Atlas column quotes the KPI or service level the row tracks.`}
+        dek={`Each row is a measurable KPI from the Hire-to-Retire Atlas, scored on the ${per}, misses first. Process IDs open the Atlas page. Case rows also show the help desk's resolution SLA in calendar hours, the clock the Cases tab and the readout use.`}
       >
         <Figure
           id="services-scorecard"
@@ -74,22 +183,28 @@ export function LevelsTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext 
             { key: 'process', label: 'Process' },
             { key: 'measure', label: 'Measure' },
             { key: 'target', label: 'Target' },
-            { key: 'actualText', label: 'Actual', align: 'right' },
-            { key: 'gapText', label: 'Gap to target', align: 'right' },
+            { key: 'actual', label: 'Actual', format: (r: Row) => unitFormat(r) },
+            { key: 'gap', label: 'Gap to target', format: (r: Row) => (r.unit === 'days' ? 'days' : 'pts') },
             { key: 'statusText', label: 'Status' },
+            { key: 'caseSla', label: 'Case SLA met (calendar hours)', format: 'pct' },
+            { key: 'caseSlaTarget', label: 'Case SLA target' },
             { key: 'n', label: 'n', format: 'int' },
+            { key: 'team', label: 'Team' },
             { key: 'window', label: 'Window' },
             { key: 'atlas', label: 'Atlas wording' },
             { key: 'basis', label: 'Basis' },
           ]}
-          definitions={[STATUS_DEF, BUSINESS_DAYS_DEF, DEF.onTime, ...adaptations]}
-          note={asOfNote(m.asOf, 'Atlas process library and KPI targets', 'n = cases or transactions judged')}
-          tableOnly
-          table={{
-            rowTone: (r) => (r.status ? STATUS_SEVERITY[r.status] : null),
-            maxRows: 20,
-          }}
-        />
+          definitions={[STATUS_DEF, BUSINESS_DAYS_DEF, CASE_SLA_DEF, ON_TIME_DEF, ...adaptations]}
+          note={asOfNote(
+            m.asOf,
+            'n = cases or transactions judged',
+            'Atlas wording and basis are in the table view and exports',
+          )}
+          image={false}
+          table={{ rowTone: (r) => (r.status ? STATUS_SEVERITY[r.status] : null), maxRows: 20 }}
+        >
+          <AtlasTable rows={rows} columns={screen} rowKey={(r) => r.id} caption="Service level scorecard" />
+        </Figure>
       </Section>
 
       <Section
@@ -108,7 +223,7 @@ export function LevelsTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext 
             { key: 'target', label: 'Target' },
             { key: 'actual', label: 'Actual', format: 'pct' },
             { key: 'gap', label: 'Gap to target', format: 'pts' },
-            { key: 'status', label: 'Status' },
+            { key: 'statusText', label: 'Status' },
           ]}
           definitions={[
             {
@@ -121,7 +236,7 @@ export function LevelsTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext 
           note={asOfNote(
             m.asOf,
             dayRows.length
-              ? `${dayRows.map((r) => `${r.processId} (${actualText(r)} against ${r.target})`).join(', ')} is measured in days and appears in the scorecard only`
+              ? `${dayRows.map((r) => `${r.processId} (${fmt(r.actual, 'days')} against ${r.target})`).join(', ')} is measured in days and appears in the scorecard only`
               : null,
           )}
           empty={gaps.length ? null : 'No Atlas measure has enough data in this period.'}
@@ -152,9 +267,11 @@ export function LevelsTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext 
           empty={
             !m.hasCases
               ? 'Upload HR cases to see this.'
-              : m.caseCols.firstResponseAt
-                ? null
-                : 'Upload HR cases with a first response time to see this.'
+              : !m.caseCols.firstResponseAt
+                ? 'Upload HR cases with a first response time to see this.'
+                : response.length
+                  ? null
+                  : 'No category has cases from 5 or more people in this period.'
           }
         >
           <BarList
@@ -164,7 +281,7 @@ export function LevelsTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext 
             format="pct"
             sort="none"
             domain={[0, 1]}
-            secondary={(d) => `n = ${fmt(d.cases, 'int')}`}
+            secondary={(d) => count(d.cases, 'case')}
           />
         </Figure>
       </Section>
@@ -193,11 +310,22 @@ export function LevelsTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext 
               term: 'Atlas process',
               text: 'Each case category and transaction type maps to one process in the Hire-to-Retire Atlas. Uploaded cases keep their own process ID when they carry one.',
             },
+            {
+              term: 'Hidden counts',
+              text: 'A count of cases or transactions behind fewer than 5 people shows as "—", so a small scope cannot show that one of its members had, say, an immigration case.',
+            },
           ]}
           note={asOfNote(m.asOf, `${m.processes.length} processes`)}
-          tableOnly
+          image={false}
           table={{ maxRows: 20 }}
-        />
+        >
+          <AtlasTable
+            rows={m.processes}
+            columns={processColumns}
+            rowKey={(r) => r.processId}
+            caption="Processes behind these measures"
+          />
+        </Figure>
       </Section>
     </>
   )

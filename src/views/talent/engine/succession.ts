@@ -5,7 +5,7 @@
  */
 import { LEVELS, MIN_GROUP, READINESS, type Readiness, type SuccessionPlan } from '@/data/schema'
 import { isActiveAt } from '@/lib/people'
-import { type Cycle, nameOf, reviewIn, type TalentBase, UNKNOWN } from './base'
+import { type Cycle, foldSmallGroups, nameOf, reviewIn, type TalentBase, UNKNOWN } from './base'
 import type { PersonRisk, RiskBand } from './risk'
 
 export type RoleStatus = 'Covered' | 'Thin' | 'No successor'
@@ -64,18 +64,18 @@ export interface BenchTableRow {
   noSuccessor: number
 }
 
-export interface PipelineRow {
-  readiness: Readiness
-  criticality: 'Critical' | 'Key'
-  successors: number
-}
+/** Which roles the bench chart counts. */
+export type BenchScope = 'All' | 'Critical' | 'Key'
+export const BENCH_SCOPES: readonly BenchScope[] = ['All', 'Critical', 'Key']
 
 export interface HipoGroupRow {
-  /** Level or business unit. */
+  /** Level or business unit, or "Other (k)" for groups under 5 folded together. */
   group: string
   assessed: number
-  high: number
+  /** Null on a folded row still under 5 people. */
+  high: number | null
   share: number | null
+  other?: boolean
 }
 
 export interface SuccessionResult {
@@ -84,9 +84,9 @@ export interface SuccessionResult {
   criticalCovered: number
   coverage: number | null
   coverageByUnit: CoverageRow[]
-  bench: BenchRow[]
-  benchTable: BenchTableRow[]
-  pipeline: PipelineRow[]
+  /** Named successors by business unit and readiness, for all, critical or key roles. */
+  bench: Record<BenchScope, BenchRow[]>
+  benchTable: Record<BenchScope, BenchTableRow[]>
   potentialCycle: Cycle | null
   hipoByLevel: HipoGroupRow[]
   hipoByUnit: HipoGroupRow[]
@@ -194,54 +194,44 @@ export function computeSuccession(base: TalentBase, risk: Map<string, PersonRisk
       roles: roles.filter((r) => r.businessUnit === bu && r.coverage === coverage).length,
     })),
   )
-  const bench: BenchRow[] = units.flatMap((bu) =>
-    READINESS.map((readiness) => {
-      const list = roles.filter((r) => r.businessUnit === bu)
-      const successors = list.reduce(
-        (s, r) =>
-          s +
-          (readiness === 'Ready now'
-            ? r.readyNow
-            : readiness === 'Ready in 1-2 years'
-              ? r.ready1to2
-              : r.ready3plus),
-        0,
-      )
-      return { businessUnit: bu, readiness, successors }
-    }),
-  )
-  const benchTable: BenchTableRow[] = units.map((bu) => {
-    const list = roles.filter((r) => r.businessUnit === bu)
-    const successors = list.reduce((s, r) => s + r.successors, 0)
-    return {
-      businessUnit: bu,
-      roles: list.length,
-      successors,
-      perRole: list.length ? successors / list.length : null,
-      readyNow: list.reduce((s, r) => s + r.readyNow, 0),
-      ready1to2: list.reduce((s, r) => s + r.ready1to2, 0),
-      ready3plus: list.reduce((s, r) => s + r.ready3plus, 0),
-      noSuccessor: list.filter((r) => r.successors === 0).length,
-    }
-  })
-  const pipeline: PipelineRow[] = READINESS.flatMap((readiness) =>
-    (['Critical', 'Key'] as const).map((criticality) => ({
-      readiness,
-      criticality,
-      successors: roles
-        .filter((r) => r.criticality === criticality)
-        .reduce(
-          (s, r) =>
-            s +
-            (readiness === 'Ready now'
-              ? r.readyNow
-              : readiness === 'Ready in 1-2 years'
-                ? r.ready1to2
-                : r.ready3plus),
-          0,
-        ),
-    })),
-  )
+  const inScope = (scope: BenchScope) => (r: RoleRow) => scope === 'All' || r.criticality === scope
+  const countAt = (r: RoleRow, readiness: Readiness) =>
+    readiness === 'Ready now' ? r.readyNow : readiness === 'Ready in 1-2 years' ? r.ready1to2 : r.ready3plus
+  const benchRows = (scope: BenchScope): BenchRow[] =>
+    units.flatMap((bu) =>
+      READINESS.map((readiness) => ({
+        businessUnit: bu,
+        readiness,
+        successors: roles
+          .filter((r) => r.businessUnit === bu && inScope(scope)(r))
+          .reduce((s, r) => s + countAt(r, readiness), 0),
+      })),
+    )
+  const benchTableRows = (scope: BenchScope): BenchTableRow[] =>
+    units
+      .map((bu) => {
+        const list = roles.filter((r) => r.businessUnit === bu && inScope(scope)(r))
+        const successors = list.reduce((s, r) => s + r.successors, 0)
+        return {
+          businessUnit: bu,
+          roles: list.length,
+          successors,
+          perRole: list.length ? successors / list.length : null,
+          readyNow: list.reduce((s, r) => s + r.readyNow, 0),
+          ready1to2: list.reduce((s, r) => s + r.ready1to2, 0),
+          ready3plus: list.reduce((s, r) => s + r.ready3plus, 0),
+          noSuccessor: list.filter((r) => r.successors === 0).length,
+        }
+      })
+      .filter((r) => r.roles > 0)
+  const bench = Object.fromEntries(BENCH_SCOPES.map((k) => [k, benchRows(k)])) as Record<
+    BenchScope,
+    BenchRow[]
+  >
+  const benchTable = Object.fromEntries(BENCH_SCOPES.map((k) => [k, benchTableRows(k)])) as Record<
+    BenchScope,
+    BenchTableRow[]
+  >
 
   // High potentials: active employees assessed in the latest annual cycle.
   const potentialCycle = base.latestAnnual
@@ -268,26 +258,30 @@ export function computeSuccession(base: TalentBase, risk: Map<string, PersonRisk
     }
   }
   const levelOrder = [...LEVELS, 'Unknown']
-  const hipoByLevel: HipoGroupRow[] = levelOrder
-    .filter((l) => levelGroups.has(l))
-    .map((level) => {
-      const g = levelGroups.get(level)!
-      return {
-        group: level,
+  const hipoByLevel = foldHipo(
+    levelOrder
+      .filter((l) => levelGroups.has(l))
+      .map((level) => {
+        const g = levelGroups.get(level)!
+        return {
+          group: level,
+          assessed: g.assessed,
+          high: g.high,
+          share: g.assessed >= MIN_GROUP ? g.high / g.assessed : null,
+        }
+      }),
+  )
+
+  const hipoByUnit = foldHipo(
+    [...unitGroups.entries()]
+      .map(([group, g]) => ({
+        group,
         assessed: g.assessed,
         high: g.high,
         share: g.assessed >= MIN_GROUP ? g.high / g.assessed : null,
-      }
-    })
-
-  const hipoByUnit: HipoGroupRow[] = [...unitGroups.entries()]
-    .map(([group, g]) => ({
-      group,
-      assessed: g.assessed,
-      high: g.high,
-      share: g.assessed >= MIN_GROUP ? g.high / g.assessed : null,
-    }))
-    .sort((a, b) => (b.share ?? -1) - (a.share ?? -1))
+      }))
+      .sort((a, b) => (b.share ?? -1) - (a.share ?? -1)),
+  )
 
   return {
     roles,
@@ -297,7 +291,6 @@ export function computeSuccession(base: TalentBase, risk: Map<string, PersonRisk
     coverageByUnit,
     bench,
     benchTable,
-    pipeline,
     potentialCycle,
     hipoByLevel,
     hipoByUnit,
@@ -306,6 +299,26 @@ export function computeSuccession(base: TalentBase, risk: Map<string, PersonRisk
     hipoAssessed: assessed,
     departedSuccessors,
   }
+}
+
+/** Groups under 5 assessed fold into a last "Other (k)" row, so no count over fewer than 5 people is exported. */
+function foldHipo(rows: HipoGroupRow[]): HipoGroupRow[] {
+  return foldSmallGroups(
+    rows,
+    (r) => r.assessed,
+    (folded, label) => {
+      const assessed = folded.reduce((s, r) => s + r.assessed, 0)
+      const high = folded.reduce((s, r) => s + (r.high ?? 0), 0)
+      const ok = assessed >= MIN_GROUP
+      return {
+        group: label,
+        assessed,
+        high: ok ? high : null,
+        share: ok ? high / assessed : null,
+        other: true,
+      }
+    },
+  )
 }
 
 const riskRank = (r: RoleRow['riskOfLoss']) => (r === 'High' ? 0 : r === 'Medium' ? 1 : r === 'Low' ? 2 : 3)

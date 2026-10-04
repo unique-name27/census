@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { firstYearAttrition } from '@/lib/people'
 import { cohortSummary, computeAttrition, firstYearCohort, NOT_RATED } from './attrition'
-import { emp, leaver, many, prepOf, review } from './fixtures'
+import { change, emp, leaver, many, prepOf, review } from './fixtures'
 
 describe('first-year cohort', () => {
   const people = [
@@ -82,7 +82,7 @@ describe('computeAttrition', () => {
 
   it('splits quarters by type and annualizes ×4', () => {
     const a = computeAttrition(prepOf({ employees: [mgr, ...stayers, regretted, other, fired] }))
-    const q2 = a.quarters.filter((q) => q.quarter === '2026 Q2')
+    const q2 = a.quarters.filter((q) => q.quarter === "Q2 '26")
     const vol = q2.find((q) => q.type === 'Voluntary')!
     expect(vol.exits).toBe(1)
     expect(vol.rate).toBeCloseTo((1 / vol.avgHeadcount) * 4, 10)
@@ -97,6 +97,41 @@ describe('computeAttrition', () => {
     expect(a.regrettedByQuarter).toEqual([])
     expect(a.byDepartment[0].voluntaryRate).toBeNull()
     expect(a.byDepartment[0].rate).not.toBeNull()
+  })
+
+  it('counts movers in the department they were in at each month end, as the level chart does', () => {
+    // MOVER sat in Firmware until 1 Apr 2026, then moved to Design Verification and left from there.
+    const mover = leaver('2026-08-03', 'Voluntary', {
+      employeeId: 'MOVER',
+      department: 'Design Verification',
+    })
+    const firmware = many(10, { department: 'Firmware' })
+    const dv = many(10, { department: 'Design Verification' })
+    const jobChanges = [
+      change({
+        employeeId: 'MOVER',
+        effectiveDate: '2026-04-01',
+        changeType: 'Transfer',
+        fromDepartment: 'Firmware',
+        toDepartment: 'Design Verification',
+      }),
+    ]
+    const a = computeAttrition(prepOf({ employees: [...firmware, ...dv, mover], jobChanges }))
+    const fw = a.byDepartment.find((r) => r.group === 'Firmware')!
+    const dvRow = a.byDepartment.find((r) => r.group === 'Design Verification')!
+    // Snapshots 30 Sep 2025 to 31 Mar 2026 (7 of 13) in Firmware; 30 Apr to 31 Jul 2026 (4) in Design Verification.
+    expect(fw.avgHeadcount).toBeCloseTo(10 + 7 / 13, 10)
+    expect(dvRow.avgHeadcount).toBeCloseTo(10 + 4 / 13, 10)
+    expect(fw.voluntary).toBe(0)
+    expect(dvRow.voluntary).toBe(1)
+  })
+
+  it('is null, not 0, when no Employees row has a termination date (an active-only roster)', () => {
+    const a = computeAttrition(prepOf({ employees: [mgr, ...stayers] }))
+    expect(a.company).toEqual({ all: null, voluntary: null, regretted: null })
+    expect(a.quarters.every((q) => q.rate === null)).toBe(true)
+    expect(a.byDepartment.every((r) => r.rate === null && r.voluntaryRate === null)).toBe(true)
+    expect(a.regrettedByQuarter).toEqual([])
   })
 
   it('handles an empty roster', () => {

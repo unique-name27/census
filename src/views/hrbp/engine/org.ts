@@ -7,7 +7,7 @@
  */
 import type { Employee, ISODate } from '@/data/schema'
 import { addMonths, daysBetween } from '@/lib/dates'
-import { exitsIn } from '@/lib/people'
+import { directReports, exitsIn, isActiveAt } from '@/lib/people'
 import { median } from '@/lib/stats'
 import { activeWorkers, type Prep } from './base'
 
@@ -75,7 +75,12 @@ export function spanBucket(n: number): (typeof SPAN_BUCKETS)[number] {
   return '12+'
 }
 
-export function managerFlag(directs: number, isNew: boolean): ManagerFlag {
+/**
+ * Span flags for line managers. Executives (E levels) lead leadership teams whose size is set by
+ * the org design, so they are flagged only when new.
+ */
+export function managerFlag(directs: number, isNew: boolean, level?: string | null): ManagerFlag {
+  if (level?.startsWith('E')) return isNew ? 'New' : 'Healthy'
   if (directs >= 12) return 'Overloaded'
   if (directs >= 9) return 'Heavy'
   if (directs < 3) return 'Light'
@@ -83,17 +88,14 @@ export function managerFlag(directs: number, isNew: boolean): ManagerFlag {
   return 'Healthy'
 }
 
-/** Children per manager among active, in-scope workers; the manager must be active and in scope too. */
-export function activeChildren(active: readonly Employee[]): Map<string, Employee[]> {
-  const ids = new Set(active.map((e) => e.employeeId))
-  const out = new Map<string, Employee[]>()
-  for (const e of active) {
-    const m = e.managerId
-    if (!m || m === e.employeeId || !ids.has(m)) continue
-    const arr = out.get(m)
-    if (arr) arr.push(e)
-    else out.set(m, [e])
-  }
+/**
+ * Direct reports of every worker type per manager at d (the shared `directReports` with
+ * `allWorkers`), kept to managers who are themselves active and in scope.
+ */
+export function activeChildren(people: readonly Employee[], d: ISODate): Map<string, Employee[]> {
+  const ids = new Set(people.filter((e) => isActiveAt(e, d)).map((e) => e.employeeId))
+  const out = directReports(people, d, { allWorkers: true })
+  for (const id of [...out.keys()]) if (!ids.has(id)) out.delete(id)
   return out
 }
 
@@ -138,7 +140,7 @@ export function managerSince(e: Employee, becameManager: ISODate | null): ISODat
 export function computeOrg(p: Prep): OrgModel {
   const { asOf, people, t12 } = p
   const active = activeWorkers(people, asOf)
-  const children = activeChildren(active)
+  const children = activeChildren(active, asOf)
   const below = subtreeSizer(children)
   const yearAgo = addMonths(asOf, -12)
 
@@ -167,7 +169,7 @@ export function computeOrg(p: Prep): OrgModel {
       managerSince: since,
       newManager: isNew,
       regretted12: regretted.get(id) ?? 0,
-      flag: managerFlag(kids.length, isNew),
+      flag: managerFlag(kids.length, isNew, m.level),
     })
   }
   managers.sort((a, b) => b.directs - a.directs || b.totalOrg - a.totalOrg || a.name.localeCompare(b.name))

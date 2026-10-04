@@ -52,17 +52,21 @@ export const DEF = {
   },
   flightRisk: {
     term: 'Flight-risk score',
-    text: 'Points from up to nine factors, each with a plain reason, added up to a score from 0 to 100. A factor’s points come from how much it raised the voluntary exit rate over the last 12 months; factors that did not raise it get 0 points.',
+    text: 'Points from up to nine factors, each with a plain reason, added up to a score from 0 to 100. A factor’s points come from how much more often people with it left voluntarily within 12 months, checked at each month-end 12 to 23 months back, so only exits that have already happened are used. Factors that did not go with more exits get 0 points; factors whose data does not reach back that far keep their default points. Points are rounded to 5.',
     formula: 'score = Σ factor strength × factor points',
   },
   bands: {
     term: 'Risk bands',
-    text: 'Relative to everyone scored company-wide: the top 10% of scores are High, the next 25% Medium, the rest Low. A score of 0 is always Low.',
+    text: 'Relative to everyone scored company-wide: about the top 10% of scores are High and the next 25% Medium, the rest Low. People with the same score always share a band, so the cut sits where the band comes closest to 10% (or 35% for High and Medium together), and the real shares are shown. A score of 0 is always Low.',
   },
   backTest: {
     term: 'Back-test',
-    text: 'Everyone active 12 months before the as-of date is scored with the data available then, and their voluntary exits over the next 12 months are counted per band. People are split in two halves; each half is scored with points learned only from the other half, so no one is scored by points that saw their own outcome.',
+    text: 'Everyone active 12 months before the as-of date is scored with points learned only from exits known by then (month-ends 24 to 35 months back and the 12 months after each), and their voluntary exits over the next 12 months are counted per band. No exit after the scoring date helps set the points it is judged on. Factors whose data does not reach back that far use their default points.',
     formula: 'exit rate = left within 12 months ÷ people in the band',
+  },
+  mainReason: {
+    term: 'Main reason',
+    text: 'The factor that adds the most points to the person’s score, leaving out a factor that at least 80% of the high band shares (such as tenure of 1-3 years) when the person has another one. That shared factor then shows under Also.',
   },
   lift: {
     term: 'Lift',
@@ -71,7 +75,7 @@ export const DEF = {
   },
   keyTalent: {
     term: 'Key talent at risk',
-    text: 'Active employees whose latest rating is 4 or 5 and whose flight-risk score is in the High band.',
+    text: 'Active employees whose latest rating (on or before the as-of date) is 4 or 5 and whose flight-risk score is in the High band.',
   },
   overduePromotion: {
     term: 'Overdue for promotion',
@@ -87,12 +91,12 @@ export const DEF = {
   },
   onTime: {
     term: 'On time',
-    text: 'Completed on or before the due date. Counts assignments due in the period, for people still employed on the due date.',
+    text: 'Completed on or before the due date. Counts assignments due in the period, for employees still employed on the due date. Contractors and interns are not counted.',
     formula: 'completed by due date ÷ assignments due',
   },
   overdue: {
     term: 'Overdue',
-    text: 'A required assignment that is not completed and was due before the as-of date, for people active today.',
+    text: 'A required assignment that is not completed and was due before the as-of date, for employees active today. Contractors and interns are not counted.',
   },
   hours: {
     term: 'Learning hours per employee',

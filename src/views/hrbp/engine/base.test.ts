@@ -1,5 +1,15 @@
 import { describe, expect, it } from 'vitest'
-import { buildHistory, isMaterialGap, listJoin, monthEnds, nameList, quarterBlocks, trailing } from './base'
+import {
+  buildHistory,
+  isMaterialGap,
+  listJoin,
+  monthEnds,
+  nameList,
+  priorLabel,
+  quarterBlocks,
+  trailing,
+  yearEarlier,
+} from './base'
 import { change, emp } from './fixtures'
 
 describe('windows', () => {
@@ -11,8 +21,9 @@ describe('windows', () => {
   it('quarter blocks are calendar quarters, oldest first, when asOf is a quarter end', () => {
     const q = quarterBlocks('2026-09-30', 8)
     expect(q).toHaveLength(8)
-    expect(q[0]).toMatchObject({ start: '2024-10-01', end: '2024-12-31', label: '2024 Q4', months: 3 })
-    expect(q[7]).toMatchObject({ start: '2026-07-01', end: '2026-09-30', label: '2026 Q3' })
+    // The chart kit's quarter ticks read "Q3 '26", so tables and axes use the same words.
+    expect(q[0]).toMatchObject({ start: '2024-10-01', end: '2024-12-31', label: "Q4 '24", months: 3 })
+    expect(q[7]).toMatchObject({ start: '2026-07-01', end: '2026-09-30', label: "Q3 '26" })
     for (let i = 1; i < q.length; i++) expect(q[i].start > q[i - 1].end).toBe(true)
   })
 
@@ -20,6 +31,20 @@ describe('windows', () => {
     const q = quarterBlocks('2026-08-31', 2)
     expect(q[1]).toMatchObject({ start: '2026-06-01', end: '2026-08-31' })
     expect(q[1].label).toBe("Jun–Aug '26")
+  })
+
+  it('moves a window back a year, keeping month ends', () => {
+    expect(yearEarlier(trailing('2026-09-30', 3))).toMatchObject({
+      start: '2025-07-01',
+      end: '2025-09-30',
+      months: 3,
+    })
+    expect(yearEarlier({ start: '2028-01-01', end: '2028-02-29', months: 2, label: '' })).toMatchObject({
+      start: '2027-01-01',
+      end: '2027-02-28',
+    })
+    expect(priorLabel('t3m', 3)).toBe('vs prior 3 months')
+    expect(priorLabel('ytd', 9)).toBe('vs same period last year')
   })
 
   it('month ends end on asOf', () => {

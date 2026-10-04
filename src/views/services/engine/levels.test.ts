@@ -59,8 +59,14 @@ describe('status and gap', () => {
     const d = def('ds01-retro-share')
     expect(levelStatus(d, 0.019)).toBe('Met')
     expect(levelStatus(d, 0.02)).toBe('At risk')
-    expect(levelStatus(d, 0.071)).toBe('Missed')
     expect(levelGap(d, 0.01)).toBeCloseTo(0.01)
+  })
+
+  it('uses a relative band above a ceiling share, so 3.5 times the target is Missed', () => {
+    const d = def('ds01-retro-share')
+    expect(levelStatus(d, 0.025)).toBe('At risk')
+    expect(levelStatus(d, 0.026)).toBe('Missed')
+    expect(levelStatus(d, 0.069)).toBe('Missed')
   })
 
   it('uses a 10% band for day targets', () => {
@@ -137,10 +143,46 @@ describe('scorecard', () => {
     expect(ds01.status).toBe('At risk')
   })
 
+  it('scores leave designation on a 5 business day clock beside the calendar-hour case SLA', () => {
+    // Opened Monday 7 Sep. Resolved Friday 11 Sep (4 bd, 4 d: inside both clocks), Monday 14 Sep
+    // (5 bd but 7 d 1 h: inside the Atlas clock, past the 168 h case target) or Tuesday 15 Sep (6 bd).
+    const leave = (resolvedAt: string) =>
+      kase({
+        category: 'Leave & accommodation',
+        resolutionTargetHours: 168,
+        openedAt: '2026-09-07T09:00',
+        resolvedAt,
+      })
+    const rows = [
+      ...times(6, () => leave('2026-09-11T09:00')),
+      ...times(2, () => leave('2026-09-14T10:00')),
+      ...times(2, () => leave('2026-09-15T10:00')),
+    ]
+    const lv = card(rows).find((r) => r.id === 'lv01-leave-designation-5bd')!
+    expect(lv.processId).toBe('LV-01')
+    expect(lv.actual).toBeCloseTo(0.8)
+    expect(lv.status).toBe('Missed')
+    expect(lv.caseSla).toBeCloseTo(0.6)
+    expect(lv.caseSlaTarget).toBe('7 d')
+    const py = card(times(5, () => kase())).find((r) => r.id === 'py05-payroll-2bd')!
+    expect(py.caseSla).toBe(1)
+    expect(py.caseSlaTarget).toBe('48 h')
+    expect(card([]).find((r) => r.id === 'on03-hire-day-minus-3')!.caseSla).toBeNull()
+  })
+
+  it('needs 5 people behind a measure, not just 5 cases', () => {
+    const rows = times(9, (i) => kase({ requesterId: `EX${i % 4}` }))
+    const py = card(rows).find((r) => r.id === 'py05-payroll-2bd')!
+    // Nine cases from four people: no rate, and the count itself is hidden.
+    expect(py.n).toBeNull()
+    expect(py.actual).toBeNull()
+    expect(py.caseSla).toBeNull()
+  })
+
   it('gives no actual below 5 rows or without the needed columns', () => {
     const few = card(times(3, () => kase()))
     expect(few.find((r) => r.id === 'py05-payroll-2bd')!.actual).toBeNull()
-    expect(few.find((r) => r.id === 'py05-payroll-2bd')!.n).toBe(3)
+    expect(few.find((r) => r.id === 'py05-payroll-2bd')!.n).toBeNull()
     const empty = card([])
     expect(empty.every((r) => r.actual === null && r.status === null)).toBe(true)
   })
@@ -148,16 +190,23 @@ describe('scorecard', () => {
 
 describe('process coverage', () => {
   it('lists every governing process with cases opened and transactions due in the window', () => {
-    const cases = caseFacts([kase(), kase({ category: 'Benefits' })], AS_OF, caseColumns([kase()]))
-    const rows = processCoverage(cases, txFacts([tx({ type: 'Termination' })], AS_OF, new Map()), W)
+    const cases = caseFacts(
+      [...times(5, () => kase()), kase({ category: 'Benefits' })],
+      AS_OF,
+      caseColumns([kase()]),
+    )
+    const exits = times(5, () => tx({ type: 'Termination' }))
+    const rows = processCoverage(cases, txFacts(exits, AS_OF, new Map()), W)
     const py05 = rows.find((r) => r.processId === 'PY-05')!
     expect(py05).toMatchObject({
       process: 'Payroll error correction & overpayment recovery',
-      cases: 1,
+      cases: 5,
       transactions: 0,
     })
     expect(py05.covers).toBe('Payroll cases')
-    expect(rows.find((r) => r.processId === 'OF-05')).toMatchObject({ cases: 0, transactions: 1 })
+    expect(rows.find((r) => r.processId === 'OF-05')).toMatchObject({ cases: 0, transactions: 5 })
+    // One benefits case is one person: the count is hidden, not shown as 1.
+    expect(rows.find((r) => r.processId === 'BN-03')).toMatchObject({ cases: null, transactions: 0 })
     expect(rows.find((r) => r.processId === 'DS-01')?.covers).toBe(
       'HR data & records cases, Personal data change transactions',
     )

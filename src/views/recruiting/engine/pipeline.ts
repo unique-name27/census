@@ -79,8 +79,9 @@ export interface QueueRow {
   candidate: string
   applicationId: string
   reqId: string
-  title: string
-  department: string
+  /** Null when unknown (tables render "—", exports leave the cell empty). */
+  title: string | null
+  department: string | null
   stage: string
   stageIndex: number
   state: NextState
@@ -129,7 +130,7 @@ export function queueRows(groups: readonly QueueGroup[]): QueueRow[] {
       applicationId: x.app.id,
       reqId: x.app.reqId,
       title: x.app.title,
-      department: x.app.department ?? '—',
+      department: x.app.department,
       stage: STAGES[x.stage],
       stageIndex: x.stage,
       state: x.state,

@@ -20,6 +20,7 @@ import {
 } from '@/data/schema'
 import type { Window } from '@/data/scope'
 import { dateOf, daysBetween, hoursBetween, ms } from '@/lib/dates'
+import { share } from './util'
 
 /* ───────────── cases ───────────── */
 
@@ -32,6 +33,8 @@ export interface CaseFact {
   tier: string | null
   assignee: string | null
   requesterId: string | null
+  /** Who the case is about: the requester, or the case itself when the requester is unknown. */
+  person: string
   status: string
   openedAt: string
   opened: ISODate
@@ -141,6 +144,7 @@ export function caseFacts(cases: readonly HrCase[], asOf: ISODate, cols: CaseCol
       tier: c.tier ?? null,
       assignee: c.assignee ?? null,
       requesterId: c.requesterId ?? null,
+      person: c.requesterId ? `p:${c.requesterId}` : `c:${c.caseId}`,
       status: c.status,
       openedAt: c.openedAt,
       opened,
@@ -187,6 +191,8 @@ export interface TxFact {
   type: string
   processId: string | null
   employeeId: string
+  /** Who the transaction is about (the employee), for small-group suppression. */
+  person: string
   name: string | null
   location: string | null
   jurisdiction: string | null
@@ -240,6 +246,7 @@ export function txFacts(
       type: t.type,
       processId: t.processId ?? null,
       employeeId: t.employeeId,
+      person: `p:${t.employeeId}`,
       name: e?.name ?? null,
       location: e?.location ?? null,
       jurisdiction: site?.jurisdiction ?? null,
@@ -261,14 +268,27 @@ export function txFacts(
 export const dueIn = (facts: readonly TxFact[], w: Pick<Window, 'start' | 'end'>): TxFact[] =>
   facts.filter((f) => inWin(f.due, w))
 
+/** On time, late (completed late or open past due) and the share on time, over the judged items. */
+export interface OnTime {
+  /** On time ÷ (on time + late); null below MIN_GROUP items or people. */
+  rate: number | null
+  n: number
+  onTime: number
+  late: number
+  people: number
+}
+
 /** On time ÷ (on time + late + overdue). Pending items (not yet due) are left out. */
-export function onTimeRate(facts: readonly TxFact[]): { rate: number | null; n: number; late: number } {
+export function onTimeRate(facts: readonly TxFact[]): OnTime {
   let ok = 0
   let late = 0
+  const people = new Set<string>()
   for (const f of facts) {
     if (f.outcome === 'on-time') ok++
     else if (f.outcome === 'late' || f.outcome === 'overdue') late++
+    else continue
+    people.add(f.person)
   }
   const n = ok + late
-  return { rate: n ? ok / n : null, n, late }
+  return { rate: share(ok, n, people.size).rate, n, onTime: ok, late, people: people.size }
 }

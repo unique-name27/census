@@ -89,8 +89,18 @@ describe('sample company, whole company, last 12 months', () => {
     // The README counts 91 with a simpler rule (no event, 14+ days); the tiered rule is wider.
     expect(lacking).toBeGreaterThanOrEqual(91)
     expect(f.title).toContain(`${lacking} candidates lack a next step`)
-    expect(f.detail).toContain('Ji-woo Lim has 33 candidates waiting on a decision and Hannah Smith 22')
-    expect(f.detail).toContain('of the 76 waiting')
+    // The README's 33 and 22 count every awaiting-feedback item (76); the finding names the
+    // decisions in its title (39 past 2 days), the same set the action queue and notes list.
+    expect(f.title).toContain('39 of them waiting on an interview decision')
+    expect(f.detail).toContain('Ji-woo Lim has 20 of the 39 decisions and Hannah Smith 9, 74% together.')
+    const owners = new Map(m.queue.map((g) => [g.owner, g]))
+    const decisions = (o: string) =>
+      owners.get(o)!.items.filter((x) => x.state === 'awaiting-feedback').length
+    expect([decisions('Ji-woo Lim'), decisions('Hannah Smith')]).toEqual([20, 9])
+    const awaiting = m.base.actives.filter((x) => x.state === 'awaiting-feedback')
+    expect(awaiting).toHaveLength(76)
+    expect(awaiting.filter((x) => x.owner === 'Ji-woo Lim')).toHaveLength(33)
+    expect(f.people).toHaveLength(lacking)
     expect(f.action).toContain('Ask the panels to submit scorecards and make a decision this week')
     const hms = m.queue.filter((g) => g.role === 'Hiring manager').map((g) => g.owner)
     expect(hms.slice(0, 2)).toEqual(['Ji-woo Lim', 'Hannah Smith'])
@@ -118,13 +128,23 @@ describe('sample company, whole company, last 12 months', () => {
     expect(m.changedSource).toBe('Job board')
   })
 
-  it('story 6: senior and analog reqs take far longer to fill', () => {
-    const ttf = finding('rec-time-to-fill')
+  it('story 6: senior and analog reqs take far longer to fill (one story in the readout)', () => {
+    const ttf = allProblemFindings(m.base).find((x) => x.id === 'rec-time-to-fill')!
     expect(ttf.title).toBe('L5 reqs took a median 107 d to fill in the last 12 months, vs 52 d overall.')
+    // Design Verification (79 d) is not the slowest department: Analog (127 d) and IT (90 d) are.
+    expect(ttf.detail).toBe('By department, Design Verification also runs long at 79 d over 23 reqs.')
+    // Six problems fire; the readout has five places next to the good finding, so the slow
+    // time to fill folds into the analog empty-funnel story and the job board story stays.
+    expect(m.findings.map((x) => x.id)).not.toContain('rec-time-to-fill')
     expect(finding('rec-empty-funnel').detail).toContain(
-      'Analog & Mixed-Signal reqs filled in the last 12 months took a median 127 d to fill',
+      'Analog & Mixed-Signal reqs filled in the last 12 months took a median 127 d to fill and L5 reqs 107 d, vs 52 d for the company.',
     )
-    expect(m.ttfByDepartment[0]).toMatchObject({ group: 'Analog & Mixed-Signal', days: 127 })
+    expect(finding('rec-source-drying-up').title).toMatch(/^Job board applications fell 48%/)
+    expect(m.ttfByDepartment.slice(0, 3).map((r) => [r.group, r.days])).toEqual([
+      ['Analog & Mixed-Signal', 127],
+      ['IT', 90],
+      ['Design Verification', 79],
+    ])
   })
 
   it('keeps the readout to six findings with plain copy', () => {
@@ -133,8 +153,78 @@ describe('sample company, whole company, last 12 months', () => {
       for (const text of [f.title, f.detail ?? '', f.action ?? '']) {
         expect(text).not.toMatch(/—|!|\b(chase|chasing|nag|push|ping|hound|unblock)\b/i)
       }
-      if (f.people) expect(f.people.length).toBeLessThanOrEqual(50)
     }
+  })
+
+  it('every candidate join holds, so req health is checked', () => {
+    expect(m.base.joinNote).toBeNull()
+    expect(m.base.req.funnelChecked).toBe(true)
+  })
+
+  it('flags the uneven recruiter load from the README', () => {
+    const a = m.recruiters.find((r) => r.recruiter === 'Agnieszka Nielsen')!
+    expect(a).toMatchObject({ openReqs: 29, active: 136, flagged: true })
+    expect(a.flag).toMatch(/^Heavy load/)
+    expect(m.recruiters.find((r) => r.recruiter === 'Andreas Schmitz')!.flagged).toBe(false)
+  })
+
+  it('offers the latest quarter for acceptance by location, where Bengaluru stands out', () => {
+    expect(m.acceptanceDropBasis).toBe('quarter')
+    expect(m.latestQuarter).toMatchObject({ label: 'Q3 2026', complete: true })
+    const blr = m.acceptanceByLocationQuarter.find((r) => r.group === 'Bengaluru')!
+    expect(blr).toMatchObject({ hired: 10, offers: 32 })
+    expect(m.companyAcceptanceQuarter).toBeCloseTo(58 / 85, 3)
+    for (const r of [...m.acceptanceByLocation, ...m.acceptanceByLocationQuarter])
+      expect(r.offers >= 5 || r.rate == null).toBe(true)
+  })
+
+  it('with an as-of date in the past, open reqs are those open on that date', () => {
+    const past = buildContext({
+      data,
+      sources,
+      filters: DEFAULT_FILTERS,
+      asOfOverride: '2026-03-31',
+      showPay: false,
+    })
+    const pm = computeRecruitingUncached(past)
+    const k = pm.kpis.find((x) => x.id === 'open-reqs')!
+    expect(k.value).toBe(50)
+    expect(k.spark!.at(-1)).toBe(50)
+    expect(headline(past)).toMatchObject({ value: '50' })
+    expect(pm.base.req.rows).toHaveLength(50)
+  })
+
+  it('scoped to one department, the empty funnel compares it with the company, not itself', () => {
+    const analog = buildContext({
+      data,
+      sources,
+      filters: { ...DEFAULT_FILTERS, department: ['Analog & Mixed-Signal'] },
+      asOfOverride: null,
+      showPay: false,
+    })
+    const f = computeRecruitingUncached(analog).findings.find((x) => x.id === 'rec-empty-funnel')!
+    expect(f.detail).toContain('took a median 127 d to fill, vs 52 d for the company.')
+  })
+
+  it('on a 3-month window: no good finding from censored hire rates, and small groups stay hidden', () => {
+    const t3 = (filters = {}) =>
+      computeRecruitingUncached(
+        buildContext({
+          data,
+          sources,
+          filters: { ...DEFAULT_FILTERS, period: 't3m', ...filters },
+          asOfOverride: null,
+          showPay: false,
+        }),
+      )
+    const company = t3()
+    expect(company.findings.find((x) => x.id === 'rec-best-source')).toBeUndefined()
+    const ttf = allProblemFindings(company.base).find((x) => x.id === 'rec-time-to-fill')
+    if (ttf?.detail) expect(ttf.detail).not.toMatch(/slowest/)
+    const vancouver = t3({ location: ['Vancouver'] })
+    const acc = vancouver.kpis.find((x) => x.id === 'offer-acceptance')!
+    expect(acc).toMatchObject({ value: null, suppressed: true })
+    for (const k of vancouver.kpis) if (k.suppressed) expect(k.value).toBeNull()
   })
 
   it('scoped to Design Verification, the bottleneck reads as the whole step', () => {

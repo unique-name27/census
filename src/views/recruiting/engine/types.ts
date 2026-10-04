@@ -16,7 +16,8 @@ export interface App {
   name: string
   reqId: string
   req: Requisition | null
-  title: string
+  /** Job title from the req; null when the req is unknown or has none. */
+  title: string | null
   businessUnit: string | null
   department: string | null
   location: string | null

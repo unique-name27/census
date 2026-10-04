@@ -4,12 +4,25 @@
  * categorical colors. Shares sit inside segments where they fit; the tooltip lists all five.
  */
 import * as Plot from '@observablehq/plot'
-import { type ChartTheme, housePlot, inkOn, type PlotBuildContext, PlotChart, useChartTheme } from '@/charts'
-import type { LegendSpec } from '@/charts/core/legend'
-import { hoverBand, labelsMark, scalePos } from '@/charts/core/marks'
-import { maxTextWidth, textWidth, truncateText } from '@/charts/core/measure'
-import type { TipContent } from '@/charts/core/tooltip'
-import { axisX, gridX } from '@/charts/plot'
+import {
+  axisX,
+  type ChartTheme,
+  gridX,
+  housePlot,
+  hoverBand,
+  inkOn,
+  type LegendSpec,
+  labelsMark,
+  maxTextWidth,
+  ordinalColors,
+  type PlotBuildContext,
+  PlotChart,
+  scalePos,
+  type TipContent,
+  textWidth,
+  truncateText,
+  useChartTheme,
+} from '@/charts'
 import { RATING_GUIDELINE } from '@/data/schema'
 import { DASH, fmt } from '@/lib/format'
 import { RATINGS, ratingLabel } from '../engine/performance'
@@ -35,9 +48,9 @@ interface Row extends MixInput {
   guideline: boolean
 }
 
-/** Ordinal ramp for ratings 1-5, light to dark. */
+/** Ordinal ramp for ratings 1-5, light to dark (the kit's ordinal scheme, so it matches every chart). */
 export function ratingColors(t: ChartTheme): string[] {
-  return [t.seq[100], t.seq[250], t.seq[400], t.seq[500], t.seq[700]]
+  return ordinalColors(t, 5)
 }
 
 export function RatingMix({ data, ariaLabel }: { data: readonly MixInput[]; ariaLabel?: string }) {

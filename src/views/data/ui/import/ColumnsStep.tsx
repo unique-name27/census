@@ -9,6 +9,8 @@ import {
   type Confidence,
   type DateOrder,
   type MappedField,
+  type Mapping,
+  normalizeHeader,
   rankHeaders,
   type SuggestedOptions,
   withChoice,
@@ -17,10 +19,42 @@ import { type DatasetDef, type DatasetKey, datasetDef, type FieldDef } from '@/d
 import { useCensus } from '@/data/store'
 import { fmt } from '@/lib/format'
 import { requirementOf } from '../../engine/coverage'
-import { headerOptions, orderedFields, sampleValues, textDateHeaders, unusedHeaders } from '../../engine/flow'
+import {
+  headerOptions,
+  orderedFields,
+  payLeftOut,
+  sampleValues,
+  textDateHeaders,
+  unusedHeaders,
+} from '../../engine/flow'
 import { confidenceFor, MATCH_WORD, matchStrength, sameTarget, WEAK_MATCH } from '../../engine/plan'
 import { type Draft, type SessionSheet, useImportSession } from '../../state/session'
 import { Select } from '../Select'
+import { PayLeftOutNote } from './CheckStep'
+
+const FIRST_NAME = new Set([
+  'first name',
+  'given name',
+  'preferred first name',
+  'legal first name',
+  'firstname',
+])
+const LAST_NAME = new Set(['last name', 'surname', 'family name', 'legal last name', 'lastname'])
+const NAME_FIELD: Partial<Record<DatasetKey, string>> = { employees: 'name', candidates: 'candidateName' }
+
+/**
+ * First and last name columns the importer joins into the name when no column feeds the name
+ * itself (the same rule it applies), so they aren't listed as unused.
+ */
+function nameParts(headers: readonly string[], mapping: Mapping, def: DatasetDef): [string, string] | null {
+  const field = NAME_FIELD[def.key]
+  if (!field || mapping[field]?.header) return null
+  const used = new Set(Object.values(mapping).flatMap((m) => (m.header ? [m.header] : [])))
+  const find = (names: Set<string>) => headers.find((h) => !used.has(h) && names.has(normalizeHeader(h)))
+  const first = find(FIRST_NAME)
+  const last = find(LAST_NAME)
+  return first && last ? [first, last] : null
+}
 
 const DOT: Record<Confidence | 'none', string> = {
   high: 'bg-good',
@@ -148,24 +182,27 @@ function MappingTable({
       mapping: withChoice(d.mapping ?? {}, field, header),
       overrides: d.overrides.includes(field) ? d.overrides : [...d.overrides, field],
     }))
-  const unused = unusedHeaders(sheet.headers, mapping)
+  const parts = nameParts(sheet.headers, mapping, def)
+  const unused = unusedHeaders(sheet.headers, mapping).filter((h) => !parts?.includes(h))
+  const nameField = NAME_FIELD[def.key]
   return (
     <div>
+      {/* Below sm the match and the file's values sit under each column choice. */}
       <div className="scroll-x -mx-1 px-1">
-        <table className="w-full min-w-[680px] border-collapse text-[13px]">
+        <table className="w-full border-collapse text-[13px] sm:min-w-[680px]">
           <caption className="sr-only">Columns for {def.label}</caption>
           <thead>
             <tr className="border-b border-rule text-left">
-              <th scope="col" className="eyebrow w-[30%] py-2 pr-3 font-semibold">
+              <th scope="col" className="eyebrow w-[45%] py-2 pr-3 font-semibold sm:w-[30%]">
                 Field
               </th>
-              <th scope="col" className="eyebrow w-[30%] py-2 pr-3 font-semibold">
+              <th scope="col" className="eyebrow py-2 font-semibold sm:w-[30%] sm:pr-3">
                 Column in your file
               </th>
-              <th scope="col" className="eyebrow w-[13%] py-2 pr-3 font-semibold">
+              <th scope="col" className="eyebrow hidden w-[13%] py-2 pr-3 font-semibold sm:table-cell">
                 Match
               </th>
-              <th scope="col" className="eyebrow py-2 font-semibold">
+              <th scope="col" className="eyebrow hidden py-2 font-semibold sm:table-cell">
                 Values in the file
               </th>
             </tr>
@@ -183,6 +220,32 @@ function MappingTable({
                 f.key,
               )
               const samples = header ? sampleValues(sheet, header) : []
+              const match = blocked ? (
+                <span className="inline-flex items-center gap-1.5 text-[12px] font-medium">
+                  <IconCritical className="size-3.5 text-critical" />
+                  Needed
+                </span>
+              ) : (
+                <MatchDot m={m} />
+              )
+              const values =
+                header == null ? (
+                  f.key === nameField && parts ? (
+                    <span className="text-[12px] text-ink-2">
+                      Built from “{parts[0]}” and “{parts[1]}”
+                    </span>
+                  ) : (
+                    <span className="text-[12px] text-muted">—</span>
+                  )
+                ) : f.pay && !showPay ? (
+                  <span className="text-[12px] text-muted">Hidden while pay amounts are off</span>
+                ) : samples.length ? (
+                  <span className="block truncate text-[12px] text-ink-2" title={samples.join(' · ')}>
+                    {samples.join(' · ')}
+                  </span>
+                ) : (
+                  <span className="text-[12px] text-muted">Blank in every row</span>
+                )
               return (
                 <tr
                   key={f.key}
@@ -195,7 +258,7 @@ function MappingTable({
                     </span>
                     <span className="mt-0.5 block text-[12px] leading-snug text-muted">{f.description}</span>
                   </td>
-                  <td className="py-2 pr-3 align-top">
+                  <td className="py-2 align-top sm:pr-3">
                     <Select
                       label={`Column for ${f.label}`}
                       value={header ?? ''}
@@ -225,30 +288,15 @@ function MappingTable({
                         </optgroup>
                       )}
                     </Select>
+                    <span className="mt-1 block min-w-0 space-y-0.5 sm:hidden">
+                      <span className="block">{match}</span>
+                      {(header != null || (f.key === nameField && parts)) && (
+                        <span className="block min-w-0">{values}</span>
+                      )}
+                    </span>
                   </td>
-                  <td className="py-2 pr-3 align-top leading-7">
-                    {blocked ? (
-                      <span className="inline-flex items-center gap-1.5 text-[12px] font-medium">
-                        <IconCritical className="size-3.5 text-critical" />
-                        Needed
-                      </span>
-                    ) : (
-                      <MatchDot m={m} />
-                    )}
-                  </td>
-                  <td className="py-2 align-top leading-7">
-                    {header == null ? (
-                      <span className="text-[12px] text-muted">—</span>
-                    ) : f.pay && !showPay ? (
-                      <span className="text-[12px] text-muted">Hidden while pay amounts are off</span>
-                    ) : samples.length ? (
-                      <span className="block truncate text-[12px] text-ink-2" title={samples.join(' · ')}>
-                        {samples.join(' · ')}
-                      </span>
-                    ) : (
-                      <span className="text-[12px] text-muted">Blank in every row</span>
-                    )}
-                  </td>
+                  <td className="hidden py-2 pr-3 align-top leading-7 sm:table-cell">{match}</td>
+                  <td className="hidden max-w-0 py-2 align-top leading-7 sm:table-cell">{values}</td>
                 </tr>
               )
             })}
@@ -413,6 +461,7 @@ export function ColumnsStep({
               below.
             </p>
           )}
+          {def && payLeftOut(def, blockers, null) && <PayLeftOutNote />}
           {blockerLabels.length > 0 && (
             <p className="flex gap-2 text-[13px]">
               <IconCritical className="mt-0.5 size-3.5 shrink-0 text-critical" />

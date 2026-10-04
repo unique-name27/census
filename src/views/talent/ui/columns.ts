@@ -16,7 +16,7 @@ import type {
 import type { OverdueRow } from '../engine/promotion'
 import type { DriverRow, ExitPerson, RiskPersonRow } from '../engine/retention'
 import type { BackTestBand, FactorEvidence } from '../engine/risk'
-import type { BenchTableRow, CoverageRow, HipoGroupRow, PipelineRow, RoleRow } from '../engine/succession'
+import type { BenchTableRow, CoverageRow, HipoGroupRow, RoleRow } from '../engine/succession'
 
 export type NineBoxRow = Omit<NineBoxCell, 'people'>
 
@@ -29,7 +29,11 @@ export const NINE_BOX_COLUMNS: Column<NineBoxRow>[] = [
   { key: 'highRisk', label: 'High flight risk', format: 'int' },
 ]
 
-export const NINE_BOX_PEOPLE_COLUMNS: Column<NineBoxPerson>[] = [
+/** "Rating (2025 Annual)": the 9-box reads the annual cycle, which can differ from the latest one. */
+const cycleLabel = (label: string, cycle: string | null | undefined) =>
+  cycle ? `${label} (${cycle})` : label
+
+export const nineBoxPeopleColumns = (cycle?: string | null): Column<NineBoxPerson>[] => [
   { key: 'name', label: 'Name' },
   { key: 'employeeId', label: 'ID' },
   { key: 'jobTitle', label: 'Job title' },
@@ -37,14 +41,14 @@ export const NINE_BOX_PEOPLE_COLUMNS: Column<NineBoxPerson>[] = [
   { key: 'level', label: 'Level' },
   { key: 'location', label: 'Location' },
   { key: 'manager', label: 'Manager' },
-  { key: 'rating', label: 'Rating', format: 'int' },
-  { key: 'potential', label: 'Potential' },
+  { key: 'rating', label: cycleLabel('Rating', cycle), format: 'int' },
+  { key: 'potential', label: cycleLabel('Potential', cycle) },
   { key: 'riskBand', label: 'Flight risk' },
 ]
 
-export const NINE_BOX_DETAIL_COLUMNS: Column[] = [
+export const nineBoxDetailColumns = (cycle?: string | null): Column[] => [
   { key: 'box', label: 'Box' },
-  ...(NINE_BOX_PEOPLE_COLUMNS as Column[]),
+  ...nineBoxPeopleColumns(cycle),
   { key: 'riskScore', label: 'Flight-risk score', format: 'int' },
 ]
 
@@ -118,7 +122,7 @@ export const ROLE_COLUMNS: Column<RoleRow>[] = [
   { key: 'successors', label: 'Successors', format: 'int' },
   { key: 'readyNow', label: 'Ready now', format: 'int' },
   { key: 'readiness', label: 'Readiness mix' },
-  { key: 'status', label: 'Status' },
+  { key: 'status', label: 'Bench' },
 ]
 
 export const ROLE_DETAIL_COLUMNS: Column[] = [
@@ -140,12 +144,6 @@ export const BENCH_COLUMNS: Column<BenchTableRow>[] = [
   { key: 'noSuccessor', label: 'Roles with no successor', format: 'int' },
 ]
 
-export const PIPELINE_COLUMNS: Column<PipelineRow>[] = [
-  { key: 'readiness', label: 'Readiness' },
-  { key: 'criticality', label: 'Role criticality' },
-  { key: 'successors', label: 'Successors named', format: 'int' },
-]
-
 export const hipoColumns = (groupLabel: string): Column<HipoGroupRow>[] => [
   { key: 'group', label: groupLabel },
   { key: 'assessed', label: 'People assessed', format: 'int' },
@@ -153,10 +151,16 @@ export const hipoColumns = (groupLabel: string): Column<HipoGroupRow>[] => [
   { key: 'share', label: 'Share high potential', format: 'pct' },
 ]
 
-export const BAND_COLUMNS: Column<{ band: string; people: number; share: number | null }>[] = [
+export const BAND_COLUMNS: Column<{
+  band: string
+  people: number
+  share: number | null
+  companyShare: number | null
+}>[] = [
   { key: 'band', label: 'Flight-risk band' },
   { key: 'people', label: 'People', format: 'int' },
-  { key: 'share', label: 'Share', format: 'pct' },
+  { key: 'share', label: 'Share of people scored', format: 'pct' },
+  { key: 'companyShare', label: 'Share company-wide', format: 'pct' },
 ]
 
 export const BACKTEST_COLUMNS: Column<BackTestBand>[] = [
@@ -172,46 +176,50 @@ export const DRIVER_COLUMNS: Column<DriverRow & { share: number | null }>[] = [
   { key: 'points', label: 'Points', format: 'int' },
   { key: 'anyReason', label: 'People in high band with it', format: 'int' },
   { key: 'share', label: 'Share of high band', format: 'pct' },
-  { key: 'topReason', label: 'Top reason for', format: 'int' },
+  { key: 'topReason', label: 'Main reason for', format: 'int' },
 ]
 
-export const EVIDENCE_COLUMNS: Column<FactorEvidence & { definition: string }>[] = [
+export const EVIDENCE_COLUMNS: Column<FactorEvidence & { definition: string; how: string }>[] = [
   { key: 'label', label: 'Factor' },
   { key: 'points', label: 'Points now', format: 'int' },
-  { key: 'withFactor', label: 'People with it', format: 'int' },
-  { key: 'withRate', label: 'Left, with it', format: 'pct' },
-  { key: 'without', label: 'People without it', format: 'int' },
-  { key: 'withoutRate', label: 'Left, without it', format: 'pct' },
-  { key: 'lift', label: 'Lift', format: 'num2' },
+  { key: 'how', label: 'Points set by' },
+  { key: 'withFactor', label: 'With it (person-months)', format: 'int' },
+  { key: 'withRate', label: 'Left within 12 months, with it', format: 'pct' },
+  { key: 'without', label: 'Without it (person-months)', format: 'int' },
+  { key: 'withoutRate', label: 'Left within 12 months, without it', format: 'pct' },
+  { key: 'lift', label: 'Lift', format: 'times' },
   { key: 'definition', label: 'Definition' },
 ]
 
-export const RISK_PERSON_COLUMNS: Column<RiskPersonRow>[] = [
-  { key: 'name', label: 'Name' },
-  { key: 'employeeId', label: 'ID' },
-  { key: 'department', label: 'Department' },
-  { key: 'level', label: 'Level' },
-  { key: 'location', label: 'Location' },
-  { key: 'rating', label: 'Rating', format: 'int' },
-  { key: 'score', label: 'Score', format: 'int' },
-  { key: 'reason1', label: 'Top reason' },
-  { key: 'reason2', label: 'Second reason' },
-]
-
-export const RISK_PERSON_FULL_COLUMNS: Column<RiskPersonRow>[] = [
-  { key: 'name', label: 'Name' },
-  { key: 'employeeId', label: 'ID' },
-  { key: 'jobTitle', label: 'Job title' },
-  { key: 'department', label: 'Department' },
-  { key: 'level', label: 'Level' },
-  { key: 'location', label: 'Location' },
-  { key: 'manager', label: 'Manager' },
-  { key: 'rating', label: 'Rating', format: 'int' },
-  { key: 'band', label: 'Band' },
-  { key: 'score', label: 'Score', format: 'int' },
-  { key: 'reason1', label: 'Top reason' },
-  { key: 'reason2', label: 'Second reason' },
-]
+/**
+ * The people tables of the risk model. The rating column names the cycle it comes from when
+ * everyone's latest rating is from the same one, so it doesn't clash with the 9-box (annual cycle).
+ */
+export function riskPersonColumns(
+  rows: readonly RiskPersonRow[],
+  opts: { full: boolean },
+): Column<RiskPersonRow>[] {
+  const cycles = new Set(rows.map((r) => r.ratingCycle).filter(Boolean))
+  const one = cycles.size === 1 ? [...cycles][0] : null
+  const rating: Column<RiskPersonRow>[] = [
+    { key: 'rating', label: one ? `Latest rating (${one})` : 'Latest rating', format: 'int' },
+    ...(cycles.size > 1 ? [{ key: 'ratingCycle', label: 'Rating cycle' }] : []),
+  ]
+  return [
+    { key: 'name', label: 'Name' },
+    { key: 'employeeId', label: 'ID' },
+    ...(opts.full ? [{ key: 'jobTitle', label: 'Job title' }] : []),
+    { key: 'department', label: 'Department' },
+    { key: 'level', label: 'Level' },
+    { key: 'location', label: 'Location' },
+    ...(opts.full ? [{ key: 'manager', label: 'Manager' }] : []),
+    ...rating,
+    ...(opts.full ? [{ key: 'band', label: 'Band' }] : []),
+    { key: 'score', label: 'Score', format: 'int' },
+    { key: 'reason1', label: 'Main reason' },
+    { key: 'reason2', label: 'Also' },
+  ]
+}
 
 export const PROMOTION_OVERDUE_COLUMNS: Column<OverdueRow>[] = [
   { key: 'name', label: 'Name' },
@@ -264,9 +272,9 @@ export const COMPLETION_COLUMNS: Column<{ month: string; kind: string; completio
 
 export const HOURS_COLUMNS: Column<HoursRow>[] = [
   { key: 'businessUnit', label: 'Business unit' },
-  { key: 'hours', label: 'Hours completed', format: 'num1' },
+  { key: 'hours', label: 'Hours completed', format: 'hours' },
   { key: 'avgHeadcount', label: 'Average headcount', format: 'num1' },
-  { key: 'perEmployee', label: 'Hours per employee', format: 'num1' },
+  { key: 'perEmployee', label: 'Hours per employee', format: 'hours' },
 ]
 
 export const TRAINING_OVERDUE_COLUMNS: Column<TrainingOverdueRow>[] = [

@@ -53,7 +53,7 @@ describe('prepareApp', () => {
     expect(app({}).department).toBe('Design Verification')
     const orphan = prepareApp(cand('REQ-404'), null, AS_OF)!
     expect(orphan.department).toBeNull()
-    expect(orphan.title).toBe('—')
+    expect(orphan.title).toBeNull()
   })
 })
 

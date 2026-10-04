@@ -16,6 +16,7 @@ import {
   effectiveValue,
   fixChoices,
   headerOptions,
+  isAllClear,
   issueCounts,
   issuesFileStem,
   learnedPicks,
@@ -23,9 +24,12 @@ import {
   openValues,
   orderedFields,
   PAY_HIDDEN_ISSUE,
+  payLeftOut,
+  quietFills,
   redactPayIssues,
   replacedMessage,
   sampleValues,
+  sampleWorkbookDatasets,
   textDateHeaders,
   unusedHeaders,
   valueFields,
@@ -195,6 +199,63 @@ describe('validation summary helpers', () => {
     expect(hidden[0]).toMatchObject({ value: '', issue: PAY_HIDDEN_ISSUE })
     expect(hidden[1]).toEqual(issues[1])
     expect(redactPayIssues(issues, def, true)).toEqual(issues)
+  })
+
+  it('keeps the importer’s sentence for a blank pay amount, which has nothing to hide', () => {
+    const blank = issue({
+      field: 'baseSalary',
+      label: 'Base salary',
+      value: '',
+      code: 'missing-required',
+      issue: 'Base salary is blank, and it is required.',
+      action: 'row-skipped',
+    })
+    expect(redactPayIssues([blank], datasetDef('comp'), false)).toEqual([blank])
+  })
+
+  it('gives the all-clear only when rows come through untouched', () => {
+    const stats = { rowsOut: 3, defaulted: 0 } as never
+    expect(isAllClear({ issues: [], stats })).toBe(true)
+    expect(isAllClear({ issues: [], stats: { rowsOut: 3, defaulted: 46 } as never })).toBe(false)
+    expect(isAllClear({ issues: [], stats: { rowsOut: 0, defaulted: 0 } as never })).toBe(false)
+    expect(isAllClear({ issues: [issue({})], stats })).toBe(false)
+  })
+
+  it('accounts for blanks filled without a line in the log', () => {
+    const csv = [
+      'Application ID,Candidate,Req ID,Stage,Status,Applied date,Screen date,Stage entered',
+      'A1,Kim,REQ-1,Screen,Active,2026-08-01,2026-08-05,',
+      'A2,Lee,REQ-1,Screen,Active,2026-08-02,2026-08-06,2026-08-06',
+    ].join('\n')
+    const sheet = readWorkbook(new TextEncoder().encode(csv), 'c.csv').sheets[0]
+    const def = datasetDef('candidates')
+    const result = applyMapping({ sheet, def, mapping: autoMap(sheet.headers, sheet.rows, def) })
+    expect(result.stats.defaulted).toBeGreaterThan(0)
+    expect(isAllClear(result)).toBe(false)
+    const quiet = quietFills(def, result)
+    expect(quiet.find((q) => q.field === 'stageEnteredDate')?.message).toBe(
+      'Stage entered date was set to the date of the current stage in 1 row.',
+    )
+    // Logged defaults (source set to Unknown) are in the log's own summary, not repeated here.
+    expect(quiet.some((q) => q.field === 'source')).toBe(false)
+  })
+
+  it('spots a Compensation sheet whose pay amounts were left out', () => {
+    const def = datasetDef('comp')
+    expect(payLeftOut(def, ['baseSalary', 'rangeMid'], null)).toBe(true)
+    expect(payLeftOut(def, ['employeeId'], null)).toBe(false)
+    const skipped = (row: number) =>
+      issue({ row, field: 'baseSalary', value: '', code: 'missing-required', action: 'row-skipped' })
+    const result = { issues: [skipped(2), skipped(3), skipped(4)], stats: { rowsIn: 4 } as never }
+    expect(payLeftOut(def, [], result)).toBe(true)
+    expect(payLeftOut(def, [], { issues: [skipped(2)], stats: { rowsIn: 4 } as never })).toBe(false)
+    expect(payLeftOut(datasetDef('employees'), [], result)).toBe(false)
+  })
+
+  it('leaves Compensation out of the sample workbook while pay amounts are off', () => {
+    expect(sampleWorkbookDatasets(true)).toHaveLength(10)
+    expect(sampleWorkbookDatasets(false)).not.toContain('comp')
+    expect(sampleWorkbookDatasets(false)).toHaveLength(9)
   })
 })
 

@@ -4,10 +4,12 @@
  * Rules (thresholds in parentheses):
  *  - volume spike: a category's month at 1.8× or more of its trailing 6-month median (and at
  *    least 15 cases above it), skipping peaks that also happened in the same month a year earlier;
- *  - category resolution SLA under 80% (at least 20 cases), with the waiting-on-third-party share;
+ *  - category resolution SLA under 80% (at least 20 cases), with the waiting-on-third-party share,
+ *    unless the category already has a spike or aged-backlog finding;
  *  - final pay on time under 95% in a jurisdiction (at least 5 exits and 2 late);
- *  - new hire Day −3 readiness under 95% in a region, or under 90% at a site elsewhere;
- *  - a channel's satisfaction 0.5 or more below the other channels;
+ *  - new hire Day −3 readiness under 95% in a region that trails the other regions by 3 pts or
+ *    more, or under 90% at a site elsewhere;
+ *  - a channel's satisfaction 0.5 or more below the other channels (20+ responses on each side);
  *  - a category reopened at 2× the overall reopen rate or more (at least 5 reopens);
  *  - open cases older than 30 days, by category (at least 3);
  *  - retro adjustments above the DS-01 target of 2% of job and pay changes;
@@ -31,9 +33,9 @@ import {
   resolvedIn,
 } from './cases'
 import { ATLAS_PROCESSES, FINAL_PAY_RULES, RESOLUTION_SLA_TARGET } from './catalog'
-import { type CaseFact, dueIn, type TxFact } from './facts'
+import { type CaseFact, dueIn, onTimeRate, type TxFact } from './facts'
 import { type FinalPayRow, retroShare, type SiteRow } from './transactions'
-import { duration } from './util'
+import { duration, isOther } from './util'
 
 export interface FindingInputs {
   facts: readonly CaseFact[]
@@ -47,14 +49,23 @@ export interface FindingInputs {
   finalPay: readonly FinalPayRow[]
   newHireSites: readonly SiteRow[]
   newHireRegions: readonly SiteRow[]
+  /** Fewer than 5 people in scope: any finding would be about individuals, so none is raised. */
+  small?: boolean
 }
 
 interface Ranked extends Finding {
   /** Lower comes first within a severity. */
   rank: number
+  /** The case category a finding is about, so one category isn't raised twice. */
+  category?: string
 }
 
 const SEVERITY_ORDER: Record<Severity, number> = { critical: 0, warning: 1, info: 2, good: 3 }
+
+/** A region is raised on new hire readiness only when it trails the other regions by this much. */
+const REGION_GAP = 0.03
+/** A channel satisfaction gap needs this many responses on the channel and on the rest. */
+const CHANNEL_MIN_RESPONSES = 20
 
 const pct = (v: number | null) => fmt(v, 'pct')
 const x1 = (v: number) => `${v.toFixed(1)}×`
@@ -160,19 +171,23 @@ function volumeSpikes(x: FindingInputs): Ranked[] {
       filter: segmentFilter(seg),
       tab: 'cases',
       rank: 3,
+      category,
     })
   }
   return out
 }
 
-function slowCategories(x: FindingInputs): Ranked[] {
+/**
+ * Categories under 80% on resolution SLA. A category already raised by the aged-backlog rule or
+ * by a volume spike (whose finding carries the SLA drop) is not raised again.
+ */
+function slowCategories(x: FindingInputs, raised: ReadonlySet<string>): Ranked[] {
   const out: Ranked[] = []
   const openNow = x.facts.filter((f) => f.open)
   const aged = agedGroups(x)
   for (const r of x.categories) {
     if (r.slaRate == null || r.slaN < 20 || r.slaRate >= 0.8 || !r.processId) continue
-    // A category with an aged backlog is reported once, by the aged-backlog rule.
-    if (aged.has(r.category)) continue
+    if (aged.has(r.category) || raised.has(r.category)) continue
     const open = openNow.filter((f) => f.category === r.category)
     const waiting = open.filter((f) => f.status === 'Waiting on third party')
     const inWindow = openedIn(x.facts, x.window).filter((f) => f.category === r.category)
@@ -180,29 +195,37 @@ function slowCategories(x: FindingInputs): Ranked[] {
     const targetDays = target == null ? null : target / 24
     const pastTarget = targetDays == null ? 0 : waiting.filter((f) => (f.ageDays ?? 0) > targetDays).length
     const seg = concentration(inWindow, (f) => f.resolutionMet === false, x.people)
-    const waitText = open.length
-      ? `${fmt(waiting.length, 'int')} of the ${plural(open.length, 'open case')} are waiting on a third party${
+    const waitText = waiting.length
+      ? `${fmt(waiting.length, 'int')} of the ${plural(open.length, 'open case')} ${
+          waiting.length === 1 ? 'is' : 'are'
+        } waiting on a third party${
           pastTarget && targetDays != null
             ? `, ${fmt(pastTarget, 'int')} of them past the ${fmt(targetDays, 'days')} target`
             : ''
         }.`
       : ''
+    const action = waiting.length
+      ? `Review the open ${r.processId} cases with the ${r.team} team and agree a follow-up date for each one waiting on a third party.`
+      : open.length
+        ? `Review the open ${r.processId} cases with the ${r.team} team.`
+        : `Review ${stepsOf(r.processId)} with the ${r.team} team, starting with the cases that missed the target.`
     out.push({
       id: `services-sla-${slug(r.category)}`,
       severity: r.slaRate < 0.7 ? 'critical' : 'warning',
       title: `${r.category} met its resolution SLA on ${pct(r.slaRate)} of cases, against the ${fmt(RESOLUTION_SLA_TARGET, 'pct0')} target.`,
       detail: twoSentences([
         {
-          text: `${fmt(r.slaN - r.slaMet, 'int')} of ${fmt(r.slaN, 'int')} cases opened in the period missed it.`,
+          text: `${fmt(r.slaN - (r.slaMet ?? 0), 'int')} of ${fmt(r.slaN, 'int')} cases opened in the period missed it.`,
           priority: 3,
         },
         { text: waitText, priority: 1 },
         { text: segmentSentence(seg, 'missed cases'), priority: 2 },
       ]),
-      action: `Review the open ${r.processId} cases with the ${r.team} team and agree a follow-up date for each one waiting on a third party.`,
+      action,
       filter: segmentFilter(seg),
       tab: 'cases',
       rank: 2,
+      category: r.category,
     })
   }
   return out
@@ -212,7 +235,13 @@ function finalPayLate(x: FindingInputs): Ranked[] {
   const exits = dueIn(x.tx, x.window).filter((f) => f.type === 'Termination')
   return x.finalPay
     .filter(
-      (r) => r.rate != null && r.exits >= 5 && r.late >= 2 && r.rate < 0.95 && r.jurisdiction !== 'unknown',
+      (r) =>
+        r.rate != null &&
+        r.exits >= 5 &&
+        (r.late ?? 0) >= 2 &&
+        r.rate < 0.95 &&
+        r.jurisdiction !== 'unknown' &&
+        r.jurisdiction !== 'other',
     )
     .map((r) => {
       const late = exits.filter(
@@ -242,14 +271,14 @@ function newHireReadiness(x: FindingInputs): Ranked[] {
   const hires = dueIn(x.tx, x.window).filter((f) => f.type === 'New hire')
   const out: Ranked[] = []
   const flaggedRegions = new Set<string>()
-  const total = x.newHireRegions.reduce((a, r) => a + r.starts, 0)
-  const ready = x.newHireRegions.reduce((a, r) => a + r.ready, 0)
   for (const r of x.newHireRegions) {
-    if (r.rate == null || r.starts < 5 || r.late < 3 || r.rate >= 0.95 || r.region === '—') continue
+    if (r.rate == null || r.starts < 5 || (r.late ?? 0) < 3 || r.rate >= 0.95 || r.region === '—') continue
+    // The other regions, from the transactions themselves (their rows may be folded or hidden).
+    const restRate = onTimeRate(hires.filter((f) => f.region !== r.region)).rate
+    // A region that matches or beats the others is not the problem: the gap must be real.
+    if (restRate != null && restRate - r.rate < REGION_GAP) continue
     flaggedRegions.add(r.region)
     const sites = x.newHireSites.filter((s) => s.region === r.region && s.rate != null && s.rate < 0.95)
-    const restN = total - r.starts
-    const restRate = restN >= 5 ? (ready - r.ready) / restN : null
     const late = hires.filter(
       (f) => f.region === r.region && (f.outcome === 'late' || f.outcome === 'overdue'),
     )
@@ -268,7 +297,7 @@ function newHireReadiness(x: FindingInputs): Ranked[] {
     })
   }
   for (const s of x.newHireSites) {
-    if (s.rate == null || s.starts < 10 || s.late < 3 || s.rate >= 0.9) continue
+    if (s.rate == null || s.starts < 10 || (s.late ?? 0) < 3 || s.rate >= 0.9) continue
     if (flaggedRegions.has(s.region) || s.region === '—') continue
     const late = hires.filter(
       (f) => f.location === s.location && (f.outcome === 'late' || f.outcome === 'overdue'),
@@ -292,9 +321,10 @@ function channelGap(x: FindingInputs): Ranked[] {
   const scored = x.channels.filter((c) => c.csat != null)
   const out: Ranked[] = []
   for (const c of scored) {
+    if (c.responses < CHANNEL_MIN_RESPONSES || isOther(c.channel)) continue
     const others = scored.filter((o) => o !== c)
     const n = others.reduce((a, o) => a + o.responses, 0)
-    if (!others.length || n < 5) continue
+    if (!others.length || n < CHANNEL_MIN_RESPONSES) continue
     const rest = others.reduce((a, o) => a + (o.csat as number) * o.responses, 0) / n
     const gap = rest - (c.csat as number)
     if (gap < 0.5) continue
@@ -312,14 +342,17 @@ function channelGap(x: FindingInputs): Ranked[] {
 }
 
 function reopenHotspots(x: FindingInputs): Ranked[] {
-  const all = x.reopen.filter((r) => !r.category.startsWith('Other ('))
-  const resolved = x.reopen.reduce((a, r) => a + r.resolved, 0)
-  const reopened = x.reopen.reduce((a, r) => a + r.reopened, 0)
+  const all = x.reopen.filter((r) => !isOther(r.category))
+  // Company totals from the cases themselves (folded or hidden rows carry no counts).
+  const judged = openedIn(x.facts, x.window).filter((f) => f.resolved != null && f.reopened != null)
+  const resolved = judged.length
+  const reopened = judged.filter((f) => f.reopened).length
   if (resolved < 20) return []
   const company = reopened / resolved
   const out: Ranked[] = []
   for (const r of all) {
-    if (r.reopenRate == null || r.resolved < 20 || r.reopened < 5 || company <= 0) continue
+    if (r.reopenRate == null || r.reopened == null) continue
+    if (r.resolved < 20 || r.reopened < 5 || company <= 0) continue
     if (r.reopenRate < 2 * company) continue
     const restN = resolved - r.resolved
     const rest = restN > 0 ? (reopened - r.reopened) / restN : null
@@ -418,10 +451,13 @@ function strongest(x: FindingInputs): Ranked[] {
 /* ───────────── assembly ───────────── */
 
 export function buildFindings(x: FindingInputs): Finding[] {
+  if (x.small) return []
+  const spikes = volumeSpikes(x)
+  const spiked = new Set(spikes.flatMap((f) => (f.category ? [f.category] : [])))
   const all: Ranked[] = [
     ...finalPayLate(x),
-    ...slowCategories(x),
-    ...volumeSpikes(x),
+    ...slowCategories(x, spiked),
+    ...spikes,
     ...newHireReadiness(x),
     ...agedBacklog(x),
     ...reopenHotspots(x),
@@ -431,7 +467,7 @@ export function buildFindings(x: FindingInputs): Finding[] {
   ]
   return all
     .sort((a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity] || a.rank - b.rank)
-    .map(({ rank: _rank, ...f }) => f)
+    .map(({ rank: _rank, category: _category, ...f }) => f)
 }
 
 /* ───────────── helpers ───────────── */

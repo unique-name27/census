@@ -7,7 +7,7 @@ import { Section } from '@/components'
 import { daysBetween, formatDate } from '@/lib/dates'
 import { fmt, plural } from '@/lib/format'
 import { median } from '@/lib/stats'
-import { EMPTY_FUNNEL_DAYS, type RecruiterRow } from '../engine/reqs'
+import { EMPTY_FUNNEL_DAYS, LOAD_FLAG_RATIO, NOT_CHECKED, type RecruiterRow } from '../engine/reqs'
 import { asOfNote, NEED_REQS, NoRecruitingData, TABLET_FULL, windowText } from './common'
 import { useRecruiting } from './hooks'
 
@@ -40,7 +40,7 @@ export function RequisitionsTab() {
         <Figure
           id="recruiting-open-requisitions"
           title="Open requisitions"
-          subtitle={`Status Open on ${formatDate(b.asOf)}, with active candidates per stage and health`}
+          subtitle={`Reqs open on ${formatDate(b.asOf)}, with active candidates per stage and health`}
           data={rows}
           columns={[
             { key: 'reqId', label: 'Req', width: 12 },
@@ -70,11 +70,23 @@ export function RequisitionsTab() {
             },
             {
               term: 'Lack a next step',
-              text: 'Active candidates on the req with no timely next step (see the Pipeline tab).',
+              text: 'Active candidates on the req who lack a next step, past the usual time for their stage (see the Pipeline tab).',
             },
-            { term: 'Stage columns', text: 'Active candidates waiting at each stage today.' },
+            { term: 'Stage columns', text: 'Active candidates waiting at each stage on the as-of date.' },
+            {
+              term: NOT_CHECKED,
+              text: 'Funnel health needs candidates that match the req IDs. It is not checked when Candidates is empty or fewer than half its rows match a req.',
+            },
           ]}
-          note={`${plural(rows.length, 'open req')} · ${fmt(empties, 'int')} with an empty funnel · ${fmt(lackingReqs, 'int')} with candidates lacking a next step · ${fmt(b.req.onHold.length, 'int')} on hold not shown · ${asOfNote(b.asOf)}`}
+          note={[
+            plural(rows.length, 'open req'),
+            b.req.funnelChecked
+              ? `${fmt(empties, 'int')} with an empty funnel`
+              : `funnel health not checked: ${b.joinNote ?? 'no candidates loaded'}`,
+            `${fmt(lackingReqs, 'int')} with candidates lacking a next step`,
+            `${fmt(b.req.onHold.length, 'int')} on hold not shown`,
+            asOfNote(b.asOf),
+          ].join(' · ')}
         />
       </Section>
 
@@ -104,7 +116,7 @@ export function RequisitionsTab() {
           definitions={[
             {
               term: 'Open req age',
-              text: 'As-of date minus the date the req opened, for reqs with status Open.',
+              text: 'As-of date minus the date the req opened, for reqs open on the as-of date.',
             },
             { term: 'On hold', text: 'Reqs on hold are left out and summarized in the note.' },
           ]}
@@ -167,7 +179,8 @@ export function RequisitionsTab() {
             { key: 'days', label: 'Median days to fill', format: 'days' },
             { key: 'reqs', label: 'Reqs filled', format: 'int' },
           ]}
-          span={6}
+          span={5}
+          className={TABLET_FULL}
           empty={
             !b.reqs.length
               ? NEED_REQS
@@ -204,15 +217,16 @@ export function RequisitionsTab() {
           subtitle={`Open reqs and active candidates on ${formatDate(b.asOf)}, hires ${windowText(b.window)}`}
           data={m.recruiters}
           columns={[
-            { key: 'recruiter', label: 'Recruiter' },
+            { key: 'recruiter', label: 'Recruiter', width: 18 },
             { key: 'openReqs', label: 'Open reqs', format: 'int' },
-            { key: 'active', label: 'Active candidates', format: 'int' },
+            { key: 'active', label: 'Active', format: 'int' },
             { key: 'hires', label: 'Hires', format: 'int' },
-            { key: 'medianWait', label: 'Median days waiting', format: 'days' },
-            { key: 'lacking', label: 'Lacking a next step', format: 'int' },
+            { key: 'medianWait', label: 'Median wait', format: 'days' },
+            { key: 'lacking', label: 'Lacking', format: 'int' },
+            { key: 'flag', label: 'Flag' },
           ]}
           tableOnly
-          span={6}
+          span={7}
           table={{ rowTone: (r: RecruiterRow) => (r.flagged ? 'warning' : null), maxRows: 12 }}
           empty={
             b.reqs.length || b.apps.length
@@ -222,13 +236,19 @@ export function RequisitionsTab() {
               : NEED_REQS
           }
           definitions={[
+            { term: 'Active', text: 'Active candidates on the as-of date.' },
             {
-              term: 'Median days waiting',
+              term: 'Median wait',
               text: 'Median days in the current stage across the recruiter’s active candidates.',
             },
+            { term: 'Lacking', text: 'Active candidates who lack a next step (past the usual time).' },
             {
-              term: 'Flag',
-              text: `Median wait more than 1.5× the team median (${fmt(m.teamMedianWait, 'days')}).`,
+              term: 'Heavy load',
+              text: `Open reqs or active candidates more than ${LOAD_FLAG_RATIO}× the team median (${fmt(m.teamMedianOpen, 'int')} open reqs, ${fmt(m.teamMedianActive, 'int')} active candidates).`,
+            },
+            {
+              term: 'Long waits',
+              text: `Median wait more than ${LOAD_FLAG_RATIO}× the team median (${fmt(m.teamMedianWait, 'days')}).`,
             },
           ]}
           note={`${plural(m.recruiters.length, 'recruiter')} · ${fmt(flagged, 'int')} flagged · ${asOfNote(b.asOf)}`}

@@ -86,10 +86,39 @@ describe('computePerformance', () => {
         }),
       ),
     )
-    const tiny = small.byBusinessUnit.find((g) => g.group === 'Tiny')!
-    expect(tiny.rated).toBe(3)
-    expect(tiny.share).toBeNull()
+    // Tiny folds into "Other", and so does the next-smallest unit, so Tiny's count can't be worked
+    // out by subtracting the other rows from the total.
+    expect(small.byBusinessUnit.some((g) => g.group === 'Tiny')).toBe(false)
+    const other = small.byBusinessUnit.at(-1)!
+    expect(other).toMatchObject({ group: 'Other (2)', rated: 23, high: 15, other: true })
+    expect(small.byBusinessUnit.every((g) => g.rated >= 5)).toBe(true)
     expect(small.mix.find((m) => m.businessUnit === 'Tiny')?.r4).toBeNull()
+    // The inflation rule still sees the real units.
+    expect(small.inflation.map((f) => f.businessUnit)).toEqual(['Go'])
+  })
+
+  it('nulls the count of a folded row that is still under 5 people', () => {
+    const tinyOnly = computePerformance(
+      buildBase(
+        ctxFor({
+          employees: Array.from({ length: 3 }, (_, i) => emp(`S${i}`, { businessUnit: 'Tiny', level: 'E2' })),
+          reviews: [4, 5, 4].map((r, i) => review(`S${i}`, MID, MID_DATE, r)),
+        }),
+      ),
+    )
+    expect(tinyOnly.byLevel).toEqual([
+      { group: 'Other (1)', rated: 3, high: null, share: null, other: true, groups: 1 },
+    ])
+  })
+
+  it('counts people rated in the cycle who have left since', () => {
+    const leftSince = employees.map((e, i) =>
+      i < 2 ? { ...e, terminationDate: '2026-08-03', terminationType: 'Voluntary' as const } : e,
+    )
+    const r = computePerformance(buildBase(ctxFor({ employees: leftSince, reviews })))
+    expect(r.rated).toBe(40)
+    expect(r.ratedLeft).toBe(2)
+    expect(r.ratedActive).toBe(38)
   })
 
   it('measures exits within 12 months of the latest cycle with a full year of follow-up', () => {
@@ -119,6 +148,8 @@ describe('computePerformance', () => {
     expect(two.voluntaryRate).toBeCloseTo(0.1, 9)
     expect(two.involuntaryRate).toBeCloseTo(0.3, 9)
     expect(r.exitByRating.find((x) => x.rating.startsWith('5'))?.rate).toBeNull()
+    // Counts under 5 people are hidden with the rate, so the rate can't be read off them.
+    expect(r.exitByRating.find((x) => x.rating.startsWith('5'))?.voluntary).toBeNull()
   })
 
   it('returns nulls, not zeros, without reviews', () => {

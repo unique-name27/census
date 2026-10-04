@@ -4,7 +4,7 @@
  * without a rate keeps its ratios but has null USD amounts (and is counted in `noFx`).
  */
 import type { Datasets, ISODate, Review } from '@/data/schema'
-import { addMonths, daysBetween } from '@/lib/dates'
+import { addMonths } from '@/lib/dates'
 import { isNum } from '@/lib/format'
 import {
   buildReviewIndex,
@@ -62,8 +62,6 @@ export interface CompPerson {
   targetBonusPct: number | null
   bonusPayout: number | null
   equityUsd: number | null
-  /** Share of the 12 months to the as-of date this person was employed (for prorating). */
-  service: number
 }
 
 export interface Population {
@@ -144,7 +142,6 @@ export function buildPopulation(
     const market = positive(c.marketP50)
     const usd = (v: number | null) => (v == null || fx == null ? null : v * fx)
     const tenure = tenureYears(e, asOf)
-    const daysIn = Math.min(365, Math.max(0, daysBetween(e.hireDate > yearAgo ? e.hireDate : yearAgo, asOf)))
     people.push({
       id: e.employeeId,
       name: e.name,
@@ -180,7 +177,6 @@ export function buildPopulation(
       targetBonusPct: isNum(c.targetBonusPct) ? c.targetBonusPct : null,
       bonusPayout: isNum(c.bonusPayoutPct) ? c.bonusPayoutPct : null,
       equityUsd: isNum(c.annualEquityUsd) ? c.annualEquityUsd : null,
-      service: daysIn / 365,
     })
   }
   const some = (f: (p: CompPerson) => unknown) => people.some((p) => f(p) != null)

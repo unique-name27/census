@@ -7,16 +7,19 @@ import {
   axisX,
   gridX,
   housePlot,
+  hoverBand,
+  type LegendSpec,
+  labelsMark,
+  maxTextWidth,
+  numericAxis,
   type PlotBuildContext,
   PlotChart,
+  scalePos,
   seriesColor,
+  type TipContent,
+  truncateText,
   useChartTheme,
 } from '@/charts'
-import type { LegendSpec } from '@/charts/core/legend'
-import { hoverBand, labelsMark, scalePos } from '@/charts/core/marks'
-import { maxTextWidth, truncateText } from '@/charts/core/measure'
-import type { TipContent } from '@/charts/core/tooltip'
-import { numericAxis } from '@/charts/kit/scale'
 import { DASH, type Format, fmt } from '@/lib/format'
 
 export interface DumbbellRow {

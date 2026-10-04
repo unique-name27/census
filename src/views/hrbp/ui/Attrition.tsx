@@ -8,6 +8,7 @@ import { fmt } from '@/lib/format'
 import { TENURE_BANDS } from '@/lib/people'
 import type { HrbpModel } from '../engine'
 import { COMPANY_SERIES, EXIT_TYPES, type GroupRateRow, NOT_RATED, SCOPE_SERIES } from '../engine/attrition'
+import { isCalendarQuarter, NO_LEAVERS } from '../engine/base'
 import { DEF } from './defs'
 import { rescope } from './model'
 
@@ -31,8 +32,12 @@ export function Attrition({ m }: { m: HrbpModel }) {
   const p = m.prep
   const asOf = formatDate(ctx.asOf)
   const window = ctx.window.label
-  const typed = p.has.terminationType
+  const left = p.has.terminationDate
+  const typed = left && p.has.terminationType
+  const noLeavers = `${NO_LEAVERS}.`
   const quarters = a.quarters
+  // Quarter ticks ("Q3 '26") match the quarter labels of the chart beside it when the blocks are calendar quarters.
+  const calendarQuarters = quarters.length > 0 && isCalendarQuarter({ ...quarters[0], months: 3, label: '' })
   const qRange = quarters.length ? `${formatDate(quarters[0].start)} to ${asOf}` : ''
   const exitsInWindow = m.kpi.all.events
   const groupRows: GroupRateRow[] = dim === 'department' ? a.byDepartment : a.byLocation
@@ -69,7 +74,9 @@ export function Attrition({ m }: { m: HrbpModel }) {
           ]}
           note={`8 quarters to ${asOf}`}
           span={7}
-          empty={quarters.some((q) => q.exits > 0) ? null : 'No exits in the last 8 quarters.'}
+          empty={
+            !left ? noLeavers : quarters.some((q) => q.exits > 0) ? null : 'No exits in the last 8 quarters.'
+          }
         >
           <Columns
             data={quarters}
@@ -101,9 +108,11 @@ export function Attrition({ m }: { m: HrbpModel }) {
           empty={
             showRegretted
               ? null
-              : typed
-                ? 'Add the Regrettable column to Employees to see this.'
-                : 'Add the Termination type column to Employees to see this.'
+              : !left
+                ? noLeavers
+                : typed
+                  ? 'Add the Regrettable column to Employees to see this.'
+                  : 'Add the Termination type column to Employees to see this.'
           }
         >
           <Lines
@@ -115,6 +124,7 @@ export function Attrition({ m }: { m: HrbpModel }) {
             emphasize={ctx.isCompany ? undefined : SCOPE_SERIES}
             format="pct"
             zero
+            xTicks={calendarQuarters ? 'quarter' : undefined}
           />
         </Figure>
       </Section>
@@ -144,9 +154,11 @@ export function Attrition({ m }: { m: HrbpModel }) {
           empty={
             a.reasons.length
               ? null
-              : p.has.terminationReason
-                ? 'No voluntary exits with a reason in this period.'
-                : 'Add the Termination reason column to Employees to see this.'
+              : !left
+                ? noLeavers
+                : p.has.terminationReason
+                  ? 'No voluntary exits with a reason in this period.'
+                  : 'Add the Termination reason column to Employees to see this.'
           }
         >
           <BarList data={a.reasons} label="reason" value="exits" secondary={(d) => fmt(d.share, 'pct0')} />
@@ -164,7 +176,19 @@ export function Attrition({ m }: { m: HrbpModel }) {
             { key: 'rate', label: 'Attrition', format: 'pct' },
             { key: 'voluntaryRate', label: 'Voluntary attrition', format: 'pct' },
           ]}
-          definitions={[DEF.attrition, DEF.voluntary, DEF.suppressed]}
+          definitions={[
+            DEF.attrition,
+            DEF.voluntary,
+            ...(dim === 'department'
+              ? [
+                  {
+                    term: 'Department',
+                    text: 'Each person counts in the department they were in at each month end, rebuilt from transfers in Job changes; leavers count in the department they left from.',
+                  },
+                ]
+              : []),
+            DEF.suppressed,
+          ]}
           note={`Line at the company rate, ${fmt(companyRef, 'pct')} · select a bar to focus on it`}
           span={7}
           actions={
@@ -190,7 +214,13 @@ export function Attrition({ m }: { m: HrbpModel }) {
               />
             </div>
           }
-          empty={groupsWithRate.length ? null : `No ${dim} has 5 or more employees in this period.`}
+          empty={
+            !left
+              ? noLeavers
+              : groupsWithRate.length
+                ? null
+                : `No ${dim} has 5 or more employees in this period.`
+          }
         >
           <BarList
             data={groupRows}
@@ -241,7 +271,7 @@ export function Attrition({ m }: { m: HrbpModel }) {
           definitions={[{ term: 'Tenure at exit', text: 'Years from hire date to termination date.' }]}
           note={`${exitsInWindow} exits · as of ${asOf}`}
           span={4}
-          empty={exitsInWindow ? null : 'No exits in this period.'}
+          empty={!left ? noLeavers : exitsInWindow ? null : 'No exits in this period.'}
         >
           <Columns
             data={a.byTenure}
@@ -277,7 +307,11 @@ export function Attrition({ m }: { m: HrbpModel }) {
           note={`Groups under ${MIN_GROUP} hidden · as of ${asOf}`}
           span={4}
           empty={
-            a.byLevel.some((r) => r.rate != null) ? null : 'No level has 5 or more employees in this period.'
+            !left
+              ? noLeavers
+              : a.byLevel.some((r) => r.rate != null)
+                ? null
+                : 'No level has 5 or more employees in this period.'
           }
         >
           <Columns data={a.byLevel} x="group" y="rate" format="pct" xOrder={[...LEVELS]} height={220} />
@@ -301,7 +335,13 @@ export function Attrition({ m }: { m: HrbpModel }) {
           note={`${exitsInWindow} exits · as of ${asOf}`}
           span={4}
           empty={
-            !p.has.reviews ? 'Upload Reviews to see this.' : exitsInWindow ? null : 'No exits in this period.'
+            !left
+              ? noLeavers
+              : !p.has.reviews
+                ? 'Upload Reviews to see this.'
+                : exitsInWindow
+                  ? null
+                  : 'No exits in this period.'
           }
         >
           <Columns
@@ -339,9 +379,11 @@ export function Attrition({ m }: { m: HrbpModel }) {
           empty={
             a.regrettedLeavers.length
               ? null
-              : p.has.regrettable
-                ? 'No regretted exits in this period.'
-                : 'Add the Regrettable column to Employees to see this.'
+              : !left
+                ? noLeavers
+                : p.has.regrettable
+                  ? 'No regretted exits in this period.'
+                  : 'Add the Regrettable column to Employees to see this.'
           }
         />
       </Section>

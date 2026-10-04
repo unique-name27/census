@@ -11,6 +11,7 @@ import { Button, cx, IconButton, Menu, SeverityIcon, Tag, Tip } from '@/componen
 import type { DatasetKey } from '@/data/schema'
 import { useCensus } from '@/data/store'
 import { fmt } from '@/lib/format'
+import { coverageText } from '../engine/coverage'
 import { feedsLine, type ManifestRow } from '../engine/manifest'
 import { useImportSession } from '../state/session'
 import { DatasetDetail } from './DatasetDetail'
@@ -44,24 +45,42 @@ function Source({ row }: { row: ManifestRow }) {
   )
 }
 
-function Coverage({ row }: { row: ManifestRow }) {
+/**
+ * The coverage meter doubles as the way into the field-by-field table, so it is a real button:
+ * keyboard and touch users reach its definition (the tooltip on focus) and the detail alike.
+ */
+function Coverage({
+  row,
+  open,
+  detailId,
+  onToggle,
+}: {
+  row: ManifestRow
+  open: boolean
+  detailId: string
+  onToggle: () => void
+}) {
   const core = row.coverage.fields.filter((f) => f.requirement !== 'optional')
+  const text = coverageText(row.coverage.core)
   return (
     <Tip
-      content={`Mean share of rows filled across the ${core.length} required and recommended fields. Open the row to see each field.`}
+      content={`Mean share of rows filled across the ${core.length} required and recommended fields, each counted over the rows it applies to. Select to see each field.`}
     >
-      <span
-        className="flex items-center gap-2"
-        role="img"
-        aria-label={`Field coverage ${fmt(row.coverage.core, 'pct0')}`}
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls={detailId}
+        aria-label={`Field coverage ${text}, mean of ${core.length} required and recommended fields. ${open ? 'Hide' : 'Show'} each field.`}
+        onClick={onToggle}
+        className="-mx-1 flex w-fit items-center gap-2 rounded-control px-1 py-0.5 hover:bg-hover"
       >
         <Meter
           value={row.coverage.core}
           tone={row.coverage.core != null && row.coverage.core < 0.8 ? 'warning' : 'default'}
           className="w-14 shrink-0"
         />
-        <span className="tnum text-[13px]">{fmt(row.coverage.core, 'pct0')}</span>
-      </span>
+        <span className="tnum text-[13px]">{text}</span>
+      </button>
     </Tip>
   )
 }
@@ -119,7 +138,7 @@ function Actions({ row, onUpload }: { row: ManifestRow; onUpload: (key: DatasetK
           { heading: row.label },
           {
             label: 'Current rows',
-            hint: showPay ? '.xlsx with pay' : '.xlsx',
+            hint: showPay ? '.xlsx with pay' : row.key === 'comp' ? '.xlsx, no pay amounts' : '.xlsx',
             icon: <IconDownload />,
             disabled: row.rows === 0,
             onSelect: () =>
@@ -173,7 +192,7 @@ function Row({
   const detailId = `data-room-detail-${row.key}`
   return (
     <li className="border-b border-rule last:border-b-0">
-      <div className={cx(COLS, 'grid grid-cols-2 gap-x-4 gap-y-3 px-4 py-3 lg:px-5')}>
+      <div className={cx(COLS, 'grid grid-cols-2 gap-x-4 gap-y-3 px-4 py-3')}>
         <div className="col-span-2 min-w-0 lg:col-span-1">
           <h3>
             <button
@@ -206,7 +225,7 @@ function Row({
         </div>
         <div>
           <CellLabel>Field coverage</CellLabel>
-          <Coverage row={row} />
+          <Coverage row={row} open={open} detailId={detailId} onToggle={onToggle} />
         </div>
         <div className="min-w-0">
           <CellLabel>Issues</CellLabel>
@@ -237,8 +256,9 @@ export function Manifest({
       return next
     })
   return (
-    <div className="col-span-1 min-w-0 rounded-sheet bg-sheet md:col-span-12">
-      <div aria-hidden="true" className={cx(COLS, 'hidden border-b border-rule px-5 py-2 lg:grid')}>
+    // Bleeds to the edges of the Figure it sits in, so row hairlines run sheet-wide.
+    <div className="-mx-4 -mb-4 min-w-0 border-t border-rule">
+      <div aria-hidden="true" className={cx(COLS, 'hidden border-b border-rule px-4 py-2 lg:grid')}>
         <span className="eyebrow">Dataset</span>
         <span className="eyebrow">Source</span>
         <span className="eyebrow text-right">Rows</span>

@@ -13,10 +13,11 @@ import { datasetDef } from '@/data/schema'
 import { useCensus } from '@/data/store'
 import { formatDate } from '@/lib/dates'
 import { fmt } from '@/lib/format'
-import { type FieldCoverage, REQUIREMENT_LABEL } from '../engine/coverage'
+import { coverageText, type FieldCoverage, REQUIREMENT_LABEL } from '../engine/coverage'
 import { actionSeverity, issuesFileStem, redactPayIssues } from '../engine/flow'
 import type { ManifestRow } from '../engine/manifest'
 import { type ImportLog, logFor, useImportLogs } from '../state/importLog'
+import { useSavedChoices } from '../state/savedChoices'
 import { loadImportLib } from '../state/session'
 import { downloadIssuesCsv } from './downloads'
 
@@ -35,57 +36,94 @@ const byRequirement = (fields: readonly FieldCoverage[]) =>
     .sort((a, b) => RANK[a.f.requirement] - RANK[b.f.requirement] || a.i - b.i)
     .map((x) => x.f)
 
+/** Where a field's values came from, when the last upload says: no column, or some defaults. */
+function FillNote({ f }: { f: FieldCoverage }) {
+  if (f.inFile === false)
+    return (
+      <span className="block text-[11px] text-muted">
+        Not in the file{f.filled > 0 ? '; derived from other columns' : ''}
+        {f.defaulted > 0 ? `; ${fmt(f.defaulted, 'int')} set by default` : ''}
+      </span>
+    )
+  if (f.defaulted > 0)
+    return (
+      <span className="block text-[11px] text-muted">
+        {fmt(f.defaulted, 'int')} {f.defaulted === 1 ? 'row' : 'rows'} set by default, counted as blank
+      </span>
+    )
+  return null
+}
+
 function CoverageTable({ row }: { row: ManifestRow }) {
   return (
     <div className="scroll-x">
-      <table className="w-full min-w-[460px] border-collapse text-[13px]">
+      {/* Below sm the share and counts sit under the field name, so nothing scrolls sideways. */}
+      <table className="w-full border-collapse text-[13px] sm:min-w-[460px]">
         <caption className="sr-only">Field coverage for {row.label}</caption>
         <thead>
           <tr className="border-b border-rule text-left">
             <th scope="col" className="eyebrow py-1.5 pr-3 font-semibold">
               Field
             </th>
-            <th scope="col" className="eyebrow py-1.5 pr-3 font-semibold">
+            <th scope="col" className="eyebrow hidden py-1.5 pr-3 font-semibold sm:table-cell">
               Needed
             </th>
-            <th scope="col" className="eyebrow w-[38%] py-1.5 pr-3 font-semibold">
+            <th scope="col" className="eyebrow w-[28%] py-1.5 font-semibold sm:w-[38%] sm:pr-3">
               Filled
             </th>
-            <th scope="col" className="eyebrow py-1.5 text-right font-semibold">
+            <th scope="col" className="eyebrow hidden py-1.5 text-right font-semibold sm:table-cell">
               Rows
             </th>
           </tr>
         </thead>
         <tbody>
-          {byRequirement(row.coverage.fields).map((f) => (
-            <tr key={f.key} className="border-b border-rule last:border-b-0">
-              <td className="py-1.5 pr-3">
-                {f.label}
-                {f.scope && <span className="block text-[11px] text-muted">{f.scope}</span>}
-              </td>
-              <td className="py-1.5 pr-3">
-                <RequirementTag f={f} />
-              </td>
-              <td className="py-1.5 pr-3">
-                <span className="flex items-center gap-2">
-                  <Meter
-                    value={f.share}
-                    tone={
-                      f.share != null && f.requirement !== 'optional' && f.share < 0.8 ? 'warning' : 'default'
-                    }
-                    label={`${f.label} filled`}
-                    className="max-w-[140px]"
-                  />
-                  <span className="tnum w-11 shrink-0 text-right text-[12px] text-ink-2">
-                    {fmt(f.share, 'pct0')}
+          {byRequirement(row.coverage.fields).map((f) => {
+            const share = coverageText(f.share)
+            const counts = `${fmt(f.filled, 'int')} of ${fmt(f.expected, 'int')}`
+            // A date that is blank until something happens: a count of events, not a gap.
+            const event = f.event ? `${fmt(f.filled, 'int')} ${f.event}` : null
+            return (
+              <tr key={f.key} className="border-b border-rule last:border-b-0">
+                <td className="py-1.5 pr-3 align-top">
+                  {f.label}
+                  {f.scope && <span className="block text-[11px] text-muted">{f.scope}</span>}
+                  {f.event && <span className="block text-[11px] text-muted">Blank until it happens</span>}
+                  <FillNote f={f} />
+                  <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 sm:hidden">
+                    <RequirementTag f={f} />
+                    <span className="tnum text-[12px] text-ink-2">{event ?? `${share} · ${counts}`}</span>
                   </span>
-                </span>
-              </td>
-              <td className="tnum py-1.5 text-right text-[12px] text-ink-2">
-                {fmt(f.filled, 'int')} of {fmt(f.expected, 'int')}
-              </td>
-            </tr>
-          ))}
+                </td>
+                <td className="hidden py-1.5 pr-3 align-top sm:table-cell">
+                  <RequirementTag f={f} />
+                </td>
+                <td className="py-1.5 pr-0 align-top sm:pr-3">
+                  {event ? (
+                    <span className="hidden h-5 items-center text-[12px] text-ink-2 sm:flex">{event}</span>
+                  ) : (
+                    <span className="flex h-5 items-center gap-2">
+                      <Meter
+                        value={f.share}
+                        tone={
+                          f.share != null && f.requirement !== 'optional' && f.share < 0.8
+                            ? 'warning'
+                            : 'default'
+                        }
+                        label={`${f.label} filled, ${share}`}
+                        className="max-w-[140px]"
+                      />
+                      <span className="tnum hidden w-11 shrink-0 text-right text-[12px] text-ink-2 sm:inline">
+                        {share}
+                      </span>
+                    </span>
+                  )}
+                </td>
+                <td className="tnum hidden py-1.5 text-right align-top text-[12px] text-ink-2 sm:table-cell">
+                  {counts}
+                </td>
+              </tr>
+            )
+          })}
         </tbody>
       </table>
     </div>
@@ -105,7 +143,9 @@ function LastImport({ row, log }: { row: ManifestRow; log: ImportLog }) {
     s.duplicates
       ? `${fmt(s.duplicates, 'int')} ${s.duplicates === 1 ? 'duplicate' : 'duplicates'} merged`
       : null,
-    s.defaulted ? `${fmt(s.defaulted, 'int')} ${s.defaulted === 1 ? 'default' : 'defaults'} used` : null,
+    s.defaulted
+      ? `${fmt(s.defaulted, 'int')} ${s.defaulted === 1 ? 'value' : 'values'} filled by a default`
+      : null,
   ].filter(Boolean)
   return (
     <div>
@@ -167,6 +207,7 @@ export function DatasetDetail({ row, id }: { row: ManifestRow; id: string }) {
     await lib.deleteProfile(row.key, fp)
     lib.forgetLearnedSynonyms(row.key)
     setForgotten(fp)
+    void useSavedChoices.getState().refresh()
     toast(`Saved column choices for ${row.label} were forgotten`, {
       description: 'The next upload is matched from its column names again.',
     })
@@ -174,13 +215,14 @@ export function DatasetDetail({ row, id }: { row: ManifestRow; id: string }) {
   return (
     <div
       id={id}
-      className="grid grid-cols-1 gap-x-8 gap-y-6 border-t border-rule px-4 pt-4 pb-5 lg:grid-cols-12 lg:px-5"
+      className="grid grid-cols-1 gap-x-8 gap-y-6 border-t border-rule px-4 pt-4 pb-5 lg:grid-cols-12"
     >
       <div className="min-w-0 lg:col-span-7">
         <p className="max-w-[70ch] text-[13px] text-ink-2">{row.description}</p>
         <h4 className="eyebrow mt-4">Field coverage</h4>
         <p className="mt-1 text-[12px] text-muted">
-          Share of rows with a value. Values the importer set to Unknown count as blank.
+          Share of the rows each field applies to that hold a value. Values the importer set to Unknown or
+          filled by a default count as blank.
         </p>
         <div className="mt-2">
           <CoverageTable row={row} />

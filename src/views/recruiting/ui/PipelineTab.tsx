@@ -1,18 +1,18 @@
 /**
  * Pipeline: where applications go (the river), who owns the next step (action queue), how each
- * stage converts and how long candidates wait, and how speed changed by application month.
+ * stage converts and how long candidates wait, and how speed changed month by month.
  */
 import { useEffect, useRef } from 'react'
 import { DotStrip, Figure, Heatmap } from '@/charts'
 import { Button, Section } from '@/components'
 import { STAGES } from '@/data/schema'
 import { formatDate } from '@/lib/dates'
-import { fmt, fmtDelta, plural } from '@/lib/format'
+import { fmt, plural } from '@/lib/format'
 import { flowMembers, TRANSITIONS } from '../engine/flow'
 import { HIRED, LAST_OPEN_STAGE } from '../engine/types'
 import { useRecruitingUi } from '../state'
 import { ActionQueue } from './ActionQueue'
-import { asOfNote, NEED_CANDIDATES, NoRecruitingData, TABLET_FULL, windowText } from './common'
+import { asOfNote, NEED_CANDIDATES, NoRecruitingData, windowText } from './common'
 import { useRecruiting } from './hooks'
 import { RiverChart } from './RiverChart'
 
@@ -93,7 +93,7 @@ export function PipelineTab() {
     applicationId: a.id,
     reqId: a.reqId,
     title: a.title,
-    department: a.department ?? '—',
+    department: a.department,
     source: a.source,
     applied: a.appliedDate,
     stage: STAGES[a.furthest],
@@ -121,7 +121,7 @@ export function PipelineTab() {
       declined: s.declined,
       active: s.active,
       medianDays: s.medianDays,
-      change: s.deltaDays != null ? fmtDelta(Math.round(s.deltaDays), 'days') : '',
+      change: s.deltaDays != null ? Math.round(s.deltaDays) : null,
     })),
     {
       stage: 'Hired',
@@ -133,7 +133,7 @@ export function PipelineTab() {
       declined: null,
       active: null,
       medianDays: null,
-      change: '',
+      change: null,
     },
   ]
   const lacking = b.actives.filter((x) => x.tier).length
@@ -141,7 +141,7 @@ export function PipelineTab() {
   return (
     <>
       <Section
-        title="Candidate flow"
+        title="Where applications went"
         dek={`Where the ${fmt(flow.total, 'int')} applications received ${windowText(b.window)} went. Click a ribbon to list those candidates and filter the action queue to that stage.`}
       >
         <Figure
@@ -210,8 +210,8 @@ export function PipelineTab() {
 
       <div ref={queueRef} className="scroll-mt-4">
         <Section
-          title="Action queue"
-          dek="Candidates without a timely next step, grouped by who owns it. Interview decisions sit with the hiring manager; copy a note to send each owner their list."
+          title="Who needs to act"
+          dek="Candidates who lack a next step (past the usual time), grouped by who owns it. Interview decisions sit with the hiring manager; copy a note to send each owner their list."
         >
           <ActionQueue groups={m.queue} asOf={b.asOf} />
         </Section>
@@ -224,7 +224,7 @@ export function PipelineTab() {
         <Figure
           id="recruiting-stage-conversion"
           title="Stage conversion"
-          subtitle={`Applications received ${windowText(b.window)}, by stage`}
+          subtitle={`Applications received ${windowText(b.window)}, by stage, with the median days to the next stage and the change vs the prior period`}
           data={conversion}
           columns={[
             { key: 'stage', label: 'Stage' },
@@ -234,27 +234,27 @@ export function PipelineTab() {
             { key: 'rejected', label: 'Rejected', format: 'int' },
             { key: 'withdrawn', label: 'Withdrawn', format: 'int' },
             { key: 'declined', label: 'Declined', format: 'int' },
-            { key: 'active', label: 'Still active', format: 'int' },
-            { key: 'medianDays', label: 'Median days to next stage', format: 'days' },
-            { key: 'change', label: 'Change vs prior', format: 'text', align: 'right' },
+            { key: 'active', label: 'Active', format: 'int' },
+            { key: 'medianDays', label: 'Median days', format: 'days' },
+            { key: 'change', label: 'Change', format: 'days' },
           ]}
           tableOnly
-          span={7}
+          span={12}
           table={{ maxRows: 10 }}
           empty={b.apps.length ? (flow.total ? null : 'No applications in this period.') : NEED_CANDIDATES}
           definitions={[
             {
               term: 'Pass rate',
-              text: 'Advanced ÷ (advanced + left at this stage). Still-active candidates are shown separately.',
+              text: 'Advanced ÷ (advanced + left at this stage). Candidates still active at the stage are shown separately (Active).',
               formula: 'advanced ÷ (advanced + rejected + withdrawn + declined)',
             },
             {
-              term: 'Median days to next stage',
-              text: 'Days between the stage date and the next stage date, for candidates with both.',
+              term: 'Median days',
+              text: 'Median days between the stage date and the next stage date, for candidates with both.',
             },
             {
-              term: 'Change vs prior',
-              text: `The same median for applications received ${windowText(b.prior)}. Shown when both periods have at least 5 candidates.`,
+              term: 'Change',
+              text: `Median days to next stage minus the same median for applications received ${windowText(b.prior)}, in days (negative = faster). Shown when both periods have at least 5 candidates.`,
             },
           ]}
           note={`${plural(flow.total, 'application')} · ${asOfNote(b.asOf)}`}
@@ -272,8 +272,7 @@ export function PipelineTab() {
             { key: 'days', label: 'Days waiting', format: 'int' },
             { key: 'tier', label: 'Aging' },
           ]}
-          span={5}
-          className={TABLET_FULL}
+          span={12}
           empty={
             b.apps.length
               ? m.waiting.length
@@ -308,26 +307,26 @@ export function PipelineTab() {
       </Section>
 
       <Section
-        title="Speed by application month"
-        dek="Median days for each step, for candidates grouped by the month they applied. A row that darkens toward the right is a step slowing down."
+        title="Speed by month"
+        dek="Median days for each step, by the month the step was completed. A row that darkens toward the right is a step slowing down."
       >
         <Figure
           id="recruiting-speed-heatmap"
-          title="Days per transition by application month"
-          subtitle={`Median days per step, applications from the 12 months to ${formatDate(b.window.end)}`}
+          title="Days per transition by month"
+          subtitle={`Median days per step, steps completed in the 12 months to ${formatDate(b.window.end)}`}
           data={m.speed}
           columns={[
-            { key: 'month', label: 'Applied in' },
+            { key: 'month', label: 'Completed in' },
             { key: 'transition', label: 'Step' },
             { key: 'days', label: 'Median days', format: 'days' },
-            { key: 'n', label: 'Candidates', format: 'int' },
+            { key: 'n', label: 'Steps completed', format: 'int' },
           ]}
           span={12}
           empty={b.apps.length ? null : NEED_CANDIDATES}
           definitions={[
             {
               term: 'Median days',
-              text: 'Days from one stage date to the next, for candidates who applied that month and made the step. Cells with fewer than 5 candidates are left blank.',
+              text: 'Days from one stage date to the next, for steps completed that month (the date of the later stage). Grouping by completion month keeps slow steps in the month they finished, so a recent slowdown shows. Cells with fewer than 5 steps are left blank.',
             },
           ]}
           note={asOfNote(b.asOf)}
@@ -342,7 +341,7 @@ export function PipelineTab() {
             scheme="sequential"
             xOrder={[...new Set(m.speed.map((c) => c.monthLabel))]}
             yOrder={TRANSITIONS}
-            ariaLabel="Days per transition by application month"
+            ariaLabel="Days per transition by month"
           />
         </Figure>
       </Section>

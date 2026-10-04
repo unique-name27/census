@@ -50,7 +50,9 @@ export function OverviewTab() {
   return (
     <Grid>
       <KpiStrip kpis={m.kpis} />
-      <Readout findings={m.findings} span={4} />
+      {/* Full width on tablets (the right column is too), and sticky on desktop so a readout
+          shorter than the right column doesn't leave a hole under it. */}
+      <Readout findings={m.findings} span={4} className={cx(TABLET_FULL, 'lg:sticky lg:top-4')} />
       {/* The right column stacks the lead figure and two short sections, so it runs as long as the readout. */}
       <div className={cx(spanClass(8), 'min-w-0')}>
         <Grid>
@@ -76,8 +78,8 @@ export function OverviewTab() {
             }
             definitions={[
               {
-                term: 'Needs action',
-                text: 'Nothing pending: the application needs review, an interview needs scheduling, or an approved offer is not yet sent.',
+                term: 'No step booked',
+                text: 'Nothing is on the calendar and no interview is waiting on a decision: the application needs review, an interview needs scheduling, or the candidate is at the offer stage with no offer sent yet. A state, not an alarm.',
               },
               { term: 'Needs decision', text: 'The interview happened and the stage has not moved since.' },
               { term: 'Offer extended', text: 'The offer is out and the candidate has not answered.' },
@@ -87,10 +89,10 @@ export function OverviewTab() {
               },
               {
                 term: 'Lacks a next step',
-                text: 'Past 1.5× the usual days for the stage with nothing scheduled, feedback pending more than 2 days, or an offer out more than 5 days.',
+                text: 'The alarm (the diamond): no step booked for more than 1.5× the usual days for the stage, a decision pending more than 2 days after the interview, or an offer out more than 5 days. These candidates make up the action queue.',
               },
             ]}
-            note={`${plural(b.actives.length, 'active candidate')} · click a segment to open those candidates in the action queue · ${asOfNote(b.asOf)}`}
+            note={`${plural(b.actives.length, 'active candidate')} · click a segment to open the ones that lack a next step in the action queue · ${asOfNote(b.asOf)}`}
           >
             <PipelineBars
               stages={m.pipeline}
@@ -131,13 +133,14 @@ export function OverviewTab() {
               y="hires"
               xType="month"
               format="int"
+              labels={false}
               ariaLabel="Hires by month"
             />
           </Figure>
           <Figure
             id="recruiting-offer-acceptance-quarter"
             title="Offer acceptance by quarter"
-            subtitle="Offers accepted ÷ offers resolved, last 8 quarters (dated at quarter end)"
+            subtitle="Offers accepted ÷ offers resolved, last 8 quarters"
             data={accRows}
             columns={[
               { key: 'quarter', label: 'Quarter' },
@@ -168,6 +171,7 @@ export function OverviewTab() {
               x="quarterEnd"
               y="rate"
               format="pct0"
+              xTicks="quarter"
               ariaLabel="Offer acceptance by quarter"
             />
           </Figure>
@@ -175,7 +179,7 @@ export function OverviewTab() {
 
         <Section
           title="Requisitions"
-          dek={`Where open reqs sit and how long roles take to fill, for reqs filled ${windowText(b.window)}.`}
+          dek={`Open reqs on ${formatDate(b.asOf)}, and how long reqs filled ${windowText(b.window)} took.`}
         >
           <Figure
             id="recruiting-open-reqs-department"
@@ -197,7 +201,10 @@ export function OverviewTab() {
                 : NEED_REQS
             }
             definitions={[
-              { term: 'Open req', text: 'Status Open on the as-of date. Reqs on hold are not counted.' },
+              {
+                term: 'Open req',
+                text: 'Open on the as-of date: opened by then and not yet filled, closed or cancelled. Reqs on hold are not counted.',
+              },
               {
                 term: 'Amber',
                 text: `The department's oldest open req has been open more than ${OLD_REQ_DAYS} days.`,

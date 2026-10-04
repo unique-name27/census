@@ -3,6 +3,7 @@ import { BarList, Columns, DotStrip, Figure, Heatmap } from '@/charts'
 import { Section } from '@/components'
 import { formatDate } from '@/lib/dates'
 import { fmt } from '@/lib/format'
+import { MeritGuideline } from '../charts/MeritGuideline'
 import {
   BONUS_COLUMNS,
   DEF_COMPA,
@@ -19,7 +20,7 @@ import {
 import type { CompModel } from '../engine/model'
 import { DIFFERENTIATION_FLOOR, type DifferentiationRow, RATING_ORDER } from '../engine/performance'
 import { POSITIONS } from '../engine/population'
-import { emptyIf, MISSING, note } from '../shared'
+import { asOfNote, emptyIf, MISSING, note } from '../shared'
 
 const RATING_TOP_DOWN = RATING_ORDER.slice().reverse()
 const flatTone = (d: DifferentiationRow) =>
@@ -31,10 +32,6 @@ export function Performance({ m }: { m: CompModel }) {
   const asOf = formatDate(m.asOf)
   const noReviews = m.pop.has.reviews ? null : MISSING.reviews
   const noMerit = noReviews ?? (m.pop.has.merit ? null : MISSING.merit)
-  const meritChart = p.meritByRating.flatMap((r) => [
-    { rating: r.rating, series: 'Proposed, mean', value: r.mean },
-    { rating: r.rating, series: 'Guideline', value: r.guideline },
-  ])
   const meritN = p.meritByRating.reduce((a, r) => a + r.n, 0)
   const cycle = m.pop.latestCycle ? `latest rating (${m.pop.latestCycle})` : 'latest rating'
 
@@ -70,7 +67,7 @@ export function Performance({ m }: { m: CompModel }) {
         <Figure
           id="comp-merit-by-rating"
           title="Merit by rating against the guideline"
-          subtitle="Mean proposed merit % next to the guideline for each rating, this cycle"
+          subtitle="Mean proposed merit % by rating, with the guideline for each rating marked, this cycle"
           data={p.meritByRating}
           columns={MERIT_BY_RATING_COLUMNS}
           definitions={[guidelineDefinition(s), DEF_LATEST_RATING]}
@@ -78,14 +75,10 @@ export function Performance({ m }: { m: CompModel }) {
           span={6}
           empty={emptyIf(p.meritByRating, noMerit, 'No rated merit proposals in this scope.')}
         >
-          <Columns
-            data={meritChart}
-            x="rating"
-            y="value"
-            series="series"
-            seriesOrder={['Proposed, mean', 'Guideline']}
-            xOrder={RATING_ORDER}
-            format="pct"
+          <MeritGuideline
+            rows={p.meritByRating}
+            order={RATING_ORDER}
+            ariaLabel="Mean proposed merit by rating against the guideline"
           />
         </Figure>
       </Section>
@@ -133,7 +126,7 @@ export function Performance({ m }: { m: CompModel }) {
           data={p.byDepartment}
           columns={DIFFERENTIATION_COLUMNS}
           definitions={[DEF_DIFFERENTIATION, DEF_LATEST_RATING]}
-          note={`Company ${fmt(p.companyDifferentiation.ratio, 'num2')}× · needs 5 people on each side · as of ${asOf}`}
+          note={`Company ${fmt(p.companyDifferentiation.ratio, 'times')} · needs 5 people on each side · ${asOfNote(m)}`}
           span={5}
           empty={emptyIf(p.byDepartment, noMerit, 'No rated merit proposals in this scope.')}
         >
@@ -141,9 +134,9 @@ export function Performance({ m }: { m: CompModel }) {
             data={p.byDepartment}
             label="group"
             value="ratio"
-            format="num2"
+            format="times"
             sort="asc"
-            ref={{ value: DIFFERENTIATION_FLOOR, label: `Floor ${fmt(DIFFERENTIATION_FLOOR, 'num2')}` }}
+            ref={{ value: DIFFERENTIATION_FLOOR, label: `Floor ${fmt(DIFFERENTIATION_FLOOR, 'times')}` }}
             tone={flatTone}
             rowHeight={26}
             nullNote="Fewer than 5 people rated 3 or rated 4-5"

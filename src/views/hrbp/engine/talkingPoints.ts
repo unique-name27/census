@@ -1,12 +1,16 @@
 /**
  * Plain-text talking points for a leader 1:1: 5 to 7 bullets an HRBP can paste into notes.
  * Fixes the earlier tool, which named the manager with the most exits of any kind under the
- * regretted-exits bullet; this counts regretted exits per manager.
+ * regretted-exits bullet; this counts regretted exits per manager. Held to the same anonymity
+ * rule as the tiles: no rate over fewer than 5 people, and no exit reason that could point to
+ * one person.
  */
+import { MIN_GROUP } from '@/data/schema'
 import { addDays, formatDate } from '@/lib/dates'
 import { fmt } from '@/lib/format'
 import { exitsIn } from '@/lib/people'
 import type { HrbpModel } from '.'
+import { count, possessive, quoted } from './base'
 import { windowPhrase } from './kpis'
 
 const n = (v: number) => v.toLocaleString('en-US')
@@ -33,33 +37,48 @@ export function talkingPoints(m: HrbpModel): string {
   const phrase = windowPhrase(p)
   const lines: string[] = []
 
-  const change = kpi.headcount - kpi.headcountYearAgo
-  const growth = kpi.headcountYearAgo >= 5 ? ` (${fmt(Math.abs(change) / kpi.headcountYearAgo, 'pct')})` : ''
-  lines.push(
-    change === 0
-      ? `Headcount is ${n(kpi.headcount)} employees, unchanged from 12 months ago.`
-      : `Headcount is ${n(kpi.headcount)} employees, ${change > 0 ? 'up' : 'down'} ${n(Math.abs(change))}${growth} from 12 months ago.`,
-  )
+  const before = kpi.headcountYearAgo
+  if (before == null) {
+    lines.push(`Headcount is ${n(kpi.headcount)} employees.`)
+    lines.push(
+      'Attrition and the change from a year ago are not shown: the Employees upload has no leavers. Add rows with a Termination date to see them.',
+    )
+  } else {
+    const change = kpi.headcount - before
+    const growth = before >= 5 ? ` (${fmt(Math.abs(change) / before, 'pct')})` : ''
+    lines.push(
+      change === 0
+        ? `Headcount is ${n(kpi.headcount)} employees, unchanged from 12 months ago.`
+        : `Headcount is ${n(kpi.headcount)} employees, ${change > 0 ? 'up' : 'down'} ${n(Math.abs(change))}${growth} from 12 months ago.`,
+    )
+  }
 
-  if (kpi.vol.rate != null && kpi.vol.avgHeadcount >= 5) {
+  if (kpi.all.avgHeadcount > 0 && kpi.all.avgHeadcount < MIN_GROUP) {
+    lines.push('Rates are hidden to protect anonymity: this scope averages fewer than 5 employees.')
+  }
+
+  if (kpi.vol.rate != null && kpi.vol.avgHeadcount >= MIN_GROUP) {
     const vs =
       vsCompany && kpi.companyVol != null ? ` against ${fmt(kpi.companyVol, 'pct')} for the company` : ''
+    // A reason given by one person, or in a group under 5 leavers, could point to who said it.
     const top = attrition.reasons[0]
-    const reason = top
-      ? `; the top reason was ${top.reason} (${top.exits} of ${attrition.voluntaryExits} voluntary exits)`
-      : ''
+    const reason =
+      top && top.exits >= 2 && attrition.voluntaryExits >= MIN_GROUP
+        ? `. The top reason given was ${quoted(top.reason)} (${top.exits} of ${attrition.voluntaryExits} voluntary exits)`
+        : ''
     lines.push(`Voluntary attrition is ${fmt(kpi.vol.rate, 'pct')} over ${phrase}${vs}${reason}.`)
   }
 
-  if (kpi.regretted.rate != null) {
+  if (kpi.regretted.rate != null && kpi.regretted.avgHeadcount >= MIN_GROUP) {
     const regretted = kpi.regretted.events
     const mgr = topRegrettedManager(m)
+    const exits = count(regretted, 'regretted exit', 'regretted exits')
     lines.push(
-      regretted
-        ? `${n(regretted)} regretted ${regretted === 1 ? 'exit' : 'exits'} over ${phrase}${
-            mgr ? `, most under ${mgr.name} (${mgr.count})` : ', with no manager losing more than one'
-          }.`
-        : `No regretted exits over ${phrase}.`,
+      !regretted
+        ? `No regretted exits over ${phrase}.`
+        : mgr
+          ? `${exits} over ${phrase}. The largest group, ${mgr.count} of ${n(regretted)}, left ${possessive(mgr.name)} team.`
+          : `${exits} over ${phrase}, no more than one from any manager's team.`,
     )
   }
 
@@ -71,12 +90,14 @@ export function talkingPoints(m: HrbpModel): string {
   }
 
   const promo = movement.promotions
-  if (promo.rate != null && promo.avgHeadcount >= 5) {
+  if (promo.rate != null && promo.avgHeadcount >= MIN_GROUP) {
     const vs =
       vsCompany && movement.companyPromotions.rate != null
         ? ` against ${fmt(movement.companyPromotions.rate, 'pct')} for the company`
         : ''
-    lines.push(`Promotion rate is ${fmt(promo.rate, 'pct')} (${n(promo.promotions)} promotions)${vs}.`)
+    lines.push(
+      `Promotion rate is ${fmt(promo.rate, 'pct')} over ${phrase} (${count(promo.promotions, 'promotion', 'promotions')})${vs}.`,
+    )
   }
 
   const top = findings.find((f) => f.severity === 'critical') ?? findings.find((f) => f.severity !== 'good')

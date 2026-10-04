@@ -8,15 +8,23 @@ import { Section, Segmented } from '@/components'
 import { STAGES } from '@/data/schema'
 import { formatDate } from '@/lib/dates'
 import { fmt, plural } from '@/lib/format'
-import { asOfNote, NEED_CANDIDATES, NoRecruitingData, TABLET_FULL, windowText } from './common'
+import type { GroupAcceptance } from '../engine/sources'
+import { useRecruitingUi } from '../state'
+import { asOfNote, NEED_CANDIDATES, NoRecruitingData, windowText } from './common'
 import { useRecruiting } from './hooks'
 
 type ExitKind = 'Rejected' | 'Withdrawn'
+type Basis = 'quarter' | 'period'
+
+/** "+103%", "−48%": a relative change with its sign. */
+const signedPct = (v: number) => `${v > 0 ? '+' : ''}${fmt(v, 'pct0')}`
 
 export function SourcesTab() {
   const m = useRecruiting()
   const b = m.base
   const [exitKind, setExitKind] = useState<ExitKind>('Rejected')
+  const chosenBasis = useRecruitingUi((s) => s.acceptanceBasis)
+  const setBasis = useRecruitingUi((s) => s.setAcceptanceBasis)
   if (!b.apps.length && !b.reqs.length) return <NoRecruitingData />
 
   const noCands = b.apps.length === 0
@@ -30,7 +38,20 @@ export function SourcesTab() {
     .map(([r]) => r)
   const exitTotal = exits.reduce((s, r) => s + r.candidates, 0)
   const declinedTotal = m.declineReasons.reduce((s, r) => s + r.candidates, 0)
-  const offersN = b.offers.length
+  const changed = m.sources.find((r) => r.source === m.changedSource)
+  // Offer acceptance by location opens on the basis the readout used (the latest quarter when the
+  // finding compares quarters), so the chart a reader lands on shows the same story.
+  const q = m.latestQuarter
+  const quarterWords = q.complete ? q.label : `${q.label} to date`
+  const hasQuarterView = q.start > b.window.start
+  const basis: Basis = hasQuarterView
+    ? (chosenBasis ?? (m.acceptanceDropBasis === 'quarter' ? 'quarter' : 'period'))
+    : 'period'
+  const byLocation: GroupAcceptance[] =
+    basis === 'quarter' ? m.acceptanceByLocationQuarter : m.acceptanceByLocation
+  const companyAcc = basis === 'quarter' ? m.companyAcceptanceQuarter : m.companyAcceptance
+  const offersN = byLocation.reduce((n, r) => n + r.offers, 0)
+  const periodWords = b.windowWords[0].toUpperCase() + b.windowWords.slice(1)
 
   return (
     <>
@@ -41,7 +62,7 @@ export function SourcesTab() {
         <Figure
           id="recruiting-source-effectiveness"
           title="Source effectiveness"
-          subtitle={`Applications received ${windowText(b.window)}, by source`}
+          subtitle={`Share of applications hired, by source, applications received ${windowText(b.window)}. The table view has volume, offer acceptance, time to hire and change.`}
           data={m.sources}
           columns={[
             { key: 'source', label: 'Source' },
@@ -52,16 +73,14 @@ export function SourcesTab() {
             { key: 'offerAcceptance', label: 'Offer acceptance', format: 'pct' },
             { key: 'medianTimeToHire', label: 'Median time to hire', format: 'days' },
             { key: 'priorApplications', label: 'Applications, prior period', format: 'int' },
-            { key: 'change', label: 'Change', format: 'pct' },
+            { key: 'change', label: 'Change in applications', format: 'pct' },
           ]}
-          tableOnly
-          span={7}
-          table={{ maxRows: 10 }}
+          span={6}
           empty={noCands ? NEED_CANDIDATES : m.sources.length ? null : 'No applications in this period.'}
           definitions={[
             {
               term: 'Hire rate',
-              text: 'Applications from the source that ended in a hire. Candidates still in process count as not hired yet.',
+              text: 'Applications from the source that ended in a hire. Candidates still in process count as not hired yet, so short or recent periods read low. Blank under 5 applications.',
               formula: 'hired ÷ applications',
             },
             {
@@ -70,59 +89,43 @@ export function SourcesTab() {
               formula: 'hired ÷ (hired + declined)',
             },
             { term: 'Median time to hire', text: 'Days from application to offer accepted, for the hires.' },
-            { term: 'Change', text: `Applications vs ${windowText(b.prior)}.` },
-          ]}
-          note={`${plural(b.cohort.length, 'application')} · ${plural(cohortHired, 'hire')} · ${asOfNote(b.asOf)}`}
-        />
-        <Figure
-          id="recruiting-hire-rate-source"
-          title="Hire rate by source"
-          subtitle={`Share of applications hired, applications received ${windowText(b.window)}`}
-          data={m.sources}
-          columns={[
-            { key: 'source', label: 'Source' },
-            { key: 'hireRate', label: 'Hire rate', format: 'pct' },
-            { key: 'hires', label: 'Hires', format: 'int' },
-            { key: 'applications', label: 'Applications', format: 'int' },
-          ]}
-          span={5}
-          className={TABLET_FULL}
-          empty={noCands ? NEED_CANDIDATES : m.sources.length ? null : 'No applications in this period.'}
-          definitions={[
             {
-              term: 'Hire rate',
-              text: 'Hired ÷ applications from the source.',
-              formula: 'hired ÷ applications',
+              term: 'Change in applications',
+              text: `Applications vs ${windowText(b.prior)}, as a share of the prior count (negative = fewer).`,
             },
           ]}
-          note={`Overall ${fmt(overallRate, 'pct')} · ${asOfNote(b.asOf)}`}
+          note={`${plural(b.cohort.length, 'application')} · ${plural(cohortHired, 'hire')} · overall ${fmt(overallRate, 'pct')} · ${asOfNote(b.asOf)}`}
         >
           <BarList
             data={m.sources}
             label="source"
             value="hireRate"
             format="pct"
-            secondary={(d) => `${fmt(d.hires, 'int')} of ${fmt(d.applications, 'int')}`}
+            secondary={(d) =>
+              d.hireRate != null
+                ? `${fmt(d.hires, 'int')} of ${fmt(d.applications, 'int')}`
+                : plural(d.applications, 'application')
+            }
             ref={
               overallRate != null
                 ? { value: overallRate, label: `Overall ${fmt(overallRate, 'pct')}` }
                 : undefined
             }
             nullNote="Fewer than 5 applications"
-            ariaLabel="Hire rate by source"
+            ariaLabel="Source effectiveness: hire rate by source"
           />
         </Figure>
         <Figure
           id="recruiting-applications-source-month"
           title="Applications by source by month"
-          subtitle={`Applications received per month, 24 months to ${formatDate(b.window.end)}${m.changedSource ? `; ${m.changedSource} moved most against the overall trend` : ''}`}
+          subtitle={`Applications received per month, 24 months to ${formatDate(b.window.end)}${changed?.change != null ? `. ${changed.source}: ${signedPct(changed.change)} ${b.compareLabel}, the biggest move against the overall trend` : ''}`}
           data={m.sourcesByMonth}
           columns={[
             { key: 'month', label: 'Month' },
             { key: 'source', label: 'Source' },
             { key: 'applications', label: 'Applications', format: 'int' },
           ]}
-          span={12}
+          span={6}
           empty={noCands ? NEED_CANDIDATES : null}
           definitions={[
             { term: 'Applications', text: 'Applications by the month they were received.' },
@@ -153,15 +156,29 @@ export function SourcesTab() {
         <Figure
           id="recruiting-offer-acceptance-location"
           title="Offer acceptance by location"
-          subtitle={`Offers accepted ÷ offers resolved ${windowText(b.window)}, by work site`}
-          data={m.acceptanceByLocation}
+          subtitle={`Offers accepted ÷ offers resolved ${basis === 'quarter' ? `in ${quarterWords}` : windowText(b.window)}, by work site, largest first`}
+          data={byLocation}
           columns={[
             { key: 'group', label: 'Location' },
             { key: 'rate', label: 'Offer acceptance', format: 'pct' },
             { key: 'hired', label: 'Accepted', format: 'int' },
             { key: 'declined', label: 'Declined', format: 'int' },
+            { key: 'offers', label: 'Offers resolved', format: 'int' },
           ]}
           span={6}
+          actions={
+            hasQuarterView ? (
+              <Segmented<Basis>
+                label="Period"
+                value={basis}
+                onChange={setBasis}
+                options={[
+                  { value: 'quarter', label: quarterWords },
+                  { value: 'period', label: periodWords },
+                ]}
+              />
+            ) : undefined
+          }
           empty={
             noCands
               ? NEED_CANDIDATES
@@ -174,28 +191,35 @@ export function SourcesTab() {
           definitions={[
             {
               term: 'Offer acceptance',
-              text: 'Offers accepted ÷ offers accepted or declined, by the req’s location. Sites with fewer than 5 resolved offers show no rate.',
+              text: 'Offers accepted ÷ offers accepted or declined, by the req’s location and the date each offer was resolved. Sites under 5 resolved offers fold into Other; a row still under 5 shows only its offer count.',
               formula: 'hired ÷ (hired + declined)',
             },
+            {
+              term: 'Amber',
+              text: 'At least 10 pts below the company for the same period.',
+            },
           ]}
-          note={`${plural(offersN, 'offer')} resolved · company ${fmt(m.companyAcceptance, 'pct')} · ${asOfNote(b.asOf)}`}
+          note={`${plural(offersN, 'offer')} resolved · company ${fmt(companyAcc, 'pct')} · ${asOfNote(b.asOf)}`}
         >
           <BarList
-            data={m.acceptanceByLocation}
+            data={byLocation}
             label="group"
             value="rate"
             format="pct0"
             domain={[0, 1]}
-            secondary={(d) => `${fmt(d.hired, 'int')} of ${fmt(d.offers, 'int')}`}
+            sort="none"
+            secondary={(d) =>
+              d.rate != null && d.hired != null
+                ? `${fmt(d.hired, 'int')} of ${fmt(d.offers, 'int')}`
+                : plural(d.offers, 'offer')
+            }
             ref={
-              m.companyAcceptance != null
-                ? { value: m.companyAcceptance, label: `Company ${fmt(m.companyAcceptance, 'pct0')}` }
+              companyAcc != null
+                ? { value: companyAcc, label: `Company ${fmt(companyAcc, 'pct0')}` }
                 : undefined
             }
             tone={(d) =>
-              d.rate != null && m.companyAcceptance != null && d.rate <= m.companyAcceptance - 0.1
-                ? 'warning'
-                : 'default'
+              d.rate != null && companyAcc != null && d.rate <= companyAcc - 0.1 ? 'warning' : 'default'
             }
             nullNote="Fewer than 5 resolved offers"
             ariaLabel="Offer acceptance by location"
@@ -238,12 +262,12 @@ export function SourcesTab() {
         <Figure
           id="recruiting-exit-reasons"
           title={exitKind === 'Rejected' ? 'Why candidates were rejected' : 'Why candidates withdrew'}
-          subtitle={`${exitKind} ${windowText(b.window)}, by reason and stage`}
-          data={exits}
+          subtitle={`${exitKind} ${windowText(b.window)}, by reason and the stage they left from`}
+          data={m.exitReasons}
           columns={[
             { key: 'outcome', label: 'Outcome' },
             { key: 'reason', label: 'Reason' },
-            { key: 'stage', label: 'Stage', format: 'text' },
+            { key: 'stage', label: 'Stage left from', format: 'text' },
             { key: 'candidates', label: 'Candidates', format: 'int' },
           ]}
           span={12}
@@ -270,7 +294,7 @@ export function SourcesTab() {
             { term: 'Withdrawn', text: 'The candidate left the process.' },
             { term: 'Stage', text: 'The furthest stage the candidate reached before leaving.' },
           ]}
-          note={`${plural(exitTotal, 'candidate')} · ${asOfNote(b.asOf)}`}
+          note={`${plural(exitTotal, 'candidate')} ${exitKind.toLowerCase()} · the table and exports hold both outcomes · ${asOfNote(b.asOf)}`}
         >
           <HBars
             data={exits}

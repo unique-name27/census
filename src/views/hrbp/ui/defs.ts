@@ -33,12 +33,12 @@ export const DEF = {
   },
   promotionRate: {
     term: 'Promotion rate',
-    text: 'Promotion events in the period from Job changes, divided by average headcount, annualized. A person promoted twice counts twice.',
-    formula: 'promotions ÷ average headcount × 12 ÷ months',
+    text: 'Promotion events in the period from Job changes, divided by average headcount. Not annualized, because promotions come in cycles. A person promoted twice counts twice. Periods shorter than a year compare with the same months a year earlier.',
+    formula: 'promotions ÷ average headcount',
   },
   mobility: {
     term: 'Internal mobility',
-    text: 'People with at least one promotion, transfer or lateral move in the period, divided by average headcount. Each person counts once.',
+    text: 'People with at least one promotion, transfer or lateral move in the period, divided by average headcount. Each person counts once. Not annualized.',
     formula: 'people who moved ÷ average headcount',
   },
   span: {

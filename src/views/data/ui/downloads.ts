@@ -3,7 +3,7 @@
  * written by the import library's template writer so every file can be uploaded again as is.
  * The libraries load on first use.
  */
-import type { ExportMeta } from '@/charts/types'
+import type { ExportMeta } from '@/charts'
 import type { ImportIssue } from '@/data/import'
 import { ISSUE_COLUMNS, issueTableRows } from '@/data/import/issues'
 import { generateSample, SAMPLE_COMPANY } from '@/data/sample'
@@ -12,6 +12,7 @@ import { todayISO } from '@/lib/dates'
 import { toCsv } from '@/lib/export/csv'
 import { downloadBlob, MIME } from '@/lib/export/download'
 import { slug } from '@/lib/export/names'
+import { sampleWorkbookDatasets } from '../engine/flow'
 import {
   COVERAGE_COLUMNS,
   coverageExportRows,
@@ -22,18 +23,26 @@ import {
 import { loadImportLib } from '../state/session'
 
 /** Every row of every dataset of the sample company, in the upload layout. */
-export async function downloadSampleWorkbook(includePay: boolean): Promise<number> {
+export async function downloadSampleWorkbook(
+  includePay: boolean,
+): Promise<{ rows: number; datasets: DatasetKey[]; leftOut: DatasetKey[] }> {
   // Let the button show that the workbook is being prepared before the heavy writing starts.
   await new Promise((r) => setTimeout(r, 30))
   const lib = await loadImportLib()
   const sample = generateSample()
+  const datasets = sampleWorkbookDatasets(includePay)
   const blob = await lib.buildTemplateWorkbook({
     sample,
+    datasets,
     sampleRows: Number.MAX_SAFE_INTEGER,
     includePay,
   })
   downloadBlob(blob, `census-sample-${slug(SAMPLE_COMPANY)}.xlsx`)
-  return DATASET_KEYS.reduce((a, k) => a + sample[k].length, 0)
+  return {
+    rows: datasets.reduce((a, k) => a + sample[k].length, 0),
+    datasets,
+    leftOut: DATASET_KEYS.filter((k) => !datasets.includes(k)),
+  }
 }
 
 /** Headers, dropdowns and help sheets with no rows; all ten datasets, or one. */

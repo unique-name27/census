@@ -10,14 +10,14 @@ import type { Filters } from '@/data/scope'
 import { type Dimension, decomposeRate } from '@/lib/decompose'
 import { fmt } from '@/lib/format'
 import { attrition, exitsIn } from '@/lib/people'
-import { OVER_BUDGET } from './cycle'
+import { OVER_BUDGET, overBudgetSeverity } from './cycle'
 import { safeMedian, values } from './groups'
-import { MARKET_FLAG, MARKET_RANGE_GAP } from './market'
+import { MARKET_CHART_MIN, MARKET_FLAG, MARKET_RANGE_GAP } from './market'
 import type { CompModel } from './model'
 import { DIFFERENTIATION_FLOOR } from './performance'
 import type { CompPerson } from './population'
 import { COMPRESSION_FINDING_MIN, COMPRESSION_GAP } from './ranges'
-import { isAre, joinAnd, levelSpan, pct2, people as peopleText, times, windowPhrase } from './text'
+import { isAre, joinAnd, levelSpan, people as peopleText, pts2, windowPhrase } from './text'
 
 /** A location or department at or below this median compa-ratio is flagged. */
 export const LOW_COMPA = 0.92
@@ -29,7 +29,6 @@ export const isLowCompa = (median: number | null | undefined): boolean =>
 const BELOW_MIN_CRITICAL = 0.05
 /** Voluntary attrition this far above the company (fraction points) escalates a low-pay finding. */
 const ATTRITION_ESCALATE = 0.03
-const MAX_PEOPLE = 50
 const PAY_REASONS = new Set(['Base salary', 'Equity, bonus or total rewards'])
 
 export type FindingsInput = Omit<CompModel, 'kpis' | 'findings'>
@@ -41,6 +40,11 @@ interface Ranked extends Finding {
 
 const person = (p: CompPerson, note: string): FindingPerson => ({ id: p.id, name: p.name, note })
 const ratio = (v: number | null) => fmt(v, 'ratio')
+const pct2 = (v: number | null | undefined) => fmt(v, 'pct2')
+const times = (v: number | null | undefined) => fmt(v, 'times')
+/** "5.4% of 1,450", or nothing when the base is under the anonymity floor. */
+const shareOf = (n: number, of: number) =>
+  of >= MIN_GROUP ? `${fmt(n / of, 'pct')} of ${fmt(of, 'int')}` : ''
 
 /* ───────── low compa-ratio by location or department ───────── */
 
@@ -92,12 +96,15 @@ function lowCompa(ctx: AnalyticsContext, m: FindingsInput): Ranked[] {
           `Voluntary attrition there is ${fmt(vol.rate, 'pct')} over ${windowPhrase(ctx.filters.period)}, ${side} the company's ${fmt(companyVol.rate, 'pct')}.`,
         )
       }
-      const groupPeople = m.pop.people.filter(inGroup)
-      if (g.belowMin > 0)
-        sentences.push(`${peopleText(g.belowMin)} there ${isAre(g.belowMin)} paid below range minimum.`)
-      const low = groupPeople
-        .filter((p) => p.compa != null && p.compa < m.settings.bandLow)
+      const low = m.pop.people
+        .filter((p) => inGroup(p) && p.compa != null && p.compa < m.settings.bandLow)
         .sort((a, b) => a.compa! - b.compa!)
+      if (low.length) {
+        const under = g.belowMin > 0 ? `, ${fmt(g.belowMin, 'int')} of them below range minimum` : ''
+        sentences.push(
+          `${peopleText(low.length)} there ${isAre(low.length)} paid below the healthy band of ${ratio(m.settings.bandLow)}${under}.`,
+        )
+      }
       out.push({
         id: `comp-low-compa-${key}-${g.group}`,
         severity:
@@ -107,7 +114,7 @@ function lowCompa(ctx: AnalyticsContext, m: FindingsInput): Ranked[] {
         action: `Review ${g.group} salary ranges and pay positioning before merit proposals are final.`,
         filter: { [key]: [g.group] } as Partial<Filters>,
         tab: 'ranges',
-        people: low.slice(0, MAX_PEOPLE).map((p) => person(p, `compa-ratio ${ratio(p.compa)}`)),
+        people: low.map((p) => person(p, `compa-ratio ${ratio(p.compa)}`)),
         weight: g.n,
       })
     }
@@ -142,54 +149,93 @@ const ORG_DIMS: Dimension<CompPerson>[] = [
   { key: 'level', label: 'Level', get: (p) => p.level },
 ]
 
-function segmentPhrase(dim: string, value: string, n: number): string {
-  if (dim === 'promoted') return `${fmt(n, 'int')} ${n === 1 ? 'was' : 'were'} promoted in the last 12 months`
-  if (dim === 'level') return `${fmt(n, 'int')} ${isAre(n)} at ${value}`
-  return `${fmt(n, 'int')} ${isAre(n)} in ${value}`
+/** "were promoted in the last 12 months", "are at L3", "is in Bengaluru" */
+function segmentVerb(dim: string, value: string, n: number): string {
+  if (dim === 'promoted') return `${n === 1 ? 'was' : 'were'} promoted in the last 12 months`
+  return `${isAre(n)} ${dim === 'level' ? 'at' : 'in'} ${value}`
+}
+
+interface Seg {
+  dim: string
+  value: string
+  get: (p: CompPerson) => string | null | undefined
+}
+
+/**
+ * Where the affected people sit, as exclusive counts that add up: the first segment, then the
+ * second one among everyone else ("41 are in Bengaluru, and 35 of the other 37 were promoted in
+ * the last 12 months"). Overlapping counts joined with "and" would add up to more than the total.
+ */
+export function exclusivePhrase(affected: readonly CompPerson[], first: Seg, second?: Seg): string {
+  const inFirst = affected.filter((p) => first.get(p) === first.value)
+  let text = `${fmt(inFirst.length, 'int')} ${segmentVerb(first.dim, first.value, inFirst.length)}`
+  if (second) {
+    const others = affected.filter((p) => first.get(p) !== first.value)
+    const n = others.filter((p) => second.get(p) === second.value).length
+    if (n > 0 && others.length > 0) {
+      const lead =
+        n === others.length
+          ? `the other ${fmt(n, 'int')}`
+          : `${fmt(n, 'int')} of the other ${fmt(others.length, 'int')}`
+      text += `, and ${lead} ${segmentVerb(second.dim, second.value, n)}`
+    }
+  }
+  return `${text}.`
 }
 
 const FILTER_KEYS = new Set(['location', 'department', 'businessUnit', 'level'])
+
+const PROMOTED_DIM: Dimension<CompPerson> = {
+  key: 'promoted',
+  label: PROMOTED,
+  get: (p) => (p.promotedRecently ? 'Yes' : 'No'),
+}
 
 function belowMin(m: FindingsInput): Ranked[] {
   const rows = m.ranges.below
   if (!rows.length) return []
   const placed = m.pop.people.filter((p) => p.position != null)
+  const affected = placed.filter((p) => p.position === 'Below minimum')
   const share = rows.length / placed.length
-  const segs = concentration(placed, (p) => p.position === 'Below minimum', [
-    ...ORG_DIMS,
-    { key: 'promoted', label: PROMOTED, get: (p) => (p.promotedRecently ? 'Yes' : 'No') },
-  ]).filter((s) => s.dim !== 'promoted' || s.value === 'Yes')
-  const top = segs.slice(0, 2)
+  const dims = [...ORG_DIMS, PROMOTED_DIM]
+  const getOf = new Map(dims.map((d) => [d.key, d.get]))
+  const segs = concentration(placed, (p) => p.position === 'Below minimum', dims).filter(
+    (s) => s.dim !== 'promoted' || s.value === 'Yes',
+  )
+  // Lead with where it sits (a filter the reader can apply), then the promotions among the rest.
+  const orgSegs = segs.filter((s) => s.dim !== 'promoted')
+  const promo = segs.find((s) => s.dim === 'promoted')
+  const first = orgSegs[0] ?? promo
+  const second = first && first !== promo ? (promo ?? orgSegs[1]) : undefined
+  const seg = (s: { dim: string; value: string }): Seg => ({ ...s, get: getOf.get(s.dim)! })
   const sentences: string[] = []
-  if (top.length) sentences.push(`${joinAnd(top.map((s) => segmentPhrase(s.dim, s.value, s.affected)))}.`)
+  if (first) sentences.push(exclusivePhrase(affected, seg(first), second && seg(second)))
   if (m.showPay && m.ranges.costToMin.usd > 0) {
     const skipped = m.ranges.costToMin.skipped
     sentences.push(
       `Bringing them to minimum costs ${fmt(m.ranges.costToMin.usd, 'money')} a year${skipped ? ` (${peopleText(skipped)} without an FX rate left out)` : ''}.`,
     )
   }
-  const promotedLed = top[0]?.dim === 'promoted' || top.some((s) => s.dim === 'promoted')
-  const where = top.find((s) => FILTER_KEYS.has(s.dim))
+  const promotedLed = !!promo && (first === promo || second === promo)
+  const where = [first, second].find((s) => s && FILTER_KEYS.has(s.dim))
   const byId = new Map(m.pop.people.map((p) => [p.id, p]))
   return [
     {
       id: 'comp-below-min',
       severity:
-        share >= BELOW_MIN_CRITICAL && rows.length >= 10
+        placed.length >= MIN_GROUP && share >= BELOW_MIN_CRITICAL && rows.length >= 10
           ? 'critical'
           : rows.length >= MIN_GROUP
             ? 'warning'
             : 'info',
-      title: `${peopleText(rows.length)} ${isAre(rows.length)} paid below range minimum, ${fmt(share, 'pct')} of ${fmt(placed.length, 'int')}`,
+      title: `${peopleText(rows.length)} ${isAre(rows.length)} paid below range minimum${placed.length >= MIN_GROUP ? `, ${shareOf(rows.length, placed.length)}` : ''}`,
       detail: sentences.join(' '),
       action: promotedLed
         ? 'Check that promotion increases reach the new range minimum, then plan the rest into the focal cycle.'
         : 'Plan adjustments to range minimum into the focal cycle, starting with the largest gaps.',
       filter: where ? ({ [where.dim]: [where.value] } as Partial<Filters>) : undefined,
       tab: 'ranges',
-      people: rows
-        .slice(0, MAX_PEOPLE)
-        .map((r) => person(byId.get(r.id)!, `${r.department}, ${fmt(r.gapPct, 'pct')} to minimum`)),
+      people: rows.map((r) => person(byId.get(r.id)!, `${r.department}, ${fmt(r.gapPct, 'pct')} to minimum`)),
       weight: rows.length,
     },
   ]
@@ -220,7 +266,7 @@ function aboveMax(m: FindingsInput): Ranked[] {
     { key: 'department', label: 'Department', get: (p) => p.department },
   ])
   const lvl = segs.find((s) => s.dim === 'level')
-  const ofAll = `${fmt(rows.length / placed.length, 'pct')} of ${fmt(placed.length, 'int')}`
+  const ofAll = shareOf(rows.length, placed.length)
   let title = `${peopleText(rows.length)} ${isAre(rows.length)} paid above range maximum, ${ofAll}`
   let detail = ''
   let action = 'Review whether lump-sum awards should replace base increases for people above maximum.'
@@ -235,6 +281,7 @@ function aboveMax(m: FindingsInput): Ranked[] {
       floor >= 3
         ? `${fmt(long, 'int')} of those ${lvl.value}s have ${fmt(floor, 'num1')} or more years of tenure, and `
         : ''
+    // The level is a decomposeRate segment, so it has at least MIN_GROUP people.
     detail = `${tenure}${fmt(lvl.affected / levelN, 'pct')} of everyone at ${lvl.value} is above maximum.`
     action =
       floor >= 3
@@ -250,7 +297,7 @@ function aboveMax(m: FindingsInput): Ranked[] {
       action,
       filter: lvl && ledByLevel ? { level: [lvl.value] } : undefined,
       tab: 'ranges',
-      people: rows.slice(0, MAX_PEOPLE).map((r) => ({
+      people: rows.map((r) => ({
         id: r.id,
         name: r.name,
         note: `${r.level}, ${fmt(r.tenure, 'years')}, ${fmt(r.gapPct, 'pct')} over maximum`,
@@ -277,19 +324,16 @@ function compressionFindings(m: FindingsInput): Ranked[] {
     if (hires.length < COMPRESSION_FINDING_MIN || inc.length < COMPRESSION_FINDING_MIN) continue
     if (newMed == null || incMed == null || newMed - incMed < COMPRESSION_GAP - 1e-9) continue
     const span = levelSpan(levels)
+    const behind = inc.filter((p) => p.compa != null && p.compa < newMed).sort((a, b) => a.compa! - b.compa!)
     out.push({
       id: `comp-compression-${dept}`,
       severity: 'warning',
       title: `New hires in ${dept} ${span} are paid at a median compa-ratio of ${ratio(newMed)} vs ${ratio(incMed)} for incumbents`,
-      detail: `${peopleText(hires.length)} hired in the last 12 months against ${fmt(inc.length, 'int')} already in those roles.`,
+      detail: `${peopleText(hires.length)} hired in the last 12 months against ${fmt(inc.length, 'int')} already in those roles, ${fmt(behind.length, 'int')} of whom ${behind.length === 1 ? 'is' : 'are'} paid below the new-hire median.`,
       action: `Review incumbent pay in ${dept} before the focal cycle so it keeps pace with new offers.`,
       filter: { department: [dept], level: levels },
       tab: 'ranges',
-      people: inc
-        .filter((p) => p.compa != null && p.compa < newMed)
-        .sort((a, b) => a.compa! - b.compa!)
-        .slice(0, MAX_PEOPLE)
-        .map((p) => person(p, `${p.level}, compa-ratio ${ratio(p.compa)}`)),
+      people: behind.map((p) => person(p, `${p.level}, compa-ratio ${ratio(p.compa)}`)),
       weight: cell.length,
     })
   }
@@ -310,8 +354,8 @@ function overBudget(m: FindingsInput): Ranked[] {
         : ''
     out.push({
       id: `comp-over-budget-${r.group}`,
-      severity: 'warning',
-      title: `${r.group} merit proposals cost ${fmt(r.spendPct, 'pct')} of eligible base, ${fmt(r.delta, 'pts').replace('+', '')} over the ${pct2(m.settings.meritBudget)} budget`,
+      severity: overBudgetSeverity(r.delta),
+      title: `${r.group} merit proposals cost ${pct2(r.spendPct)} of eligible base, ${pts2(r.delta).replace('+', '')} over the ${pct2(m.settings.meritBudget)} budget`,
       detail: `Across ${m.isCompany ? 'the company' : 'this scope'} spend is ${pct2(company.spendPct)} over ${fmt(company.eligible, 'int')} proposals.${money}`,
       action: `Ask ${r.group} leaders to bring proposals back to budget before calibration closes.`,
       filter: { businessUnit: [r.group] },
@@ -319,15 +363,15 @@ function overBudget(m: FindingsInput): Ranked[] {
       weight: r.n,
     })
   }
-  if (company.delta != null && company.delta >= OVER_BUDGET && company.eligible >= MIN_GROUP) {
+  if (company.delta != null && company.delta >= OVER_BUDGET && company.priced >= MIN_GROUP) {
     const money =
       m.showPay && company.overUsd != null && company.overUsd > 0
         ? ` That is ${fmt(company.overUsd, 'money')} over budget.`
         : ''
     out.push({
       id: 'comp-over-budget-total',
-      severity: 'critical',
-      title: `Merit proposals cost ${pct2(company.spendPct)} of eligible base, over the ${pct2(m.settings.meritBudget)} budget`,
+      severity: overBudgetSeverity(company.delta),
+      title: `Merit proposals cost ${pct2(company.spendPct)} of eligible base, ${pts2(company.delta).replace('+', '')} over the ${pct2(m.settings.meritBudget)} budget`,
       detail: `${fmt(company.eligible, 'int')} proposals in ${m.isCompany ? 'the company' : 'this scope'}.${money}`,
       action: 'Agree where to bring proposals back to budget before calibration closes.',
       tab: 'cycle',
@@ -339,7 +383,7 @@ function overBudget(m: FindingsInput): Ranked[] {
 
 /* ───────── guideline exceptions ───────── */
 
-function exceptions(m: FindingsInput): Ranked[] {
+function exceptions(m: FindingsInput, explained: ReadonlySet<string>): Ranked[] {
   const rows = m.cycle.exceptions
   const topLow = rows.filter((r) => r.kind === 'top-low')
   const lowHigh = rows.filter((r) => r.kind === 'low-high')
@@ -354,7 +398,8 @@ function exceptions(m: FindingsInput): Ranked[] {
     const byDept = new Map<string, number>()
     for (const o of outliers) byDept.set(o.department, (byDept.get(o.department) ?? 0) + 1)
     const [dept, n] = [...byDept.entries()].sort((a, b) => b[1] - a[1])[0]
-    const concentrated = n >= outliers.length / 2
+    // A department with no differentiation produces outliers at both ends; its finding counts them.
+    const concentrated = n >= outliers.length / 2 && !explained.has(dept)
     if (rules) {
       const where = concentrated ? `, ${fmt(n, 'int')} of them in ${dept}` : ''
       detail = `Another ${fmt(outliers.length, 'int')} ${outliers.length === 1 ? 'proposal is' : 'proposals are'} unusual for the rating${where}.`
@@ -372,10 +417,10 @@ function exceptions(m: FindingsInput): Ranked[] {
       detail,
       action: 'Confirm each exception with the manager and record the reason before proposals lock.',
       tab: 'cycle',
-      people: [...topLow, ...lowHigh, ...outliers].slice(0, MAX_PEOPLE).map((r) => ({
+      people: [...topLow, ...lowHigh, ...outliers].map((r) => ({
         id: r.id,
         name: r.name,
-        note: `rating ${r.rating}, merit ${fmt(r.merit, 'pct')}`,
+        note: `rating ${r.rating}, merit ${pct2(r.merit)}`,
       })),
       weight: rules * 4 + outliers.length,
     },
@@ -389,6 +434,8 @@ function belowMarket(m: FindingsInput): Ranked[] {
   const positioning: Ranked[] = []
   for (const g of m.market.byFamily) {
     if (g.median == null || g.median > MARKET_FLAG + 1e-9 || g.group.startsWith('Other (')) continue
+    // Families too small to rank on the chart are too noisy to raise.
+    if (g.n < MARKET_CHART_MIN) continue
     const members = m.pop.people.filter((p) => p.jobFamily === g.group)
     const rest = safeMedian(
       values(
@@ -436,20 +483,31 @@ function belowMarket(m: FindingsInput): Ranked[] {
 
 function noDifferentiation(m: FindingsInput): Ranked[] {
   const company = m.performance.companyDifferentiation
+  const unusual = new Map<string, number>()
+  for (const e of m.cycle.exceptions)
+    if (e.kind === 'outlier') unusual.set(e.department, (unusual.get(e.department) ?? 0) + 1)
   return m.performance.byDepartment
     .filter((r) => r.ratio != null && r.ratio < DIFFERENTIATION_FLOOR && !r.group.startsWith('Other ('))
     .sort((a, b) => a.ratio! - b.ratio!)
     .slice(0, 2)
-    .map((r) => ({
-      id: `comp-no-differentiation-${r.group}`,
-      severity: 'warning' as Severity,
-      title: `${r.group} merit barely follows ratings: people rated 4-5 get ${times(r.ratio)} the merit of people rated 3`,
-      detail: `Mean merit is ${fmt(r.merit45, 'pct')} for ratings 4-5 and ${fmt(r.merit3, 'pct')} for rating 3.${company.ratio != null ? ` Across the company the ratio is ${times(company.ratio)}.` : ''}`,
-      action: `Review the ${r.group} proposals against the guideline with its managers before calibration closes.`,
-      filter: { department: [r.group] },
-      tab: 'performance',
-      weight: r.n45 + r.n3,
-    }))
+    .map((r) => {
+      const vs = company.ratio != null ? `, against ${times(company.ratio)} across the company` : ''
+      const k = unusual.get(r.group) ?? 0
+      const odd =
+        k > 0
+          ? ` ${fmt(k, 'int')} of its ${k === 1 ? 'proposals is' : 'proposals are'} unusual for the rating.`
+          : ''
+      return {
+        id: `comp-no-differentiation-${r.group}`,
+        severity: 'warning' as Severity,
+        title: `${r.group} merit barely follows ratings: people rated 4-5 get ${times(r.ratio)} the merit of people rated 3`,
+        detail: `Mean merit is ${pct2(r.merit45)} for ratings 4-5 and ${pct2(r.merit3)} for rating 3${vs}.${odd}`,
+        action: `Review the ${r.group} proposals against the guideline with its managers before calibration closes.`,
+        filter: { department: [r.group] },
+        tab: 'performance',
+        weight: r.n45 + r.n3,
+      }
+    })
 }
 
 /* ───────── good news ───────── */
@@ -462,7 +520,7 @@ function goodNews(m: FindingsInput, others: readonly Ranked[]): Ranked[] {
         id: 'comp-good-differentiation',
         severity: 'good',
         title: `Merit follows performance: people rated 4-5 get ${times(d.ratio)} the merit of people rated 3`,
-        detail: `Mean merit is ${fmt(d.merit45, 'pct')} for ratings 4-5 and ${fmt(d.merit3, 'pct')} for rating 3, well above the ${times(DIFFERENTIATION_FLOOR)} floor.`,
+        detail: `Mean merit is ${pct2(d.merit45)} for ratings 4-5 and ${pct2(d.merit3)} for rating 3, well above the ${times(DIFFERENTIATION_FLOOR)} floor.`,
         action: 'Keep the guideline as it is for the next cycle.',
         tab: 'performance',
         weight: d.n45 + d.n3,
@@ -503,15 +561,17 @@ function toFinding(r: Ranked): Finding {
 
 export function buildFindings(ctx: AnalyticsContext, m: FindingsInput): Finding[] {
   if (!m.pop.people.length) return []
+  const flat = noDifferentiation(m)
+  const explained = new Set(flat.map((f) => f.filter?.department?.[0]).filter((d): d is string => !!d))
   const found: Ranked[] = [
     ...lowCompa(ctx, m),
     ...belowMin(m),
     ...overBudget(m),
     ...compressionFindings(m),
-    ...noDifferentiation(m),
+    ...flat,
     ...belowMarket(m),
     ...aboveMax(m),
-    ...exceptions(m),
+    ...exceptions(m, explained),
   ]
   found.push(...goodNews(m, found))
   return found.sort((a, b) => RANK[a.severity] - RANK[b.severity] || b.weight - a.weight).map(toFinding)

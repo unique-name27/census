@@ -4,7 +4,9 @@
  */
 import type { Finding, Kpi } from '@/components/types'
 import type { AnalyticsContext } from '@/data/context'
-import { LEVELS } from '@/data/schema'
+import { SAMPLE_AS_OF } from '@/data/sample'
+import { type ISODate, LEVELS } from '@/data/schema'
+import { daysBetween } from '@/lib/dates'
 import {
   type Bin,
   binDomain,
@@ -84,6 +86,13 @@ export interface PersonRow {
 export interface CompModel {
   settings: CycleSettings
   asOf: string
+  /**
+   * The date the pay data describes, when known: the sample's reference date, or the day the
+   * Compensation file was imported. Comp rows carry no effective date of their own.
+   */
+  payAsOf: ISODate | null
+  /** People are counted on a date more than a month away from the pay data (an as-of override, or an old upload). */
+  payStale: boolean
   pop: Population
   /** The whole company (the same object when no org filter is set). */
   company: Population
@@ -145,7 +154,18 @@ export interface CompModel {
   }
 }
 
-export const COMPA_STEP = 0.025
+/** Histogram bin width: 0.02 keeps every edge exact at the two decimals compa-ratios are read at. */
+export const COMPA_STEP = 0.02
+/** Pay data this many days away from the as-of date is called out in every note. */
+export const PAY_SNAPSHOT_TOLERANCE = 31
+
+/** The date the Compensation data describes, or null when nothing says. */
+export function payAsOfDate(ctx: Pick<AnalyticsContext, 'sources'>): ISODate | null {
+  const src = ctx.sources?.comp
+  if (!src) return null
+  if (src.kind === 'sample') return SAMPLE_AS_OF
+  return src.importedAt && /^\d{4}-\d{2}-\d{2}/.test(src.importedAt) ? src.importedAt.slice(0, 10) : null
+}
 export const MERIT_STEP = 0.0025
 
 function personRows(people: readonly CompPerson[]): PersonRow[] {
@@ -164,6 +184,8 @@ function personRows(people: readonly CompPerson[]): PersonRow[] {
 
 export function computeComp(ctx: AnalyticsContext, settings: CycleSettings): CompModel {
   const pop = buildPopulation(ctx.data, ctx.asOf)
+  const payAsOf = payAsOfDate(ctx)
+  const payStale = payAsOf != null && Math.abs(daysBetween(payAsOf, ctx.asOf)) > PAY_SNAPSHOT_TOLERANCE
   const company = ctx.isCompany ? pop : buildPopulation(ctx.all, ctx.asOf)
   const people = pop.people
   const s = settings
@@ -230,6 +252,8 @@ export function computeComp(ctx: AnalyticsContext, settings: CycleSettings): Com
   const core = {
     settings: s,
     asOf: ctx.asOf,
+    payAsOf,
+    payStale,
     pop,
     company,
     isCompany: ctx.isCompany,

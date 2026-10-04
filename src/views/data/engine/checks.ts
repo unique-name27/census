@@ -8,9 +8,16 @@ import { type DatasetKey, type Datasets, datasetDef, type ISODate } from '@/data
 import type { SourceMeta } from '@/data/store'
 import { daysBetween, formatDate } from '@/lib/dates'
 import { fmt } from '@/lib/format'
-import type { DatasetCoverage, FieldCoverage } from './coverage'
+import type { DatasetCoverage, FieldCoverage, FieldFills } from './coverage'
 
-export type CheckKind = 'empty' | 'empty-field' | 'thin-field' | 'unlinked' | 'stale' | 'import-warnings'
+export type CheckKind =
+  | 'empty'
+  | 'empty-field'
+  | 'thin-field'
+  | 'metric-field'
+  | 'unlinked'
+  | 'stale'
+  | 'import-warnings'
 
 export interface DatasetCheck {
   kind: CheckKind
@@ -27,8 +34,14 @@ const UNLINKED_WARNING = 0.02
 
 const SEVERITY_ORDER: Record<DatasetCheck['severity'], number> = { critical: 0, warning: 1, info: 2 }
 
+export interface Link {
+  fields: string[]
+  target: DatasetKey
+  targetKey: string
+}
+
 /** References to other datasets: field → the dataset and key it must resolve in. */
-const LINKS: Partial<Record<DatasetKey, { fields: string[]; target: DatasetKey; targetKey: string }>> = {
+export const LINKS: Partial<Record<DatasetKey, Link>> = {
   jobChanges: { fields: ['employeeId'], target: 'employees', targetKey: 'employeeId' },
   transactions: { fields: ['employeeId'], target: 'employees', targetKey: 'employeeId' },
   reviews: { fields: ['employeeId'], target: 'employees', targetKey: 'employeeId' },
@@ -36,9 +49,12 @@ const LINKS: Partial<Record<DatasetKey, { fields: string[]; target: DatasetKey; 
   comp: { fields: ['employeeId'], target: 'employees', targetKey: 'employeeId' },
   succession: { fields: ['incumbentId', 'successorId'], target: 'employees', targetKey: 'employeeId' },
   candidates: { fields: ['reqId'], target: 'requisitions', targetKey: 'reqId' },
+  // Leader filters scope requisitions and cases through these people.
+  requisitions: { fields: ['hiringManagerId'], target: 'employees', targetKey: 'employeeId' },
+  cases: { fields: ['requesterId'], target: 'employees', targetKey: 'employeeId' },
 }
 
-const TARGET_NOUN: Partial<Record<DatasetKey, string>> = {
+export const TARGET_NOUN: Partial<Record<DatasetKey, string>> = {
   employees: 'people who are not in Employees',
   requisitions: 'requisitions that are not in Requisitions',
 }
@@ -73,25 +89,44 @@ export function ageText(days: number): string {
 }
 
 /** Rows with at least one reference that does not resolve in the target dataset. */
-export function unlinkedRows(key: DatasetKey, data: Datasets): { rows: number; total: number } | null {
+export function unlinkedRows(
+  key: DatasetKey,
+  data: Datasets,
+): { rows: number; total: number; withRef: number } | null {
+  return countUnlinked(key, data[key] as readonly object[], data)
+}
+
+/**
+ * Of `candidates` (rows of dataset `key`, loaded or about to be), how many hold a reference that
+ * does not resolve in the target dataset loaded in `data`. Null when the dataset links to nothing.
+ */
+export function countUnlinked(
+  key: DatasetKey,
+  candidates: readonly object[],
+  data: Datasets,
+): { rows: number; total: number; withRef: number } | null {
   const link = LINKS[key]
   if (!link) return null
-  const rows = data[key] as unknown as readonly Row[]
+  const rows = candidates as readonly Row[]
   const targetRows = data[link.target] as unknown as readonly Row[]
-  if (!rows.length || !targetRows.length) return { rows: 0, total: rows.length }
   const ids = new Set<unknown>()
   for (const t of targetRows) ids.add(t[link.targetKey])
   let n = 0
+  let withRef = 0
   for (const r of rows) {
+    let any = false
+    let missing = false
     for (const f of link.fields) {
       const v = r[f]
-      if (v != null && v !== '' && !ids.has(v)) {
-        n++
-        break
-      }
+      if (v == null || v === '') continue
+      any = true
+      if (!ids.has(v)) missing = true
     }
+    if (any) withRef++
+    // With nothing loaded to link to, there is nothing to call missing.
+    if (missing && targetRows.length) n++
   }
-  return { rows: n, total: rows.length }
+  return { rows: n, total: rows.length, withRef }
 }
 
 /** Latest event date on or before the as-of date, or null when there is none. */
@@ -110,10 +145,14 @@ export function latestDate(key: DatasetKey, rows: readonly object[], asOf: ISODa
   return latest || null
 }
 
+const pctText = (share: number) => fmt(share, share > 0 && share < 0.01 ? 'pct' : 'pct0')
+
 function fieldChecks(coverage: DatasetCoverage): DatasetCheck[] {
   const out: DatasetCheck[] = []
-  if (coverage.emptyCore.length) {
-    const labels = coverage.emptyCore.map((f) => f.label)
+  const blank = coverage.emptyCore.filter((f) => f.defaulted === 0)
+  const byDefault = coverage.emptyCore.filter((f) => f.defaulted > 0)
+  if (blank.length) {
+    const labels = blank.map((f) => f.label)
     out.push({
       kind: 'empty-field',
       severity: 'warning',
@@ -121,22 +160,84 @@ function fieldChecks(coverage: DatasetCoverage): DatasetCheck[] {
       count: labels.length,
     })
   }
-  // Fields that only apply to some rows can be blank for a reason (no interview booked yet), so
-  // only fields every row should have are called thin.
+  if (byDefault.length) {
+    const labels = byDefault.map((f) => f.label)
+    out.push({
+      kind: 'empty-field',
+      severity: 'warning',
+      text: `${listLabels(labels)} ${labels.length === 1 ? 'was' : 'were'} not in the file, so every row holds a default.`,
+      count: labels.length,
+    })
+  }
+  // Fields whose blanks are normal for some rows (no interview booked yet) are never called thin.
   const thin = coverage.fields.filter(
     (f): f is FieldCoverage & { share: number } =>
-      f.requirement !== 'optional' &&
-      f.scope == null &&
-      f.share != null &&
-      f.filled > 0 &&
-      f.share < THIN_FIELD,
+      f.requirement !== 'optional' && !f.blankOk && f.share != null && f.filled > 0 && f.share < THIN_FIELD,
   )
   for (const f of thin)
     out.push({
       kind: 'thin-field',
       severity: 'info',
-      text: `${f.label} is filled in ${fmt(f.share, 'pct0')} of rows.`,
+      text:
+        f.defaulted > 0
+          ? `${f.label} is filled from the file for ${pctText(f.share)} of ${f.rowsNoun}; the rest hold a default or are blank.`
+          : `${f.label} is filled ${f.scope ? 'for' : 'in'} ${pctText(f.share)} of ${f.rowsNoun}.`,
       count: f.expected - f.filled,
+    })
+  return out
+}
+
+/**
+ * Employees fields that are optional for the importer but that attrition and headcount depend
+ * on: say what goes blank or wrong in the views when they are missing.
+ */
+function rosterChecks(
+  rows: readonly Row[],
+  coverage: DatasetCoverage,
+  fills: FieldFills | null | undefined,
+): DatasetCheck[] {
+  const out: DatasetCheck[] = []
+  const field = (k: string) => coverage.fields.find((f) => f.key === k)
+  const leavers = rows.filter((r) => r.terminationDate != null && r.terminationDate !== '').length
+  if (!leavers)
+    out.push({
+      kind: 'metric-field',
+      severity: 'warning',
+      text: `Termination date is blank in all ${fmt(rows.length, 'int')} ${rowsWord(rows.length)}, so attrition reads as zero. Include the people who left to measure it.`,
+      count: rows.length,
+    })
+  const metric = (key: string, who: string, lost: string, partly: string) => {
+    const f = field(key)
+    if (!f || f.share == null || f.share >= THIN_FIELD) return
+    out.push(
+      f.filled === 0
+        ? {
+            kind: 'metric-field',
+            severity: 'warning',
+            text: `${f.label} is blank for all ${fmt(f.expected, 'int')} ${who}, so ${lost} can’t be shown.`,
+            count: f.expected,
+          }
+        : {
+            kind: 'metric-field',
+            severity: 'info',
+            text: `${f.label} is filled for ${pctText(f.share)} of ${who}, so ${partly}.`,
+            count: f.expected - f.filled,
+          },
+    )
+  }
+  metric(
+    'terminationType',
+    'leavers',
+    'voluntary and regretted attrition',
+    'voluntary and involuntary attrition are undercounted',
+  )
+  metric('regrettable', 'voluntary leavers', 'regretted attrition', 'regretted attrition is undercounted')
+  if (fills?.notInFile.includes('employmentType') && rows.length)
+    out.push({
+      kind: 'metric-field',
+      severity: 'warning',
+      text: `Employment type was not in the file, so all ${fmt(rows.length, 'int')} people count as employees in headcount and rates.`,
+      count: rows.length,
     })
   return out
 }
@@ -149,6 +250,10 @@ export function datasetChecks(args: {
   asOf: ISODate
   /** Whether the dataset each link points at is still the sample. */
   targetIsSample?: (key: DatasetKey) => boolean
+  /** From the last upload's log: what the importer filled itself. */
+  fills?: FieldFills | null
+  /** From the last upload's log: how many kinds of change its "Last upload" summary lists. */
+  changeKinds?: number | null
 }): DatasetCheck[] {
   const { key, data, source, coverage, asOf } = args
   const rows = data[key] as readonly object[]
@@ -162,6 +267,7 @@ export function datasetChecks(args: {
       },
     ]
   const out: DatasetCheck[] = [...fieldChecks(coverage)]
+  if (key === 'employees') out.push(...rosterChecks(rows as readonly Row[], coverage, args.fills))
 
   const link = LINKS[key]
   const unlinked = unlinkedRows(key, data)
@@ -205,14 +311,25 @@ export function datasetChecks(args: {
     }
   }
 
-  if (source.kind === 'upload' && (source.warnings ?? 0) > 0) {
-    const n = source.warnings ?? 0
-    out.push({
-      kind: 'import-warnings',
-      severity: 'info',
-      text: `${fmt(n, 'int')} ${rowsWord(n)} imported with a change or warning.`,
-      count: n,
-    })
+  if (source.kind === 'upload') {
+    // Counted the way the "Last upload" summary lists them, so the two always agree.
+    const kinds = args.changeKinds
+    if (kinds != null && kinds > 0)
+      out.push({
+        kind: 'import-warnings',
+        severity: 'info',
+        text: `The last upload logged ${fmt(kinds, 'int')} ${kinds === 1 ? 'kind' : 'kinds'} of change; see Last upload.`,
+        count: kinds,
+      })
+    else if (kinds == null && (source.warnings ?? 0) > 0) {
+      const n = source.warnings ?? 0
+      out.push({
+        kind: 'import-warnings',
+        severity: 'info',
+        text: `${fmt(n, 'int')} ${rowsWord(n)} imported with a change or warning.`,
+        count: n,
+      })
+    }
   }
   return out.sort((a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity])
 }

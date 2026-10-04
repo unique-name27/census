@@ -2,6 +2,8 @@
  * Range position as 100% bars, one row per group: an ordinal blue ramp for the four quartiles of
  * the range, with the two out-of-range buckets in status colors at either end (below minimum on
  * the left, above maximum on the right), so position reads from left to right like the range.
+ * The ramp runs seq-400 to seq-700 so even the first quarter holds 3:1 against the sheet in both
+ * themes (the dark tokens invert, so Q4 is the lightest there).
  */
 import * as Plot from '@observablehq/plot'
 import {
@@ -34,13 +36,13 @@ export function positionColor(t: ChartTheme, p: Position): string {
     case 'Below minimum':
       return t.status.serious
     case 'Q1':
-      return t.seq[200]
+      return t.seq[400]
     case 'Q2':
-      return t.seq[300]
+      return t.seq[500]
     case 'Q3':
-      return t.seq[450]
-    case 'Q4':
       return t.seq[600]
+    case 'Q4':
+      return t.seq[700]
     case 'Above maximum':
       return t.status.warning
   }

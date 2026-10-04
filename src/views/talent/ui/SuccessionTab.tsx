@@ -1,12 +1,14 @@
-import { BarList, Columns, Figure, HBars } from '@/charts'
-import { Section, type Severity } from '@/components'
+import { useState } from 'react'
+import { BarList, Columns, Figure, HBars, useChartTheme } from '@/charts'
+import { Section, Segmented, type Severity } from '@/components'
 import { useAnalytics } from '@/data/context'
 import { READINESS } from '@/data/schema'
 import { formatDate } from '@/lib/dates'
 import { fmt, plural } from '@/lib/format'
 import type { TalentModel } from '../engine'
-import type { RoleRow } from '../engine/succession'
-import { BENCH_COLUMNS, hipoColumns, PIPELINE_COLUMNS, ROLE_COLUMNS, ROLE_DETAIL_COLUMNS } from './columns'
+import type { BenchScope, HipoGroupRow, RoleRow } from '../engine/succession'
+import { readinessColors } from './colors'
+import { BENCH_COLUMNS, hipoColumns, ROLE_COLUMNS, ROLE_DETAIL_COLUMNS } from './columns'
 import { DEF } from './defs'
 
 function roleTone(r: RoleRow): Severity | null {
@@ -16,10 +18,21 @@ function roleTone(r: RoleRow): Severity | null {
   return null
 }
 
+/** Folded "Other (k)" groups in gray, so they don't read as one more real group. */
+const otherTone = (d: HipoGroupRow) => (d.other ? ('deemph' as const) : ('default' as const))
+
+const BENCH_LABEL: Record<BenchScope, string> = {
+  All: 'critical and key roles',
+  Critical: 'critical roles',
+  Key: 'key roles',
+}
+
 export function SuccessionTab({ m }: { m: TalentModel }) {
   const ctx = useAnalytics()
+  const t = useChartTheme()
   const asOf = formatDate(ctx.asOf)
   const succ = m.succession
+  const [scope, setScope] = useState<BenchScope>('All')
   const noPlans = !m.has.succession
     ? 'Upload Succession to see this.'
     : succ.roles.length
@@ -34,6 +47,12 @@ export function SuccessionTab({ m }: { m: TalentModel }) {
   const departed = succ.departedSuccessors
     ? ` · ${plural(succ.departedSuccessors, 'named successor has', 'named successors have')} left and ${succ.departedSuccessors === 1 ? 'is' : 'are'} not counted`
     : ''
+  const benchTable = succ.benchTable[scope]
+  const benchRows = succ.bench[scope].filter((r) => benchTable.some((b) => b.businessUnit === r.businessUnit))
+  const named = benchTable.reduce((s, r) => s + r.successors, 0)
+  const roles = benchTable.reduce((s, r) => s + r.roles, 0)
+  const readyNow = benchTable.reduce((s, r) => s + r.readyNow, 0)
+  const noSuccessor = benchTable.reduce((s, r) => s + r.noSuccessor, 0)
 
   return (
     <>
@@ -58,53 +77,42 @@ export function SuccessionTab({ m }: { m: TalentModel }) {
 
       <Section
         title="Bench strength"
-        dek="How many successors each business unit has named, and how soon they will be ready to step in."
+        dek="How many successors each business unit has named, and how soon they will be ready to step in. Switch between all roles, critical roles and key roles."
       >
         <Figure
           id="talent-bench-strength"
           title="Bench strength by business unit"
-          subtitle="Named successors by readiness, critical and key roles"
-          data={succ.benchTable}
+          subtitle={`Named successors by readiness, ${BENCH_LABEL[scope]}`}
+          data={benchTable}
           columns={BENCH_COLUMNS}
-          definitions={[DEF.bench]}
-          note={`${plural(
-            succ.benchTable.reduce((s, r) => s + r.successors, 0),
-            'successor',
-          )} named for ${plural(succ.roles.length, 'role')} · as of ${asOf}`}
-          span={6}
-          empty={noPlans}
+          definitions={[DEF.bench, DEF.roleStatus]}
+          note={`${plural(named, 'successor')} named for ${plural(roles, 'role')}, ${fmt(readyNow)} ready now · ${plural(noSuccessor, 'role has', 'roles have')} nobody named · as of ${asOf}`}
+          span={12}
+          actions={
+            <Segmented<BenchScope>
+              label="Roles counted"
+              value={scope}
+              onChange={setScope}
+              options={[
+                { value: 'All', label: 'All roles' },
+                { value: 'Critical', label: 'Critical' },
+                { value: 'Key', label: 'Key' },
+              ]}
+            />
+          }
+          empty={
+            noPlans ?? (benchTable.length ? null : `No ${BENCH_LABEL[scope]} are planned in this scope.`)
+          }
         >
           <HBars
-            data={succ.bench}
+            data={benchRows}
             y="businessUnit"
             x="successors"
             series="readiness"
             stack
             seriesOrder={READINESS}
+            colors={readinessColors(t)}
             ariaLabel="Named successors by readiness and business unit"
-          />
-        </Figure>
-        <Figure
-          id="talent-readiness-pipeline"
-          title="Successor readiness pipeline"
-          subtitle="Named successors by readiness, split by how critical the role is"
-          data={succ.pipeline}
-          columns={PIPELINE_COLUMNS}
-          definitions={[DEF.bench]}
-          note={`As of ${asOf}`}
-          span={6}
-          empty={noPlans}
-        >
-          <Columns
-            data={succ.pipeline}
-            x="readiness"
-            y="successors"
-            series="criticality"
-            stack
-            seriesOrder={['Critical', 'Key']}
-            xOrder={READINESS}
-            height={260}
-            ariaLabel="Named successors by readiness and role criticality"
           />
         </Figure>
       </Section>
@@ -120,7 +128,7 @@ export function SuccessionTab({ m }: { m: TalentModel }) {
           data={succ.hipoByLevel}
           columns={hipoColumns('Level')}
           definitions={[DEF.highPotential]}
-          note={`${fmt(succ.hipoHigh)} of ${plural(succ.hipoAssessed, 'person', 'people')} assessed · levels under 5 are hidden`}
+          note={`${fmt(succ.hipoHigh)} of ${plural(succ.hipoAssessed, 'person', 'people')} assessed · levels under 5 people are folded into Other`}
           span={6}
           empty={noPotential}
         >
@@ -129,6 +137,7 @@ export function SuccessionTab({ m }: { m: TalentModel }) {
             x="group"
             y="share"
             format="pct0"
+            tone={otherTone}
             height={240}
             ariaLabel="Share rated high potential by level"
           />
@@ -140,7 +149,7 @@ export function SuccessionTab({ m }: { m: TalentModel }) {
           data={succ.hipoByUnit}
           columns={hipoColumns('Business unit')}
           definitions={[DEF.highPotential]}
-          note={`Overall share ${fmt(succ.hipoShare, 'pct')} · groups under 5 are hidden`}
+          note={`Overall share ${fmt(succ.hipoShare, 'pct')} · units under 5 people are folded into Other`}
           span={6}
           empty={noPotential}
         >
@@ -149,6 +158,8 @@ export function SuccessionTab({ m }: { m: TalentModel }) {
             label="group"
             value="share"
             format="pct"
+            sort="none"
+            tone={otherTone}
             ref={
               succ.hipoShare != null
                 ? { value: succ.hipoShare, label: `All ${fmt(succ.hipoShare, 'pct0')}` }

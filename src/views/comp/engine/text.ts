@@ -2,16 +2,17 @@
 
 import { LEVELS } from '@/data/schema'
 import type { PeriodPreset } from '@/data/scope'
-import { fmt } from '@/lib/format'
+import { DASH, fmt, isNum, MINUS } from '@/lib/format'
 
-/** "3.54%": two decimals, for merit spend against a budget where 0.1 pts matters. */
-export function pct2(v: number | null | undefined): string {
-  return v == null || !Number.isFinite(v) ? '—' : `${(v * 100).toFixed(2)}%`
-}
-
-/** "1.58×" */
-export function times(v: number | null | undefined): string {
-  return v == null || !Number.isFinite(v) ? '—' : `${fmt(v, 'num2')}×`
+/**
+ * "+0.81 pts": a gap between two percentages at two decimals, for merit spend against a budget
+ * where a few hundredths of a point matter. No sign when it rounds to zero; true minus for negatives.
+ */
+export function pts2(v: number | null | undefined): string {
+  if (!isNum(v)) return DASH
+  const s = (Math.abs(v) * 100).toFixed(2)
+  const sign = !/[1-9]/.test(s) ? '' : v > 0 ? '+' : MINUS
+  return `${sign}${s} pts`
 }
 
 /** "a", "a and b", "a, b and c" */

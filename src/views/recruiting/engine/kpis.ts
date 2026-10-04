@@ -4,10 +4,11 @@
 import type { Kpi } from '@/components/types'
 import type { AnalyticsContext } from '@/data/context'
 import type { Requisition } from '@/data/schema'
+import { MIN_GROUP } from '@/data/schema'
 import { daysBetween, formatDate, monthKey } from '@/lib/dates'
-import { fmt } from '@/lib/format'
+import { fmt, plural } from '@/lib/format'
 import { monthPoints } from '@/lib/people'
-import { isMaterialChange, median } from '@/lib/stats'
+import { isMaterialChange, median, suppress } from '@/lib/stats'
 import type { Headline } from '../../types'
 import type { RecruitingBase } from './base'
 import { inWin, isOpenAt } from './prepare'
@@ -25,9 +26,12 @@ export function openReqSpark(reqs: readonly Requisition[], asOf: string, n = 8):
 export function headline(ctx: AnalyticsContext): Headline {
   const reqs = ctx.data.requisitions
   if (!reqs.length) return { value: '—', label: 'open reqs' }
-  const open = reqs.filter((r) => r.status === 'Open' && r.openedDate <= ctx.asOf).length
+  const open = reqs.filter((r) => isOpenAt(r, ctx.asOf)).length
   return { value: fmt(open, 'int'), label: 'open reqs', spark: openReqSpark(reqs, ctx.asOf) }
 }
+
+/** A measure over 1 to 4 people is hidden (none at all just reads "—"). */
+const small = (n: number): boolean => n > 0 && n < MIN_GROUP
 
 const timeToHire = (a: App): number => Math.max(0, daysBetween(a.appliedDate, a.exitDate ?? a.appliedDate))
 
@@ -60,9 +64,9 @@ export function recruitingKpis(b: RecruitingBase): Kpi[] {
     spark: noReqs ? undefined : openReqSpark(b.reqs, b.asOf),
     note: noReqs
       ? 'Upload Requisitions to see this'
-      : `${fmt(b.req.onHold.length, 'int')} on hold, not counted`,
+      : (b.joinNote ?? `${fmt(b.req.onHold.length, 'int')} on hold, not counted`),
     tab: 'requisitions',
-    definition: `Requisitions with status Open on ${formatDate(b.asOf)}. Reqs on hold are counted separately.`,
+    definition: `Requisitions open on ${formatDate(b.asOf)}: opened by then and not yet filled, closed or cancelled. Reqs on hold are counted separately.`,
   })
 
   // Hires (window).
@@ -76,19 +80,23 @@ export function recruitingKpis(b: RecruitingBase): Kpi[] {
     goodDirection: null,
     spark: noCands ? undefined : hiresByMonth(b.hires, b.window.end),
     note: noCands ? 'Upload Candidates to see this' : 'Offers accepted in the period',
+    tab: 'sources',
     definition: 'Candidates with status Hired whose offer was accepted (hired date) in the period.',
   })
 
   // Median time to fill.
-  const ttf = b.cov.hasFilledDate ? medianTtf(b.filled) : null
-  const ttfPrior = b.cov.hasFilledDate ? medianTtf(b.filledPrior) : null
-  const ttfSpark = quarterWindows(b.window.end, 8).map((q) =>
-    medianTtf(b.reqs.filter((r) => r.status !== 'Cancelled' && inWin(r.filledDate, q))),
-  )
+  // Medians over fewer than 5 reqs, hires or offers are hidden (each is a person's outcome).
+  const ttf = b.cov.hasFilledDate ? suppress(medianTtf(b.filled), b.filled.length) : null
+  const ttfPrior = b.cov.hasFilledDate ? suppress(medianTtf(b.filledPrior), b.filledPrior.length) : null
+  const ttfSpark = quarterWindows(b.window.end, 8).map((q) => {
+    const list = b.reqs.filter((r) => r.status !== 'Cancelled' && inWin(r.filledDate, q))
+    return suppress(medianTtf(list), list.length)
+  })
   out.push({
     id: 'time-to-fill',
     label: 'Median time to fill',
     value: ttf,
+    suppressed: small(b.cov.hasFilledDate ? b.filled.length : 0),
     format: 'days',
     delta: ttf != null && ttfPrior != null ? ttf - ttfPrior : null,
     deltaLabel: b.compareLabel,
@@ -109,12 +117,13 @@ export function recruitingKpis(b: RecruitingBase): Kpi[] {
   })
 
   // Median time to hire.
-  const tth = median(b.hires.map(timeToHire))
-  const tthPrior = median(b.hiresPrior.map(timeToHire))
+  const tth = suppress(median(b.hires.map(timeToHire)), b.hires.length)
+  const tthPrior = suppress(median(b.hiresPrior.map(timeToHire)), b.hiresPrior.length)
   out.push({
     id: 'time-to-hire',
     label: 'Median time to hire',
     value: tth,
+    suppressed: small(b.hires.length),
     format: 'days',
     delta: tth != null && tthPrior != null ? tth - tthPrior : null,
     deltaLabel: b.compareLabel,
@@ -131,12 +140,14 @@ export function recruitingKpis(b: RecruitingBase): Kpi[] {
   const accPrior = acceptance(b.offersPrior)
   const nAcc = acc.hired + acc.declined
   const nPrior = accPrior.hired + accPrior.declined
-  const accValue = b.cov.hasDeclined ? acc.rate : null
-  const accDelta = accValue != null && accPrior.rate != null ? accValue - accPrior.rate : null
+  const accValue = b.cov.hasDeclined ? suppress(acc.rate, nAcc) : null
+  const accPriorValue = suppress(accPrior.rate, nPrior)
+  const accDelta = accValue != null && accPriorValue != null ? accValue - accPriorValue : null
   out.push({
     id: 'offer-acceptance',
     label: 'Offer acceptance',
     value: accValue,
+    suppressed: b.cov.hasDeclined && small(nAcc),
     format: 'pct',
     delta: accDelta,
     deltaLabel: b.compareLabel,
@@ -157,6 +168,7 @@ export function recruitingKpis(b: RecruitingBase): Kpi[] {
   // Candidates lacking a next step (snapshot).
   const lacking = b.actives.filter((x) => x.tier).length
   const active = b.actives.length
+  const share = suppress(active ? lacking / active : null, active)
   out.push({
     id: 'lacking-next-step',
     label: 'Candidates lacking a next step',
@@ -165,10 +177,10 @@ export function recruitingKpis(b: RecruitingBase): Kpi[] {
     goodDirection: 'down',
     note: noCands
       ? 'Upload Candidates to see this'
-      : `${active ? fmt(lacking / active, 'pct0') : '—'} of ${fmt(active, 'int')} active candidates${b.cov.hasNextEvent ? '' : ' (no next-event dates in the data)'}`,
+      : `${share != null ? `${fmt(share, 'pct0')} of ` : ''}${plural(active, 'active candidate')}${b.cov.hasNextEvent ? '' : ' (no next-event dates in the data)'}`,
     tab: 'pipeline',
     definition:
-      'Active candidates with no timely next step on the as-of date: nothing scheduled and past 1.5× the usual days for the stage, interview feedback pending more than 2 days, or an offer out more than 5 days.',
+      'Active candidates who lack a next step on the as-of date: no step booked for more than 1.5× the usual days for the stage, interview feedback pending more than 2 days, or an offer out more than 5 days. "No step booked" on its own is a state, not this alarm.',
   })
   return out
 }

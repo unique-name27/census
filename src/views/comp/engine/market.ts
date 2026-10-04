@@ -43,27 +43,38 @@ export function marketBy(
   return groupRows(priced, key, { order }).map((g) => marketRow(g.label, g.rows))
 }
 
+/** The ranked family chart leaves out families under this size (they fold into Other). */
+export const MARKET_CHART_MIN = 10
+
 /**
  * The `top` groups furthest below market, lowest first, with every other group's people folded
  * into one "Other (k)" row whose median is computed from those people (not from group medians).
+ * Groups under `minN` people never rank (a 7-person family is too noisy to lead the chart), so
+ * they always fold, even alone. Rows come in display order: lowest first, Other last.
  */
 export function marketLowest(
   people: readonly CompPerson[],
   key: (p: CompPerson) => string | null,
   top: number,
+  minN = MARKET_CHART_MIN,
 ): MarketRow[] {
   const priced = people.filter((p) => p.marketRatio != null)
-  const groups = groupRows(priced, key)
+  const all = groupRows(priced, key)
+  const ranks = (g: (typeof all)[number]) => !g.folded && g.rows.length >= minN
+  const ranked = all
+    .filter(ranks)
     .map((g) => ({ g, row: marketRow(g.label, g.rows) }))
     .sort((a, b) => (a.row.median ?? Number.POSITIVE_INFINITY) - (b.row.median ?? Number.POSITIVE_INFINITY))
-  if (groups.length <= top + 1) return groups.map((x) => x.row)
-  const rest = groups.slice(top)
-  const folded = rest.reduce((k, x) => k + Math.max(1, x.g.folded), 0)
+  const small = all.filter((g) => !ranks(g))
+  // One ranked group past the cut keeps its name: folding it into "Other (1)" hides nothing.
+  if (!small.length && ranked.length <= top + 1) return ranked.map((x) => x.row)
+  const rest = [...ranked.slice(top).map((x) => x.g), ...small]
+  const folded = rest.reduce((k, g) => k + Math.max(1, g.folded), 0)
   return [
-    ...groups.slice(0, top).map((x) => x.row),
+    ...ranked.slice(0, top).map((x) => x.row),
     marketRow(
       `Other (${folded})`,
-      rest.flatMap((x) => x.g.rows),
+      rest.flatMap((g) => g.rows),
     ),
   ]
 }

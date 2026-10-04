@@ -14,7 +14,7 @@ const plural = (n: number, one: string, many: string) => (n === 1 ? one : many)
 const shortDate = (d: string) => formatDate(d).replace(/ \d{4}$/, '')
 
 function bullet(x: ActiveItem, tail: string): string {
-  const title = x.app.title && x.app.title !== '—' ? `, ${x.app.title}` : ''
+  const title = x.app.title ? `, ${x.app.title}` : ''
   return `- ${x.app.name}${title} (${x.app.reqId}), ${tail}`
 }
 
@@ -37,7 +37,7 @@ export function ownerNote(owner: string, items: readonly ActiveItem[]): string {
   if (decision.length) {
     if (decision.length === 1) {
       const x = decision[0]
-      const title = x.app.title && x.app.title !== '—' ? ` (${x.app.title})` : ''
+      const title = x.app.title ? ` (${x.app.title})` : ''
       blocks.push(
         `Could you ask the panel to submit scorecards for ${x.app.name}${title}, who interviewed on ${shortDate(x.since)}, and make a decision this week?`,
       )
@@ -72,9 +72,9 @@ export function ownerNote(owner: string, items: readonly ActiveItem[]): string {
   if (pending.length) {
     blocks.push(
       [
-        `${pending.length} ${plural(pending.length, 'offer is', 'offers are')} approved but not yet sent:`,
+        `${pending.length} ${plural(pending.length, 'candidate is', 'candidates are')} at the offer stage with no offer sent yet:`,
         ...pending.map((x) => bullet(x, `${x.daysInStage} days at offer`)),
-        `Can we get ${plural(pending.length, 'it', 'them')} out this week?`,
+        `Can we get ${plural(pending.length, 'the offer', 'the offers')} out this week?`,
       ].join('\n'),
     )
   }

@@ -1,18 +1,26 @@
 /**
  * The 9-box: a 3 × 3 grid of performance (x) against potential (y). Each box shows its count and
  * share and is shaded on the sequential ramp by count, so the eye goes to where people are, not to
- * a traffic-light judgment. Clicking a box (or Enter / Space on it) lists its people underneath.
+ * a traffic-light judgment. Clicking a box (or Enter / Space on it) lists its people underneath;
+ * it opens with no box selected so the grid, not a long list, leads the page.
  */
 import { type KeyboardEvent, type PointerEvent, useLayoutEffect, useRef, useState } from 'react'
-import { DataTable, inkOn, sequentialScale, useChartTheme } from '@/charts'
-import { textWidth } from '@/charts/core/measure'
-import { placeTip, renderTip, TIP_CLASS } from '@/charts/core/tooltip'
+import {
+  DataTable,
+  inkOn,
+  placeTip,
+  renderTip,
+  sequentialScale,
+  TIP_CLASS,
+  textWidth,
+  useChartTheme,
+} from '@/charts'
 import { cx, IconClose } from '@/components'
 import { POTENTIALS } from '@/data/schema'
 import { fmt, plural } from '@/lib/format'
 import { PERF_BAND_LABEL, PERF_BANDS } from '../engine/base'
 import { cellKey, type NineBoxCell } from '../engine/ninebox'
-import { NINE_BOX_PEOPLE_COLUMNS } from './columns'
+import { nineBoxPeopleColumns } from './columns'
 
 const GAP = 4
 const BOTTOM = 46
@@ -35,15 +43,11 @@ function useWidth() {
   return { ref, width }
 }
 
-export function NineBox({ cells }: { cells: readonly NineBoxCell[] }) {
+export function NineBox({ cells, cycle }: { cells: readonly NineBoxCell[]; cycle?: string | null }) {
   const t = useChartTheme()
   const { ref, width } = useWidth()
   const tipRef = useRef<HTMLDivElement>(null)
-  // Open on the high-performance, high-potential box so the list shows what a click does.
-  const [selected, setSelected] = useState<string | null>(() => {
-    const top = cells.find((c) => c.performance === 'High' && c.potential === 'High')
-    return top?.count ? cellKey(top.performance, top.potential) : null
-  })
+  const [selected, setSelected] = useState<string | null>(null)
   const [hover, setHover] = useState<string | null>(null)
   const [focus, setFocus] = useState<string | null>(null)
 
@@ -259,7 +263,7 @@ export function NineBox({ cells }: { cells: readonly NineBoxCell[] }) {
             </button>
           </div>
           <DataTable
-            columns={NINE_BOX_PEOPLE_COLUMNS}
+            columns={nineBoxPeopleColumns(cycle)}
             rows={active.people}
             maxRows={10}
             search={active.people.length > 10 ? 'Search people' : undefined}

@@ -12,14 +12,16 @@ import {
   MARKET_BY_LEVEL,
   MARKET_BY_LOCATION,
 } from '../columns'
-import { type JobMarketRow, MARKET_FLAG, type MarketRow } from '../engine/market'
+import { type JobMarketRow, MARKET_CHART_MIN, MARKET_FLAG, type MarketRow } from '../engine/market'
 import type { CompModel } from '../engine/model'
-import { emptyIf, MISSING, note } from '../shared'
+import { asOfNote, emptyIf, MISSING, note } from '../shared'
 
 const gapTone = (d: MarketRow) => (d.median != null && d.median <= MARKET_FLAG + 1e-9 ? 'warning' : 'default')
+/** Every listed job is below market, so only the deepest gaps (10% or more) carry a status. */
+const JOB_WATCH = 0.9
 const jobTone = (r: JobMarketRow): Severity | null =>
-  r.median != null && r.median <= MARKET_FLAG + 1e-9 ? 'warning' : null
-const ofMarket = (d: MarketRow) => (d.median == null ? null : `${fmt(d.median, 'ratio')} of market`)
+  r.median != null && r.median <= JOB_WATCH + 1e-9 ? 'warning' : null
+const nText = (d: MarketRow) => `n = ${fmt(d.n, 'int')}`
 
 export function Market({ m }: { m: CompModel }) {
   const k = m.market
@@ -41,7 +43,7 @@ export function Market({ m }: { m: CompModel }) {
         <Figure
           id="comp-market-by-family"
           title="Gap to market by job family"
-          subtitle={`The 15 families furthest below market, median base ÷ market median minus 1, as of ${asOf}`}
+          subtitle={`The 15 families of ${MARKET_CHART_MIN} or more people furthest below market, median base ÷ market median minus 1, as of ${asOf}`}
           data={k.familyChart}
           columns={MARKET_BY_FAMILY}
           definitions={defs}
@@ -54,10 +56,10 @@ export function Market({ m }: { m: CompModel }) {
             label="group"
             value="gap"
             format="pct"
-            sort="asc"
+            sort="none"
             ref={ref}
             tone={gapTone}
-            secondary={ofMarket}
+            secondary={nText}
             rowHeight={26}
           />
         </Figure>
@@ -80,7 +82,7 @@ export function Market({ m }: { m: CompModel }) {
             sort="asc"
             ref={ref}
             tone={gapTone}
-            secondary={ofMarket}
+            secondary={nText}
           />
         </Figure>
       </Section>
@@ -108,17 +110,17 @@ export function Market({ m }: { m: CompModel }) {
             sort="none"
             ref={ref}
             tone={gapTone}
-            secondary={ofMarket}
+            secondary={nText}
           />
         </Figure>
         <Figure
           id="comp-jobs-below-market"
           title="Jobs furthest below market"
-          subtitle={`Job family and level pairs with 5 or more people, lowest market ratio first, as of ${asOf}`}
+          subtitle={`Job family and level pairs with 5 or more people, lowest market ratio first; 10% or more below market is marked, as of ${asOf}`}
           data={k.jobs}
           columns={JOBS_COLUMNS}
           definitions={defs}
-          note={`Top ${fmt(k.jobs.length, 'int')} below market · as of ${asOf}`}
+          note={`Top ${fmt(k.jobs.length, 'int')} below market · ${asOfNote(m)}`}
           span={7}
           tableOnly
           table={{ rowTone: jobTone, maxRows: 15 }}

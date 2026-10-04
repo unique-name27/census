@@ -94,6 +94,21 @@ describe('computeMovement', () => {
     expect(sinceBand(5)).toBe('5+ yrs')
   })
 
+  it('leaves missing levels and departments empty in the moves table, not a dash', () => {
+    const t = m.moves.find((x) => x.type === 'Transfer')!
+    expect(t.fromLevel).toBeNull()
+    expect(t.fromDepartment).toBe('Software')
+  })
+
+  it('does not annualize: a 3-month window holding a promotion cycle is not multiplied by 4', () => {
+    const q = computeMovement(prepOf({ employees: people, jobChanges: changes }, { period: 't3m' }))
+    expect(q.promotions.promotions).toBe(1)
+    expect(q.promotions.rate).toBeCloseTo(1 / q.promotions.avgHeadcount, 10)
+    expect(q.byQuarter.at(-1)!.rate).toBeCloseTo(1 / q.byQuarter.at(-1)!.avgHeadcount, 10)
+    expect(q.priorLabel).toBe('vs same period last year')
+    expect(m.priorLabel).toBe('vs prior 12 months')
+  })
+
   it('is null, not 0, without a Job changes dataset', () => {
     const none = computeMovement(prepOf({ employees: people }))
     expect(none.promotions.rate).toBeNull()

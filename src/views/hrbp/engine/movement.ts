@@ -1,14 +1,19 @@
 /**
  * Internal movement from the Job changes history: every promotion, transfer, lateral move and
  * demotion event counts (a person promoted twice counts twice). Mobility counts people, once each.
+ *
+ * Promotion rate is NOT annualized (VIEWS.md): promotions come in cycles (1 Mar and 1 Sep in the
+ * sample), so annualizing a 3-month window that holds a cycle would quadruple it. For the same
+ * reason a window shorter than a year compares with the same months a year earlier, not with the
+ * months just before it.
  */
 import type { Employee, ISODate, JobChange } from '@/data/schema'
-import { LEVELS } from '@/data/schema'
+import { LEVELS, MIN_GROUP } from '@/data/schema'
 import type { Window } from '@/data/scope'
 import { daysBetween } from '@/lib/dates'
 import { activeAt, avgHeadcount, inWindow } from '@/lib/people'
-import { type Prep, quarterBlocks } from './base'
-import { annualRate, exitsByGroup } from './rates'
+import { type Prep, priorLabel, quarterBlocks, yearEarlier } from './base'
+import { exitsByGroup } from './rates'
 import { NO_LEVEL } from './workforce'
 
 export const MOVE_TYPES = ['Promotion', 'Transfer', 'Lateral move', 'Demotion'] as const
@@ -49,10 +54,10 @@ export interface MoveRow {
   employeeId: string
   name: string
   type: MoveType
-  fromLevel: string
-  toLevel: string
-  fromDepartment: string
-  toDepartment: string
+  fromLevel: string | null
+  toLevel: string | null
+  fromDepartment: string | null
+  toDepartment: string | null
 }
 
 export interface PromotionRate {
@@ -64,7 +69,10 @@ export interface PromotionRate {
 export interface MovementModel {
   promotions: PromotionRate
   companyPromotions: PromotionRate
+  /** The comparison: the prior window for 12-month and year-to-date periods, else the same months a year earlier. */
   priorPromotions: PromotionRate
+  /** Delta label for `priorPromotions`, e.g. "vs same period last year". */
+  priorLabel: string
   transfers: number
   lateral: number
   demotions: number
@@ -86,7 +94,15 @@ export const SINCE_BANDS = [
   'Never promoted',
 ] as const
 
-/** Promotion events in the window ÷ average headcount, annualized. Null without a Job changes dataset. */
+/** Events ÷ average headcount, not annualized; null under the anonymity floor. */
+export function shareOf(events: number, avg: number): number | null {
+  return avg >= MIN_GROUP ? events / avg : null
+}
+
+/**
+ * Promotion events in the window ÷ average headcount (not annualized). Null without a Job
+ * changes dataset or below an average headcount of 5.
+ */
 export function promotionRate(
   emps: readonly Employee[],
   changes: readonly JobChange[],
@@ -97,7 +113,20 @@ export function promotionRate(
   const promotions = changes.filter(
     (c) => c.changeType === 'Promotion' && inWindow(c.effectiveDate, w),
   ).length
-  return { rate: hasJobChanges ? annualRate(promotions, avg, w) : null, promotions, avgHeadcount: avg }
+  return { rate: hasJobChanges ? shareOf(promotions, avg) : null, promotions, avgHeadcount: avg }
+}
+
+/**
+ * What promotions compare with: the prior window when the period covers a year or is already set
+ * against last year (year to date); otherwise the same months a year earlier, so a promotion
+ * cycle inside the window is never set against a window without one.
+ */
+export function promotionComparison(p: Prep): { window: Window; label: string } {
+  const { period } = p.ctx.filters
+  if (period === 'ytd' || p.window.months >= 11.5) {
+    return { window: p.prior, label: priorLabel(period, p.window.months) }
+  }
+  return { window: yearEarlier(p.window), label: 'vs same period last year' }
 }
 
 export function sinceBand(years: number | null): (typeof SINCE_BANDS)[number] {
@@ -110,7 +139,7 @@ export function sinceBand(years: number | null): (typeof SINCE_BANDS)[number] {
 }
 
 export function computeMovement(p: Prep): MovementModel {
-  const { emps, window, prior, asOf, changes, ctx } = p
+  const { emps, window, asOf, changes, ctx } = p
   const has = p.has.jobChanges
   const byId = ctx.org.byId
   const inWin = changes.filter((c) => inWindow(c.effectiveDate, window))
@@ -125,7 +154,7 @@ export function computeMovement(p: Prep): MovementModel {
       end: b.end,
       promotions: n,
       avgHeadcount: avg,
-      rate: annualRate(n, avg, b),
+      rate: has ? shareOf(n, avg) : null,
     }
   })
 
@@ -147,7 +176,7 @@ export function computeMovement(p: Prep): MovementModel {
     .map((level) => {
       const avg = levelHc.get(level)?.avgHeadcount ?? 0
       const n = promosByLevel.get(level) ?? 0
-      return { level, promotions: n, avgHeadcount: avg, rate: has ? annualRate(n, avg, window) : null }
+      return { level, promotions: n, avgHeadcount: avg, rate: has ? shareOf(n, avg) : null }
     })
 
   const deptMoves = new Map<string, { Transfer: number; 'Lateral move': number }>()
@@ -187,10 +216,10 @@ export function computeMovement(p: Prep): MovementModel {
         employeeId: c.employeeId,
         name: e?.name ?? c.employeeId,
         type: c.changeType,
-        fromLevel: c.fromLevel ?? '—',
-        toLevel: c.toLevel ?? '—',
-        fromDepartment: c.fromDepartment ?? '—',
-        toDepartment: c.toDepartment ?? '—',
+        fromLevel: c.fromLevel ?? null,
+        toLevel: c.toLevel ?? null,
+        fromDepartment: c.fromDepartment ?? null,
+        toDepartment: c.toDepartment ?? null,
       }
     })
     .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : a.name.localeCompare(b.name)))
@@ -203,14 +232,16 @@ export function computeMovement(p: Prep): MovementModel {
   )
   const own = promotionRate(emps, changes, window, has)
   const avg = own.avgHeadcount
+  const comparison = promotionComparison(p)
   return {
     promotions: own,
     companyPromotions: ctx.isCompany ? own : promotionRate(p.companyEmps, p.companyChanges, window, has),
-    priorPromotions: promotionRate(emps, changes, prior, has),
+    priorPromotions: promotionRate(emps, changes, comparison.window, has),
+    priorLabel: comparison.label,
     transfers: inWin.filter((c) => c.changeType === 'Transfer').length,
     lateral: inWin.filter((c) => c.changeType === 'Lateral move').length,
     demotions: inWin.filter((c) => c.changeType === 'Demotion').length,
-    mobility: { rate: has && avg >= 5 ? moverIds.size / avg : null, movers: moverIds.size },
+    mobility: { rate: has ? shareOf(moverIds.size, avg) : null, movers: moverIds.size },
     byQuarter,
     byLevel,
     byDepartment,

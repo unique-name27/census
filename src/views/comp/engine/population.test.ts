@@ -82,7 +82,7 @@ describe('comp population', () => {
     expect(pop.annualCycle).toBe('2025 Annual')
   })
 
-  it('flags recent hires, recent promotions and service for proration', () => {
+  it('flags recent hires and recent promotions', () => {
     const hire = emp({ hireDate: '2026-03-30' })
     const promoted = emp()
     const old = emp()
@@ -93,10 +93,8 @@ describe('comp population', () => {
     })
     const [h, p, o] = buildPopulation(data, AS_OF).people
     expect(h.hiredRecently).toBe(true)
-    expect(h.service).toBeCloseTo(184 / 365)
     expect(p.promotedRecently).toBe(true)
     expect(o.promotedRecently).toBe(false)
-    expect(o.service).toBe(1)
   })
 
   it('reports missing optional columns instead of zeros', () => {

@@ -155,3 +155,26 @@ export function sameTarget(
 
 /** Datasets in manifest order, for the "import as" picker. */
 export const DATASET_ORDER: readonly DatasetKey[] = DATASET_KEYS
+
+/**
+ * The sheets of a workbook worth walking: not the template's help sheets, and not sheets with
+ * no rows (a blank template has headers on every sheet). `noRows` names the ones left out.
+ */
+export function usableSheets<S extends { name: string; rows: readonly unknown[] }>(
+  book: { sheets: readonly S[]; emptySheets: readonly string[] },
+  isHelpSheet: (name: string) => boolean,
+): { sheets: S[]; noRows: string[] } {
+  const content = book.sheets.filter((s) => !isHelpSheet(s.name))
+  return {
+    sheets: content.filter((s) => s.rows.length > 0),
+    noRows: [
+      ...content.filter((s) => s.rows.length === 0).map((s) => s.name),
+      ...book.emptySheets.filter((n) => !isHelpSheet(n)),
+    ],
+  }
+}
+
+/** Every sheet of an upload is a weak match for every dataset: it isn't Census data. */
+export function isNotCensus(sheets: readonly { reason: PlanReason }[]): boolean {
+  return sheets.length > 0 && sheets.every((s) => s.reason === 'not-census')
+}

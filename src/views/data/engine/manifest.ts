@@ -3,14 +3,15 @@
  * are loaded, how well its fields are filled and what needs a look. Pure: built from the store's
  * datasets and source metadata.
  */
-import type { Column } from '@/charts/types'
+import type { Column } from '@/charts'
 import type { Severity } from '@/components/types'
 import { DATASETS, type DatasetKey, type Datasets, type ISODate, type ViewKey } from '@/data/schema'
 import type { SourceMeta } from '@/data/store'
 import { formatDate } from '@/lib/dates'
+import type { Format } from '@/lib/format'
 import { fmt } from '@/lib/format'
 import { type DatasetCheck, datasetChecks, worstSeverity } from './checks'
-import { type DatasetCoverage, fieldCoverage, REQUIREMENT_LABEL } from './coverage'
+import { type DatasetCoverage, type FieldFills, fieldCoverage, REQUIREMENT_LABEL } from './coverage'
 
 /** Folder-tab order and labels of the six views. */
 export const VIEW_ORDER: ViewKey[] = ['recruiting', 'hrbp', 'org', 'services', 'talent', 'comp']
@@ -68,6 +69,36 @@ export function feedsLine(views: readonly ViewKey[]): string {
   return feedsAll(views) ? `Feeds all ${VIEW_COUNT_TEXT}` : `Feeds ${feedsText(views)}`
 }
 
+/**
+ * Which views read each dataset, from the views' own declarations (`ViewDef.datasets`). The
+ * schema's `usedBy` lists can fall behind when a view starts reading another dataset.
+ */
+export function feedsFromViews(
+  views: readonly { key: ViewKey; datasets: readonly DatasetKey[] }[],
+): Partial<Record<DatasetKey, ViewKey[]>> {
+  const out: Partial<Record<DatasetKey, ViewKey[]>> = {}
+  for (const v of views)
+    for (const d of v.datasets) {
+      const list = out[d] ?? []
+      if (!list.includes(v.key)) list.push(v.key)
+      out[d] = list
+    }
+  return out
+}
+
+/** The schema's list and the views' declarations together, in folder-tab order. */
+function feedsOf(usedBy: readonly ViewKey[], declared: readonly ViewKey[] | undefined): ViewKey[] {
+  const all = new Set<ViewKey>([...usedBy, ...(declared ?? [])])
+  return VIEW_ORDER.filter((v) => all.has(v))
+}
+
+/** What the last upload of a dataset left behind in its import log. */
+export interface UploadFacts {
+  fills: FieldFills | null
+  /** Kinds of change the log lists (its "Last upload" summary). */
+  changeKinds: number
+}
+
 export function sourceInfo(meta: SourceMeta): SourceInfo {
   if (meta.kind === 'sample') return { kind: 'sample', label: 'Sample', detail: null }
   const when = meta.importedAt ? formatDate(meta.importedAt.slice(0, 10)) : null
@@ -80,21 +111,36 @@ export function buildManifest(args: {
   data: Datasets
   sources: Record<DatasetKey, SourceMeta>
   asOf: ISODate
+  /** Views that read each dataset (`feedsFromViews`), added to the schema's lists. */
+  feeds?: Partial<Record<DatasetKey, readonly ViewKey[]>>
+  /** Facts from the import log of each dataset's current upload. */
+  uploads?: Partial<Record<DatasetKey, UploadFacts | null>>
 }): ManifestRow[] {
   const { data, sources, asOf } = args
   const targetIsSample = (k: DatasetKey) => sources[k]?.kind !== 'upload'
   return DATASETS.map((def) => {
     const rows = data[def.key] as readonly object[]
     const source = sources[def.key] ?? { kind: 'sample', rowCount: rows.length }
-    const coverage = fieldCoverage(def, rows)
-    const checks = datasetChecks({ key: def.key, data, source, coverage, asOf, targetIsSample })
+    const upload = source.kind === 'upload' ? args.uploads?.[def.key] : null
+    const coverage = fieldCoverage(def, rows, upload?.fills)
+    const checks = datasetChecks({
+      key: def.key,
+      data,
+      source,
+      coverage,
+      asOf,
+      targetIsSample,
+      fills: upload?.fills,
+      changeKinds: upload ? upload.changeKinds : null,
+    })
+    const feeds = feedsOf(def.usedBy, args.feeds?.[def.key])
     return {
       key: def.key,
       label: def.label,
       description: def.description,
       sheet: def.sheet,
-      feeds: def.usedBy,
-      feedsText: feedsText(def.usedBy),
+      feeds,
+      feedsText: feedsText(feeds),
       source: sourceInfo(source),
       rows: rows.length,
       coverage,
@@ -111,7 +157,7 @@ export interface ManifestSummary {
   /** Datasets with at least one warning or critical check. */
   needsLook: number
   totalRows: number
-  /** "3 of 10 datasets are yours · 2 need a look" */
+  /** "41,444 rows across 10 datasets · 2 need a look". Which ones are uploads is in the masthead and each row. */
   text: string
 }
 
@@ -120,17 +166,17 @@ export function manifestSummary(rows: readonly ManifestRow[]): ManifestSummary {
   const needsLook = rows.filter((r) => r.status === 'critical' || r.status === 'warning').length
   const totalRows = rows.reduce((a, r) => a + r.rows, 0)
   const total = rows.length
-  const head =
-    uploaded === 0
-      ? `All ${total} datasets are sample data`
-      : uploaded === total
-        ? `All ${total} datasets are your uploads`
-        : uploaded === 1
-          ? `1 of ${total} datasets is your upload, the rest are sample data`
-          : `${uploaded} of ${total} datasets are your uploads, the rest are sample data`
+  const head = `${fmt(totalRows, 'int')} ${totalRows === 1 ? 'row' : 'rows'} across ${total} datasets`
   const tail = needsLook ? ` · ${needsLook} ${needsLook === 1 ? 'needs' : 'need'} a look` : ''
   return { uploaded, total, needsLook, totalRows, text: `${head}${tail}` }
 }
+
+/**
+ * Shares just short of whole show two decimals in exports (99.99%), so a gap is never rounded
+ * to 100%; everything else shows one.
+ */
+const shareFormat = (share: unknown): Format =>
+  typeof share === 'number' && share < 1 && share >= 0.995 ? 'pct2' : 'pct'
 
 /* ───────────── export of the manifest ───────────── */
 
@@ -140,7 +186,11 @@ export const MANIFEST_COLUMNS: Column[] = [
   { key: 'source', label: 'Source', width: 28 },
   { key: 'sourceDetail', label: 'Source detail', width: 22 },
   { key: 'rows', label: 'Rows', format: 'int' },
-  { key: 'coverage', label: 'Field coverage', format: 'pct' },
+  {
+    key: 'coverage',
+    label: 'Field coverage',
+    format: (r: Record<string, unknown>) => shareFormat(r.coverage),
+  },
   { key: 'status', label: 'Status', width: 10 },
   { key: 'issues', label: 'Issues', width: 60 },
 ]
@@ -171,7 +221,9 @@ export const COVERAGE_COLUMNS: Column[] = [
   { key: 'requirement', label: 'Requirement', width: 12 },
   { key: 'expected', label: 'Rows counted', format: 'int' },
   { key: 'filled', label: 'Rows filled', format: 'int' },
-  { key: 'share', label: 'Filled', format: 'pct' },
+  { key: 'share', label: 'Filled', format: (r: Record<string, unknown>) => shareFormat(r.share) },
+  { key: 'defaulted', label: 'Rows set by default', format: 'int' },
+  { key: 'inFile', label: 'Column in the file', width: 12 },
   { key: 'scope', label: 'Which rows count', width: 34 },
 ]
 
@@ -185,7 +237,9 @@ export function coverageExportRows(rows: readonly ManifestRow[]): Record<string,
       expected: f.expected,
       filled: f.filled,
       share: f.share,
-      scope: f.scope ?? 'All rows',
+      defaulted: f.defaulted,
+      inFile: f.inFile == null ? '' : f.inFile ? 'Yes' : 'No',
+      scope: f.scope ?? (f.event ? `All rows; blank until it happens (${f.event})` : 'All rows'),
     })),
   )
 }

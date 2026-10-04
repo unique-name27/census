@@ -3,7 +3,6 @@
  * governs what the Data room's downloads include.
  */
 import { useEffect, useId, useRef, useState } from 'react'
-import { spanClass } from '@/components/Section'
 import { Button, cx, Switch } from '@/components/ui'
 import { useAnalytics } from '@/data/context'
 import { useCensus } from '@/data/store'
@@ -39,7 +38,10 @@ export function AsOfPanel({ className }: { className?: string }) {
       ? 'The sample company’s reporting date.'
       : 'The latest date in your data, up to today.'
   return (
-    <div className={cx(spanClass(4), 'flex flex-col rounded-sheet bg-sheet', className)}>
+    // Full width until the desktop grid, so a tablet never shows it beside an empty half.
+    <div
+      className={cx('col-span-full min-w-0 lg:col-span-4', 'flex flex-col rounded-sheet bg-sheet', className)}
+    >
       <div className="px-5 pt-4 pb-4">
         <h2 className="eyebrow">Reporting date</h2>
         <p className="cut-head mt-2 text-[28px] leading-none font-[650]">{formatDate(ctx.asOf)}</p>
@@ -88,10 +90,11 @@ export function AsOfPanel({ className }: { className?: string }) {
         )}
       </div>
       <div className="mt-auto border-t border-rule px-5 py-3.5">
+        <h2 className="eyebrow mb-2">Pay amounts</h2>
         <Switch checked={showPay} onChange={setShowPay} label="Show and export pay amounts" />
         <p className="mt-1.5 text-[12px] text-muted">
-          Salary, range and market amounts, here and in every view. Ratios such as compa-ratio are always
-          shown.
+          Salary, range and market amounts in every view and download, including the sample workbook. Ratios
+          such as compa-ratio are always shown.
         </p>
       </div>
     </div>

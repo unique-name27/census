@@ -13,10 +13,12 @@ import type { LearningResult } from './learning'
 import { HIGH_GUIDELINE, type PerformanceResult } from './performance'
 import type { OverdueResult } from './promotion'
 import type { RetentionResult } from './retention'
-import type { RiskModel } from './risk'
+import { factorDef, type RiskModel } from './risk'
 import type { SuccessionResult } from './succession'
 
-const MAX_PEOPLE = 50
+/** A training gap is critical only for a compliance or security course with at least 10 people behind. */
+const CRITICAL_TRAINING = /compliance|security/i
+const CRITICAL_TRAINING_PEOPLE = 10
 
 export interface FindingInputs {
   base: TalentBase
@@ -33,8 +35,9 @@ const pts = (d: number) => `${(Math.abs(d) * 100).toFixed(1)} pts`
 const pct = (v: number | null) => fmt(v, 'pct')
 const pct0 = (v: number | null) => fmt(v, 'pct0')
 
+/** Everyone behind a finding: the readout shows five and lists the rest on request. */
 function people(list: readonly { employeeId: string; name: string; note?: string }[]): FindingPerson[] {
-  return list.slice(0, MAX_PEOPLE).map((p) => ({ id: p.employeeId, name: p.name, note: p.note }))
+  return list.map((p) => ({ id: p.employeeId, name: p.name, note: p.note }))
 }
 
 /** The single value holding at least half of the items (and two or more), for a "Focus" link. */
@@ -56,9 +59,9 @@ export function buildFindings(x: FindingInputs): Finding[] {
   const out: Finding[] = []
   const { base, performance: perf, succession: succ, retention: ret, overdue, learning, risk } = x
 
-  // High-potential regretted exits in the last 6 months.
+  // High-potential regretted exits in the last 6 months (needs termination type, regrettable and potential).
   const hipo = ret.hipoExits.people
-  if (hipo.length > 0) {
+  if (ret.hipoExits.available && hipo.length > 0) {
     const named = hipo
       .slice(0, 5)
       .map((p) => `${p.name} (${p.department}, ${formatMonth(p.terminationDate)})`)
@@ -127,13 +130,13 @@ export function buildFindings(x: FindingInputs): Finding[] {
   for (const f of perf.inflation.slice(0, 2)) {
     const hist = f.history.filter((h) => h.share != null)
     const histText = hist.length
-      ? `It was ${listText(hist.map((h) => `${pct0(h.share)} in ${h.cycle}`))}. `
+      ? `It was ${listText(hist.map((h) => `${pct(h.share)} in ${h.cycle}`))}. `
       : ''
     out.push({
       id: `talent-inflation-${f.businessUnit}`,
       severity: 'warning',
-      title: `${f.businessUnit} rated ${pct0(f.share)} of people 4 or 5 in ${perf.cycle?.cycle ?? 'the latest cycle'}, ${pts(f.share - HIGH_GUIDELINE)} above the ${pct0(HIGH_GUIDELINE)} guideline.`,
-      detail: `${histText}${f.rest != null ? `The rest of the scope is at ${pct0(f.rest)}.` : ''}`.trim(),
+      title: `${f.businessUnit} rated ${pct(f.share)} of people 4 or 5 in ${perf.cycle?.cycle ?? 'the latest cycle'}, ${pts(f.share - HIGH_GUIDELINE)} above the ${pct0(HIGH_GUIDELINE)} guideline.`,
+      detail: `${histText}${f.rest != null ? `The rest of the scope is at ${pct(f.rest)}.` : ''}`.trim(),
       action: `Review the ${f.businessUnit} rating distribution against the guideline in the next calibration session.`,
       filter: { businessUnit: [f.businessUnit] },
       tab: 'performance',
@@ -158,13 +161,15 @@ export function buildFindings(x: FindingInputs): Finding[] {
   if (conc?.top) {
     const t = conc.top
     const where = segmentName(t.dim, t.value)
+    const critical =
+      t.segValue >= 0.25 && t.affected >= CRITICAL_TRAINING_PEOPLE && CRITICAL_TRAINING.test(conc.category)
     out.push({
       id: 'talent-training-overdue',
-      severity: t.segValue >= 0.25 ? 'critical' : 'warning',
+      severity: critical ? 'critical' : 'warning',
       title: `${t.affected} of ${t.population} people in ${where} (${pct(t.segValue)}) are overdue on ${conc.course}, vs ${pct(t.compValue)} elsewhere.`,
       detail: `${conc.second ? `${segmentText(conc.second).replace(/^./, (m) => m.toUpperCase())} is also high. ` : ''}${conc.dueDate ? `The course was due ${formatDate(conc.dueDate)}; ` : ''}${plural(conc.overdue, 'person is', 'people are')} overdue on it in total.`,
       action: `Ask ${where} leaders to agree on a completion date for ${conc.course} with their teams.`,
-      people: people(conc.people.map((p) => ({ ...p, note: `${p.department}, ${p.location}` }))),
+      people: people(conc.segmentPeople.map((p) => ({ ...p, note: `${p.department}, ${p.location}` }))),
       filter: segmentFilter(t.dim, t.value),
       tab: 'learning',
     })
@@ -193,23 +198,36 @@ export function buildFindings(x: FindingInputs): Finding[] {
   // Key talent at risk.
   const kt = ret.keyTalent
   if (kt.length > 0) {
-    const reasons = ret.drivers.filter((d) => d.anyReason > 0).slice(0, 2)
-    const share = ret.highPerformers ? kt.length / ret.highPerformers : null
+    const inKey = (key: string) =>
+      kt.filter((k) => risk.scores.get(k.employeeId)?.factors.some((f) => f.key === key)).length
+    const common = ret.commonFactors.filter((k) => risk.points[k] > 0)
+    const reasons = ret.drivers
+      .filter((d) => !d.common && d.anyReason > 0)
+      .map((d) => ({ d, n: inKey(d.key) }))
+      .filter((r) => r.n > 0)
+      .sort((a, b) => b.n - a.n)
+      .slice(0, 2)
+    const share = ret.highPerformers >= 5 ? kt.length / ret.highPerformers : null
     const seg = ret.keyTalentTop
     const bt = risk.backTest
-    const lead = seg ? `${seg.affected} of them are in ${segmentName(seg.dim, seg.value)}; the` : 'The'
-    const reasonText = reasons.length
-      ? `${lead} most common reasons are ${listText(reasons.map((r) => r.factor.toLowerCase()))}.`
+    const where = seg ? `${seg.affected} of them are in ${segmentName(seg.dim, seg.value)}. ` : ''
+    const commonText = common.length
+      ? `Most of the high band shares ${listText(common.map((k) => factorDef.get(k)!.label.toLowerCase()))}`
       : ''
+    const reasonText = reasons.length
+      ? `${commonText ? `${commonText}; beyond that, the` : 'The'} most common reasons are ${listText(reasons.map((r) => `${r.d.factor.toLowerCase()} (${r.n})`))}.`
+      : commonText
+        ? `${commonText}.`
+        : ''
     const btText =
       bt.lift != null && bt.lift >= 1.2
-        ? `In the back-test, people in the high band left at ${bt.lift.toFixed(1)}× the rate of the low band.`
+        ? `Scored a year ago with the points known then, the high band left at ${bt.lift.toFixed(1)}× the rate of the low band.`
         : ''
     out.push({
       id: 'talent-key-talent-risk',
       severity: 'warning',
       title: `${plural(kt.length, 'person', 'people')} rated 4 or 5 ${kt.length === 1 ? 'is' : 'are'} in the high flight-risk band${share != null ? `, ${pct(share)} of high performers` : ''}.`,
-      detail: `${reasonText} ${btText}`.trim(),
+      detail: `${where}${reasonText} ${btText}`.trim(),
       action: 'Ask their managers to hold stay conversations this month, starting with the highest scores.',
       people: people(kt.map((k) => ({ ...k, note: `${k.department} · ${k.reason1}` }))),
       filter: seg && seg.share >= 0.3 ? segmentFilter(seg.dim, seg.value) : undefined,
@@ -240,6 +258,8 @@ function goodFinding(x: FindingInputs): Finding | null {
   const match = perf.byBusinessUnit
     .filter(
       (g) =>
+        !g.other &&
+        g.high != null &&
         g.share != null &&
         g.rated >= 100 &&
         Math.abs(g.share - HIGH_GUIDELINE) <= 0.03 &&

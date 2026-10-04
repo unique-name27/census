@@ -25,7 +25,6 @@ import type {
   TenureDot,
 } from './engine/ranges'
 import type { CycleSettings } from './engine/settings'
-import { pct2 } from './engine/text'
 
 export const BIN_COLUMNS: Column<Bin>[] = [
   { key: 'from', label: 'From', format: 'ratio' },
@@ -35,8 +34,8 @@ export const BIN_COLUMNS: Column<Bin>[] = [
 ]
 
 export const MERIT_BIN_COLUMNS: Column<Bin>[] = [
-  { key: 'from', label: 'Merit from', format: 'pct' },
-  { key: 'to', label: 'Merit to', format: 'pct' },
+  { key: 'from', label: 'Merit from', format: 'pct2' },
+  { key: 'to', label: 'Merit to', format: 'pct2' },
   { key: 'n', label: 'People', format: 'int' },
   { key: 'share', label: 'Share', format: 'pct' },
 ]
@@ -139,9 +138,9 @@ export const RATING_DOT_COLUMNS: Column<RatingDot>[] = [
 export const MERIT_BY_RATING_COLUMNS: Column<MeritByRatingRow>[] = [
   { key: 'rating', label: 'Latest rating', format: 'text' },
   { key: 'n', label: 'Proposals', format: 'int' },
-  { key: 'mean', label: 'Mean merit', format: 'pct' },
-  { key: 'median', label: 'Median merit', format: 'pct' },
-  { key: 'guideline', label: 'Guideline', format: 'pct' },
+  { key: 'mean', label: 'Mean merit', format: 'pct2' },
+  { key: 'median', label: 'Median merit', format: 'pct2' },
+  { key: 'guideline', label: 'Guideline', format: 'pct2' },
   { key: 'diff', label: 'Mean vs guideline', format: 'pts' },
 ]
 
@@ -149,18 +148,18 @@ export const MATRIX_COLUMNS: Column<MatrixCell>[] = [
   { key: 'rating', label: 'Latest rating', format: 'text' },
   { key: 'position', label: 'Range position', format: 'text' },
   { key: 'n', label: 'Proposals', format: 'int' },
-  { key: 'mean', label: 'Mean merit', format: 'pct' },
-  { key: 'guideline', label: 'Guideline', format: 'pct' },
+  { key: 'mean', label: 'Mean merit', format: 'pct2' },
+  { key: 'guideline', label: 'Guideline', format: 'pct2' },
   { key: 'diff', label: 'Mean vs guideline', format: 'pts' },
 ]
 
 export const DIFFERENTIATION_COLUMNS: Column<DifferentiationRow>[] = [
   { key: 'group', label: 'Department', format: 'text' },
   { key: 'n45', label: 'Rated 4-5', format: 'int' },
-  { key: 'merit45', label: 'Mean merit, 4-5', format: 'pct' },
+  { key: 'merit45', label: 'Mean merit, 4-5', format: 'pct2' },
   { key: 'n3', label: 'Rated 3', format: 'int' },
-  { key: 'merit3', label: 'Mean merit, 3', format: 'pct' },
-  { key: 'ratio', label: 'Ratio', format: 'num2' },
+  { key: 'merit3', label: 'Mean merit, 3', format: 'pct2' },
+  { key: 'ratio', label: 'Ratio', format: 'times' },
 ]
 
 export const BONUS_COLUMNS: Column<BonusByRatingRow>[] = [
@@ -198,12 +197,12 @@ export const JOBS_COLUMNS: Column<JobMarketRow>[] = [
 export const SPEND_COLUMNS: Column<SpendRow>[] = [
   { key: 'group', label: 'Business unit', format: 'text' },
   { key: 'n', label: 'Proposals', format: 'int' },
-  { key: 'spendPct', label: 'Merit spend', format: 'pct' },
-  { key: 'budgetPct', label: 'Budget', format: 'pct' },
+  { key: 'spendPct', label: 'Merit spend', format: 'pct2' },
+  { key: 'budgetPct', label: 'Budget', format: 'pct2' },
   { key: 'delta', label: 'Spend vs budget', format: 'pts' },
   { key: 'eligibleBaseUsd', label: 'Eligible base (USD)', format: 'moneyFull', pay: true },
   { key: 'spendUsd', label: 'Merit spend (USD)', format: 'moneyFull', pay: true },
-  { key: 'overUsd', label: 'Over budget (USD)', format: 'moneyFull', pay: true },
+  { key: 'overUsd', label: 'Spend vs budget (USD)', format: 'moneyFull', pay: true },
 ]
 
 export const EXCEPTION_COLUMNS: Column<ExceptionRow>[] = [
@@ -212,10 +211,10 @@ export const EXCEPTION_COLUMNS: Column<ExceptionRow>[] = [
   { key: 'department', label: 'Department', format: 'text' },
   { key: 'level', label: 'Level', format: 'text' },
   { key: 'rating', label: 'Rating', format: 'int' },
-  { key: 'merit', label: 'Merit', format: 'pct' },
-  { key: 'guideline', label: 'Guideline', format: 'pct' },
+  { key: 'merit', label: 'Merit', format: 'pct2' },
+  { key: 'guideline', label: 'Guideline', format: 'pct2' },
   { key: 'diff', label: 'Merit vs guideline', format: 'pts' },
-  { key: 'z', label: 'Robust z', format: 'num1' },
+  { key: 'z', label: 'Distance from typical for the rating', format: 'num1' },
   { key: 'promotion', label: 'Promotion', format: 'pct' },
   { key: 'rule', label: 'Why it is listed', format: 'text' },
 ]
@@ -226,7 +225,7 @@ export const PROMOTION_COLUMNS: Column<PromotionRow>[] = [
   { key: 'department', label: 'Department', format: 'text' },
   { key: 'level', label: 'Level', format: 'text' },
   { key: 'rating', label: 'Rating', format: 'int' },
-  { key: 'merit', label: 'Merit', format: 'pct' },
+  { key: 'merit', label: 'Merit', format: 'pct2' },
   { key: 'promotion', label: 'Promotion', format: 'pct' },
   { key: 'total', label: 'Total increase', format: 'pct' },
 ]
@@ -275,7 +274,7 @@ export const DEF_LATEST_RATING: Definition = {
 }
 export const DEF_DIFFERENTIATION: Definition = {
   term: 'Pay for performance',
-  text: 'Mean merit for people rated 4-5 divided by mean merit for people rated 3. Below 1.15 means ratings make little difference to pay. Needs 5 people on each side.',
+  text: 'Mean merit for people rated 4-5 divided by mean merit for people rated 3, on each person’s latest rating. Below 1.15× means ratings make little difference to pay. Needs 5 people on each side.',
   formula: 'mean(merit | rating 4-5) ÷ mean(merit | rating 3)',
 }
 export const DEF_COMPRESSION: Definition = {
@@ -294,8 +293,8 @@ export const DEF_FX: Definition = {
 }
 export const DEF_EXCEPTIONS: Definition = {
   term: 'Guideline exception',
-  text: 'Rating 5 with merit under 2%, or rating 1-2 with merit over 3%. Proposals that break neither rule but sit more than 3.5 robust deviations from the median merit for the rating are listed as unusual.',
-  formula: 'robust z = 0.6745 × (merit − median) ÷ MAD, within the rating',
+  text: 'Rating 5 with merit under 2%, or rating 1-2 with merit over 3%. Proposals that break neither rule but sit far from the typical merit for the rating are listed as unusual. Distance from typical counts robust deviations from the median merit for the rating across the company: beyond 3.5 either way is unusual, and the sign says above or below.',
+  formula: 'distance = 0.6745 × (merit − median) ÷ MAD, within the rating',
 }
 
 export function bandDefinition(s: CycleSettings): Definition {
@@ -314,5 +313,5 @@ export function guidelineDefinition(s: CycleSettings): Definition {
 }
 
 export function budgetDefinition(s: CycleSettings): Definition {
-  return { term: 'Budget', text: `${pct2(s.meritBudget)} of eligible base, from Cycle settings.` }
+  return { term: 'Budget', text: `${fmt(s.meritBudget, 'pct2')} of eligible base, from Cycle settings.` }
 }

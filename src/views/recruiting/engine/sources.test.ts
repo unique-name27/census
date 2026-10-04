@@ -53,8 +53,15 @@ describe('offer acceptance', () => {
 
   it('hides groups and quarters with fewer than 5 resolved offers', () => {
     const offers = resolvedOffers(apps, { start: '2026-07-01', end: '2026-09-30' })
+    // Bengaluru (4 offers) and Austin (3) are both under 5: they fold into one row that has 7.
     const by = acceptanceBy(offers, (a) => a.location)
-    expect(by.find((g) => g.group === 'Bengaluru')).toMatchObject({ offers: 4, rate: null, hired: 1 })
+    expect(by).toEqual([{ group: 'Other (2)', rate: 4 / 7, hired: 4, declined: 3, offers: 7 }])
+    // One small group keeps its name, but shows neither the rate nor the counts behind it.
+    const one = acceptanceBy(
+      offers.filter((a) => a.location === 'Bengaluru'),
+      (a) => a.location,
+    )
+    expect(one).toEqual([{ group: 'Bengaluru', rate: null, hired: null, declined: null, offers: 4 }])
     const q = acceptanceByQuarter(apps, AS_OF, 2)
     expect(q.map((x) => x.label)).toEqual(['Q2 2026', 'Q3 2026'])
     expect(q[1]).toMatchObject({ offers: 7, end: '2026-09-30' })

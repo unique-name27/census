@@ -42,19 +42,28 @@ describe('merit cycle', () => {
     expect(s.budgetUsd).toBeCloseTo(5600)
   })
 
-  it('prorates the guideline spend by service in the last 12 months', () => {
-    const full = emp()
-    const half = emp({ hireDate: '2026-04-01' })
+  it('prices the guideline like the proposals: base-weighted, not prorated, null under 5 rated', () => {
+    const fives = Array.from({ length: 3 }, () => emp())
+    const late = emp({ hireDate: '2026-04-01' })
+    const three = emp()
+    const all = [...fives, late, three]
     const people = buildPopulation(
       dataset({
-        employees: [full, half],
-        comp: [comp(full, { meritPct: 0.03 }), comp(half, { meritPct: 0.03 })],
-        reviews: [review(full, 5), review(half, 5)],
+        employees: all,
+        comp: all.map((e) => comp(e, { meritPct: 0.03 })),
+        reviews: [...fives, late].map((e) => review(e, 5)).concat(review(three, 3)),
       }),
       AS_OF,
     ).people
     const s = meritSpend(people, DEFAULT_SETTINGS)
-    expect(s.guidelinePct).toBeCloseTo((0.06 + 0.06 * (182 / 365)) / 2)
+    expect(s.rated).toBe(5)
+    // Four at 6% and one at 3%, equal base: a part-year hire counts in full, like their proposal.
+    expect(s.guidelinePct).toBeCloseTo((4 * 0.06 + 0.03) / 5)
+    expect(s.meanMerit).toBeCloseTo(0.03)
+    const few = meritSpend(people.slice(0, 4), DEFAULT_SETTINGS)
+    expect(few.guidelinePct).toBeNull()
+    expect(few.meanMerit).toBeNull()
+    expect(few.spendPct).toBeCloseTo(0.03)
   })
 
   it('is null with no proposals rather than 0', () => {

@@ -83,12 +83,19 @@ export function acceptanceByQuarter(apps: readonly App[], end: string, n = 8): Q
 
 export interface GroupAcceptance {
   group: string
+  /** Null under 5 resolved offers (hidden to protect anonymity). */
   rate: number | null
-  hired: number
-  declined: number
+  /** Null with the rate, so the counts can't give the hidden rate away. */
+  hired: number | null
+  declined: number | null
   offers: number
 }
 
+/**
+ * Offer acceptance per group, largest first. Groups under 5 resolved offers fold into one
+ * "Other (k)" row (a single small group keeps its name, since folding it hides nothing); any row
+ * still under 5 shows only its offer count.
+ */
 export function acceptanceBy(offers: readonly App[], key: (a: App) => string | null): GroupAcceptance[] {
   const m = new Map<string, App[]>()
   for (const a of offers) {
@@ -97,13 +104,26 @@ export function acceptanceBy(offers: readonly App[], key: (a: App) => string | n
     if (arr) arr.push(a)
     else m.set(k, [a])
   }
-  return [...m]
-    .map(([group, list]) => {
-      const acc = acceptance(list)
-      const n = acc.hired + acc.declined
-      return { group, ...acc, rate: n >= MIN_GROUP ? acc.rate : null, offers: n }
-    })
-    .sort((a, b) => b.offers - a.offers)
+  const resolved = (list: readonly App[]) =>
+    list.filter((a) => a.outcome === 'Hired' || a.outcome === 'Declined')
+  const groups = [...m].map(([group, list]) => ({ group, list: resolved(list) })).filter((g) => g.list.length)
+  const small = groups.filter((g) => g.list.length < MIN_GROUP)
+  const fold = small.length > 1
+  const kept = fold ? groups.filter((g) => g.list.length >= MIN_GROUP) : groups
+  const rows = kept.sort((a, b) => b.list.length - a.list.length || a.group.localeCompare(b.group))
+  if (fold) rows.push({ group: `Other (${small.length})`, list: small.flatMap((g) => g.list) })
+  return rows.map(({ group, list }) => {
+    const acc = acceptance(list)
+    const n = acc.hired + acc.declined
+    const show = n >= MIN_GROUP
+    return {
+      group,
+      rate: show ? acc.rate : null,
+      hired: show ? acc.hired : null,
+      declined: show ? acc.declined : null,
+      offers: n,
+    }
+  })
 }
 
 export interface ReasonRow {

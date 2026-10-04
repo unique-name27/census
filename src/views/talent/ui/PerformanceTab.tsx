@@ -1,10 +1,12 @@
-import { BarList, Columns, Figure, Lines } from '@/charts'
+import { BarList, Columns, Figure } from '@/charts'
 import { Section } from '@/components'
 import { useAnalytics } from '@/data/context'
 import { addMonths, formatDate } from '@/lib/dates'
 import { fmt, plural } from '@/lib/format'
 import type { TalentModel } from '../engine'
+import { otherLabel } from '../engine/base'
 import { HIGH_GUIDELINE, type HighShareRow, INFLATION_PTS, RATING_ORDER } from '../engine/performance'
+import { CycleLines } from './CycleLines'
 import {
   CALIBRATION_COLUMNS,
   CYCLE_COLUMNS,
@@ -18,10 +20,28 @@ import { RatingMix } from './RatingMix'
 
 const GUIDE_REF = { value: HIGH_GUIDELINE, label: `Guideline ${fmt(HIGH_GUIDELINE, 'pct0')}` }
 
-/** Fold for "Other (k)": the combined share rated 4-5, not an average of shares. */
-const otherShare = (rest: HighShareRow[]) => {
+/**
+ * The chart keeps the first `top` groups and folds the rest (with any small groups the engine
+ * already folded) into one "Other (k)" row: the combined share rated 4-5, not an average of shares.
+ * The table and exports keep every group.
+ */
+function topWithOther(rows: readonly HighShareRow[], top: number): HighShareRow[] {
+  if (rows.length <= top + 1) return [...rows]
+  const rest = rows.slice(top)
   const rated = rest.reduce((s, r) => s + r.rated, 0)
-  return rated >= 5 ? rest.reduce((s, r) => s + r.high, 0) / rated : null
+  const high = rest.reduce((s, r) => s + (r.high ?? 0), 0)
+  const groups = rest.reduce((s, r) => s + (r.groups ?? 1), 0)
+  return [
+    ...rows.slice(0, top),
+    {
+      group: otherLabel(groups),
+      rated,
+      high: rated >= 5 ? high : null,
+      share: rated >= 5 ? high / rated : null,
+      other: true,
+      groups,
+    },
+  ]
 }
 
 export function PerformanceTab({ m }: { m: TalentModel }) {
@@ -30,11 +50,13 @@ export function PerformanceTab({ m }: { m: TalentModel }) {
   const perf = m.performance
   const cycle = perf.cycle?.cycle ?? 'the latest cycle'
   const noReviews = !m.has.reviews ? 'Upload Reviews to see this.' : null
-  const ratedNote = `${plural(perf.rated, 'person', 'people')} rated in ${cycle} · as of ${asOf}`
+  const ratedNote = `${plural(perf.rated, 'person', 'people')} rated in ${cycle}${perf.ratedLeft ? `, including ${fmt(perf.ratedLeft)} who ${perf.ratedLeft === 1 ? 'has' : 'have'} left since` : ''} · as of ${asOf}`
   const tone = (d: HighShareRow) =>
-    d.share != null && d.share - HIGH_GUIDELINE > INFLATION_PTS && d.rated >= 20
-      ? ('warning' as const)
-      : ('default' as const)
+    d.other
+      ? ('deemph' as const)
+      : d.share != null && d.share - HIGH_GUIDELINE > INFLATION_PTS && d.rated >= 20
+        ? ('warning' as const)
+        : ('default' as const)
   const calRows = perf.calibration.map((c) => ({ label: c.businessUnit, a: c.proposed, b: c.final, n: c.n }))
   const exitCycle = perf.exitCycle
   // A steady 2.5-4 scale (widened when needed) so small moves in an average don't look dramatic.
@@ -57,7 +79,7 @@ export function PerformanceTab({ m }: { m: TalentModel }) {
           data={perf.byDepartment}
           columns={highShareColumns('Department')}
           definitions={[DEF.highPerformer, DEF.guideline]}
-          note={`${ratedNote} · departments under 5 rated are hidden`}
+          note={`${ratedNote} · departments under 5 rated are folded into Other`}
           span={6}
           empty={
             noReviews ??
@@ -65,12 +87,11 @@ export function PerformanceTab({ m }: { m: TalentModel }) {
           }
         >
           <BarList
-            data={perf.byDepartment}
+            data={topWithOther(perf.byDepartment, 14)}
             label="group"
             value="share"
             format="pct"
-            top={14}
-            other={otherShare}
+            sort="none"
             ref={GUIDE_REF}
             tone={tone}
             secondary={(d) => `n = ${fmt(d.rated)}`}
@@ -149,14 +170,10 @@ export function PerformanceTab({ m }: { m: TalentModel }) {
           span={6}
           empty={noReviews ?? (perf.cycles.length ? null : 'No review cycles have closed yet.')}
         >
-          <Lines
+          <CycleLines
             data={perf.cycles}
-            x="cycleDate"
-            y="mean"
-            series="businessUnit"
-            emphasize={perf.outlierUnit ?? undefined}
+            emphasize={perf.outlierUnit}
             yDomain={meanDomain}
-            format="num2"
             height={260}
             ariaLabel="Average rating by cycle and business unit"
           />
@@ -174,7 +191,7 @@ export function PerformanceTab({ m }: { m: TalentModel }) {
           data={perf.byLevel}
           columns={highShareColumns('Level')}
           definitions={[DEF.highPerformer]}
-          note={`${ratedNote} · levels under 5 rated are hidden`}
+          note={`${ratedNote} · levels under 5 rated are folded into Other`}
           span={6}
           empty={
             noReviews ?? (perf.byLevel.length ? null : 'Nobody in this scope is rated in the latest cycle.')
@@ -205,7 +222,7 @@ export function PerformanceTab({ m }: { m: TalentModel }) {
           definitions={[DEF.exitWithin12]}
           note={
             exitCycle
-              ? `Uses the latest cycle with a full year of follow-up · ratings under 5 people are hidden`
+              ? `Uses the latest cycle with a full year of follow-up · ratings held by fewer than 5 people are hidden, counts included`
               : undefined
           }
           span={6}
@@ -215,11 +232,13 @@ export function PerformanceTab({ m }: { m: TalentModel }) {
               ? 'No review cycle has 12 months of follow-up yet.'
               : !m.has.terminationType
                 ? 'Upload Employees with a termination type to split exits.'
-                : null)
+                : perf.exitByRating.every((r) => r.rate == null)
+                  ? 'Fewer than 5 people hold each rating in this scope, so the exit rates are hidden.'
+                  : null)
           }
         >
           <Columns
-            data={perf.exitByRatingLong}
+            data={perf.exitByRatingLong.filter((r) => r.rate != null)}
             x="rating"
             y="rate"
             series="type"

@@ -21,8 +21,10 @@ import { type ValueField, ValuesStep } from './ValuesStep'
 const STEP_LABEL: Record<Step, string> = {
   columns: 'Columns',
   values: 'Values',
-  check: 'Check and apply',
+  check: 'Check',
 }
+/** Said after the label from sm up; phones keep the short label so all steps fit. */
+const STEP_MORE: Partial<Record<Step, string>> = { check: ' and apply' }
 
 export default function ImportDialog() {
   const sheets = useImportSession((s) => s.sheets)
@@ -138,7 +140,7 @@ export default function ImportDialog() {
       )}
       {def && (
         <nav aria-label="Steps" className="-mx-5 mb-5 border-b border-rule px-5">
-          <ol className="flex gap-6 overflow-x-auto">
+          <ol className="flex gap-4 overflow-x-auto sm:gap-6">
             {steps.map((s, i) => {
               const selected = s === step
               const reachable = !blocked || s === 'columns'
@@ -157,7 +159,10 @@ export default function ImportDialog() {
                     )}
                   >
                     <span className="tnum text-muted">{i + 1}</span>
-                    {STEP_LABEL[s]}
+                    <span>
+                      {STEP_LABEL[s]}
+                      {STEP_MORE[s] && <span className="hidden sm:inline">{STEP_MORE[s]}</span>}
+                    </span>
                     {s === 'values' && openCount > 0 && (
                       <span className="rounded-[3px] bg-warning-wash px-1 text-[11px] font-semibold text-ink">
                         {openCount} to check

@@ -117,6 +117,10 @@ export const DEF = {
   },
   anonymity: {
     term: 'Small groups',
-    text: 'Rates over fewer than 5 cases, transactions or responses show as "—". Breakdowns fold groups under 5 into "Other".',
+    text: 'A rate, median or average needs at least 5 cases, transactions or responses from at least 5 different people; otherwise it shows as "—" (hidden to protect anonymity). Breakdowns fold groups behind fewer than 5 people into "Other (k)", where k is the number of groups folded.',
   },
 } satisfies Record<string, Definition>
+
+/** Shown in place of row-level lists when the scope has fewer than 5 people. */
+export const SMALL_SCOPE =
+  'Fewer than 5 people are behind the cases and transactions in this scope, so rows are hidden to protect anonymity. Widen the filters to see them.'

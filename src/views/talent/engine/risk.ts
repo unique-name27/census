@@ -3,26 +3,32 @@
  *
  * 1. Signals. Each factor is computed at a scoring date d from data on or before d and gives a
  *    plain reason and a strength from 0 to 1 (most factors are simply present or not).
- * 2. Points. Each factor's points come from evidence: score everyone as of 12 months before the
- *    as-of date, see who left by choice in the following 12 months, and give each factor points in
- *    proportion to how much it raised the exit rate (its lift above 1, shrunk toward no effect when
- *    few people have it). Factors that did not raise the exit rate get 0 points. With too little
- *    history (fewer than 20 exits or 100 people) the default points are used instead.
- * 3. Score = sum of strength × points, 0 to 100. Bands are relative: the top 10% of scores are High,
- *    the next 25% Medium, the rest Low (0 is always Low; ties at a cut share the higher band).
+ * 2. Points. Each factor's points come from evidence gathered strictly before the date the points
+ *    are used: everyone active at each of the 12 month-ends 12 to 23 months back is checked
+ *    for each factor, and we see who left by choice in the 12 months after each month-end.
+ *    A factor earns points in proportion to the log of how much it raised the exit rate (its
+ *    lift), shrunk toward no effect when few people have it. Factors that did not raise the exit
+ *    rate get 0 points; factors whose data does not reach back far enough keep their default
+ *    points. Points are rounded to 5 and add up to 100. With too little history (fewer than 20
+ *    leavers or 100 people) the default points are used instead.
+ * 3. Score = sum of strength × points, 0 to 100. Bands are relative to everyone scored: the high
+ *    band is about the top 10% of scores and the medium band the next 25%. People with the same
+ *    score always share a band, so each cut sits where the band's share comes closest to its
+ *    target, and the actual shares are reported.
  *
- * Back-test: the band exit rates are measured out of sample. People are split in two halves by
- * a hash of their ID; each half is scored with points learned from the other half, so no one is
- * scored by points that saw their own outcome.
+ * Back-test (out of time): everyone active 12 months before the as-of date is scored with points
+ * learned only from month-ends whose 12-month outcome had ended by then (24 to 35 months back),
+ * and their exits over the following 12 months are counted per band. No outcome after the scoring
+ * date is used to set the points it is judged on.
  *
  * Pure: no React, no DOM. Scores the whole company so a band means the same thing in every scope.
  */
 import type { CompRecord, Employee, ISODate, JobChange, Level } from '@/data/schema'
 import type { Window } from '@/data/scope'
-import { addMonths, formatDate, ms } from '@/lib/dates'
+import { addDays, addMonths, formatDate, monthEnd, ms } from '@/lib/dates'
 import { fmt } from '@/lib/format'
-import { attrition, isActiveAt, isEmployee, type ReviewIndex, tenureYears } from '@/lib/people'
-import { fnv, median } from '@/lib/stats'
+import { inWindow, isActiveAt, isEmployee, type ReviewIndex, snapshotDates, tenureYears } from '@/lib/people'
+import { median } from '@/lib/stats'
 import { type FieldCoverage, normRating, reviewPair, trailing12, trailingMonths } from './base'
 
 export type RiskBand = 'High' | 'Medium' | 'Low'
@@ -109,12 +115,24 @@ const FACTOR_ORDER = new Map(FACTORS.map((f, i) => [f.key, i]))
 
 /** Fixed points for the factor that cannot be back-tested. */
 const COMPA_POINTS = 10
-/** Pseudo-people at the base exit rate added to each factor, so rare factors shrink toward no effect. */
-const SHRINK = 20
+/**
+ * Pseudo-observations at the base exit rate added to each factor, so factors few people have
+ * shrink toward no effect. Counted in person-months (one person at one month-end).
+ */
+const SHRINK = 80
 /** Lift is capped so one factor can't take every point. */
 const MAX_LIFT = 4
 const MIN_LEARN_PEOPLE = 100
 const MIN_LEARN_LEAVERS = 20
+/** Points are rounded to this step. */
+const POINT_STEP = 5
+/** Month-ends (months before the date the points are used) whose exits teach the points. */
+export const LEARN_OFFSETS = [12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23] as const
+/** Attrition-based factors need at least this many months of exit history before the date. */
+const MIN_HISTORY_MONTHS = 6
+/** Target share of everyone scored in the high band, and in the high and medium bands together. */
+export const HIGH_TARGET = 0.1
+export const MEDIUM_TARGET = 0.35
 
 export interface Signal {
   key: FactorKey
@@ -131,7 +149,7 @@ export interface PersonSignals {
 export interface SignalSet {
   date: ISODate
   people: PersonSignals[]
-  /** Factors switched off because the data lacks what they need. */
+  /** Factors switched off because the data lacks what they need (at this date). */
   off: { key: FactorKey; why: string }[]
   companyVoluntary: number | null
   levelNorms: Map<string, { months: number; n: number; fallback: boolean }>
@@ -143,6 +161,18 @@ export interface RiskInput {
   reviews: ReviewIndex
   comp: readonly CompRecord[]
   has: FieldCoverage
+}
+
+export interface SignalOptions {
+  /** Add the pay factor (today's score only: pay history is not kept). */
+  useComp: boolean
+  /**
+   * First exit date in the data. Leavers before it are not in the file, so attrition-based
+   * factors only count exits from this date on, and switch off with less than 6 months of them.
+   */
+  historyStart?: ISODate | null
+  /** Write the plain reasons (default true); learning dates don't need them. */
+  reasons?: boolean
 }
 
 const DAY = 86_400_000
@@ -250,31 +280,89 @@ export function levelNorms(
   return out
 }
 
-/** Voluntary attrition per group over w, for groups with an average headcount of at least 10. */
-function groupRates(
+/** Index of the first date in sorted `pts` on or after d. */
+function firstAtOrAfter(pts: readonly ISODate[], d: ISODate): number {
+  let lo = 0
+  let hi = pts.length
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1
+    if (pts[mid] < d) lo = mid + 1
+    else hi = mid
+  }
+  return lo
+}
+
+/**
+ * Voluntary attrition over w for the company and per department and per location (groups with an
+ * average headcount of at least 10). Same definition as `attrition(group, w, 'voluntary')`,
+ * computed in one pass because the model needs it at many dates.
+ */
+export function voluntaryRates(
   employees: readonly Employee[],
   w: Window,
-  key: (e: Employee) => string,
-): Map<string, number> {
-  const groups = new Map<string, Employee[]>()
+): { company: number | null; department: Map<string, number>; location: Map<string, number> } {
+  const pts = snapshotDates(w)
+  type Tally = { hc: number; exits: number; typed: number; voluntary: number }
+  const tally = (): Tally => ({ hc: 0, exits: 0, typed: 0, voluntary: 0 })
+  const company = tally()
+  const byDept = new Map<string, Tally>()
+  const bySite = new Map<string, Tally>()
+  const get = (m: Map<string, Tally>, k: string) => {
+    let t = m.get(k)
+    if (!t) {
+      t = tally()
+      m.set(k, t)
+    }
+    return t
+  }
   for (const e of employees) {
-    const k = key(e)
-    const arr = groups.get(k)
-    if (arr) arr.push(e)
-    else groups.set(k, [e])
+    if (!isEmployee(e)) continue
+    // Snapshots on which the person is active (hireDate <= d < terminationDate); pts are sorted.
+    const hc = e.hireDate
+      ? Math.max(
+          0,
+          (e.terminationDate ? firstAtOrAfter(pts, e.terminationDate) : pts.length) -
+            firstAtOrAfter(pts, e.hireDate),
+        )
+      : 0
+    const exit = inWindow(e.terminationDate, w)
+    for (const t of [company, get(byDept, e.department), get(bySite, e.location)]) {
+      t.hc += hc
+      if (!exit) continue
+      t.exits++
+      if (e.terminationType) t.typed++
+      if (e.terminationType === 'Voluntary') t.voluntary++
+    }
   }
-  const out = new Map<string, number>()
-  for (const [k, group] of groups) {
-    const r = attrition(group, w, 'voluntary')
-    if (r.rate != null && r.avgHeadcount >= 10) out.set(k, r.rate)
+  const rateOf = (t: Tally, minHeadcount: number) => {
+    const avg = pts.length ? t.hc / pts.length : 0
+    if (avg <= 0 || avg < minHeadcount || (t.exits > 0 && t.typed === 0)) return null
+    return (t.voluntary / avg) * (12 / w.months)
   }
-  return out
+  const groups = (m: Map<string, Tally>) => {
+    const out = new Map<string, number>()
+    for (const [k, t] of m) {
+      const r = rateOf(t, 10)
+      if (r != null) out.set(k, r)
+    }
+    return out
+  }
+  return { company: rateOf(company, 0), department: groups(byDept), location: groups(bySite) }
 }
 
 const excessStrength = (excess: number) => Math.min(1, Math.max(0.2, (excess * 100) / 10))
 
-/** Factor signals for every employee active at d. `useComp` adds the pay factor (today's score only). */
-export function signalsAt(input: RiskInput, d: ISODate, opts: { useComp: boolean }): SignalSet {
+/** The first exit date in the data, or null when nobody has left. */
+export function exitHistoryStart(employees: readonly Employee[]): ISODate | null {
+  let first: ISODate | null = null
+  for (const e of employees) {
+    if (e.terminationDate && (!first || e.terminationDate < first)) first = e.terminationDate
+  }
+  return first
+}
+
+/** Factor signals for every employee active at d. */
+export function signalsAt(input: RiskInput, d: ISODate, opts: SignalOptions): SignalSet {
   const { employees, jobs, reviews, has } = input
   const off: { key: FactorKey; why: string }[] = []
   const turnOff = (key: FactorKey, why: string) => {
@@ -287,26 +375,70 @@ export function signalsAt(input: RiskInput, d: ISODate, opts: { useComp: boolean
   if (!has.reviews) {
     turnOff('ratingDrop', 'Reviews are not loaded')
     turnOff('highNoPromo', 'Reviews are not loaded')
+  } else {
+    const closed = reviews.cycles.filter((c) => c.cycleDate <= d).length
+    if (closed === 0) {
+      turnOff('ratingDrop', `No review cycle had closed by ${formatDate(d)}`)
+      turnOff('highNoPromo', `No review cycle had closed by ${formatDate(d)}`)
+    } else if (closed === 1) {
+      turnOff('ratingDrop', `Only one review cycle had closed by ${formatDate(d)}`)
+    }
   }
   if (!has.terminationType) {
     turnOff('deptAttrition', 'Termination type is missing')
     turnOff('siteAttrition', 'Termination type is missing')
   }
+  // Exits before the first one in the file are missing, so trailing windows start no earlier.
+  const w12 = trailing12(d)
+  const clipped = !!opts.historyStart && opts.historyStart > w12.start
+  const w: Window = clipped
+    ? {
+        start: opts.historyStart!,
+        end: d,
+        months: monthsBetween(opts.historyStart!, d),
+        label: `${formatDate(opts.historyStart)} – ${formatDate(d)}`,
+      }
+    : w12
+  if (clipped && w.months < MIN_HISTORY_MONTHS) {
+    const why = `Less than ${MIN_HISTORY_MONTHS} months of exits before ${formatDate(d)}`
+    turnOff('deptAttrition', why)
+    turnOff('siteAttrition', why)
+    turnOff('peersLeft', why)
+  }
   if (!opts.useComp) turnOff('lowCompa', 'Pay history is not available for past dates')
   else if (!has.comp) turnOff('lowCompa', 'Compensation is not loaded')
   const isOff = new Set(off.map((o) => o.key))
+  const sinceText = clipped ? `since ${formatDate(w.start)}` : 'in the last 12 months'
+  /** Reasons are only written for scores people read; learning dates skip the text. */
+  const why = (text: () => string) => (opts.reasons === false ? '' : text())
 
   const population = employees.filter((e) => isEmployee(e) && isActiveAt(e, d))
   const norms = levelNorms(employees, jobs, d)
-  const w = trailing12(d)
   const newMgrFrom = trailingMonths(d, 6).start
   const threeYearsAgo = addMonths(d, -36)
 
-  const company = has.terminationType ? attrition(employees, w, 'voluntary').rate : null
-  const deptRate = company != null ? groupRates(employees, w, (e) => e.department) : new Map<string, number>()
-  const siteRate = company != null ? groupRates(employees, w, (e) => e.location) : new Map<string, number>()
+  const rates = has.terminationType && !isOff.has('deptAttrition') ? voluntaryRates(employees, w) : null
+  const company = rates?.company ?? null
+  const deptRate = rates?.department ?? new Map<string, number>()
+  const siteRate = rates?.location ?? new Map<string, number>()
+  /** One shared signal per department or location more than 2 pts above the company. */
+  const groupSignals = (key: 'deptAttrition' | 'siteAttrition', rates: Map<string, number>) => {
+    const out = new Map<string, Signal>()
+    if (company == null || isOff.has(key)) return out
+    for (const [group, r] of rates) {
+      if (r - company <= 0.02) continue
+      out.set(group, {
+        key,
+        strength: excessStrength(r - company),
+        reason: `Voluntary attrition in ${group} is ${fmt(r, 'pct')}, vs ${fmt(company, 'pct')} company-wide`,
+      })
+    }
+    return out
+  }
+  const deptSignal = groupSignals('deptAttrition', deptRate)
+  const siteSignal = groupSignals('siteAttrition', siteRate)
 
-  // Teams at d (manager read back from history) and leavers in the last 12 months by last manager.
+  // Teams at d (manager read back from history) and leavers in the trailing window by last manager.
   const states = new Map<string, ReturnType<typeof stateAt>>()
   const teamSize = new Map<string, number>()
   for (const e of population) {
@@ -315,10 +447,12 @@ export function signalsAt(input: RiskInput, d: ISODate, opts: { useComp: boolean
     if (s.managerId) teamSize.set(s.managerId, (teamSize.get(s.managerId) ?? 0) + 1)
   }
   const leftUnder = new Map<string, number>()
-  for (const e of employees) {
-    if (!isEmployee(e) || !e.terminationDate || !e.managerId) continue
-    if (e.terminationDate < w.start || e.terminationDate > w.end) continue
-    leftUnder.set(e.managerId, (leftUnder.get(e.managerId) ?? 0) + 1)
+  if (!isOff.has('peersLeft')) {
+    for (const e of employees) {
+      if (!isEmployee(e) || !e.terminationDate || !e.managerId) continue
+      if (e.terminationDate < w.start || e.terminationDate > w.end) continue
+      leftUnder.set(e.managerId, (leftUnder.get(e.managerId) ?? 0) + 1)
+    }
   }
 
   const compa = new Map<string, number>()
@@ -349,7 +483,10 @@ export function signalsAt(input: RiskInput, d: ISODate, opts: { useComp: boolean
         signals.push({
           key: 'promotionGap',
           strength: Math.min(1, 0.5 + 0.5 * (months / norm.months - 1)),
-          reason: `${Math.round(months)} months since ${promo ? 'last promotion' : 'joining'}; typical at ${level} is ${Math.round(norm.months)}`,
+          reason: why(
+            () =>
+              `${Math.round(months)} months since ${promo ? 'last promotion' : 'joining'}; typical at ${level} is ${Math.round(norm.months)}`,
+          ),
         })
       }
     }
@@ -363,30 +500,18 @@ export function signalsAt(input: RiskInput, d: ISODate, opts: { useComp: boolean
       signals.push({
         key: 'highNoPromo',
         strength: 1,
-        reason: promo
-          ? `Rated ${rating}, last promoted ${formatDate(promo)}`
-          : `Rated ${rating}, not promoted since joining in ${e.hireDate.slice(0, 4)}`,
+        reason: why(() =>
+          promo
+            ? `Rated ${rating}, last promoted ${formatDate(promo)}`
+            : `Rated ${rating}, not promoted since joining in ${e.hireDate.slice(0, 4)}`,
+        ),
       })
     }
-    if (company != null) {
-      const dr = deptRate.get(state.department)
-      if (!isOff.has('deptAttrition') && dr != null && dr - company > 0.02) {
-        signals.push({
-          key: 'deptAttrition',
-          strength: excessStrength(dr - company),
-          reason: `Voluntary attrition in ${state.department} is ${fmt(dr, 'pct')}, vs ${fmt(company, 'pct')} company-wide`,
-        })
-      }
-      const sr = siteRate.get(e.location)
-      if (!isOff.has('siteAttrition') && sr != null && sr - company > 0.02) {
-        signals.push({
-          key: 'siteAttrition',
-          strength: excessStrength(sr - company),
-          reason: `Voluntary attrition in ${e.location} is ${fmt(sr, 'pct')}, vs ${fmt(company, 'pct')} company-wide`,
-        })
-      }
-    }
-    if (state.managerId) {
+    const ds = deptSignal.get(state.department)
+    if (ds) signals.push(ds)
+    const ss = siteSignal.get(e.location)
+    if (ss) signals.push(ss)
+    if (!isOff.has('peersLeft') && state.managerId) {
       const left = leftUnder.get(state.managerId) ?? 0
       const peers = (teamSize.get(state.managerId) ?? 1) - 1
       const total = left + peers
@@ -394,7 +519,7 @@ export function signalsAt(input: RiskInput, d: ISODate, opts: { useComp: boolean
         signals.push({
           key: 'peersLeft',
           strength: 1,
-          reason: `${left} of ${total} people under the same manager left in the last 12 months`,
+          reason: why(() => `${left} of ${total} people under the same manager left ${sinceText}`),
         })
       }
     }
@@ -403,7 +528,9 @@ export function signalsAt(input: RiskInput, d: ISODate, opts: { useComp: boolean
       signals.push({
         key: 'tenurePeak',
         strength: 1,
-        reason: `${(Math.floor(t * 10) / 10).toFixed(1)} yrs at the company, within the 1-3 year range`,
+        reason: why(
+          () => `${(Math.floor(t * 10) / 10).toFixed(1)} yrs at the company, within the 1-3 year range`,
+        ),
       })
     }
     const prevRating = normRating(previous?.rating)
@@ -411,7 +538,7 @@ export function signalsAt(input: RiskInput, d: ISODate, opts: { useComp: boolean
       signals.push({
         key: 'ratingDrop',
         strength: 1,
-        reason: `Rating fell from ${prevRating} to ${rating} in ${latest.cycle}`,
+        reason: why(() => `Rating fell from ${prevRating} to ${rating} in ${latest.cycle}`),
       })
     }
     const cr = compa.get(id)
@@ -421,7 +548,11 @@ export function signalsAt(input: RiskInput, d: ISODate, opts: { useComp: boolean
     if (!isOff.has('newManager')) {
       const changed = managerChangeSince(arr, newMgrFrom, d)
       if (changed)
-        signals.push({ key: 'newManager', strength: 1, reason: `New manager since ${formatDate(changed)}` })
+        signals.push({
+          key: 'newManager',
+          strength: 1,
+          reason: why(() => `New manager since ${formatDate(changed)}`),
+        })
     }
     people.push({ employeeId: id, signals })
   }
@@ -432,21 +563,32 @@ export function signalsAt(input: RiskInput, d: ISODate, opts: { useComp: boolean
 
 export type Points = Record<FactorKey, number>
 
+/** How a factor's points were set. */
+export type PointSource = 'learned' | 'default' | 'fixed' | 'off'
+
 export interface FactorEvidence {
   key: FactorKey
   label: string
+  /** Person-months with the factor (one person at one month-end). */
   withFactor: number
   withLeft: number
   withRate: number | null
   without: number
   withoutLeft: number
   withoutRate: number | null
-  /** withRate ÷ withoutRate, unshrunk; null below 5 people on either side. */
+  /** withRate ÷ withoutRate, unshrunk; null below 5 on either side. */
   lift: number | null
   /** Points the factor earns (0 when it did not raise the exit rate). */
   points: number
   /** Whether the factor could be tested against outcomes at all. */
   tested: boolean
+  source: PointSource
+}
+
+/** One month-end used to learn points: everyone active then, and who left in the next 12 months. */
+export interface LearningSample {
+  signals: SignalSet
+  left: (id: string) => boolean
 }
 
 export interface LearnedPoints {
@@ -454,89 +596,146 @@ export interface LearnedPoints {
   /** False when there was too little history and the default points apply. */
   learned: boolean
   evidence: FactorEvidence[]
+  /** The month-ends the points were learned from, oldest first. */
+  snapshots: ISODate[]
+  /** Distinct people active at any of them. */
+  people: number
+  /** Distinct people who left within 12 months of a month-end they were active at. */
+  leavers: number
 }
 
 const emptyPoints = (): Points => Object.fromEntries(FACTORS.map((f) => [f.key, 0])) as Points
 
 /**
- * Points per factor from outcomes: lift above 1, shrunk toward no effect for rare factors, scaled so
- * the tested factors share 100 points (90 when the untestable pay factor is in play).
+ * Raw points per factor (adding up to `total`) rounded to multiples of 5 by largest remainder,
+ * so the rounded points still add up to the same total.
+ */
+export function roundPoints(
+  raw: Partial<Record<FactorKey, number>>,
+  total = 100,
+): Partial<Record<FactorKey, number>> {
+  const keys = FACTORS.map((f) => f.key).filter((k) => (raw[k] ?? 0) > 0)
+  const units = Math.round(total / POINT_STEP)
+  const exact = keys.map((k) => (raw[k] ?? 0) / POINT_STEP)
+  const floors = exact.map(Math.floor)
+  let left = units - floors.reduce((a, b) => a + b, 0)
+  const order = keys
+    .map((_k, i) => ({ i, rem: exact[i] - floors[i] }))
+    .sort((a, b) => b.rem - a.rem || a.i - b.i)
+  for (const o of order) {
+    if (left <= 0) break
+    floors[o.i]++
+    left--
+  }
+  return Object.fromEntries(keys.map((k, i) => [k, floors[i] * POINT_STEP]))
+}
+
+/**
+ * Points per factor from outcomes, pooled over the given month-ends. A factor earns points in
+ * proportion to the log of its lift, shrunk toward no effect when few people have it. Factors
+ * the samples could not test (switched off at every month-end) but that are on today keep
+ * their default points; the pay factor keeps 10 fixed points when it is on.
  */
 export function learnPoints(
-  people: readonly PersonSignals[],
-  left: (id: string) => boolean,
-  off: ReadonlySet<FactorKey>,
+  samples: readonly LearningSample[],
+  offNow: ReadonlySet<FactorKey>,
   opts: { compaOn: boolean },
 ): LearnedPoints {
-  const testable = FACTORS.filter((f) => f.key !== 'lowCompa' && !off.has(f.key))
-  const n = people.length
-  const leftIds = new Set(people.filter((p) => left(p.employeeId)).map((p) => p.employeeId))
-  const leavers = leftIds.size
-  const base = n ? leavers / n : 0
-  const budget = 100 - (opts.compaOn ? COMPA_POINTS : 0)
-  const learned = n >= MIN_LEARN_PEOPLE && leavers >= MIN_LEARN_LEAVERS
-  const rate = (k: number, m: number) => (m >= 5 ? k / m : null)
-
-  const evidence: FactorEvidence[] = testable.map((f) => {
-    let withFactor = 0
-    let withLeft = 0
-    for (const p of people) {
-      if (!p.signals.some((s) => s.key === f.key)) continue
-      withFactor++
-      if (leftIds.has(p.employeeId)) withLeft++
+  const testable = FACTORS.filter((f) => f.key !== 'lowCompa' && !offNow.has(f.key))
+  const acc = new Map(testable.map((f) => [f.key, { n: 0, k: 0, with: 0, withLeft: 0 }]))
+  const peopleIds = new Set<string>()
+  const leaverIds = new Set<string>()
+  let personMonths = 0
+  for (const s of samples) {
+    const off = new Set(s.signals.off.map((o) => o.key))
+    for (const p of s.signals.people) {
+      const left = s.left(p.employeeId)
+      peopleIds.add(p.employeeId)
+      personMonths++
+      if (left) leaverIds.add(p.employeeId)
+      for (const f of testable) {
+        if (off.has(f.key)) continue
+        const a = acc.get(f.key)!
+        a.n++
+        if (left) a.k++
+        if (p.signals.some((x) => x.key === f.key)) {
+          a.with++
+          if (left) a.withLeft++
+        }
+      }
     }
-    const without = n - withFactor
-    const withoutLeft = leavers - withLeft
-    const withRate = rate(withLeft, withFactor)
+  }
+  const learned = peopleIds.size >= MIN_LEARN_PEOPLE && leaverIds.size >= MIN_LEARN_LEAVERS
+  const rate = (k: number, m: number) => (m >= 5 ? k / m : null)
+  const evidence: FactorEvidence[] = testable.map((f) => {
+    const a = acc.get(f.key)!
+    const without = a.n - a.with
+    const withoutLeft = a.k - a.withLeft
+    const withRate = rate(a.withLeft, a.with)
     const withoutRate = rate(withoutLeft, without)
     return {
       key: f.key,
       label: f.label,
-      withFactor,
-      withLeft,
+      withFactor: a.with,
+      withLeft: a.withLeft,
       withRate,
       without,
       withoutLeft,
       withoutRate,
       lift: withRate != null && withoutRate != null && withoutRate > 0 ? withRate / withoutRate : null,
       points: 0,
-      tested: true,
+      tested: a.n > 0,
+      source: a.n > 0 ? 'learned' : 'default',
     }
   })
 
-  const points = emptyPoints()
-  if (opts.compaOn) points.lowCompa = COMPA_POINTS
-  if (learned) {
+  const raw: Partial<Record<FactorKey, number>> = {}
+  if (opts.compaOn) raw.lowCompa = COMPA_POINTS
+  const fixed = opts.compaOn ? COMPA_POINTS : 0
+  const defaultsFor = (list: readonly FactorEvidence[], budget: number) => {
+    const total = list.reduce((s, e) => s + factorDef.get(e.key)!.defaultPoints, 0)
+    for (const e of list) raw[e.key] = total ? (budget * factorDef.get(e.key)!.defaultPoints) / total : 0
+  }
+
+  let usedLearning = false
+  if (learned && personMonths > 0) {
+    const untested = evidence.filter((e) => !e.tested)
+    const tested = evidence.filter((e) => e.tested)
+    // Untested factors keep their default points (out of 100); the tested ones share the rest.
+    const untestedPoints = untested.reduce((s, e) => s + factorDef.get(e.key)!.defaultPoints, 0)
+    const budget = Math.max(0, 100 - fixed - untestedPoints)
     const weight = (e: FactorEvidence) => {
+      const a = acc.get(e.key)!
+      const base = a.n ? a.k / a.n : 0
       const ref = e.without >= 5 && e.withoutLeft > 0 ? e.withoutLeft / e.without : base
       if (ref <= 0) return 0
       const shrunk = (e.withLeft + SHRINK * base) / (e.withFactor + SHRINK)
-      return Math.max(0, Math.min(MAX_LIFT, shrunk / ref) - 1)
+      return Math.max(0, Math.log(Math.min(MAX_LIFT, shrunk / ref)))
     }
-    const weights = evidence.map(weight)
+    const weights = tested.map(weight)
     const total = weights.reduce((a, b) => a + b, 0)
     if (total > 0) {
-      evidence.forEach((e, i) => {
-        e.points = Math.round((budget * weights[i]) / total)
-        points[e.key] = e.points
+      usedLearning = true
+      tested.forEach((e, i) => {
+        raw[e.key] = (budget * weights[i]) / total
       })
-      return { points, learned: true, evidence: withCompaRow(evidence, opts.compaOn) }
+      for (const e of untested) raw[e.key] = factorDef.get(e.key)!.defaultPoints
     }
   }
-  // Too little history (or nothing predicted exits): default points, rescaled to the budget.
-  const defTotal = testable.reduce((s, f) => s + f.defaultPoints, 0)
-  for (const e of evidence) {
-    e.points = defTotal ? Math.round((budget * factorDef.get(e.key)!.defaultPoints) / defTotal) : 0
-    points[e.key] = e.points
+  if (!usedLearning) {
+    // Too little history (or nothing predicted exits): default points, rescaled to the budget.
+    defaultsFor(evidence, 100 - fixed)
+    for (const e of evidence) e.source = 'default'
   }
-  return { points, learned: false, evidence: withCompaRow(evidence, opts.compaOn) }
-}
+  const rawTotal = Object.values(raw).reduce((a, b) => a + (b ?? 0), 0)
+  const rounded = roundPoints(raw, Math.round(rawTotal / POINT_STEP) * POINT_STEP)
+  const points = emptyPoints()
+  for (const f of FACTORS) points[f.key] = rounded[f.key] ?? 0
+  for (const e of evidence) e.points = points[e.key]
 
-function withCompaRow(evidence: FactorEvidence[], compaOn: boolean): FactorEvidence[] {
-  if (!compaOn) return evidence
-  return [
-    ...evidence,
-    {
+  const rows = [...evidence]
+  if (opts.compaOn) {
+    rows.push({
       key: 'lowCompa',
       label: factorDef.get('lowCompa')!.label,
       withFactor: 0,
@@ -546,10 +745,19 @@ function withCompaRow(evidence: FactorEvidence[], compaOn: boolean): FactorEvide
       withoutLeft: 0,
       withoutRate: null,
       lift: null,
-      points: COMPA_POINTS,
+      points: points.lowCompa,
       tested: false,
-    },
-  ]
+      source: 'fixed',
+    })
+  }
+  return {
+    points,
+    learned: usedLearning,
+    evidence: rows,
+    snapshots: samples.map((s) => s.signals.date).sort(),
+    people: peopleIds.size,
+    leavers: leaverIds.size,
+  }
 }
 
 /* ───────── scores and bands ───────── */
@@ -566,6 +774,14 @@ export interface PersonRisk {
   band: RiskBand
   /** Factors that earned points, largest first. */
   factors: FactorHit[]
+}
+
+export interface BandCuts {
+  cutHigh: number | null
+  cutMedium: number | null
+  /** Actual share of everyone scored in the high band, and in the medium band. */
+  highShare: number | null
+  mediumShare: number | null
 }
 
 export function scorePeople(people: readonly PersonSignals[], points: Points): Map<string, PersonRisk> {
@@ -589,13 +805,43 @@ export function scorePeople(people: readonly PersonSignals[], points: Points): M
   return out
 }
 
-/** Percentile cuts: the top 10% of scores are High, the next 25% Medium. */
-export function bandCuts(scores: readonly number[]): { cutHigh: number | null; cutMedium: number | null } {
-  const sorted = scores.filter((s) => s > 0).sort((a, b) => b - a)
+/**
+ * Cut scores for the bands. People with the same score always share a band, so each cut sits
+ * where the band's share of everyone scored comes closest to its target: about 10% High, and
+ * 35% High or Medium together (on a tie, the smaller band). The high band is never empty while
+ * anyone scores above 0; a score of 0 is always Low.
+ */
+export function bandCuts(scores: readonly number[]): BandCuts {
   const n = scores.length
-  if (!n || !sorted.length) return { cutHigh: null, cutMedium: null }
-  const at = (share: number) => sorted[Math.min(sorted.length, Math.max(1, Math.ceil(share * n))) - 1]
-  return { cutHigh: at(0.1), cutMedium: at(0.35) }
+  const pos = scores.filter((s) => s > 0).sort((a, b) => b - a)
+  if (!n || !pos.length)
+    return { cutHigh: null, cutMedium: null, highShare: n ? 0 : null, mediumShare: n ? 0 : null }
+  // Distinct scores, highest first, with how many people score at or above each.
+  const steps: { v: number; c: number }[] = []
+  for (let i = 0; i < pos.length; i++)
+    if (i === pos.length - 1 || pos[i + 1] !== pos[i]) steps.push({ v: pos[i], c: i + 1 })
+  const closest = (from: number, target: number, none: number | null) => {
+    let best = -1
+    let bestGap = none == null ? Number.POSITIVE_INFINITY : Math.abs(none / n - target)
+    for (let i = from; i < steps.length; i++) {
+      const gap = Math.abs(steps[i].c / n - target)
+      if (gap < bestGap - 1e-12) {
+        best = i
+        bestGap = gap
+      }
+    }
+    return best
+  }
+  const hi = Math.max(0, closest(0, HIGH_TARGET, null))
+  const highCount = steps[hi].c
+  const mi = closest(hi + 1, MEDIUM_TARGET, highCount)
+  const medCount = mi < 0 ? 0 : steps[mi].c - highCount
+  return {
+    cutHigh: steps[hi].v,
+    cutMedium: mi < 0 ? null : steps[mi].v,
+    highShare: highCount / n,
+    mediumShare: medCount / n,
+  }
 }
 
 export function bandFor(score: number, cutHigh: number | null, cutMedium: number | null): RiskBand {
@@ -605,7 +851,7 @@ export function bandFor(score: number, cutHigh: number | null, cutMedium: number
   return 'Low'
 }
 
-function applyBands(scores: Map<string, PersonRisk>): { cutHigh: number | null; cutMedium: number | null } {
+function applyBands(scores: Map<string, PersonRisk>): BandCuts {
   const cuts = bandCuts([...scores.values()].map((s) => s.score))
   for (const s of scores.values()) s.band = bandFor(s.score, cuts.cutHigh, cuts.cutMedium)
   return cuts
@@ -630,10 +876,21 @@ export interface BackTest {
   population: number
   leavers: number
   overallRate: number | null
-  /** Out of sample: each half scored with points learned from the other half. */
+  /** Exit rate per band, scored with points learned only from outcomes before `scoredOn`. */
   bands: BackTestBand[]
   /** High band exit rate ÷ Low band exit rate. */
   lift: number | null
+  /** True when the exit rates run High > Medium > Low; null when a rate is missing. */
+  ordered: boolean | null
+  /** Points used for the back-test score, and where they came from. */
+  points: Points
+  learned: boolean
+  learnedFrom: ISODate[]
+  learnedLeavers: number
+  /** Factors scored with default points because their data did not reach back far enough. */
+  defaults: FactorKey[]
+  /** Actual share of people in the high band at the scoring date (ties share a band). */
+  highShare: number | null
 }
 
 export interface RiskModel {
@@ -642,48 +899,75 @@ export interface RiskModel {
   population: number
   cutHigh: number | null
   cutMedium: number | null
+  /** Actual band shares company-wide; people with the same score share a band. */
+  highShare: number | null
+  mediumShare: number | null
   points: Points
   learned: boolean
-  /** Per-factor outcomes in the back-test window, with the points each factor earned. */
+  /** The month-ends today’s points were learned from, and how many people and leavers they hold. */
+  learnedFrom: ISODate[]
+  learnedPeople: number
+  learnedLeavers: number
+  exitKind: 'voluntary' | 'all'
+  /** Per-factor outcomes over those month-ends, with the points each factor earned. */
   evidence: FactorEvidence[]
   off: { key: FactorKey; why: string }[]
   backTest: BackTest
   companyVoluntary: number | null
 }
 
-/** Score everyone today with points learned from the last 12 months, and back-test the approach. */
+const isMonthEnd = (d: ISODate) => monthEnd(d) === d
+
+/** d minus m months, kept on month ends when d is one. */
+export const monthsBack = (d: ISODate, m: number): ISODate =>
+  isMonthEnd(d) ? monthEnd(addMonths(d, -m)) : addMonths(d, -m)
+
+/** Score everyone today with points learned from the last two years, and back-test the approach out of time. */
 export function buildRiskModel(input: RiskInput, asOf: ISODate): RiskModel {
-  const d0 = addMonths(asOf, -12)
-  const past = signalsAt(input, d0, { useComp: false })
-  const now = signalsAt(input, asOf, { useComp: true })
-  const outcome = trailing12(asOf)
+  const historyStart = exitHistoryStart(input.employees)
   const exitKind: BackTest['exitKind'] = input.has.terminationType ? 'voluntary' : 'all'
   const byId = new Map(input.employees.map((e) => [e.employeeId, e]))
-  const left = (id: string) => {
+  const leftIn = (w: Pick<Window, 'start' | 'end'>) => (id: string) => {
     const e = byId.get(id)
-    if (!e?.terminationDate || e.terminationDate < outcome.start || e.terminationDate > outcome.end)
-      return false
+    if (!e?.terminationDate || e.terminationDate < w.start || e.terminationDate > w.end) return false
     return exitKind === 'all' || e.terminationType === 'Voluntary'
   }
-  const pastOff = new Set(past.off.map((o) => o.key))
-  const compaOn = !now.off.some((o) => o.key === 'lowCompa')
+  const past = new Map<ISODate, SignalSet>()
+  const pastSignals = (d: ISODate) => {
+    let s = past.get(d)
+    if (!s) {
+      s = signalsAt(input, d, { useComp: false, historyStart, reasons: false })
+      past.set(d, s)
+    }
+    return s
+  }
+  /** Month-ends whose 12-month outcome ends by `end`, on or after the first exit in the data. */
+  const samplesFor = (end: ISODate): LearningSample[] =>
+    LEARN_OFFSETS.map((m) => monthsBack(end, m))
+      .filter((d) => !!historyStart && d >= historyStart)
+      .map((d) => ({
+        signals: pastSignals(d),
+        left: leftIn({ start: addDays(d, 1), end: monthsBack(d, -12) }),
+      }))
 
-  // Points for today come from everyone's outcomes over the last 12 months.
-  const full = learnPoints(past.people, left, pastOff, { compaOn })
-  const scores = scorePeople(now.people, full.points)
+  // Today: points learned from the month-ends 12 to 23 months back.
+  const now = signalsAt(input, asOf, { useComp: true, historyStart })
+  const offNow = new Set(now.off.map((o) => o.key))
+  const compaOn = !offNow.has('lowCompa')
+  const today = learnPoints(samplesFor(asOf), offNow, { compaOn })
+  const scores = scorePeople(now.people, today.points)
   const cuts = bandCuts([...scores.values()].map((s) => s.score))
 
-  // Out-of-sample back-test: two halves, each scored with the other half's points (pay factor excluded).
-  const half = (id: string) => fnv(id) & 1
-  const oos = new Map<string, PersonRisk>()
-  for (const fold of [0, 1]) {
-    const train = past.people.filter((p) => half(p.employeeId) !== fold)
-    const test = past.people.filter((p) => half(p.employeeId) === fold)
-    const learnedHalf = learnPoints(train, left, pastOff, { compaOn: false })
-    for (const [id, r] of scorePeople(test, learnedHalf.points)) oos.set(id, r)
-  }
-  applyBands(oos)
-  const all = [...oos.values()]
+  // Back-test: score everyone a year ago with points learned only from outcomes known by then.
+  const d0 = monthsBack(asOf, 12)
+  const then = pastSignals(d0)
+  const offThen = new Set(then.off.map((o) => o.key))
+  const earlier = learnPoints(samplesFor(d0), offThen, { compaOn: false })
+  const scored = scorePeople(then.people, earlier.points)
+  const cutsThen = bandCuts([...scored.values()].map((s) => s.score))
+  const outcome = trailing12(asOf)
+  const left = leftIn(outcome)
+  const all = [...scored.values()]
   const leaverIds = new Set(all.filter((s) => left(s.employeeId)).map((s) => s.employeeId))
   const rate = (k: number, n: number) => (n >= 5 ? k / n : null)
   const bands: BackTestBand[] = RISK_BANDS.map((band) => {
@@ -697,8 +981,13 @@ export function buildRiskModel(input: RiskInput, asOf: ISODate): RiskModel {
       shareOfLeavers: leaverIds.size ? k / leaverIds.size : null,
     }
   })
-  const high = bands[2].rate
-  const low = bands[0].rate
+  const [lowB, medB, highB] = bands
+  const ordered =
+    lowB.rate == null || highB.rate == null
+      ? null
+      : medB.rate == null
+        ? highB.rate > lowB.rate
+        : highB.rate > medB.rate && medB.rate > lowB.rate
 
   return {
     asOf,
@@ -706,9 +995,15 @@ export function buildRiskModel(input: RiskInput, asOf: ISODate): RiskModel {
     population: now.people.length,
     cutHigh: cuts.cutHigh,
     cutMedium: cuts.cutMedium,
-    points: full.points,
-    learned: full.learned,
-    evidence: full.evidence,
+    highShare: cuts.highShare,
+    mediumShare: cuts.mediumShare,
+    points: today.points,
+    learned: today.learned,
+    learnedFrom: today.snapshots,
+    learnedPeople: today.people,
+    learnedLeavers: today.leavers,
+    exitKind,
+    evidence: today.evidence,
     off: now.off,
     companyVoluntary: now.companyVoluntary,
     backTest: {
@@ -719,24 +1014,41 @@ export function buildRiskModel(input: RiskInput, asOf: ISODate): RiskModel {
       leavers: leaverIds.size,
       overallRate: rate(leaverIds.size, all.length),
       bands,
-      lift: high != null && low != null && low > 0 ? high / low : null,
+      lift: highB.rate != null && lowB.rate != null && lowB.rate > 0 ? highB.rate / lowB.rate : null,
+      ordered,
+      points: earlier.points,
+      learned: earlier.learned,
+      learnedFrom: earlier.snapshots,
+      learnedLeavers: earlier.leavers,
+      defaults: earlier.evidence.filter((e) => e.source === 'default' && e.points > 0).map((e) => e.key),
+      highShare: cutsThen.highShare,
     },
   }
 }
 
-/** One honest sentence about how well the bands separated leavers in the back-test. */
+/** One honest sentence (two at most) about how well the bands separated leavers in the back-test. */
 export function backTestSummary(bt: BackTest): string {
-  const [low, , high] = bt.bands
+  const [low, medium, high] = bt.bands
   const who = bt.exitKind === 'voluntary' ? 'left voluntarily' : 'left'
   if (bt.lift == null || high.rate == null || low.rate == null) {
     return 'There were too few people or exits a year ago to test the bands.'
   }
   const rates = `${fmt(high.rate, 'pct')} vs ${fmt(low.rate, 'pct')}`
+  const times = `${bt.lift.toFixed(1)}×`
+  let order = ''
+  if (medium.rate != null && bt.ordered === false && bt.lift >= 1.2) {
+    order =
+      medium.rate >= high.rate
+        ? ` The medium band ${who} at ${fmt(medium.rate, 'pct')}, as often as the high band, so the line between those two bands means little.`
+        : ` The medium band ${who} at ${fmt(medium.rate, 'pct')}, less often than the low band, so only the high band stands out.`
+  } else if (medium.rate != null && bt.ordered) {
+    order = ` The medium band fell in between at ${fmt(medium.rate, 'pct')}.`
+  }
   if (bt.lift >= 1.5) {
-    return `People placed in the high band a year ago ${who} at ${bt.lift.toFixed(1)}× the rate of the low band (${rates}).`
+    return `People placed in the high band a year ago ${who} at ${times} the rate of the low band (${rates}).${order}`
   }
   if (bt.lift >= 1.2) {
-    return `The bands separated leavers only modestly: the high band ${who} at ${bt.lift.toFixed(1)}× the rate of the low band (${rates}).`
+    return `The bands separated leavers only modestly: the high band ${who} at ${times} the rate of the low band (${rates}).${order}`
   }
   return `The bands did not separate leavers from stayers in this data (${rates}). Treat scores as a prompt for conversations, not a prediction.`
 }

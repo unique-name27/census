@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { addDays } from '@/lib/dates'
 import { computeRecruitingUncached } from '.'
 import { computeBase } from './base'
-import { allProblemFindings, MAX_FINDINGS, recruitingFindings } from './findings'
+import { allProblemFindings, MAX_FINDINGS, MIN_CRITICAL_TRANSITIONS, recruitingFindings } from './findings'
 import { cand, ctxOf, req } from './fixtures'
 
 describe('with no recruiting data', () => {
@@ -40,13 +40,23 @@ describe('bottleneck', () => {
     expect(f.title).toBe(
       'Onsite to offer is the bottleneck in Design Verification: median 20 d vs 6 d elsewhere over the last 3 months.',
     )
-    expect(f.severity).toBe('critical')
+    // 3.3× slower, but over only 5 transitions: a warning, not critical.
+    expect(f.severity).toBe('warning')
     expect(f.action).toBe(
       'Resolve the onsite to offer bottleneck. Start with the Design Verification hiring managers.',
     )
     expect(f.filter).toEqual({ department: ['Design Verification'] })
     expect(f.detail).toContain('1 of the 1 active candidates at onsite is in Design Verification')
     expect(f.people).toHaveLength(1)
+  })
+
+  it('is critical only over at least 10 transitions in the segment', () => {
+    const more = [
+      ...Array.from({ length: MIN_CRITICAL_TRANSITIONS }, (_, i) => step('REQ-DV', 20, i)),
+      ...[0, 1, 2, 3, 4].map((i) => step('REQ-SW', 6, i)),
+    ]
+    const all = allProblemFindings(computeBase(ctxOf({ requisitions: reqs, candidates: more })))
+    expect(all.find((x) => x.id === 'rec-bottleneck')!.severity).toBe('critical')
   })
 
   it('stays quiet when the gap is under 5 days', () => {
@@ -72,7 +82,7 @@ describe('lacks a next step', () => {
     )
     const f = all.find((x) => x.id === 'rec-lacking-next-step')!
     expect(f.title).toBe('7 candidates lack a next step, 6 of them waiting on an interview decision.')
-    expect(f.detail).toContain('Ji-woo Lim has 6 of the 6 candidates waiting on a decision.')
+    expect(f.detail).toContain('Ji-woo Lim has 6 of the 6 decisions.')
     expect(f.action).toBe(
       'Ask the panels to submit scorecards and make a decision this week, starting with Ji-woo Lim.',
     )

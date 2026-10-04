@@ -6,7 +6,14 @@
  * Pure: no React, no DOM.
  */
 import type { AnalyticsContext } from '@/data/context'
-import type { Employee, ISODate, JobChange, Potential, Review } from '@/data/schema'
+import {
+  type Employee,
+  type ISODate,
+  type JobChange,
+  MIN_GROUP,
+  type Potential,
+  type Review,
+} from '@/data/schema'
 import type { Window } from '@/data/scope'
 import { addDays, addMonths, formatDate } from '@/lib/dates'
 import type { Dimension } from '@/lib/decompose'
@@ -244,6 +251,36 @@ export function topCounts<T>(
     if (k) m.set(k, (m.get(k) ?? 0) + 1)
   }
   return [...m.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+}
+
+/* ───────── small groups ───────── */
+
+/** Label of the row that holds groups folded together for anonymity. */
+export const otherLabel = (groups: number): string => `Other (${groups})`
+
+/**
+ * Fold groups of fewer than MIN_GROUP people into one "Other (k)" row at the end, so no count over
+ * fewer than 5 people is shown or exported. When that row is itself under 5, the next-smallest
+ * groups join it until it reaches 5, so its counts can't be worked out by subtraction either.
+ * `combine` builds the folded row (and should null its counts when the total is still under 5).
+ */
+export function foldSmallGroups<R>(
+  rows: readonly R[],
+  size: (r: R) => number,
+  combine: (folded: R[], label: string) => R,
+): R[] {
+  const kept = rows.filter((r) => size(r) >= MIN_GROUP)
+  const folded = rows.filter((r) => size(r) < MIN_GROUP)
+  if (!folded.length) return [...rows]
+  let total = folded.reduce((s, r) => s + size(r), 0)
+  const bySize = [...kept].sort((a, b) => size(a) - size(b))
+  while (total < MIN_GROUP && bySize.length) {
+    const r = bySize.shift()!
+    folded.push(r)
+    total += size(r)
+  }
+  const stay = new Set(bySize)
+  return [...kept.filter((r) => stay.has(r)), combine(folded, otherLabel(folded.length))]
 }
 
 /** "A, B and C" */

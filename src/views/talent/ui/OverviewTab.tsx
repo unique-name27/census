@@ -1,21 +1,25 @@
-import { Columns, Figure, HBars } from '@/charts'
+import { Figure, HBars, useChartTheme } from '@/charts'
 import { Grid, goTo, KpiStrip, Readout, Section } from '@/components'
 import { useAnalytics } from '@/data/context'
 import { formatDate } from '@/lib/dates'
 import { fmt, plural } from '@/lib/format'
 import type { TalentModel } from '../engine'
 import { COVERAGE_ORDER } from '../engine/succession'
-import { COVERAGE_COLUMNS, DISTRIBUTION_COLUMNS, RISK_PERSON_COLUMNS } from './columns'
+import { readinessColors } from './colors'
+import { COVERAGE_COLUMNS, DISTRIBUTION_COLUMNS, riskPersonColumns } from './columns'
 import { DEF } from './defs'
+import { GuidelineColumns } from './GuidelineColumns'
 import { NineBoxFigure } from './NineBoxFigure'
 
 export function OverviewTab({ m }: { m: TalentModel }) {
   const ctx = useAnalytics()
+  const t = useChartTheme()
   const asOf = formatDate(ctx.asOf)
   const perf = m.performance
   const succ = m.succession
   const cycle = perf.cycle?.cycle
   const top10 = m.retention.keyTalent.slice(0, 10)
+  const left = perf.ratedLeft
 
   return (
     <>
@@ -37,13 +41,11 @@ export function OverviewTab({ m }: { m: TalentModel }) {
         <Figure
           id="talent-rating-distribution"
           title="Rating distribution vs guideline"
-          subtitle={
-            cycle ? `Share of people rated at each level, ${cycle}` : 'Share of people rated at each level'
-          }
+          subtitle={cycle ? `Share of people at each rating, ${cycle}` : 'Share of people at each rating'}
           data={perf.distribution}
           columns={DISTRIBUTION_COLUMNS}
           definitions={[DEF.latestCycle, DEF.guideline, DEF.highPerformer]}
-          note={`${plural(perf.rated, 'person', 'people')} rated · as of ${asOf}`}
+          note={`${plural(perf.rated, 'person', 'people')} rated${left ? `, including ${fmt(left)} who ${left === 1 ? 'has' : 'have'} left since` : ''} · as of ${asOf}`}
           span={6}
           empty={
             !m.has.reviews
@@ -53,13 +55,8 @@ export function OverviewTab({ m }: { m: TalentModel }) {
                 : null
           }
         >
-          <Columns
-            data={perf.distributionLong}
-            x="rating"
-            y="share"
-            series="series"
-            seriesOrder={['Actual', 'Guideline']}
-            format="pct0"
+          <GuidelineColumns
+            data={perf.distribution}
             height={260}
             ariaLabel="Rating distribution compared with the guideline"
           />
@@ -88,6 +85,7 @@ export function OverviewTab({ m }: { m: TalentModel }) {
             series="coverage"
             stack
             seriesOrder={COVERAGE_ORDER}
+            colors={readinessColors(t)}
             onSelect={() => goTo('talent', 'succession')}
             ariaLabel="Roles by best successor readiness, per business unit"
           />
@@ -96,16 +94,16 @@ export function OverviewTab({ m }: { m: TalentModel }) {
 
       <Section
         title="Key talent at risk"
-        dek="People rated 4 or 5 whose flight-risk score is in the top 10% company-wide, highest scores first. The Retention risk tab explains the score and lists everyone."
+        dek={`People rated 4 or 5 whose flight-risk score is in the high band (the top ${fmt(m.risk.highShare, 'pct0')} of scores company-wide), highest scores first. The Retention risk tab explains the score and lists everyone.`}
       >
         <Figure
           id="talent-key-talent-top"
           title="Key talent at risk, top 10"
           subtitle={`Rated 4-5 and in the high flight-risk band, scored as of ${asOf}`}
           data={top10}
-          columns={RISK_PERSON_COLUMNS}
-          definitions={[DEF.keyTalent, DEF.flightRisk, DEF.bands]}
-          note={`${plural(m.retention.keyTalent.length, 'person', 'people')} in total · scores use the last 12 months of exits`}
+          columns={riskPersonColumns(top10, { full: false })}
+          definitions={[DEF.keyTalent, DEF.flightRisk, DEF.mainReason, DEF.bands]}
+          note={`${plural(m.retention.keyTalent.length, 'person', 'people')} in total · points learned from the last two years of exits`}
           tableOnly
           table={{ maxRows: 10, onRowClick: () => goTo('talent', 'retention') }}
           empty={

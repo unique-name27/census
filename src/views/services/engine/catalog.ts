@@ -157,6 +157,7 @@ export type ServiceLevelId =
   | 'py05-payroll-2bd'
   | 'ds07-verification-2bd'
   | 'lv01-leave-response-1bd'
+  | 'lv01-leave-designation-5bd'
   | 'on03-hire-day-minus-3'
   | 'of05-final-pay'
   | 'ds01-retro-share'
@@ -188,6 +189,11 @@ export interface ServiceLevelDef {
   adaptation?: string
   /** Team that owns the work. */
   team: string
+  /**
+   * For case measures: the case category, so the scorecard can show the help desk's own
+   * resolution SLA (calendar hours, as on the Cases tab and in the readout) beside the Atlas clock.
+   */
+  caseCategory?: string
 }
 
 export const SERVICE_LEVELS: readonly ServiceLevelDef[] = [
@@ -199,11 +205,12 @@ export const SERVICE_LEVELS: readonly ServiceLevelDef[] = [
     target: 0.95,
     direction: 'min',
     unit: 'share',
-    atlas: 'Underpayments corrected within 2 business days: >= 98%',
+    atlas: 'Underpayments corrected within 2 business days: ≥ 98%',
     basis: 'Census target',
     adaptation:
       'The Atlas KPI covers underpayments only; Census measures every payroll case, so the target is 95%.',
     team: 'Payroll',
+    caseCategory: 'Payroll',
   },
   {
     id: 'ds07-verification-2bd',
@@ -213,9 +220,10 @@ export const SERVICE_LEVELS: readonly ServiceLevelDef[] = [
     target: 0.95,
     direction: 'min',
     unit: 'share',
-    atlas: 'Third-party verifications within 2 business days: >= 95%',
+    atlas: 'Third-party verifications within 2 business days: ≥ 95%',
     basis: 'Atlas KPI',
     team: 'People operations',
+    caseCategory: 'Employment verification',
   },
   {
     id: 'lv01-leave-response-1bd',
@@ -225,11 +233,27 @@ export const SERVICE_LEVELS: readonly ServiceLevelDef[] = [
     target: 0.98,
     direction: 'min',
     unit: 'share',
-    atlas: 'Notice timeliness: >= 98% within 5 business days',
+    atlas: 'Notice timeliness: ≥ 98% within 5 business days',
     basis: 'Census target',
     adaptation:
       'Cases do not record when the rights notice went out, so Census measures the first response on a 1 business day clock.',
     team: 'Leave & accommodation',
+    caseCategory: 'Leave & accommodation',
+  },
+  {
+    id: 'lv01-leave-designation-5bd',
+    processId: 'LV-01',
+    measure: 'Leave cases resolved within 5 business days',
+    targetText: '≥ 95%',
+    target: 0.95,
+    direction: 'min',
+    unit: 'share',
+    atlas: 'Designation within 5 business days of complete certification',
+    basis: 'Census target',
+    adaptation:
+      'Cases do not record when certification was complete, so Census measures opened to resolved on a 5 business day clock, against a 95% target.',
+    team: 'Leave & accommodation',
+    caseCategory: 'Leave & accommodation',
   },
   {
     id: 'on03-hire-day-minus-3',
@@ -279,6 +303,7 @@ export const SERVICE_LEVELS: readonly ServiceLevelDef[] = [
     atlas: 'Access provisioned within 2 business days of approval',
     basis: 'Atlas service level',
     team: 'HRIS',
+    caseCategory: 'Systems access',
   },
   {
     id: 'er02-median-days',
@@ -288,10 +313,11 @@ export const SERVICE_LEVELS: readonly ServiceLevelDef[] = [
     target: 30,
     direction: 'max',
     unit: 'days',
-    atlas: 'Median days assignment to closure letter: <= 30 calendar days standard; <= 60 complex',
+    atlas: 'Median days assignment to closure letter: ≤ 30 calendar days standard; ≤ 60 complex',
     basis: 'Atlas KPI',
     adaptation: 'Cases record when they were opened, not assigned, so the clock starts at intake.',
     team: 'Employee relations',
+    caseCategory: 'Employee relations',
   },
   {
     id: 'bn03-benefits-5bd',
@@ -301,9 +327,10 @@ export const SERVICE_LEVELS: readonly ServiceLevelDef[] = [
     target: 0.95,
     direction: 'min',
     unit: 'share',
-    atlas: 'Processing time from complete proof: <= 5 business days for 95% of events',
+    atlas: 'Processing time from complete proof: ≤ 5 business days for 95% of events',
     basis: 'Atlas KPI',
     team: 'Benefits',
+    caseCategory: 'Benefits',
   },
   {
     id: 'mv06-immigration-response-1bd',
@@ -319,6 +346,7 @@ export const SERVICE_LEVELS: readonly ServiceLevelDef[] = [
     adaptation:
       'The Atlas MV-06 KPIs (status lapses, filing lead times) need filing data that cases do not carry, so Census tracks the first response.',
     team: 'Global mobility',
+    caseCategory: 'Immigration & mobility',
   },
   {
     id: 'mv04-location-cutoff',
@@ -352,7 +380,7 @@ export const SERVICE_LEVELS: readonly ServiceLevelDef[] = [
     target: 0.98,
     direction: 'min',
     unit: 'share',
-    atlas: 'Systems and access ready on return day: >= 98% of returns',
+    atlas: 'Systems and access ready on return day: ≥ 98% of returns',
     basis: 'Atlas KPI',
     team: 'Leave & accommodation',
   },
@@ -365,6 +393,11 @@ export const TRANSACTION_ON_TIME_TARGET = 0.98
 export const AT_RISK_PTS = 0.05
 /** "At risk" band for day targets (share above the target). */
 export const AT_RISK_DAYS_SHARE = 0.1
+/**
+ * "At risk" band for ceiling targets on a share ("under 2%"): up to 25% above the target. A fixed
+ * 5-point band would call a retro rate 3.5 times the target "at risk", so ceilings use a relative band.
+ */
+export const AT_RISK_CEILING_SHARE = 0.25
 
 /* ───────────── final pay rules by jurisdiction ───────────── */
 
