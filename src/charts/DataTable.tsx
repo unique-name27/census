@@ -9,7 +9,16 @@ import { IconArrowDown, IconArrowUp, IconSearch } from '@/components/icons'
 import type { Severity } from '@/components/types'
 import { cx, SeverityIcon } from '@/components/ui'
 import { useAnalytics } from '@/data/context'
-import { columnAlign, columnFormat, isNumericFormat, sampleValue, visibleColumns } from '@/lib/export/columns'
+import { Drill } from '@/drill/Drill'
+import {
+  cellFormat,
+  columnAlign,
+  columnFormat,
+  isNumericFormat,
+  sampleRow,
+  sampleValue,
+  visibleColumns,
+} from '@/lib/export/columns'
 import { fmt } from '@/lib/format'
 import type { Column } from './types'
 
@@ -81,15 +90,13 @@ export function DataTable<T extends object>({
   const cols = visibleColumns(columns, showPay)
   const records = rows as readonly Record<string, unknown>[]
   const samples = cols.map((c) => sampleValue(records, c.key))
-  const formats = cols.map((c, i) => columnFormat(c, samples[i]))
-  const aligns = cols.map((c, i) => columnAlign(c, samples[i]))
+  const firsts = cols.map((c) => sampleRow(records, c.key))
+  const formats = cols.map((c, i) => columnFormat(c, samples[i], firsts[i]))
+  const aligns = cols.map((c, i) => columnAlign(c, samples[i], firsts[i]))
   const text = (row: T, i: number) => {
     const v = (row as Record<string, unknown>)[cols[i].key]
-    return formats[i] === 'text' && typeof v !== 'number'
-      ? v == null || v === ''
-        ? '—'
-        : String(v)
-      : fmt(v, formats[i])
+    const f = cellFormat(cols[i], row, formats[i])
+    return f === 'text' && typeof v !== 'number' ? (v == null || v === '' ? '—' : String(v)) : fmt(v, f)
   }
 
   const q = query.trim().toLowerCase()
@@ -155,7 +162,7 @@ export function DataTable<T extends object>({
         </div>
       )}
       <div
-        className={cx('scroll-x', scrollHeight !== undefined && 'overflow-y-auto')}
+        className={cx('scroll-x relative', scrollHeight !== undefined && 'overflow-y-auto')}
         style={scrollHeight ? { maxHeight: scrollHeight } : undefined}
       >
         <table className="w-full border-separate border-spacing-0 text-[13px] leading-snug">
@@ -243,11 +250,17 @@ export function DataTable<T extends object>({
                         td,
                         aligns[i] === 'right' ? 'tnum text-right whitespace-nowrap' : 'text-left',
                         isIdColumn(c.key) && formats[i] === 'text'
-                          ? 'font-mono text-[12px] text-ink-2'
+                          ? 'font-mono text-[12px] whitespace-nowrap text-ink-2'
                           : 'text-ink',
                       )}
                     >
-                      {text(row, i)}
+                      {c.drill ? (
+                        <DrillCell source={c.drill(row)} label={c.label}>
+                          {text(row, i)}
+                        </DrillCell>
+                      ) : (
+                        text(row, i)
+                      )}
                     </td>
                   ))}
                 </tr>
@@ -273,5 +286,23 @@ export function DataTable<T extends object>({
         </button>
       )}
     </div>
+  )
+}
+
+/** A cell whose value opens the records behind it; plain text when there is nothing to show. */
+function DrillCell({
+  source,
+  label,
+  children,
+}: {
+  source: ReturnType<NonNullable<Column['drill']>>
+  label: string
+  children: string
+}) {
+  if (!source || children === '—') return <>{children}</>
+  return (
+    <Drill spec={source} label={`${label}: ${children}. Show the records`}>
+      {children}
+    </Drill>
   )
 }

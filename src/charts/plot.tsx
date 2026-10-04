@@ -12,7 +12,7 @@
 import * as Plot from '@observablehq/plot'
 import { type RefObject, useEffectEvent, useLayoutEffect, useRef, useState } from 'react'
 import { cx } from '@/components/ui'
-import { type Format, fmt } from '@/lib/format'
+import { type Format, fmt, MINUS } from '@/lib/format'
 import { LEGEND_ATTR, type LegendSpec } from './core/legend'
 import { HOVER_CLASS } from './core/marks'
 import { useFontsVersion } from './core/measure'
@@ -76,11 +76,16 @@ export function baseline(t: ChartTheme, axis: 'x' | 'y', value = 0): Plot.RuleX 
 export function tickFormat(format: Format): (v: number) => string {
   return (v) => {
     if (typeof v !== 'number') return String(v)
-    if (format === 'pct' && Math.abs(v * 100 - Math.round(v * 100)) < 1e-9) return fmt(v, 'pct0')
+    if ((format === 'pct' || format === 'pct2') && Math.abs(v * 100 - Math.round(v * 100)) < 1e-9)
+      return fmt(v, 'pct0')
+    if (format === 'pct2' && Math.abs(v * 1000 - Math.round(v * 1000)) < 1e-9) return fmt(v, 'pct')
     if (format === 'moneyFull') return fmt(v, 'money')
     if (format === 'int' && Math.abs(v) >= 10_000) return fmt(v, 'compact')
-    if ((format === 'num1' || format === 'years') && Number.isInteger(v))
-      return format === 'years' ? `${v} yrs` : String(v)
+    if ((format === 'num1' || format === 'years') && Number.isInteger(v)) {
+      const n = `${v < 0 ? MINUS : ''}${Math.abs(v)}`
+      return format === 'years' ? `${n} yrs` : n
+    }
+    if (format === 'times' && Number.isInteger(v)) return `${v < 0 ? MINUS : ''}${Math.abs(v)}×`
     return fmt(v, format)
   }
 }
@@ -138,9 +143,12 @@ export function PlotChart<P>({
   const fontsVersion = useFontsVersion()
   const legendAttr = legend ? JSON.stringify(legend) : null
 
-  const describe = useEffectEvent((value: unknown): TipContent | null =>
-    value == null || !tip ? null : tip(value as P),
-  )
+  const describe = useEffectEvent((value: unknown): TipContent | null => {
+    if (value == null || !tip) return null
+    const content = tip(value as P)
+    // Clickable marks say so, so readers learn every number opens the records behind it.
+    return content && onSelect && !content.note ? { ...content, note: 'Click to see the records' } : content
+  })
   const canSelect = useEffectEvent(() => onSelect !== undefined)
   const select = useEffectEvent((value: unknown) => {
     if (value != null) onSelect?.(value as P)

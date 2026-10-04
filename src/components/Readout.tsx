@@ -6,22 +6,37 @@
 import { useState } from 'react'
 import { useAnalytics } from '@/data/context'
 import { useCensus } from '@/data/store'
+import { drill } from '@/drill/Drill'
+import { openPerson } from '@/drill/store'
 import { plural } from '@/lib/format'
+import { type Span, spanClass } from '@/lib/spans'
 import { tabLabel, useCurrentView } from './currentView'
 import { describeFocus } from './filterLabels'
 import { IconChevronDown, IconChevronRight, IconGood } from './icons'
 import { goTo } from './navigation'
-import { peoplePreview, READOUT_COLUMNS, readoutRows, SEVERITY_WORD, sortFindings } from './readoutModel'
-import { type Span, spanClass } from './Section'
+import {
+  labelInSentence,
+  peoplePreview,
+  READOUT_COLUMNS,
+  readoutRows,
+  SEVERITY_WORD,
+  sortFindings,
+} from './readoutModel'
 import { toast } from './toast'
 import type { Finding, FindingPerson } from './types'
 import { cx, SeverityIcon } from './ui'
 import { useTableFigure } from './useTableFigure'
 
+/** A name that opens the person's card: quiet until hovered. */
+const PERSON =
+  'rounded-[2px] text-left underline decoration-rule-strong decoration-dotted underline-offset-[3px] hover:decoration-ink hover:decoration-solid'
+
 const LINK =
   'inline-flex items-center gap-0.5 rounded-[2px] text-[12px] font-medium text-link hover:underline underline-offset-2'
 
 function People({ people }: { people: FindingPerson[] }) {
+  const ctx = useAnalytics()
+  const known = (id: string) => ctx.org.byId.has(id)
   const [open, setOpen] = useState(false)
   const [all, setAll] = useState(false)
   const { shown, more } = peoplePreview(people)
@@ -41,7 +56,13 @@ function People({ people }: { people: FindingPerson[] }) {
         <ul className="mt-1 ml-1 border-l border-rule pl-3">
           {list.map((p) => (
             <li key={p.id} className="py-0.5 text-[13px] leading-snug">
-              <span>{p.name}</span>
+              {known(p.id) ? (
+                <button type="button" className={PERSON} onClick={() => openPerson(p.id)}>
+                  {p.name}
+                </button>
+              ) : (
+                <span>{p.name}</span>
+              )}
               {p.note && <span className="text-[12px] text-muted"> · {p.note}</span>}
             </li>
           ))}
@@ -88,8 +109,13 @@ function FindingItem({ finding }: { finding: Finding }) {
           </p>
         )}
         {!!finding.people?.length && <People people={finding.people} />}
-        {(finding.filter || (finding.tab && view)) && (
+        {(finding.filter || finding.drill || (finding.tab && view)) && (
           <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
+            {finding.drill && (
+              <button type="button" className={LINK} onClick={() => drill(finding.drill)}>
+                Show the records
+              </button>
+            )}
             {finding.filter && (
               <button type="button" className={LINK} onClick={onFocus}>
                 {focus ? `Focus on ${focus}` : 'Focus'}
@@ -97,7 +123,7 @@ function FindingItem({ finding }: { finding: Finding }) {
             )}
             {finding.tab && view && (
               <button type="button" className={LINK} onClick={() => goTo(view.key, finding.tab)}>
-                Open {tabLabel(view, finding.tab).toLowerCase()}
+                Open {labelInSentence(tabLabel(view, finding.tab))}
                 <IconChevronRight className="size-3" />
               </button>
             )}

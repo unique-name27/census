@@ -1,18 +1,33 @@
 /**
  * Contracts shared by figures, tables and exports.
  */
+import type { DrillSource } from '@/drill/Drill'
 import type { Format } from '@/lib/format'
 
-/** A column of the rows behind a figure: drives the table view and every export. */
-export interface Column<T = Record<string, unknown>> {
+/** A per-row format, for columns whose unit differs by row (e.g. a "Value" column holding rates and day counts). */
+export type RowFormat<T = Record<string, unknown>> = (row: T) => Format
+
+/**
+ * A column of the rows behind a figure: drives the table view and every export. The untyped
+ * `Column` takes any row so typed columns (`Column<Row>`, whose per-row format reads a `Row`) fit
+ * the untyped lists that registries and exports take.
+ */
+// biome-ignore lint/suspicious/noExplicitAny: see above; only the per-row format's parameter depends on T
+export interface Column<T = any> {
   key: Extract<keyof T, string> | string
   label: string
-  format?: Format
+  /** One format for the column, or one per row (`(row) => Format`); Excel gets a per-cell number format. */
+  format?: Format | RowFormat<T>
   /** Pay amount: hidden from the table and exports unless pay amounts are switched on. */
   pay?: boolean
   align?: 'left' | 'right'
   /** Optional width hint for tables, in ch. */
   width?: number
+  /**
+   * The records behind a cell (usually a count or a rate): the cell becomes a button that opens
+   * the drill panel. Return null for cells with nothing behind them. Not used by exports.
+   */
+  drill?: { bivarianceHack(row: T): DrillSource }['bivarianceHack']
 }
 
 /** A row of the "datasheet" popover that defines a metric. */

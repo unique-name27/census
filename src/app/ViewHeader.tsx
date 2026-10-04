@@ -110,7 +110,7 @@ export function ViewHeader({ view, tab }: { view: ViewDef; tab: string }) {
             </span>
           </div>
         </div>
-        <div className="flex shrink-0 flex-wrap items-center gap-2">
+        <div className="flex max-w-full min-w-0 flex-wrap items-center gap-2">
           {Actions && <Actions />}
           <ExportMenu view={view} tab={tab} />
         </div>
