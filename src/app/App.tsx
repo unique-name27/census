@@ -12,6 +12,7 @@ import { TooltipProvider } from '@/components/ui'
 import { AnalyticsProvider, useAnalytics } from '@/data/context'
 import { SAMPLE_COMPANY } from '@/data/sample'
 import { useCensus } from '@/data/store'
+import { DrillPanel } from '@/drill'
 import { DataRoom } from '@/views/data'
 import { VIEWS, viewByKey } from '@/views/registry'
 import type { ViewDef } from '@/views/types'
@@ -140,6 +141,7 @@ export function App() {
           <LoadingShell />
         )}
         <Toaster />
+        <DrillPanel />
       </TooltipProvider>
     </MotionConfig>
   )

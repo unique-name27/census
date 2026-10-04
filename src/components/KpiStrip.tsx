@@ -1,9 +1,11 @@
 /**
  * The row of headline numbers at the top of a view: one sheet, tiles separated by hairlines (not
  * cards). Each tile carries its comparison, a trend and a definition; a tile with `tab` opens that
- * tab. The strip also registers as a "Key figures" table so view exports include it.
+ * tab, and a tile with `drill` lets the reader click the value to see the records behind it. The
+ * strip also registers as a "Key figures" table so view exports include it.
  */
 import { Sparkline } from '@/charts/Sparkline'
+import { Drill } from '@/drill/Drill'
 import { tabLabel, useCurrentView } from './currentView'
 import { IconArrowDown, IconArrowUp, IconChevronRight, IconInfo, IconLock } from './icons'
 import {
@@ -91,7 +93,17 @@ function Tile({ kpi }: { kpi: Kpi }) {
       </div>
       <div className="mt-1.5 flex items-end justify-between gap-3">
         <span className="cut-head text-[26px] leading-none font-semibold tracking-[-0.01em] whitespace-nowrap sm:text-[30px]">
-          {kpiValueText(kpi)}
+          {kpi.drill && !kpi.suppressed && kpi.value != null ? (
+            <Drill
+              spec={kpi.drill}
+              className="relative z-10"
+              label={`${kpi.label}: show the records behind ${kpiValueText(kpi)}`}
+            >
+              {kpiValueText(kpi)}
+            </Drill>
+          ) : (
+            kpiValueText(kpi)
+          )}
         </span>
         {kpi.spark && !kpi.suppressed && kpi.spark.length > 1 && (
           <span className="mb-0.5 shrink-0">
@@ -130,7 +142,7 @@ export function KpiStrip({
     <section
       aria-label={title}
       className={cx(
-        'col-span-1 grid min-w-0 grid-cols-[repeat(auto-fit,minmax(150px,1fr))] overflow-hidden rounded-sheet bg-sheet md:col-span-12',
+        'col-span-full grid min-w-0 grid-cols-[repeat(auto-fit,minmax(150px,1fr))] overflow-hidden rounded-sheet bg-sheet',
         className,
       )}
     >

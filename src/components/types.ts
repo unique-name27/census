@@ -2,6 +2,7 @@
  * Shapes every domain engine returns and the shared components render.
  */
 import type { Filters } from '@/data/scope'
+import type { DrillSource } from '@/drill/Drill'
 import type { Format } from '@/lib/format'
 
 /** A headline number. Missing data is `null` (renders "—"), never 0. */
@@ -28,6 +29,8 @@ export interface Kpi {
   tab?: string
   /** Plain-English definition for the info popover. */
   definition?: string
+  /** The records behind the value; clicking the value opens them (down to each person). */
+  drill?: DrillSource
 }
 
 export type Severity = 'critical' | 'warning' | 'info' | 'good'
@@ -54,4 +57,6 @@ export interface Finding {
   filter?: Partial<Filters>
   /** Open this tab of the current view. */
   tab?: string
+  /** The records behind the finding's number (opens the drill panel). */
+  drill?: DrillSource
 }
