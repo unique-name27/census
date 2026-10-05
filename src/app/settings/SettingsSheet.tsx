@@ -8,6 +8,7 @@ import { createRef, useEffect, useRef } from 'react'
 import { IconClose } from '@/components/icons'
 import { SECTION_LABEL, SETTINGS_SECTIONS, type SettingsSection } from '@/data/settings'
 import { useCensus } from '@/data/store'
+import { AskSection } from './AskSection'
 import { CompSection } from './CompSection'
 import { DataSection } from './DataSection'
 import { DeviceSection } from './DeviceSection'
@@ -108,9 +109,9 @@ export function SettingsSheet() {
             </BDialog.Close>
           </div>
           <BDialog.Description className="sr-only">
-            Display, data, an index of every formula, the official lists, privacy, compensation cycle (now in
-            Metric definitions), related tools and this device. Changes apply at once and are saved in this
-            browser, except pay amounts, which last for this session.
+            Display, data, an index of every formula, the official lists, privacy, Ask Census, compensation
+            cycle (now in Metric definitions), related tools and this device. Changes apply at once and are
+            saved in this browser, except pay amounts, which last for this session.
           </BDialog.Description>
           <SectionNav onGo={goToSection} />
           <div ref={bodyRef} className="min-h-0 flex-1 overflow-y-auto">
@@ -120,6 +121,7 @@ export function SettingsSheet() {
               <FormulasSection />
               <ListsSection />
               <PrivacySection />
+              <AskSection />
               <CompSection />
               <ToolsSection />
               <DeviceSection />

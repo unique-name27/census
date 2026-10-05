@@ -13,6 +13,7 @@ export const SUPPORT_ARTICLES: readonly HelpArticle[] = [
       {
         ul: [
           '? opens Help.',
+          'Alt+A opens [Ask Census](article:ask-census) (Option+A on a Mac) from anywhere outside a text field.',
           'Tab and Shift+Tab move between controls. The first Tab on a page offers "Skip to content".',
           'Left and right arrows move between folder tabs, and between sub-tabs; Home and End go to the first and last.',
           'Enter or Space on an underlined number opens the records behind it.',
@@ -22,6 +23,14 @@ export const SUPPORT_ARTICLES: readonly HelpArticle[] = [
       { h: 'Guided tours' },
       {
         ul: ['Right arrow: next step.', 'Left arrow: previous step.', 'Esc: end the tour.'],
+      },
+      { h: 'Ask Census' },
+      {
+        ul: [
+          'Enter asks the question. Shift+Enter starts a new line.',
+          'Esc closes the sheet. The conversation lasts until you choose New chat, reload the page or close the tab.',
+          'Records or a person card opened from an answer sit on top of the sheet: Esc closes them first.',
+        ],
       },
       { h: 'Org chart' },
       {

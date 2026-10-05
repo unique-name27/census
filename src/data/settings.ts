@@ -176,6 +176,7 @@ export type SettingsSection =
   | 'formulas'
   | 'lists'
   | 'privacy'
+  | 'ask'
   | 'compensation'
   | 'tools'
   | 'device'
@@ -185,6 +186,7 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
   'formulas',
   'lists',
   'privacy',
+  'ask',
   'compensation',
   'tools',
   'device',
@@ -195,6 +197,7 @@ export const SECTION_LABEL: Record<SettingsSection, string> = {
   formulas: 'Formulas',
   lists: 'Official lists',
   privacy: 'Privacy',
+  ask: 'Ask Census',
   compensation: 'Compensation cycle',
   tools: 'Related tools',
   device: 'This device',

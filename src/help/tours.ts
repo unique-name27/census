@@ -113,6 +113,12 @@ const GETTING_STARTED: Tour = {
       placement: 'bottom',
     },
     {
+      target: tourTarget('masthead-ask'),
+      title: 'Ask a question',
+      body: 'Ask Census answers questions in plain words, and every number in an answer opens its records. It uses your own Claude API key, added in Settings. Names, IDs and pay amounts are never sent. Press Alt+A (Option+A on a Mac) to open it.',
+      placement: 'bottom',
+    },
+    {
       target: tourTarget('masthead-help'),
       title: 'Help is always here',
       body: 'Open Help to search articles and every metric definition, take a tour of the page you are on, see keyboard shortcuts, or report a problem. Press ? to open it from anywhere.',

@@ -16,6 +16,7 @@
     "deploy": "npm run build:single && node scripts/deploy-pages.mjs"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.131.0",
     "@base-ui/react": "^1.8.0",
     "@fontsource-variable/archivo": "^5.3.0",
     "@fontsource-variable/jetbrains-mono": "^5.3.0",

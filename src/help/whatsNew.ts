@@ -15,6 +15,14 @@ export interface ReleaseNote {
 export const RELEASE_NOTES: readonly ReleaseNote[] = [
   {
     date: '2026-10-04',
+    title: 'Ask Census',
+    items: [
+      'Ask, beside Help in the masthead, answers questions about your people data in plain words. Every number in an answer opens its records. Press Alt+A (Option+A on a Mac) to open it.',
+      'It uses your own Claude API key, added in Settings, Ask Census. Names, IDs and pay amounts are never sent, and "What was sent" under each answer shows exactly what was.',
+    ],
+  },
+  {
+    date: '2026-10-04',
     title: 'Help and guided tours',
     items: [
       'A Help button in the masthead opens help articles, a glossary of every metric, keyboard shortcuts and "Report a problem". Press ? to open it from anywhere.',

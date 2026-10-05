@@ -236,4 +236,73 @@ export const START_ARTICLES: readonly HelpArticle[] = [
       },
     ],
   },
+  {
+    id: 'ask-census',
+    group: 'start',
+    title: 'Ask Census',
+    summary:
+      'Ask a question in plain words. Claude answers with numbers Census works out, each linked to its records.',
+    keywords: [
+      'ask',
+      'chat',
+      'chatbot',
+      'assistant',
+      'question',
+      'query',
+      'claude',
+      'anthropic',
+      'ai',
+      'api key',
+      'conversation',
+      'natural language',
+    ],
+    body: [
+      {
+        p: 'Ask, in the masthead, opens a sheet where you can ask about your people data in plain words, such as "Where is voluntary attrition highest, and how has it changed?" Claude reads the question and asks Census for the numbers it needs. Census works them out in this browser, with the same definitions, filters and data standard as the views, and Claude writes the answer.',
+      },
+      { h: 'What it can answer' },
+      {
+        ul: [
+          'The key figures and findings of any view, for the whole company or for a leader, business unit, department, location or level.',
+          'One figure compared across groups, such as voluntary attrition by location.',
+          'Counts and simple cuts of a dataset, such as open reqs by recruiter or cases by category.',
+          'Metric definitions, data quality and tiers, and the open items in the Action center.',
+        ],
+      },
+      {
+        p: 'Every number in an answer opens its records in the panel on the right, as it does anywhere in Census, and a name opens the person card. A link to a view takes you there, and a metric name shows its definition. Tables in an answer download as CSV or Excel, or copy. Copy answer copies the whole answer with names, for your notes.',
+      },
+      { h: 'What is sent, and what never is' },
+      {
+        ul: [
+          'Sent to Anthropic under your API key: your question, and the counts, rates, definitions and org structure Census calculates to answer it.',
+          "Never sent: names, employee, candidate and application IDs, emails, pay amounts, one person's survey answers, or immigration details. People go as tokens such as {{P12}} that only this browser can turn back into names.",
+          'The rules on screen apply here too: small groups are hidden, employee relations cases are counted by category only, and numbers below the data standard are held back.',
+        ],
+      },
+      {
+        p: '"What was sent", under each answer, shows your question as it was sent, every result Census sent back and the tokens used, so you can check this for yourself.',
+      },
+      { h: 'Adding your key' },
+      {
+        ol: [
+          'Create an API key in the Claude Console.',
+          'Open [Settings, Ask Census](settings:ask) and paste it in. It is kept for this tab only, unless you turn on "Keep on this device".',
+          'Use Check key to try it, and pick a model: Claude Opus 5.5 by default, or Sonnet or Haiku for faster answers.',
+        ],
+      },
+      {
+        p: 'The key is never part of the settings file, Report a problem, exports or the page address. Forget key removes it.',
+      },
+      { h: 'Good to know' },
+      {
+        ul: [
+          'The conversation stays when you close the sheet. It lasts until you choose New chat, reload the page or close the tab.',
+          'Alt+A (Option+A on a Mac) opens Ask from anywhere outside a text field. Enter asks; Shift+Enter starts a new line. [Keyboard shortcuts](article:shortcuts)',
+          'When Census runs inside another page, such as a claude.ai artifact, the browser may block requests to Anthropic. Open Census in its own tab.',
+          'Claude can misread a question. The numbers come from Census and each one opens its records, so check the ones you will repeat.',
+        ],
+      },
+    ],
+  },
 ]

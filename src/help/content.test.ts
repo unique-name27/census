@@ -291,6 +291,7 @@ describe('tours', () => {
       'masthead-data',
       'masthead-settings',
       'masthead-actions',
+      'masthead-ask',
     ])
     for (const t of TOURS)
       for (const [i, s] of t.steps.entries()) {
@@ -317,6 +318,7 @@ describe('tours', () => {
       'masthead-tools',
       'masthead-data',
       'masthead-settings',
+      'masthead-ask',
       'masthead-help',
     ])
       expect(names, n).toContain(n)

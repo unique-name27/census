@@ -96,8 +96,9 @@ export async function loadVersions(key: DatasetKey): Promise<StoredVersions | nu
 }
 
 /**
- * Remove every key Census stored in IndexedDB and every census:* key in localStorage. Returns
- * what could not be removed (empty when everything went), after trying every key.
+ * Remove every key Census stored in IndexedDB and every census:* key in localStorage (and in this
+ * tab's sessionStorage). Returns what could not be removed (empty when everything went), after
+ * trying every key.
  */
 export async function clearCensusStorage(): Promise<string[]> {
   memRaw.clear()
@@ -133,6 +134,13 @@ export async function clearCensusStorage(): Promise<string[]> {
     } catch {
       failed.push(k)
     }
+  }
+  // This tab's own census:* keys too, such as an Ask Census API key kept for this tab only.
+  try {
+    if (typeof sessionStorage !== 'undefined')
+      for (const k of Object.keys(sessionStorage)) if (k.startsWith('census:')) sessionStorage.removeItem(k)
+  } catch {
+    /* sessionStorage blocked: nothing was kept there */
   }
   return failed
 }

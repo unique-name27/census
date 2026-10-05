@@ -6,6 +6,7 @@
  */
 import type { SVGProps } from 'react'
 
+import { AskButton } from '@/ask/ui/AskButton'
 import { IconDatabase, IconEye, IconGear } from '@/components/icons'
 import { goTo } from '@/components/navigation'
 import { Button, cx, Tag } from '@/components/ui'
@@ -149,7 +150,9 @@ export function Masthead() {
         {ctx.showPay && <PayShownTag />}
         {showImmigration && <ImmigrationShownTag />}
       </div>
-      <div className="ml-auto flex shrink-0 items-center gap-1">
+      {/* Wraps onto a second row when the buttons do not fit (a phone with large text), so the
+          page never scrolls sideways. */}
+      <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-1">
         <span className="mr-2 hidden text-[12px] text-muted md:inline">As of {formatDate(ctx.asOf)}</span>
         <ToolsMenu />
         <ActionsButton />
@@ -178,6 +181,7 @@ export function Masthead() {
         >
           <span className="hidden sm:inline">Settings</span>
         </Button>
+        <AskButton />
         <HelpButton />
       </div>
     </div>
