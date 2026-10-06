@@ -21,6 +21,7 @@
 import type { Finding, FindingPerson, Severity } from '@/components/types'
 import { type Employee, SITES } from '@/data/schema'
 import type { Filters, Window } from '@/data/scope'
+import { groupFilter } from '@/drill/filter'
 import { addMonths, formatDate, formatMonth, monthsBetween } from '@/lib/dates'
 import { type Dimension, decomposeRate, type Segment } from '@/lib/decompose'
 import { fmt, plural } from '@/lib/format'
@@ -48,6 +49,8 @@ import {
   reopenDrill,
   resolutionDrill,
   retroDrill,
+  sitesOf,
+  withGroup,
 } from './drills'
 import { type CaseFact, dueIn, onTimeRate, type TxFact } from './facts'
 import { type Lineage, union, when } from './lineage'
@@ -319,9 +322,15 @@ function finalPayLate(x: FindingInputs): Ranked[] {
         people: late.slice(0, 50).map(personOfTx),
         peopleTotal: late.length > 50 ? late.length : undefined,
         filter: sites.length ? { location: sites } : undefined,
+        filterLabel: sites.length ? r.name : undefined,
         tab: 'transactions',
+        // The jurisdiction's exits are its sites' exits, so "Filter to" those sites reproduces them.
         drill: drillWhen(x.scope, r.records, () =>
-          onTimeDrill(x.scope, r.records, `Final pay due, ${r.name}, ${x.scope.per}`, { exitType: true }),
+          withGroup(
+            onTimeDrill(x.scope, r.records, `Final pay due, ${r.name}, ${x.scope.per}`, { exitType: true }),
+            groupFilter('location', sitesOf(r.records)),
+            r.name,
+          ),
         ),
         uses: union(x.lineage.onTime, x.lineage.txType, x.lineage.site, when(split, x.lineage.exitType)),
         rank: 1 + (r.rate ?? 1),
@@ -365,10 +374,16 @@ function newHireReadiness(x: FindingInputs): Ranked[] {
       people: late.slice(0, 50).map(personOfTx),
       peopleTotal: late.length > 50 ? late.length : undefined,
       filter: sites.length ? { location: sites.map((s) => s.location) } : undefined,
+      // Every site of the region is behind its rate: then the button says the region.
+      filterLabel: sites.length && sites.length === (sitesOf(r.records)?.length ?? 0) ? r.region : undefined,
       // The ON-03 service level; readiness by site itself is on Onboarding, First 90 days.
       tab: 'levels',
       drill: drillWhen(x.scope, r.records, () =>
-        onTimeDrill(x.scope, r.records, `New hires due, ${r.region}, ${x.scope.per}`),
+        withGroup(
+          onTimeDrill(x.scope, r.records, `New hires due, ${r.region}, ${x.scope.per}`),
+          groupFilter('location', sitesOf(r.records)),
+          r.region,
+        ),
       ),
       uses: union(x.lineage.onTime, x.lineage.txType, x.lineage.site),
       rank: 4,
@@ -398,7 +413,10 @@ function newHireReadiness(x: FindingInputs): Ranked[] {
       filter: { location: [s.location] },
       tab: 'levels',
       drill: drillWhen(x.scope, s.records, () =>
-        onTimeDrill(x.scope, s.records, `New hires due, ${s.location}, ${x.scope.per}`),
+        withGroup(
+          onTimeDrill(x.scope, s.records, `New hires due, ${s.location}, ${x.scope.per}`),
+          groupFilter('location', s.location),
+        ),
       ),
       uses: union(x.lineage.onTime, x.lineage.txType, x.lineage.site),
       rank: 4,

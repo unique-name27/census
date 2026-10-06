@@ -8,11 +8,11 @@ import type { AnalyticsContext } from '@/data/context'
 import { addDays, formatDate } from '@/lib/dates'
 import type { ComplianceView } from '../engine'
 import type { DeadlineRow, JurisdictionRow } from '../engine/deadlines'
-import { deadlinePeopleDrill, jurisdictionPeopleDrill } from '../engine/drills'
 import { USES } from '../engine/lineage'
 import { asOfNote, daysText } from '../engine/wording'
 import { M } from '../metrics'
 import { ATLAS_CITATION } from '../reference/calendar'
+import { deadlineDrill, jurisdictionDrill } from './drill'
 import { COUNSEL_NOTE, defs, useAtlasHref } from './shared'
 
 interface CalendarRow {
@@ -60,11 +60,13 @@ export function DeadlinesFigure({
   const d = m.deadlines
   const atlasHref = useAtlasHref()
   const rows = d.upcoming.map(toRow)
+  // The people an entry covers carry its jurisdiction's sites as their filter.
+  const entryPeople = deadlineDrill(s, USES.deadlines)
   const peopleCol: Column<CalendarRow> = {
     key: 'people',
     label: 'Employees covered',
     format: 'int',
-    drill: (r) => () => deadlinePeopleDrill(s, r.row, USES.deadlines),
+    drill: (r) => entryPeople(r.row),
   }
   const columns: Column<CalendarRow>[] = compact
     ? [
@@ -154,8 +156,8 @@ export function DeadlinesTab({ m, ctx }: { m: ComplianceView; ctx: AnalyticsCont
       url: x.url,
     })),
   )
-  const peopleDrill = (r: JurisdictionTableRow) => () =>
-    jurisdictionPeopleDrill(s, r.r.people, r.r.jurisdiction.shortName, USES.deadlines)
+  const jurisdictionPeople = jurisdictionDrill(s, USES.deadlines)
+  const peopleDrill = (r: JurisdictionTableRow) => jurisdictionPeople(r.r)
   return (
     <>
       <Section

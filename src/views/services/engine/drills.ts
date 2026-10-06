@@ -20,7 +20,7 @@ import type { Column } from '@/charts/types'
 import type { AnalyticsContext } from '@/data/context'
 import { type HrCase, type HrTransaction, MIN_GROUP, type TransactionType } from '@/data/schema'
 import { PERIOD_LABELS, type Window } from '@/data/scope'
-import { type DrillSpec, drillSpec } from '@/drill/types'
+import { type DrillFilter, type DrillSpec, drillSpec } from '@/drill/types'
 import { businessDaysBetween, daysBetween, formatDate, formatMonth } from '@/lib/dates'
 import { fmt, plural } from '@/lib/format'
 import { mean, median } from '@/lib/stats'
@@ -612,6 +612,35 @@ export function levelDrill(s: DrillScope, row: LevelRow, part: LevelPart): Drill
         ? `Out of ${plural(rec.rows.length, 'case')} judged on the clock.`
         : `Rate = ${int(hits)} within ${plural(clock.days, 'business day')} ÷ ${plural(rec.rows.length, 'case')} judged (stopped, or still open past the clock).`,
   })
+}
+
+/* ───────────── "Filter to this" ───────────── */
+
+/**
+ * The sites behind a group of records (a jurisdiction or region is the set of its sites), sorted;
+ * null when a record has no site, since no location filter would then reproduce the group.
+ */
+export function sitesOf(records: readonly { location: string | null }[]): string[] | null {
+  const out = new Set<string>()
+  for (const f of records) {
+    if (!f.location) return null
+    out.add(f.location)
+  }
+  return out.size ? [...out].sort() : null
+}
+
+/**
+ * A spec with the filter that reproduces its group (docs/FILTERS.md, part 4), so the records
+ * panel offers "Filter to" and "Leave out", named `label` when the group has a name of its own
+ * ("APAC" for its sites). Nothing changes without a filter.
+ */
+export function withGroup<S extends DrillSpec>(
+  spec: S | null,
+  filter: DrillFilter | undefined,
+  label?: string,
+): S | null {
+  if (!spec || !filter) return spec
+  return { ...spec, filter: { ...spec.filter, ...filter }, ...(label ? { filterLabel: label } : {}) }
 }
 
 /* ───────────── sources ───────────── */

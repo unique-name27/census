@@ -50,6 +50,7 @@ import { pctWords } from '../engine/settings'
 import { returnSurvey, type SurveyHeadline } from '../engine/survey'
 import { FIGURE_METRIC } from '../metrics'
 import { type AtlasColumn, AtlasTable } from './AtlasTable'
+import { leaveUnitSegment, onLeaveUnitDrill } from './drill'
 import { asOfNote, count, NeedData, NO_TX, period, rateTone } from './shared'
 
 const STATUS_SEVERITY: Record<ReturnStatus, Severity> = {
@@ -211,17 +212,13 @@ function OnLeaveFigure({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext }) 
       note: `The whole scope, then each business unit; a unit with fewer than ${k} people shows no counts.`,
     })
   }
-  const unitPeople = (r: OnLeaveRow) => () =>
-    leaveDrill(s, r.unitRecords, {
-      title: `On leave now, ${r.unit}`,
-      subtitle: asOfSub(s),
-      columns: ['expected', 'days'],
-      order: (a, b) => a.start.localeCompare(b.start),
-    })
-  const segment = (r: OnLeaveRow) =>
-    r.reason === ALL_LEAVES
-      ? unitPeople(r)
-      : groups((x) => x.unit === r.unit, `On leave now, ${r.unit}, by reason`)
+  // A unit's people carry the unit as their filter ("Filter to Silicon Engineering"); so do a
+  // reason segment's grouped counts, which keep their number beside the unit's other reasons.
+  const unitPeople = onLeaveUnitDrill(s)
+  const unitReasons = leaveUnitSegment((r: OnLeaveRow) =>
+    groups((x) => x.unit === r.unit, `On leave now, ${r.unit}, by reason`),
+  )
+  const segment = (r: OnLeaveRow) => (r.reason === ALL_LEAVES ? unitPeople(r) : unitReasons(r))
 
   const empty = !l.now.length
     ? `Nobody is on leave at ${asOf}.`

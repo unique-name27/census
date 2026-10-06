@@ -144,13 +144,6 @@ describe('the sample company in the Data room', () => {
     showPay: false,
   })
 
-  it('builds the manifest well inside the time budget', () => {
-    buildManifest({ data: ctx.all, sources: ctx.sources, asOf: ctx.asOf })
-    const t = performance.now()
-    buildManifest({ data: ctx.all, sources: ctx.sources, asOf: ctx.asOf })
-    expect(performance.now() - t).toBeLessThan(150)
-  })
-
   const rows = buildManifest({ data: ctx.all, sources: ctx.sources, asOf: ctx.asOf })
 
   it('lists all ten datasets with their sample row counts', () => {

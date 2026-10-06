@@ -26,6 +26,7 @@ import { Button, Segmented, SeverityIcon } from '@/components/ui'
 import { type AnalyticsContext, useAnalytics } from '@/data/context'
 import { TIER_LABEL } from '@/data/quality/tier'
 import type { ViewKey } from '@/data/schema'
+import { focusLeader, withMode } from '@/data/scope'
 import { useCensus } from '@/data/store'
 import { drill } from '@/drill'
 import type { DrillSpec } from '@/drill/types'
@@ -103,7 +104,9 @@ function SeverityCounts({ open, ctx }: { open: readonly OpenAction[]; ctx: Analy
 
 function MyTeamPicker() {
   const ctx = useAnalytics()
-  const leaderId = useCensus((s) => s.filters.leaderId)
+  // "My team" is the leader filter in include mode; a left-out leader is not anyone's team.
+  const leaderId = useCensus((s) => focusLeader(s.filters))
+  const modes = useCensus((s) => s.filters.modes)
   const setFilters = useCensus((s) => s.setFilters)
   const options = useMemo(() => leaderOptions(ctx.org, ctx.asOf, 1), [ctx.org, ctx.asOf])
   return (
@@ -115,7 +118,7 @@ function MyTeamPicker() {
       options={options}
       value={leaderId}
       currentName={leaderId ? (ctx.org.byId.get(leaderId)?.name ?? leaderId) : undefined}
-      onChange={(id) => setFilters({ leaderId: id })}
+      onChange={(id) => setFilters({ leaderId: id, modes: withMode(modes, 'leaderId', 'include') })}
     />
   )
 }

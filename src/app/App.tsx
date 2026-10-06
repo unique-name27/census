@@ -145,8 +145,13 @@ function Shell() {
   const view = page ? null : (viewByKey.get(route.view as ViewKey) ?? VIEWS[0])
   return (
     <div className="flex min-h-dvh flex-col">
+      {/* biome-ignore lint/a11y/useValidAnchor: a skip link stays a link; it moves focus itself because the address holds the route and scope, and "#census-main" would add a history entry */}
       <a
         href="#census-main"
+        onClick={(e) => {
+          e.preventDefault()
+          document.getElementById('census-main')?.focus()
+        }}
         className="sr-only z-50 rounded-control bg-ink px-3 py-1.5 text-[13px] text-on-ink focus:not-sr-only focus:fixed focus:top-2 focus:left-2"
       >
         Skip to content

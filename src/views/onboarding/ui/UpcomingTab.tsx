@@ -8,11 +8,12 @@ import { useAnalytics } from '@/data/context'
 import { drill, openPerson } from '@/drill'
 import { formatDate } from '@/lib/dates'
 import { fmt, plural } from '@/lib/format'
-import { candidatesDrill, dayOneTasksDrill, startsDrill, tasksDrill } from '../engine/drills'
+import { dayOneTasksDrill, startsDrill, tasksDrill } from '../engine/drills'
 import { ACCEPT_TO_START, RENEGE, TASK_OWNER, TASKS, UPCOMING, union } from '../engine/lineage'
 import type { Start } from '../engine/starts'
 import type { DaysRow, OwnerReadinessRow, RenegeRow, TaskReadinessRow, UpcomingRow } from '../engine/upcoming'
 import { M } from '../metrics'
+import { acceptToStartDrill, calendarCellDrill, renegeDrill } from './drill'
 import {
   asOfNote,
   defs,
@@ -71,14 +72,12 @@ export function UpcomingTab() {
       `Starts in the week of ${formatDate(week)}`,
       { uses: UPCOMING },
     )
-  const cellDrill = (r: CalRow) => () =>
-    startsDrill(b, r.people, `Starts in the week of ${formatDate(r.week)}, ${r.businessUnit}`, {
-      uses: UPCOMING,
-    })
+  // A segment is one business unit's starts that week, with the unit as the drill's filter.
+  const cellDrill = calendarCellDrill(b)
   const calColumns: Column<CalRow>[] = [
     { key: 'week', label: 'Week of', format: 'date' },
     { key: 'businessUnit', label: 'Business unit' },
-    { key: 'starts', label: 'Starts', format: 'int', drill: (r) => drillIf(r.starts, cellDrill(r)) },
+    { key: 'starts', label: 'Starts', format: 'int', drill: cellDrill },
   ]
 
   /* Upcoming starts table. */
@@ -212,18 +211,12 @@ export function UpcomingTab() {
     )
 
   /* Notice periods and reneges. */
+  // A site's accepted offers and reneges carry the site as the drill's filter.
   const ats = u.acceptToStart
+  const atsDrill = acceptToStartDrill(b)
   const atsColumns: Column<DaysRow>[] = [
     { key: 'location', label: 'Location' },
-    {
-      key: 'offers',
-      label: 'Offers accepted',
-      format: 'int',
-      drill: (r) =>
-        drillIf(r.offers, () =>
-          candidatesDrill(b, r.records, `Offers accepted, ${r.location}`, { uses: ACCEPT_TO_START }),
-        ),
-    },
+    { key: 'offers', label: 'Offers accepted', format: 'int', drill: atsDrill },
     { key: 'days', label: 'Median days to start', format: 'days' },
   ]
   const r = u.renege
@@ -237,24 +230,11 @@ export function UpcomingTab() {
       renegedN: x.rate == null ? null : x.reneged.length,
     }))
   type RenegeData = (typeof renegeData)[number]
+  const acceptedDrill = renegeDrill(b, 'accepted')
   const renegeColumns: Column<RenegeData>[] = [
     { key: 'location', label: 'Location' },
-    {
-      key: 'acceptedN',
-      label: 'Offers accepted',
-      format: 'int',
-      drill: (x) =>
-        drillIf(x.accepted.length, () =>
-          candidatesDrill(b, x.accepted, `Offers accepted, ${x.location}`, { uses: RENEGE }),
-        ),
-    },
-    {
-      key: 'renegedN',
-      label: 'Reneges',
-      format: 'int',
-      drill: (x) =>
-        drillIf(x.renegedN, () => candidatesDrill(b, x.reneged, `Reneges, ${x.location}`, { uses: RENEGE })),
-    },
+    { key: 'acceptedN', label: 'Offers accepted', format: 'int', drill: acceptedDrill },
+    { key: 'renegedN', label: 'Reneges', format: 'int', drill: renegeDrill(b, 'reneged') },
     { key: 'rate', label: 'Renege rate', format: 'pct' },
   ]
 
@@ -302,7 +282,7 @@ export function UpcomingTab() {
                 format="int"
                 height={260}
                 onSelect={(d) => drill(weekDrill(d.week))}
-                onSelectSegment={(d) => (d.starts ? drill(cellDrill(d)) : drill(weekDrill(d.week)))}
+                onSelectSegment={(d) => drill(d.starts ? cellDrill(d) : weekDrill(d.week))}
               />
             </Figure>
           </Grid>
@@ -428,11 +408,7 @@ export function UpcomingTab() {
               ats.days != null ? { value: ats.days, label: `company ${fmt(ats.days, 'days')}` } : undefined
             }
             nullNote={hiddenNote(s.minGroup)}
-            onSelect={(d) =>
-              drill(
-                candidatesDrill(b, d.records, `Offers accepted, ${d.location}`, { uses: ACCEPT_TO_START }),
-              )
-            }
+            onSelect={(d) => drill(atsDrill(d))}
           />
         </Figure>
         <Figure
@@ -469,9 +445,7 @@ export function UpcomingTab() {
             }
             tone={(d) => (target && d.rate != null && d.rate >= target.value ? 'warning' : 'default')}
             nullNote={hiddenNote(s.minGroup)}
-            onSelect={(d) =>
-              drill(candidatesDrill(b, d.accepted, `Offers accepted, ${d.location}`, { uses: RENEGE }))
-            }
+            onSelect={(d) => drill(acceptedDrill(d))}
           />
         </Figure>
       </Section>

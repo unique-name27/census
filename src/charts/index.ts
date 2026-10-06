@@ -5,6 +5,7 @@
  * are exported for custom visuals that still sit inside a Figure.
  */
 
+export { groupFilter, periodFilter } from '@/drill/filter'
 export { type CellAction, cellAction, safeHref } from './cells'
 export {
   divergingScale,
@@ -40,6 +41,7 @@ export {
 export { BarList, type BarListProps } from './kit/BarList'
 export { Columns, type ColumnsProps } from './kit/Columns'
 export { DotStrip, type DotStripProps } from './kit/DotStrip'
+export { byGroup, type GroupOf, selectGroup, withFilter } from './kit/groupDrill'
 export { HBars, type HBarsProps } from './kit/HBars'
 export { Heatmap, type HeatmapProps } from './kit/Heatmap'
 export { Histogram, type HistogramProps } from './kit/Histogram'

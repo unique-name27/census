@@ -7,6 +7,7 @@ import type { Severity } from '@/components/types'
 import { LEVELS, MIN_GROUP } from '@/data/schema'
 import { isNum } from '@/lib/format'
 import { median, sum } from '@/lib/stats'
+import type { GroupDim } from './groupFilter'
 import { groupRows, safeMedian, safeShare, values } from './groups'
 import type { CompPerson } from './population'
 import { defaultRules, type ExceptionRules } from './rules'
@@ -88,7 +89,7 @@ export function meritSpend(people: readonly CompPerson[], s: CycleSettings, min 
   }
 }
 
-export interface SpendRow {
+export interface SpendRow extends GroupDim {
   group: string
   n: number
   spendPct: number | null

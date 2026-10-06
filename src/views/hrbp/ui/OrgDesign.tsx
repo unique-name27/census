@@ -7,17 +7,11 @@ import { drill } from '@/drill/Drill'
 import { formatDate } from '@/lib/dates'
 import { LinkedSurvey } from '@/views/listening/LinkedSurvey'
 import type { HrbpModel } from '../engine'
-import {
-  chainBelowSpec,
-  layerBuSpec,
-  type ManagerCell,
-  managerCellSpec,
-  spanBucketSpec,
-} from '../engine/buckets'
+import { chainBelowSpec, type ManagerCell, spanBucketSpec } from '../engine/buckets'
 import { FIGURE } from '../engine/lineage'
 import { type ManagerFlag, type ManagerRow, type OrgModel, SPAN_BUCKETS } from '../engine/org'
 import { ID } from './defs'
-import { drillWhen } from './drill'
+import { drillWhen, layerDrill, managerDrill } from './drill'
 import { rescope } from './model'
 
 type ManagerFilter = 'all' | 'wide' | 'light' | 'new'
@@ -45,8 +39,10 @@ export function OrgDesign({ m }: { m: HrbpModel }) {
   const p = m.prep
   const asOf = formatDate(ctx.asOf)
   const managers = org.managers.filter(filtersOf(org.flags)[filter])
-  const managerCell = (cell: ManagerCell, count: (r: ManagerRow) => number) => (r: ManagerRow) =>
-    drillWhen(count(r) > 0, () => managerCellSpec(p, org, r, cell))
+  // A manager's total org sets their org as the filter; the business unit's layers set the unit.
+  const managerCell = (cell: ManagerCell, count: (r: ManagerRow) => number) =>
+    managerDrill(p, org, cell, count)
+  const layerCell = layerDrill(p, org)
 
   return (
     <>
@@ -101,18 +97,8 @@ export function OrgDesign({ m }: { m: HrbpModel }) {
           data={org.layersByBu}
           columns={[
             { key: 'businessUnit', label: 'Business unit', format: 'text' },
-            {
-              key: 'layers',
-              label: 'Layers',
-              format: 'int',
-              drill: (r) => drillWhen(r.records.length > 0, () => layerBuSpec(p, org, r)),
-            },
-            {
-              key: 'people',
-              label: 'Active workers',
-              format: 'int',
-              drill: (r) => drillWhen(r.records.length > 0, () => layerBuSpec(p, org, r)),
-            },
+            { key: 'layers', label: 'Layers', format: 'int', drill: layerCell },
+            { key: 'people', label: 'Active workers', format: 'int', drill: layerCell },
           ]}
           definitions={p.defs(ID.layers)}
           note={`Counted from each unit's top person · as of ${asOf}`}
@@ -124,7 +110,7 @@ export function OrgDesign({ m }: { m: HrbpModel }) {
             label="businessUnit"
             value="layers"
             secondary={(d) => `${d.people} people`}
-            onSelect={(d) => drill(() => layerBuSpec(p, org, d))}
+            onSelect={(d) => drill(layerCell(d))}
           />
         </Figure>
       </Section>

@@ -8,13 +8,21 @@ import { gateFor, hiddenFindingsText } from '@/components/tier/tierModel'
 import type { Finding, Kpi } from '@/components/types'
 import type { AnalyticsContext } from '@/data/context'
 import type { DatasetKey } from '@/data/schema'
-import { type Filters, isActiveAt, isEmployee } from '@/data/scope'
+import { type Filters, focusLeader, isActiveAt, isEmployee, withMode } from '@/data/scope'
 import { kpiTarget } from '@/metrics/api'
 import { minGroupOf } from '@/metrics/privacy'
 import { scoreRow } from '@/views/scorecard/engine/model'
 import { scorecardNow } from '@/views/scorecard/engine/schedule'
 import type { ViewDef } from '@/views/types'
-import { contextFor, dimensionValues, leaderProblem, resolveFilters, scopeOut, scopeWords } from '../scope'
+import {
+  contextFor,
+  dimensionValues,
+  exclusionProblem,
+  leaderProblem,
+  resolveFilters,
+  scopeOut,
+  scopeWords,
+} from '../scope'
 import { HIDDEN_SMALL } from './query'
 import { RTW_SMALL, rtwFinding, rtwSmallCount, rtwWithheldText, usesRightToWork } from './rightToWork'
 import {
@@ -249,13 +257,21 @@ const DIM: Record<Exclude<CompareBy, 'leader'>, 'businessUnit' | 'department' | 
   level: 'level',
 }
 
+/**
+ * Why a group of compare_groups shows no numbers: inside a scope that leaves values out, it differs
+ * from the same group without one of them by fewer people than the minimum.
+ */
+export const GROUP_EXCLUSION = (min: number): string =>
+  `Hidden: the scope's exclusions remove fewer than ${min} people from this group, so comparing it with the same group without them would single those people out.`
+
 /** Active employees in a context's scope (the group size shown beside each value). */
 const headcount = (ctx: AnalyticsContext): number =>
   ctx.data.employees.filter((e) => isEmployee(e) && isActiveAt(e, ctx.asOf)).length
 
 /** The leaders one level down from the scope's leader (or from the top of the org), largest org first. */
 function leaderGroups(ctx: AnalyticsContext): string[] {
-  const top = ctx.filters.leaderId
+  // One level down from the leader the scope includes; a left-out leader is not the top.
+  const top = focusLeader(ctx.filters)
   const roots = top
     ? (ctx.org.children.get(top) ?? [])
     : [...ctx.org.byId.values()].filter((e) => !e.managerId || !ctx.org.byId.has(e.managerId))
@@ -308,7 +324,11 @@ export function compareGroups(rt: ToolRuntime, raw: unknown): ToolOutput {
         ids.push(id)
       }
     } else ids.push(...leaderGroups(baseCtx).filter((id) => !leaderProblem(rt.base, id, '')))
-    groups = ids.map((id) => ({ label: rt.tokens.forEmployee(id), filters: { ...s.filters, leaderId: id } }))
+    // Each group includes its leader's org, whatever the scope's own leader mode.
+    groups = ids.map((id) => ({
+      label: rt.tokens.forEmployee(id),
+      filters: { ...s.filters, leaderId: id, modes: withMode(s.filters.modes, 'leaderId', 'include') },
+    }))
   } else {
     const dim = DIM[by]
     let picked: string[]
@@ -317,7 +337,10 @@ export function compareGroups(rt: ToolRuntime, raw: unknown): ToolOutput {
       if (!r.ok) return fail(r.error)
       picked = r.filters[dim]
     } else picked = dimensionValues(baseCtx, dim)
-    groups = picked.map((v) => ({ label: v, filters: { ...s.filters, [dim]: [v] } }))
+    groups = picked.map((v) => ({
+      label: v,
+      filters: { ...s.filters, [dim]: [v], modes: withMode(s.filters.modes, dim, 'include') },
+    }))
   }
   const sized = groups.map((g) => {
     const ctx = contextFor(rt.base, g.filters)
@@ -330,7 +353,12 @@ export function compareGroups(rt: ToolRuntime, raw: unknown): ToolOutput {
         .sort((a, b) => b.size - a.size || a.label.localeCompare(b.label))
         .slice(0, DEFAULT_GROUPS)
 
+  const min = minGroupOf(rt.base.metrics)
   const rows = chosen.map((g) => {
+    // The exclusion rule holds for each group too: a group the scope's exclusions cut by a few
+    // people would single them out next to the same group without the exclusion.
+    if (exclusionProblem(rt.base, g.filters, rt.tokens))
+      return { group: g.label, headcount: null, value: null, value_text: '—', hidden: GROUP_EXCLUSION(min) }
     const k = view.summary?.(g.ctx).kpis.find((x) => x.id === kpi.id)
     return {
       group: g.label,

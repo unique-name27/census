@@ -72,7 +72,15 @@ export function ChartTab() {
   const rootId =
     focusId && tree.people.has(focusId) && isWithin(tree, focusId, model.rootId) ? focusId : model.rootId
   const f = ctx.filters
-  const dimKey = JSON.stringify([f.businessUnit, f.department, f.location, f.level])
+  // Exclusions dim too: their modes and a left-out leader are part of the key.
+  const dimKey = JSON.stringify([
+    f.businessUnit,
+    f.department,
+    f.location,
+    f.level,
+    f.modes,
+    f.modes.leaderId && f.leaderId,
+  ])
   const expanded = useExpansion(tree, rootId, model.dims ? model.matches : null, dimKey)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const selected = selectedId && tree.people.has(selectedId) ? selectedId : null

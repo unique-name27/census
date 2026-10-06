@@ -28,6 +28,7 @@ import type {
   SurveyItem,
   SurveyResponse,
 } from '@/data/schema'
+import type { Filters } from '@/data/scope'
 import type { Format } from '@/lib/format'
 import type { SurveyGroupRow } from '@/lib/surveys'
 import type { DrillSource } from './Drill'
@@ -174,7 +175,28 @@ export interface DrillSpec<K extends DrillKind = DrillKind> {
    * exports then show that number's tier; without them, the tier of the records' dataset.
    */
   uses?: readonly FieldRef[]
+  /**
+   * The scope that reproduces the group this number counts (docs/FILTERS.md, part 4), set by the
+   * code that builds the drill: a bar for Bengaluru sets `{ location: ['Bengaluru'] }`, a leader's
+   * row `{ leaderId }`, a month bar may add a custom period. The records panel then offers "Filter
+   * to Bengaluru" and "Leave out Bengaluru". Leave it out for numbers that are not a filterable
+   * group (offer acceptance, one req, a survey driver). Build it with `groupFilter` (`@/charts`).
+   */
+  filter?: DrillFilter
+  /**
+   * What the reader calls the filter's group, when it is not just its values: "Asia Pacific" for
+   * its four sites, "L1-L3" for three levels. The actions then read "Filter to Asia Pacific"
+   * instead of "Filter to Bengaluru +3".
+   */
+  filterLabel?: string
 }
+
+/**
+ * The filter a drill sets: the same shape findings use for "Focus on". Org dimensions it names
+ * replace that dimension's values (and mode, include unless `modes` says exclude); a period
+ * (preset, or `custom` with `customStart` and `customEnd`) replaces the period.
+ */
+export type DrillFilter = Partial<Filters>
 
 /** Build a typed spec without repeating the kind's record type. */
 export function drillSpec<K extends DrillKind>(spec: DrillSpec<K>): DrillSpec<K> {

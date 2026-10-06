@@ -1,6 +1,6 @@
 /**
  * Smoke test on the sample company: every planted Talent story (src/data/sample/README.md) is
- * detected by the readout, every KPI is finite or null, and the engine runs in under 150 ms.
+ * detected by the readout and every KPI is finite or null. The time budget is in sample.perf.test.ts.
  */
 import { beforeAll, describe, expect, it } from 'vitest'
 import type { Kpi } from '@/components/types'
@@ -9,7 +9,6 @@ import { generateSample } from '@/data/sample'
 import type { Datasets } from '@/data/schema'
 import { DEFAULT_FILTERS, type Filters } from '@/data/scope'
 import { attrition } from '@/lib/people'
-import { bestCostMs } from '@/lib/testBudget'
 import { buildBase, trailing12 } from './base'
 import { computeTalent, type TalentModel, talentHeadline } from './index'
 import { monthsBack, voluntaryRates } from './risk'
@@ -18,7 +17,6 @@ import { datasets, sourcesFor } from './test-fixtures'
 let data: Datasets
 let ctx: AnalyticsContext
 let m: TalentModel
-let ms: number
 
 const ctxWith = (filters: Partial<Filters> = {}, d: Datasets = data, asOf: string | null = null) =>
   buildContext({
@@ -42,21 +40,10 @@ function expectFiniteOrNull(kpis: Kpi[]) {
 beforeAll(() => {
   data = generateSample()
   ctx = ctxWith()
-  const t0 = performance.now()
   m = computeTalent(ctx)
-  ms = performance.now() - t0
 })
 
 describe('Talent on the sample company', () => {
-  it('runs in under 250 ms', () => {
-    // Most of it is the flight-risk model (24 month-ends learned, cached per dataset and as-of date).
-    // The first run competes with the rest of the suite for CPU, so judge a generous bound on it
-    // and the real budget on the best of a few cold-cache reruns.
-    expect(ms).toBeLessThan(1500)
-    const best = bestCostMs(() => computeTalent({ ...ctx, data: { ...ctx.data }, all: { ...ctx.all } }))
-    expect(best).toBeLessThan(250)
-  })
-
   it('returns finite or null KPIs with unique ids', () => {
     expect(m.kpis).toHaveLength(7)
     expectFiniteOrNull(m.kpis)

@@ -30,6 +30,7 @@ import { sameParam } from '@/metrics/params'
 import { loadMetrics, METRICS_KEY, saveMetrics } from '@/metrics/persist'
 import { qualityRulesOf } from '@/metrics/quality'
 import type { EditResult, MetricEdit, MetricImportReport, MetricsState } from '@/metrics/types'
+import { type AddressIntent, hintAddress, isHistoryMark } from './address'
 import type { ApplyOptions, ImportIssue, Mapping, ParsedSheet } from './import/types'
 import { listsFileSection } from './lists/persist'
 import { useLists } from './lists/store'
@@ -74,6 +75,7 @@ import {
 } from './reference/state'
 import type { NewReferenceMapping, ReferenceState } from './reference/types'
 import { cachedSample, SAMPLE_AS_OF } from './sample'
+import { loadViews, VIEWS_KEY, viewsFileSection } from './savedViews'
 import {
   DATASET_KEYS,
   type DatasetKey,
@@ -83,7 +85,7 @@ import {
   type ViewKey,
   withAllDatasets,
 } from './schema'
-import { DEFAULT_FILTERS, type Filters, resolveAsOf } from './scope'
+import { DEFAULT_FILTERS, type Filters, normalizeFilters, resolveAsOf } from './scope'
 import {
   type CompCycleSettings,
   DEFAULT_COMP_CYCLE,
@@ -104,6 +106,7 @@ import {
   type ThemePref,
 } from './settings'
 import { listenToTabs, postToTabs } from './tabSync'
+import { readScope, splitHash, type UrlScope } from './urlScope'
 
 export type { SampleSeed, SampleSeedEntry, SampleSeedLoader } from './quality/seed'
 export type { ThemePref } from './settings'
@@ -199,9 +202,17 @@ export interface CensusState extends Settings {
   compCycle: CompCycleSettings
 
   init: () => Promise<void>
-  setFilters: (patch: Partial<Filters>) => void
+  /**
+   * Change the filters. The address follows: by default rapid changes collapse into one history
+   * entry; `history: 'push'` makes this change its own entry (applying a saved view, "Filter to").
+   */
+  setFilters: (patch: Partial<Filters>, opts?: { history?: AddressIntent }) => void
   resetFilters: () => void
-  navigate: (view: RouteView, tab?: string, opts?: { scroll?: boolean }) => void
+  /**
+   * Show a view and tab. The address follows with the scope kept; `history: 'push'` adds a history
+   * entry (what `goTo` does), the default replaces the current one.
+   */
+  navigate: (view: RouteView, tab?: string, opts?: { scroll?: boolean; history?: AddressIntent }) => void
   setShowPay: (on: boolean) => void
   setShowImmigration: (on: boolean) => void
   /** Turn the engagement and eNPS surveys on or off in Listening (saved in this browser). */
@@ -211,7 +222,13 @@ export interface CensusState extends Settings {
   setTheme: (t: ThemePref) => void
   setTextSize: (s: TextSize) => void
   setMotion: (m: MotionPref) => void
+  /** The data standard control and Settings: show it and save it (other open tabs follow). */
   setDataStandard: (s: DataStandard) => void
+  /**
+   * Show a data standard in this tab without saving it: the address (a link, Back and Forward) and
+   * saved views carry it as part of the scope, which belongs to the tab. Your saved standard stays.
+   */
+  setScopeStandard: (s: DataStandard) => void
   setAsOfOverride: (d: ISODate | null) => void
   /** @deprecated Writes the comp metrics' settings in the dictionary (logged); edit them there instead. */
   setCompCycle: (c: CompCycleSettings) => void
@@ -301,10 +318,81 @@ const perKey = <T>(make: (k: DatasetKey) => T): Record<DatasetKey, T> =>
 const sampleMeta = (data: Datasets): Record<DatasetKey, SourceMeta> =>
   perKey((k) => ({ kind: 'sample', rowCount: data[k].length }))
 
+/**
+ * The route an address names (`#view.tab`), or null. The scope after a `?` is left for
+ * `readScope` (src/data/urlScope.ts), so every view's own tab suffix parses as before.
+ */
 export function parseHash(hash: string): Route | null {
-  const [view, tab] = hash.replace(/^#/, '').split('.')
+  const [view, tab] = splitHash(hash).route.split('.')
   if (!ROUTE_VIEWS.includes(view as RouteView)) return null
   return { view: view as RouteView, tab: tab ?? '' }
+}
+
+/**
+ * Where the scope Census opened with came from: the address (`link`, applied exactly; also an
+ * entry Census wrote itself, whose address is complete), the saved view marked "Open Census with
+ * this view" (`startup`), or your last filters in this browser (`last`). The shell finishes the
+ * job once the data is loaded: it checks a link's values against the data, applies the standard
+ * and the quality lens, and writes the address.
+ */
+export interface InitialScope {
+  source: 'link' | 'startup' | 'last'
+  scope: UrlScope | null
+  /** The startup view's id. */
+  viewId?: string
+  /** The startup view's page, when the address named none. */
+  page?: Route
+  /** Parts of the link that could not be read. */
+  unreadable: string[]
+}
+
+export function initialScopeOf(args: {
+  hash: string
+  historyState: unknown
+  views: ReturnType<typeof loadViews>
+}): InitialScope {
+  const { query } = splitHash(args.hash)
+  const read = readScope(query)
+  if (read.present || isHistoryMark(args.historyState))
+    return { source: 'link', scope: read.scope, unreadable: read.unreadable }
+  const start = args.views.views.find((v) => v.id === args.views.startupId)
+  if (start) {
+    const page =
+      !parseHash(args.hash) && start.page && ROUTE_VIEWS.includes(start.page.view as RouteView)
+        ? { view: start.page.view as RouteView, tab: start.page.tab }
+        : undefined
+    return {
+      source: 'startup',
+      scope: { filters: start.filters, standard: start.standard, lens: start.lens },
+      viewId: start.id,
+      ...(page ? { page } : {}),
+      unreadable: [],
+    }
+  }
+  return { source: 'last', scope: null, unreadable: [] }
+}
+
+function readInitialScope(): InitialScope {
+  try {
+    if (typeof location === 'undefined') return { source: 'last', scope: null, unreadable: [] }
+    return initialScopeOf({
+      hash: location.hash,
+      historyState: typeof history === 'undefined' ? null : history.state,
+      views: loadViews((v) => ROUTE_VIEWS.includes(v as RouteView)),
+    })
+  } catch {
+    return { source: 'last', scope: null, unreadable: [] }
+  }
+}
+
+/** The scope this page load started with (read once, when the store is created). */
+export const initialScope: InitialScope = readInitialScope()
+let initialTaken = false
+/** The opening scope, once: the shell applies it after the data loads (null after that). */
+export function takeInitialScope(): InitialScope | null {
+  if (initialTaken) return null
+  initialTaken = true
+  return initialScope
 }
 
 /**
@@ -409,6 +497,19 @@ async function persistReference(state: ReferenceState): Promise<void> {
 }
 
 const initialSettings = loadSettings()
+/**
+ * Your saved data standard (Settings and the data standard control). The one on screen can differ:
+ * a link, Back and Forward or a saved view show theirs in this tab only (`setScopeStandard`).
+ */
+let savedStandard: DataStandard = initialSettings.dataStandard
+if (initialScope.scope) initialSettings.dataStandard = initialScope.scope.standard
+
+/** Your saved data standard, which a page without a scope in its address opens with. */
+export const savedDataStandard = (): DataStandard => savedStandard
+
+/** Your last filters in this browser (what a page without a scope in its address opens with). */
+export const lastFilters = (): Filters =>
+  normalizeFilters({ ...DEFAULT_FILTERS, ...LS.get<Partial<Filters>>('filters', {}) })
 const initialMetrics = loadMetrics(CATALOG)
 let listeningForMetrics = false
 const sampleAsOf = SAMPLE_AS_OF
@@ -429,11 +530,15 @@ function mergeReports(a: MetricImportReport | undefined, b: MetricImportReport):
 }
 
 export const useCensus = create<CensusState>((set, getState) => {
-  /** Apply a settings patch and save every setting. */
+  /**
+   * Apply a settings patch and save every setting. The data standard saved is yours (set by this
+   * patch, or as it was), never one a link or saved view shows in this tab only.
+   */
   const patchSettings = (patch: Partial<Settings>) => {
     const { compCycle: _ignored, ...rest } = patch
+    if (rest.dataStandard) savedStandard = rest.dataStandard
     set(rest)
-    saveSettings(pickSettings(getState()))
+    saveSettings({ ...pickSettings(getState()), dataStandard: savedStandard })
   }
 
   /** Make a new dictionary state current: the comp cycle mirror follows, and it is saved. */
@@ -493,8 +598,12 @@ export const useCensus = create<CensusState>((set, getState) => {
     ),
     history: perKey(() => []),
     reference: EMPTY_REFERENCE,
-    filters: { ...DEFAULT_FILTERS, ...LS.get<Partial<Filters>>('filters', {}) },
-    route: parseHash(typeof location === 'undefined' ? '' : location.hash) ?? { view: HOME_VIEW, tab: '' },
+    // Filters saved before include and exclude modes existed load as include.
+    filters: initialScope.scope
+      ? normalizeFilters(initialScope.scope.filters)
+      : normalizeFilters({ ...DEFAULT_FILTERS, ...LS.get<Partial<Filters>>('filters', {}) }),
+    route: initialScope.page ??
+      parseHash(typeof location === 'undefined' ? '' : location.hash) ?? { view: HOME_VIEW, tab: '' },
     showPay: false,
     showImmigration: false,
     settingsOpen: { open: false, section: null, nonce: 0 },
@@ -515,7 +624,16 @@ export const useCensus = create<CensusState>((set, getState) => {
       }
       // Another tab's settings, mappings or "clear everything" reach this one as they happen.
       listenToTabs(SETTINGS_KEY, {
-        settings: () => set(loadSettings()),
+        settings: () => {
+          const next = loadSettings()
+          // The data standard on screen is this tab's scope: it follows only when the other tab
+          // changed your saved standard (its control or Settings), and that corrects this tab's
+          // address, never adds to its history.
+          const follow = next.dataStandard !== savedStandard
+          savedStandard = next.dataStandard
+          if (follow) hintAddress('replace')
+          set(follow ? next : { ...next, dataStandard: getState().dataStandard })
+        },
         message: (m) => {
           if (m.kind === 'cleared') location.reload()
           else
@@ -582,21 +700,21 @@ export const useCensus = create<CensusState>((set, getState) => {
       })
     },
 
-    setFilters(patch) {
-      const filters = { ...getState().filters, ...patch }
+    setFilters(patch, opts = {}) {
+      const filters = normalizeFilters({ ...getState().filters, ...patch })
       LS.set('filters', filters)
+      if (opts.history) hintAddress(opts.history)
       set({ filters })
     },
     resetFilters() {
       LS.set('filters', DEFAULT_FILTERS)
-      set({ filters: { ...DEFAULT_FILTERS } })
+      set({ filters: { ...DEFAULT_FILTERS, modes: {} } })
     },
     navigate(view, tab = '', opts = {}) {
-      const route = { view, tab }
-      const hash = `#${view}${tab ? `.${tab}` : ''}`
-      if (location.hash !== hash) history.replaceState(null, '', hash)
-      set({ route })
-      if (opts.scroll !== false) window.scrollTo({ top: 0 })
+      // The shell writes the address (route and scope together); this says how.
+      hintAddress(opts.history ?? 'replace')
+      set({ route: { view, tab } })
+      if (opts.scroll !== false && typeof window !== 'undefined') window.scrollTo({ top: 0 })
     },
     setShowPay(on) {
       set({ showPay: on })
@@ -612,6 +730,9 @@ export const useCensus = create<CensusState>((set, getState) => {
     setTextSize: (textSize) => patchSettings({ textSize }),
     setMotion: (motion) => patchSettings({ motion }),
     setDataStandard: (dataStandard) => patchSettings({ dataStandard }),
+    setScopeStandard(dataStandard) {
+      if (getState().dataStandard !== dataStandard) set({ dataStandard })
+    },
     setAsOfOverride: (asOfOverride) => patchSettings({ asOfOverride }),
     setCompCycle: (c) => {
       editMetrics(compCycleEdits(sanitizeCompCycle(c)))
@@ -633,7 +754,8 @@ export const useCensus = create<CensusState>((set, getState) => {
     },
     resetTools: () => patchSettings({ tools: {} }),
     updateSettings(patch) {
-      const cur = pickSettings(getState())
+      // The standard on screen may be this tab's scope only: it is saved when the patch sets it.
+      const { dataStandard: _shown, ...cur } = pickSettings(getState())
       const { compCycle, ...next } = patch
       if (compCycle) editMetrics(compCycleEdits(sanitizeCompCycle(compCycle)))
       if (patch.tools) next.tools = sanitizeTools(patch.tools)
@@ -647,14 +769,23 @@ export const useCensus = create<CensusState>((set, getState) => {
     },
     exportSettings: () =>
       settingsBlob(
-        pickSettings(getState()),
+        { ...pickSettings(getState()), dataStandard: savedStandard },
         new Date(),
         metricsFileSection(getState().metrics),
         listsFileSection(useLists.getState().state),
+        // Saved views as stored (`census:views`); none until one is saved.
+        LS.get<unknown>(VIEWS_KEY.replace(/^census:/, ''), null) == null
+          ? undefined
+          : viewsFileSection(loadViews((v) => ROUTE_VIEWS.includes(v as RouteView))),
       ),
     importSettings(json) {
       const st = getState()
-      const r = parseSettingsFile(json, pickSettings(st), undefined, st.compCycle)
+      const r = parseSettingsFile(
+        json,
+        { ...pickSettings(st), dataStandard: savedStandard },
+        undefined,
+        st.compCycle,
+      )
       if (!r.ok) return r
       patchSettings(r.settings)
       let state = getState().metrics
@@ -693,6 +824,7 @@ export const useCensus = create<CensusState>((set, getState) => {
     },
     async clearDevice() {
       const failed = await clearCensusStorage()
+      savedStandard = DEFAULT_SETTINGS.dataStandard
       useLists.getState().reset()
       const base = buildSampleState(plain(), loadedSeed, sampleAsOf)
       for (const r of base.raws) rememberRaw(r)
@@ -705,7 +837,7 @@ export const useCensus = create<CensusState>((set, getState) => {
         reference: EMPTY_REFERENCE,
         metrics: EMPTY_METRICS,
         compCycle: cycleMirror(EMPTY_METRICS),
-        filters: { ...DEFAULT_FILTERS },
+        filters: { ...DEFAULT_FILTERS, modes: {} },
         showPay: false,
         showImmigration: false,
         storageUnavailable: false,

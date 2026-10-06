@@ -20,6 +20,7 @@ import type { MetricsFileSection } from '@/metrics/imports'
 import type { MetricImportReport } from '@/metrics/types'
 import type { ListsFileSection } from './lists/persist'
 import { type DataStandard, DEFAULT_STANDARD, isDataStandard } from './quality/tier'
+import type { ViewsFileSection } from './savedViews'
 import type { ISODate } from './schema'
 
 export type ThemePref = 'system' | 'light' | 'dark'
@@ -337,6 +338,8 @@ export interface SettingsFile {
   metrics?: MetricsFileSection
   /** The official lists you saved (Settings > Official lists). */
   lists?: ListsFileSection
+  /** Your saved views (the Views menu in the filter row). */
+  views?: ViewsFileSection
 }
 
 export const settingsFileName = (today: ISODate): string => `census-settings-${today}.json`
@@ -347,6 +350,7 @@ export function settingsBlob(
   now = new Date(),
   metrics?: MetricsFileSection,
   lists?: ListsFileSection,
+  views?: ViewsFileSection,
 ): Blob {
   const file: SettingsFile = {
     kind: SETTINGS_FILE_KIND,
@@ -355,6 +359,7 @@ export function settingsBlob(
     settings: pickSettings(s),
     ...(metrics ? { metrics } : {}),
     ...(lists ? { lists } : {}),
+    ...(views ? { views } : {}),
   }
   return new Blob([JSON.stringify(file, null, 2)], { type: 'application/json' })
 }
@@ -368,6 +373,8 @@ export type ImportSettingsResult =
       metricsSection?: unknown
       /** The file's official lists section, for the store to apply (`importListsSection`). */
       listsSection?: unknown
+      /** The file's saved views, for the views store to merge (`useSavedViews().importSection`). */
+      viewsSection?: unknown
       /** Cycle values from a file saved before the dictionary; the store moves them into the comp metrics. */
       compCycle?: CompCycleSettings
       /** What the store changed in the metric dictionary (set by the store's `importSettings`). */
@@ -431,7 +438,8 @@ export function parseSettingsFile(
     : undefined
   const metricsSection = d.metrics && typeof d.metrics === 'object' ? d.metrics : undefined
   const listsSection = d.lists && typeof d.lists === 'object' ? d.lists : undefined
-  if (!applied.length && !cycle && !metricsSection && !listsSection)
+  const viewsSection = d.views && typeof d.views === 'object' ? d.views : undefined
+  if (!applied.length && !cycle && !metricsSection && !listsSection && !viewsSection)
     return { ok: false, error: 'The file holds no settings Census can use.' }
   delete next.compCycle
   return {
@@ -440,6 +448,7 @@ export function parseSettingsFile(
     applied,
     ...(metricsSection ? { metricsSection } : {}),
     ...(listsSection ? { listsSection } : {}),
+    ...(viewsSection ? { viewsSection } : {}),
     ...(cycle ? { compCycle: cycle } : {}),
   }
 }

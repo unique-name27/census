@@ -1,17 +1,15 @@
 /**
  * The People scorecard over the generated sample, with every view's real summary: every practice
  * is there, every measure is registered and drills to its records, statuses follow the targets in
- * force, the top findings take turns across practices, and it fits its load budget.
+ * force and the top findings take turns across practices. The load budget is in sample.perf.test.ts.
  */
 import { describe, expect, it } from 'vitest'
 import { isFieldRef } from '@/data/quality/fieldRef'
 import { resolveDrill } from '@/drill/Drill'
-import { bestCostMs } from '@/lib/testBudget'
 import { CATALOG } from '@/metrics/catalog'
 import { VIEWS } from '@/views/registry'
 import { M, MEASURE_IDS } from '../metrics'
-import { buildScorecard } from './model'
-import { computeScorecard, practiceViews, runSummary } from './schedule'
+import { computeScorecard, practiceViews } from './schedule'
 import { sampleContext, tieredSampleContext } from './testkit'
 
 const ctx = sampleContext()
@@ -106,17 +104,6 @@ describe('the scorecard on the sample', () => {
         ref,
       ).toBe(true)
   })
-
-  it('computes every summary within the 400 ms load budget, and adds almost nothing itself', () => {
-    // A fresh context each run, so every view computes its model from scratch. Best of five after
-    // a warm-up, counting work rather than waiting, so a busy machine passes.
-    const contexts = Array.from({ length: 6 }, () => sampleContext())
-    let i = 0
-    expect(bestCostMs(() => computeScorecard(contexts[i++], VIEWS), 5)).toBeLessThan(400)
-    // The scorecard's own share: judging, gating and ranking the summaries already computed.
-    const inputs = practiceViews(VIEWS).map((v) => runSummary(v, ctx))
-    expect(bestCostMs(() => buildScorecard(ctx, inputs))).toBeLessThan(25)
-  }, 30_000)
 
   it('registers the folder-tab metric the headline links to', () => {
     expect(CATALOG.byId.get(M.targetsMet)?.uses.length).toBeGreaterThan(0)

@@ -1,7 +1,7 @@
 /**
  * Smoke test on the generated sample company: every planted HR business partner story in
- * src/data/sample/README.md is detected by the readout, every number is finite or null, and the
- * engine stays inside its time budget.
+ * src/data/sample/README.md is detected by the readout and every number is finite or null. The
+ * time budget is in smoke.perf.test.ts.
  */
 import { describe, expect, it } from 'vitest'
 import type { Finding } from '@/components/types'
@@ -196,17 +196,5 @@ describe('HRBP engine on the sample company', () => {
     const h = hrbpHeadline(ctx)
     expect(h.value).toBe(1450)
     expect(h.spark).toHaveLength(8)
-  })
-
-  it('runs in under 300 ms (best of 3, so a busy parallel test run does not fail it)', () => {
-    computeHrbp(sampleCtx({ location: ['San Jose'] }))
-    let best = Number.POSITIVE_INFINITY
-    for (let i = 0; i < 3; i++) {
-      const fresh = sampleCtx()
-      const t0 = performance.now()
-      computeHrbp(fresh)
-      best = Math.min(best, performance.now() - t0)
-    }
-    expect(best).toBeLessThan(300)
   })
 })

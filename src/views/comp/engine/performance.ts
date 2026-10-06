@@ -6,6 +6,7 @@
 import { MIN_GROUP, RATING_LABELS } from '@/data/schema'
 import { isNum } from '@/lib/format'
 import { mean } from '@/lib/stats'
+import type { GroupDim } from './groupFilter'
 import { behind, groupRows, safeMean, safeMedian, safeQuantile, values } from './groups'
 import { type CompPerson, POSITIONS } from './population'
 import { type CycleSettings, guidelineFor, RATINGS, type RatingKey, ratingKey } from './settings'
@@ -200,7 +201,7 @@ export function differentiation(people: readonly CompPerson[], min = MIN_GROUP):
   }
 }
 
-export interface DifferentiationRow extends Differentiation {
+export interface DifferentiationRow extends Differentiation, GroupDim {
   group: string
 }
 

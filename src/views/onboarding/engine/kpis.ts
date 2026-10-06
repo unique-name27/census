@@ -14,6 +14,7 @@ import {
   candidatesDrill,
   employeesDrill,
   gapNote,
+  groupScope,
   learningDrill,
   planDrill,
   planYtdSub,
@@ -21,6 +22,7 @@ import {
   startsDrill,
   tasksDrill,
   windowSub,
+  withScope,
 } from './drills'
 import type { First90Model } from './first90'
 import { type ForecastModel, forecastWithin } from './forecast'
@@ -176,12 +178,16 @@ export function upcomingKpis(b: OnboardingBase, u: UpcomingModel, hasStartData: 
         extra: atsExtra,
         uses: ACCEPT_TO_START,
       }),
+    // The site named in the note, with the site as its filter.
     noteDrill: longest
       ? () =>
-          candidatesDrill(b, longest.records, `Offers accepted, ${longest.location}`, {
-            extra: atsExtra,
-            uses: ACCEPT_TO_START,
-          })
+          withScope(
+            candidatesDrill(b, longest.records, `Offers accepted, ${longest.location}`, {
+              extra: atsExtra,
+              uses: ACCEPT_TO_START,
+            }),
+            groupScope('location', longest.location),
+          )
       : undefined,
     uses: ACCEPT_TO_START,
   })

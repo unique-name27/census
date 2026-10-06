@@ -18,7 +18,6 @@ import {
   recruiterDrill,
   reqMonthDrill,
   reqRowDrill,
-  ttfGroupDrill,
 } from '../engine/drills'
 import { FIGURE_USES } from '../engine/lineage'
 import { FIGURE_METRICS } from '../engine/metricLinks'
@@ -40,6 +39,7 @@ import {
   ttfSpan,
   windowText,
 } from './common'
+import { ttfDrill } from './drill'
 import { useRecruiting } from './hooks'
 
 /** Open req age bins: equal 15-day steps so bar heights compare. */
@@ -87,7 +87,9 @@ export function RequisitionsTab() {
           : opened.length + filled.length
     return drillIf(n, () => reqMonthDrill(b, r.month, opened, filled, series))
   }
-  const deptDrill = (d: TtfRow) => drillIf(d.filled.length, () => ttfGroupDrill(b, d))
+  // Each department's filled reqs, with the department as the drill's filter ("Filter to Design
+  // Verification"); a month's reqs carry the month as their period.
+  const deptDrill = ttfDrill(b, 'department')
   const recDrill = (measure: RecruiterMeasure, n: (r: RecruiterRow) => number | null) => (r: RecruiterRow) =>
     drillIf(n(r), () => recruiterDrill(b, r, measure))
   const ageRows = rows.map((r) => ({

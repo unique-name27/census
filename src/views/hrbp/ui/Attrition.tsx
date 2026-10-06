@@ -23,7 +23,6 @@ import {
 } from '../engine/attrition'
 import { isCalendarQuarter, NO_LEAVERS } from '../engine/base'
 import {
-  groupExitSpec,
   groupOtherSpec,
   managerRegrettedSpec,
   quarterExitSpec,
@@ -33,7 +32,7 @@ import {
 } from '../engine/buckets'
 import { FIGURE, REASON } from '../engine/lineage'
 import { ANONYMITY_ID, ID } from './defs'
-import { drillWhen } from './drill'
+import { attritionGroupDrill, drillWhen } from './drill'
 
 type Dim = 'department' | 'location'
 type Measure = 'voluntary' | 'all'
@@ -88,8 +87,8 @@ export function Attrition({ m }: { m: HrbpModel }) {
     drill(() => typedCountSpec(p, a, by, rows))
   const typedCell = (by: 'tenure' | 'rating') => (r: TypedCountRow) =>
     drillWhen(r.records.length > 0, () => typedCountSpec(p, a, by, [r]))
-  const groupCell = (d: 'department' | 'location' | 'level', vol: boolean) => (r: GroupRateRow) =>
-    drillWhen(r.leavers.length > 0, () => groupExitSpec(p, d, r, vol))
+  // Location bars set their site as the filter; department and level are rebuilt as they were then.
+  const groupCell = (d: 'department' | 'location' | 'level', vol: boolean) => attritionGroupDrill(p, d, vol)
 
   return (
     <>
@@ -346,7 +345,7 @@ export function Attrition({ m }: { m: HrbpModel }) {
             secondary={(d) =>
               `${rateKey === 'voluntaryRate' ? d.voluntary : d.exits} of ${Math.round(d.avgHeadcount)}`
             }
-            onSelect={(d) => drill(() => groupExitSpec(p, dim, d, voluntaryOnly))}
+            onSelect={(d) => drill(groupCell(dim, voluntaryOnly)(d))}
             onSelectOther={(rows) => drill(() => groupOtherSpec(p, a, dim, rows, voluntaryOnly))}
           />
         </Figure>
@@ -445,7 +444,7 @@ export function Attrition({ m }: { m: HrbpModel }) {
             format="pct"
             xOrder={[...LEVELS]}
             height={220}
-            onSelect={(d) => drill(() => groupExitSpec(p, 'level', d, false))}
+            onSelect={(d) => drill(groupCell('level', false)(d))}
           />
         </Figure>
         <Figure

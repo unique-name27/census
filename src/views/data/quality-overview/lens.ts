@@ -12,6 +12,7 @@
  */
 import { create } from 'zustand'
 import { goTo } from '@/components/navigation'
+import { hintAddress } from '@/data/address'
 import { DATASET_KEYS, type DatasetKey } from '@/data/schema'
 import { closeSettings } from '@/data/store'
 import { useDrillStore } from '@/drill/store'
@@ -41,7 +42,13 @@ function writeLens(on: boolean): void {
 
 interface LensState {
   on: boolean
+  /** The switch: show or hide, and remember it in this browser (other open tabs follow). */
   setOn: (on: boolean) => void
+  /**
+   * Show or hide in this tab only, without remembering it: the address (a link, Back and Forward)
+   * and saved views carry the lens as part of the scope, which belongs to the tab.
+   */
+  show: (on: boolean) => void
 }
 
 export const useQualityLens = create<LensState>((set) => ({
@@ -50,16 +57,22 @@ export const useQualityLens = create<LensState>((set) => ({
     writeLens(on)
     set({ on })
   },
+  show(on) {
+    set({ on })
+  },
 }))
 
 /** Whether the quality lens is on (a hook; components re-render when it changes). */
 export const useLensOn = (): boolean => useQualityLens((s) => s.on)
 
-// Another tab of this browser switching the lens updates this one too.
+// Another tab of this browser switching the lens updates this one too. That corrects this tab's
+// address; it never adds to this tab's history.
 try {
   if (typeof window !== 'undefined')
     window.addEventListener('storage', (e) => {
-      if (e.key === QUALITY_LENS_KEY || e.key === null) useQualityLens.setState({ on: readLens() })
+      if (e.key !== QUALITY_LENS_KEY && e.key !== null) return
+      hintAddress('replace')
+      useQualityLens.setState({ on: readLens() })
     })
 } catch {
   /* no window events (tests) */

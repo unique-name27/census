@@ -192,6 +192,14 @@ describe('report a problem', () => {
     expect(safeAddress('#hrbp.attrition?name=Jane Doe')).toBe('#hrbp.attrition')
     expect(safeAddress('#hrbp.?x')).toBe('#hrbp')
     expect(safeAddress('')).toBe('#')
+    // The scope after "?" holds leader employee IDs and values from the data, on every page.
+    expect(safeAddress('#actions?leader=E10053&dept=Design+Verification')).toBe('#actions')
+    expect(safeAddress('#hrbp?leader=E10053&dept=Design+Verification')).toBe('#hrbp')
+    expect(safeAddress('#comp?loc=Bengaluru&not=loc')).toBe('#comp')
+    expect(safeAddress('#hrbp?dept=Design.Verification')).toBe('#hrbp')
+    expect(safeAddress('#data.metrics/hrbp/attrition/voluntary?loc=Bengaluru')).toBe(
+      '#data.metrics/hrbp/attrition/voluntary',
+    )
     expect(pageLabels('data', 'quality')).toEqual({ view: 'Data room', tab: 'Data quality' })
     expect(pageLabels('actions', '')).toEqual({ view: 'Action center', tab: null })
     expect(pageLabels('scorecard', '')).toEqual({ view: 'Scorecard', tab: null })

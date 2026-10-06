@@ -15,12 +15,14 @@ import type { OnboardingBase } from './base'
 import {
   candidatesDrill,
   employeesDrill,
+  groupScope,
   planDrill,
   planYtdSub,
   reqsDrill,
   startsDrill,
   tasksDrill,
   windowSub,
+  withScope,
 } from './drills'
 import type { First90Model } from './first90'
 import {
@@ -40,7 +42,7 @@ import {
   union,
 } from './lineage'
 import { isUncovered, type PlanModel } from './plan'
-import { regionOf, type Start, type TaskView } from './starts'
+import { regionOf, regionSites, type Start, type TaskView } from './starts'
 import type { UpcomingModel } from './upcoming'
 
 export const MAX_FINDINGS = 10
@@ -238,7 +240,12 @@ function renegeFinding(b: OnboardingBase, u: UpcomingModel): Ranked | null {
       .join(' '),
     action: `Keep in touch with ${top.location} hires through their notice period, with a monthly call from the hiring manager.`,
     tab: 'upcoming',
-    drill: () => candidatesDrill(b, top.reneged, `Reneges, ${top.location}`, { uses: RENEGE }),
+    // The site's reneges: "Filter to" shows the same count and rate for the site.
+    drill: () =>
+      withScope(
+        candidatesDrill(b, top.reneged, `Reneges, ${top.location}`, { uses: RENEGE }),
+        groupScope('location', top.location),
+      ),
     uses: RENEGE,
     impact: top.reneged.length,
   }
@@ -310,6 +317,25 @@ function lateTaskFinding(b: OnboardingBase, f: First90Model, ctx: AnalyticsConte
   }
   const pulseShown = detail.some((d) => d.includes('I had what I needed'))
   const uses = union(STARTERS, TASKS, SITE, DEPARTMENT, ['employees.country'], pulseShown ? PULSE : [])
+  // The segment as a scope: a site or a department as itself, a region as its sites, named as the
+  // region ("Focus on Asia Pacific"). Starts follow their employee record, as the filters do.
+  const sites =
+    seg.dim === 'region'
+      ? regionSites(
+          ctx.all.employees,
+          seg.value,
+          inSeg.map((x) => x.start.location),
+        )
+      : null
+  const filter =
+    seg.dim === 'location'
+      ? groupScope('location', seg.value)
+      : seg.dim === 'department'
+        ? groupScope('department', seg.value)
+        : sites
+          ? { location: sites }
+          : undefined
+  const filterLabel = sites ? seg.value : undefined
   return {
     id: `onboarding-late-${task.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
     metricId: M.lateTask,
@@ -318,13 +344,19 @@ function lateTaskFinding(b: OnboardingBase, f: First90Model, ctx: AnalyticsConte
     detail: detail.join(' '),
     action: `Review ${words.review} for ${seg.value} with ${teamWords(owner)}.`,
     tab: 'first90',
-    filter: seg.dim === 'location' ? { location: [seg.value] } : undefined,
+    filter,
+    filterLabel,
+    // The late tasks of the segment's starts: "Filter to" keeps the same late tasks.
     drill: () =>
-      tasksDrill(
-        b,
-        late.map((x) => x.task),
-        `${task}, late, ${seg.value}`,
-        { subtitle: windowSub(b), uses },
+      withScope(
+        tasksDrill(
+          b,
+          late.map((x) => x.task),
+          `${task}, late, ${seg.value}`,
+          { subtitle: windowSub(b), uses },
+        ),
+        filter,
+        filterLabel,
       ),
     uses,
     impact: 50 + seg.impact * 100,
@@ -409,11 +441,14 @@ function checkInFinding(b: OnboardingBase, f: First90Model): Ranked | null {
     tab: 'first90',
     filter: { department: [seg.value] },
     drill: () =>
-      tasksDrill(
-        b,
-        rows.map((x) => x.task),
-        `Check-ins due, ${seg.value}`,
-        { subtitle: windowSub(b), uses },
+      withScope(
+        tasksDrill(
+          b,
+          rows.map((x) => x.task),
+          `Check-ins due, ${seg.value}`,
+          { subtitle: windowSub(b), uses },
+        ),
+        groupScope('department', seg.value),
       ),
     uses,
     impact: 20 + seg.impact * 100,
@@ -573,9 +608,12 @@ function planFindings(b: OnboardingBase, p: PlanModel | null): Ranked[] {
       tab: 'plan',
       filter: { businessUnit: [u.businessUnit] },
       drill: () =>
-        planDrill(b, lines, `${q.label} roles with no accepted offer or open req, ${u.businessUnit}`, {
-          uses,
-        }),
+        withScope(
+          planDrill(b, lines, `${q.label} roles with no accepted offer or open req, ${u.businessUnit}`, {
+            uses,
+          }),
+          groupScope('businessUnit', u.businessUnit),
+        ),
       uses,
       impact: 60 + u.uncovered,
     })
@@ -597,10 +635,13 @@ function planFindings(b: OnboardingBase, p: PlanModel | null): Ranked[] {
       tab: 'plan',
       filter: { businessUnit: [r.businessUnit] },
       drill: () =>
-        employeesDrill(b, r.actual, `Starts to date, ${r.businessUnit}`, {
-          subtitle: planYtdSub(b, p),
-          uses,
-        }),
+        withScope(
+          employeesDrill(b, r.actual, `Starts to date, ${r.businessUnit}`, {
+            subtitle: planYtdSub(b, p),
+            uses,
+          }),
+          groupScope('businessUnit', r.businessUnit),
+        ),
       uses,
       impact: Math.abs((r.vsPlan ?? 1) - 1) * 10,
     })

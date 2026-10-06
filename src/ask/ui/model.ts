@@ -24,6 +24,7 @@ import {
 } from '@/ask/engine'
 import type { AnalyticsContext } from '@/data/context'
 import type { DataStandard } from '@/data/quality/tier'
+import { FILTER_DIMENSIONS, type FilterDimension, isExcluded } from '@/data/scope'
 import { formatRange } from '@/lib/dates'
 import type { Format } from '@/lib/format'
 import { plural } from '@/lib/format'
@@ -559,6 +560,8 @@ export interface AskedScope {
   department: readonly string[]
   location: readonly string[]
   level: readonly string[]
+  /** The filters left out rather than kept, as the tools name them ("business_unit"), sorted. */
+  exclude: readonly string[]
   start: string
   end: string
   /** "1 Oct 2025 – 30 Sep 2026" */
@@ -579,6 +582,7 @@ export function askedScope(
     department: [...f.department],
     location: [...f.location],
     level: [...f.level],
+    exclude: excludedArgs(f),
     start: ctx.window.start,
     end: ctx.window.end,
     window: ctx.window.label,
@@ -586,6 +590,23 @@ export function askedScope(
     standard: ctx.standard,
     isSample: ctx.isSample,
   }
+}
+
+const EXCLUDE_ARG: Record<FilterDimension, string> = {
+  leaderId: 'leader',
+  businessUnit: 'business_unit',
+  department: 'department',
+  location: 'location',
+  level: 'level',
+}
+
+/** The filters with values that exclude them, as the tools name them, sorted. */
+function excludedArgs(f: AnalyticsContext['filters']): string[] {
+  return FILTER_DIMENSIONS.filter(
+    (d) => isExcluded(f, d) && (d === 'leaderId' ? !!f.leaderId : (f[d] ?? []).length > 0),
+  )
+    .map((d) => EXCLUDE_ARG[d])
+    .sort()
 }
 
 /** What an exported answer table is stamped with. */
@@ -607,6 +628,8 @@ interface ResultScope {
   words: string
   leader: string | null
   lists: string[][]
+  /** The filters the result left out (`filters.exclude`), sorted. */
+  exclude: string[]
   start: string
   end: string
 }
@@ -631,6 +654,7 @@ function resultScope(result: string): ResultScope | null {
     words: o.scope,
     leader: typeof f.leader === 'string' ? f.leader : null,
     lists: [f.business_unit, f.department, f.location, f.level].map(strings),
+    exclude: strings(f.exclude),
     start: p.start,
     end: p.end,
   }
@@ -663,10 +687,11 @@ export function exportScope(
     [asked.businessUnit, asked.department, asked.location, asked.level].every((l, i) =>
       sameList(l, s.lists[i] ?? []),
     ) &&
+    sameList(asked.exclude ?? [], s.exclude) &&
     s.start === asked.start &&
     s.end === asked.end
   if (used.every(isAsked)) return { ...base, scope: asked.scope, window: asked.window }
-  const key = (s: ResultScope) => JSON.stringify([s.leader, s.lists, s.start, s.end])
+  const key = (s: ResultScope) => JSON.stringify([s.leader, s.lists, s.exclude, s.start, s.end])
   const first = used[0] as ResultScope
   if (used.every((s) => key(s) === key(first)))
     return { ...base, scope: withNames(first.words, person), window: formatRange(first.start, first.end) }

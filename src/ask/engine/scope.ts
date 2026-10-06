@@ -12,17 +12,21 @@
  */
 import { leaderOptions } from '@/app/filterOptions'
 import type { AnalyticsContext } from '@/data/context'
+import { activeEmployees, smallExcludedValues } from '@/data/exclusion'
 import { LEVEL_LABELS, type Level, levelIndex } from '@/data/schema'
 import {
+  type FilterDimension,
+  type FilterModes,
   type Filters,
   hasOrgFilter,
+  isExcluded,
   PERIOD_LABELS,
   type PeriodPreset,
   periodWindows,
   scopeDatasets,
   scopeLabel,
 } from '@/data/scope'
-import { isValidDate } from '@/lib/dates'
+import { isCalendarDate } from '@/lib/dates'
 import { minGroupOf } from '@/metrics/privacy'
 import type { TokenMap } from './privacy'
 
@@ -38,6 +42,19 @@ export interface FilterInput {
   /** YYYY-MM-DD, with period "custom". */
   start?: string
   end?: string
+  /** The dimensions whose values are left out instead of kept ("everyone except"). */
+  exclude?: ExcludeArg[]
+}
+
+/** The dimensions `filters.exclude` can name, as the tools call them. */
+export const EXCLUDE_ARGS = ['leader', 'business_unit', 'department', 'location', 'level'] as const
+export type ExcludeArg = (typeof EXCLUDE_ARGS)[number]
+const EXCLUDE_DIM: Record<ExcludeArg, FilterDimension> = {
+  leader: 'leaderId',
+  business_unit: 'businessUnit',
+  department: 'department',
+  location: 'location',
+  level: 'level',
 }
 
 export const PERIODS: readonly PeriodPreset[] = ['t12m', 'ytd', 'lastQuarter', 't6m', 't3m', 'custom']
@@ -57,6 +74,9 @@ export function chatContext(live: AnalyticsContext): AnalyticsContext {
 
 const scoped = new WeakMap<AnalyticsContext, Map<string, AnalyticsContext>>()
 
+const hasValue = (f: Filters, d: FilterDimension): boolean =>
+  d === 'leaderId' ? !!f.leaderId : f[d].length > 0
+
 const filterKey = (f: Filters): string =>
   JSON.stringify([
     f.period,
@@ -67,6 +87,8 @@ const filterKey = (f: Filters): string =>
     [...f.department].sort(),
     [...f.location].sort(),
     [...f.level].sort(),
+    // Only the modes of dimensions with values change who is in scope.
+    EXCLUDE_ARGS.map((a) => EXCLUDE_DIM[a]).filter((d) => isExcluded(f, d) && hasValue(f, d)),
   ])
 
 /** The context for other filters, built from `base` (cached; `base` itself when the filters are its own). */
@@ -128,13 +150,17 @@ const DIMS = [
 ] as const
 
 /**
- * The filters a tool call asks for. Omitted: the user's own. Given: they replace the user's org
- * filters (a dimension left out means no filter on it), and the period is the user's unless given.
- * Values are matched to the data's own spelling; an unknown value is an error naming the values
- * that exist, so Claude can correct itself.
+ * The filters a tool call asks for. Omitted: the user's own, unless one of their exclusions breaks
+ * the anonymity rule (`ownScopeProblem`). Given: they replace the user's org filters (a dimension
+ * left out means no filter on it), and the period is the user's unless given. Values are matched
+ * to the data's own spelling; an unknown value is an error naming the values that exist, so Claude
+ * can correct itself.
  */
 export function resolveFilters(base: AnalyticsContext, input: unknown, tokens: TokenMap): FilterResult {
-  if (input == null) return { ok: true, filters: base.filters }
+  if (input == null) {
+    const own = ownScopeProblem(base, tokens)
+    return own ? { ok: false, error: own } : { ok: true, filters: base.filters }
+  }
   if (typeof input !== 'object' || Array.isArray(input))
     return { ok: false, error: 'filters must be an object.' }
   const f = input as Record<string, unknown>
@@ -147,13 +173,33 @@ export function resolveFilters(base: AnalyticsContext, input: unknown, tokens: T
     'period',
     'start',
     'end',
+    'exclude',
   ])
   const unknownKeys = Object.keys(f).filter((k) => !known.has(k))
   if (unknownKeys.length)
     return {
       ok: false,
-      error: `Unknown filter ${unknownKeys.map((k) => `"${k}"`).join(', ')}. Filters are leader, business_unit, department, location, level, period, start and end.`,
+      error: `Unknown filter ${unknownKeys.map((k) => `"${k}"`).join(', ')}. Filters are leader, business_unit, department, location, level, period, start, end and exclude.`,
     }
+  // Exclude: the dimensions whose values are left out. Each must also be given values.
+  const modes: FilterModes = {}
+  if (f.exclude != null) {
+    const list = Array.isArray(f.exclude) ? f.exclude : [f.exclude]
+    for (const a of list) {
+      if (typeof a !== 'string' || !(EXCLUDE_ARGS as readonly string[]).includes(a))
+        return {
+          ok: false,
+          error: `exclude takes the names of filters to leave out: ${EXCLUDE_ARGS.join(', ')}.`,
+        }
+      const v = f[a]
+      if (v == null || v === '' || (Array.isArray(v) && !v.length))
+        return {
+          ok: false,
+          error: `exclude names ${a}, but no ${a} is given. Give the values to leave out in ${a} as well.`,
+        }
+      modes[EXCLUDE_DIM[a as ExcludeArg]] = 'exclude'
+    }
+  }
   const out: Filters = {
     period: base.filters.period,
     customStart: base.filters.customStart,
@@ -163,6 +209,7 @@ export function resolveFilters(base: AnalyticsContext, input: unknown, tokens: T
     department: [],
     location: [],
     level: [],
+    modes,
   }
   if (f.leader != null && f.leader !== '') {
     if (typeof f.leader !== 'string')
@@ -212,7 +259,12 @@ export function resolveFilters(base: AnalyticsContext, input: unknown, tokens: T
   if (f.start != null || f.end != null || out.period === 'custom') {
     const start = f.start ?? out.customStart
     const end = f.end ?? out.customEnd
-    if (typeof start !== 'string' || typeof end !== 'string' || !isValidDate(start) || !isValidDate(end))
+    if (
+      typeof start !== 'string' ||
+      typeof end !== 'string' ||
+      !isCalendarDate(start) ||
+      !isCalendarDate(end)
+    )
       return { ok: false, error: 'A custom period needs start and end as YYYY-MM-DD.' }
     if (start > end) return { ok: false, error: 'start must be on or before end.' }
     if (end > base.asOf) return { ok: false, error: `end must be on or before the as-of date, ${base.asOf}.` }
@@ -220,7 +272,59 @@ export function resolveFilters(base: AnalyticsContext, input: unknown, tokens: T
     out.customStart = start
     out.customEnd = end
   }
+  const left = exclusionProblem(base, out, tokens)
+  if (left) return { ok: false, error: left }
   return { ok: true, filters: out }
+}
+
+/**
+ * The first excluded value of a scope that removes between 1 and the anonymity minimum − 1 active
+ * employees from it (checked value by value), in words with a leader as a token; null when none.
+ */
+function smallExclusionWords(
+  base: Pick<AnalyticsContext, 'all' | 'org' | 'asOf' | 'metrics'>,
+  filters: Filters,
+  tokens: TokenMap,
+): string | null {
+  const min = minGroupOf(base.metrics)
+  // The same rule as the records panel's "Leave out" (src/data/exclusion.ts), in filter-row order.
+  const [hit] = smallExcludedValues(activeEmployees(base.all.employees, base.asOf), filters, base.org, min)
+  if (!hit) return null
+  return hit.dim === 'leaderId' ? `${tokens.forEmployee(hit.value)}'s org` : hit.value
+}
+
+/**
+ * Why a scope's exclusions can't be used, or null. Leaving out a group of fewer people than the
+ * anonymity minimum would let the scope be compared with the same scope without the exclusion,
+ * and the difference is that small group: so each excluded value must remove none, or at least
+ * the minimum, of the active employees the scope would have without it. Value by value, so a
+ * small value can't hide behind a large one left out with it. (An excluded leader also passes the
+ * leader checks, in `resolveFilters`.)
+ */
+export function exclusionProblem(
+  base: Pick<AnalyticsContext, 'all' | 'org' | 'asOf' | 'metrics'>,
+  filters: Filters,
+  tokens: TokenMap,
+): string | null {
+  const what = smallExclusionWords(base, filters, tokens)
+  if (!what) return null
+  const min = minGroupOf(base.metrics)
+  return `Leaving out ${what} removes fewer than ${min} people from the scope, the anonymity minimum, so it could single them out by comparison with the scope without it. Leave it in, or leave out a larger group.`
+}
+
+/**
+ * Why the user's own scope can't be used, or null: the same rule as tool filters. A tool call can
+ * ask for the scope without the user's exclusion, so comparing the two would single out the few
+ * people it leaves out.
+ */
+export function ownScopeProblem(
+  base: Pick<AnalyticsContext, 'all' | 'org' | 'asOf' | 'metrics' | 'filters'>,
+  tokens: TokenMap,
+): string | null {
+  const what = smallExclusionWords(base, base.filters, tokens)
+  if (!what) return null
+  const min = minGroupOf(base.metrics)
+  return `The user's scope leaves out ${what}, which removes fewer than ${min} people from it, the anonymity minimum, so Ask does not answer within that scope: comparing it with the scope without that exclusion would single them out. Pass filters for another scope, or ask the user to change the filter row.`
 }
 
 const capFirst = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1)
@@ -264,13 +368,27 @@ export function leaderProblem(
   return null
 }
 
-/** The scope in words with the leader as a token: "{{P3}}'s org · Bengaluru", or "Whole company". */
+/**
+ * The scope in words with the leader as a token: "{{P3}}'s org · Bengaluru", "Whole company",
+ * "Whole company except Sales", or "Silicon Engineering · not Bengaluru".
+ */
 export function scopeWords(filters: Filters, tokens: TokenMap): string {
-  const parts: string[] = []
-  if (filters.leaderId) parts.push(`${tokens.forEmployee(filters.leaderId)}'s org`)
-  for (const list of [filters.businessUnit, filters.department, filters.location, filters.level])
-    if (list.length) parts.push(list.join(', '))
-  return parts.length ? parts.join(' · ') : 'Whole company'
+  const inc: string[] = []
+  const exc: string[] = []
+  if (filters.leaderId) {
+    const org = `${tokens.forEmployee(filters.leaderId)}'s org`
+    if (isExcluded(filters, 'leaderId')) exc.push(org)
+    else inc.push(org)
+  }
+  for (const d of ['businessUnit', 'department', 'location', 'level'] as const) {
+    const list = filters[d]
+    if (!list.length) continue
+    if (isExcluded(filters, d)) exc.push(list.join(', '))
+    else inc.push(list.join(', '))
+  }
+  if (!inc.length && !exc.length) return 'Whole company'
+  if (!inc.length) return `Whole company except ${exc.join('; ')}`
+  return [...inc, ...exc.map((x) => `not ${x}`)].join(' · ')
 }
 
 /** The scope and period of a context as tool output. */
@@ -284,6 +402,8 @@ export function scopeOut(ctx: AnalyticsContext, tokens: TokenMap) {
       department: f.department,
       location: f.location,
       level: f.level,
+      // The filters above whose values are left out ("everyone except"), as the tools name them.
+      exclude: EXCLUDE_ARGS.filter((a) => isExcluded(f, EXCLUDE_DIM[a]) && hasValue(f, EXCLUDE_DIM[a])),
     },
     period: {
       preset: f.period,
@@ -300,6 +420,6 @@ export function scopePhrase(base: AnalyticsContext, input: unknown, tokens: Toke
   if (input == null) return ''
   const r = resolveFilters(base, input, tokens)
   if (!r.ok) return ''
-  const words = scopeWords(r.filters, tokens)
-  return words === 'Whole company' ? ' for the whole company' : ` for ${words.replaceAll(' · ', ', ')}`
+  const words = scopeWords(r.filters, tokens).replace(/^Whole company/, 'the whole company')
+  return ` for ${words.replaceAll(' · ', ', ')}`
 }

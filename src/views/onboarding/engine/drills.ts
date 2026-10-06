@@ -14,9 +14,11 @@ import type {
   Requisition,
   SurveyType,
 } from '@/data/schema'
+import type { FilterDimension } from '@/data/scope'
+import { groupFilter, periodFilter } from '@/drill/filter'
 import { PERSON_KEY } from '@/drill/records'
 import { asOfLine, windowLine } from '@/drill/subtitle'
-import { type DrillSpec, drillSpec } from '@/drill/types'
+import { type DrillFilter, type DrillSpec, drillSpec } from '@/drill/types'
 import { formatDate, monthEnd } from '@/lib/dates'
 import { fmt, plural } from '@/lib/format'
 import { type Breakdown, groupRows, type SurveyAggregate } from '@/lib/surveys'
@@ -40,6 +42,45 @@ export const planYtdSub = (b: OnboardingBase, p: { start: string; toDate: string
 /** One calendar month: "1 Jun 2026 – 30 Jun 2026 · Whole company". */
 export const monthSub = (b: OnboardingBase, month: string): string =>
   windowSub(b, { start: `${month}-01`, end: monthEnd(`${month}-01`) })
+
+/* ───────────── "Filter to this" (docs/FILTERS.md, part 4) ───────────── */
+
+/**
+ * A spec with the scope that reproduces the group its number counts, so the records panel offers
+ * "Filter to" (and "Leave out" for one org group). Null stays null; no filter leaves it as it is.
+ */
+export function withScope<S extends DrillSpec>(
+  spec: S | null,
+  filter: DrillFilter | undefined,
+  label?: string,
+): S | null {
+  if (!spec || !filter) return spec
+  const merged = { ...spec.filter, ...filter, modes: { ...spec.filter?.modes, ...filter.modes } }
+  // A group named otherwise than its values ("Asia Pacific" for its sites) says that name.
+  return label ? { ...spec, filter: merged, filterLabel: label } : { ...spec, filter: merged }
+}
+
+/** The bucket the engine puts rows with no value in ("Unknown"); no filter can name it. */
+const UNKNOWN = 'Unknown'
+
+/**
+ * The filter of one group of an org dimension, or none for the "Unknown" bucket or a folded
+ * "Other (k)" row.
+ */
+export const groupScope = (
+  dim: FilterDimension,
+  value: string | null | undefined,
+): DrillFilter | undefined => (value && value !== UNKNOWN ? groupFilter(dim, value) : undefined)
+
+/**
+ * The period of one month of a figure over the window ("Filter to Jun 2026"): the month, cut to
+ * the window where the window starts or ends inside it, as the month's bar counts.
+ */
+export function monthPeriod(month: string, w: { start: string; end: string }): DrillFilter {
+  const first = `${month}-01`
+  const last = monthEnd(first)
+  return periodFilter(first > w.start ? first : w.start, last < w.end ? last : w.end)
+}
 
 const C = (key: string, label: string, extra: Partial<Column> = {}): Column => ({ key, label, ...extra })
 

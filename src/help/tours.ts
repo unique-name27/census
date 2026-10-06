@@ -42,7 +42,7 @@ const GETTING_STARTED: Tour = {
       ...at('hrbp', 'overview'),
       target: tourTarget('filter-leader'),
       title: 'Focus on a leader or a group',
-      body: 'Pick a leader to see their whole organization, or narrow by business unit, department, location and level. Filters apply to every view and show as chips you can remove.',
+      body: 'Pick a leader to see their whole organization, or narrow by business unit, department, location and level. Each menu starts with Include and Exclude, so you can also leave a group out. Filters apply to every view, show as chips you can remove, and Back undoes a change. Views, at the start of the row, saves the scope you use often.',
       placement: 'bottom',
     },
     {

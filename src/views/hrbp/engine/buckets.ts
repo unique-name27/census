@@ -215,8 +215,18 @@ export type ScoreCell =
   | 'promotionRate'
   | 'avgSpan'
 
-/** A scorecard cell: the records behind that org's number (none for a hidden value). */
+/**
+ * A scorecard cell: the records behind that org's number (none for a hidden value). A row for a
+ * leader's org, business unit, department or location carries its own scope as the filter, so the
+ * records panel offers "Filter to" it (the scope's tiles then show the row's numbers). The Other
+ * and Company rows carry none.
+ */
 export function scoreSpec(p: Prep, row: ScoreRow, cell: ScoreCell): Spec {
+  const spec = scoreCellSpec(p, row, cell)
+  return spec && row.filter ? { ...spec, filter: row.filter } : spec
+}
+
+function scoreCellSpec(p: Prep, row: ScoreRow, cell: ScoreCell): Spec {
   const r = row.records
   const org = row.label
   const period = periodName(p)

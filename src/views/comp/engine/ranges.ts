@@ -5,6 +5,7 @@
  */
 import { LEVELS, MIN_GROUP } from '@/data/schema'
 import { TENURE_BANDS } from '@/lib/people'
+import type { GroupDim } from './groupFilter'
 import { behind, groupRows, safeMedian, safeQuantile, safeShare, values } from './groups'
 import type { CompPerson, Position } from './population'
 import { defaultRules } from './rules'
@@ -19,7 +20,7 @@ import type { CycleSettings } from './settings'
 export const inBand = (p: CompPerson, s: CycleSettings): boolean =>
   p.compa != null && p.compa >= s.bandLow && p.compa <= s.bandHigh
 
-export interface PositionMixRow {
+export interface PositionMixRow extends GroupDim {
   group: string
   n: number
   below: number | null
@@ -32,14 +33,15 @@ export interface PositionMixRow {
   members: CompPerson[]
 }
 
-export const POSITION_FIELD: Record<Position, keyof Omit<PositionMixRow, 'group' | 'n' | 'members'>> = {
-  'Below minimum': 'below',
-  Q1: 'q1',
-  Q2: 'q2',
-  Q3: 'q3',
-  Q4: 'q4',
-  'Above maximum': 'above',
-}
+export const POSITION_FIELD: Record<Position, keyof Omit<PositionMixRow, 'group' | 'n' | 'members' | 'dim'>> =
+  {
+    'Below minimum': 'below',
+    Q1: 'q1',
+    Q2: 'q2',
+    Q3: 'q3',
+    Q4: 'q4',
+    'Above maximum': 'above',
+  }
 
 function mixRow(group: string, rows: readonly CompPerson[], min: number): PositionMixRow {
   const placed = rows.filter((p) => p.position != null)
@@ -73,7 +75,7 @@ export function positionTotal(people: readonly CompPerson[], label = 'All', min 
   return mixRow(label, people, min)
 }
 
-export interface CompaGroupRow {
+export interface CompaGroupRow extends GroupDim {
   group: string
   n: number
   median: number | null

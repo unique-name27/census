@@ -8,8 +8,8 @@
 import { useState } from 'react'
 import type { Column } from '@/charts/types'
 import { useAnalytics } from '@/data/context'
-import { useCensus } from '@/data/store'
 import { drill } from '@/drill/Drill'
+import { focusScope } from '@/drill/focus'
 import { openPerson } from '@/drill/store'
 import { plural } from '@/lib/format'
 import { type Span, spanClass } from '@/lib/spans'
@@ -32,7 +32,6 @@ import {
 import { TierBadge } from './tier/TierBadge'
 import { hiddenFindingsText, splitByStandard, type TierGate } from './tier/tierModel'
 import { useGateFn } from './tier/useTierGate'
-import { toast } from './toast'
 import type { Finding, FindingPerson } from './types'
 import { cx, SeverityIcon, Tag } from './ui'
 import { useTableFigure } from './useTableFigure'
@@ -115,16 +114,11 @@ function FindingItem({
   const view = useCurrentView()
   // The tab with the detail, unless it is the tab already on screen (the link would do nothing).
   const openTab = finding.tab && view && finding.tab !== view.tab ? finding.tab : null
-  const setFilters = useCensus((s) => s.setFilters)
   const nameOf = (id: string) => ctx.org.byId.get(id)?.name
-  const focus = finding.filter ? describeFocus(finding.filter, nameOf) : ''
+  const focus = finding.filter ? finding.filterLabel || describeFocus(finding.filter, nameOf) : ''
+  // The same merge, history entry and Undo as "Filter to" in the records panel.
   const onFocus = () => {
-    if (!finding.filter) return
-    const before = ctx.filters
-    setFilters(finding.filter)
-    toast(focus ? `Showing ${focus}` : 'Filters applied', {
-      action: { label: 'Undo', onClick: () => setFilters(before) },
-    })
+    if (finding.filter) focusScope(finding.filter, { org: ctx.org, label: finding.filterLabel })
   }
   return (
     <li className="flex gap-2.5 border-t border-rule px-4 py-3.5 first:border-t-0">

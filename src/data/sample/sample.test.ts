@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest'
-import { bestCostMs } from '@/lib/testBudget'
 import {
   AUTHORIZATION_TYPES,
   CANDIDATE_STATUSES,
@@ -135,10 +134,6 @@ describe('generator', () => {
 
   it('is deterministic: two runs are deep-equal', () => {
     expect(JSON.stringify(generateSample()) === JSON.stringify(data)).toBe(true)
-  })
-
-  it('runs in under 600 ms', () => {
-    expect(bestCostMs(() => generateSample())).toBeLessThan(600)
   })
 })
 

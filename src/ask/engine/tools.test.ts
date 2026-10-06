@@ -1,7 +1,7 @@
 /**
  * The tools on the sample company: they compute through the views' own engines, so Ask never
  * disagrees with the screen; refs open the same records; suppression, the data standard and the
- * pay rule hide what the app hides; scope filters and errors; and calls stay fast.
+ * pay rule hide what the app hides; scope filters and errors. Call timings are in tools.perf.test.ts.
  */
 import { beforeAll, describe, expect, it } from 'vitest'
 import { kpiValueText } from '@/components/kpiModel'
@@ -260,19 +260,6 @@ describe('view_summary', () => {
     expect(contextFor(ctx, ctx.filters)).toBe(ctx)
     const f = { ...ctx.filters, location: ['Austin'] }
     expect(contextFor(ctx, f)).toBe(contextFor(ctx, { ...f }))
-  })
-
-  it('stays well under a second per call on the sample (timings logged)', () => {
-    const times: Record<string, number> = {}
-    const c = new Conversation()
-    const fresh = sampleCtx({ filters: { businessUnit: ['Operations'] } })
-    for (const v of summarized) {
-      const r = call(c, envOf(fresh), 'view_summary', { view: v.key })
-      times[v.key] = Math.round(r.ms)
-    }
-    times.get_context = Math.round(call(c, envOf(fresh), 'get_context').ms)
-    console.info('Ask tool timings (ms):', JSON.stringify(times))
-    for (const [k, ms] of Object.entries(times)) expect(ms, k).toBeLessThan(1500)
   })
 })
 

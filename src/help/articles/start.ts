@@ -45,7 +45,7 @@ export const START_ARTICLES: readonly HelpArticle[] = [
     id: 'moving-around',
     group: 'start',
     title: 'Moving around',
-    summary: 'Folder tabs, sub-tabs, the filter row, the reporting period and the leader focus.',
+    summary: 'Folder tabs, sub-tabs, the filter row, saved views, links and Back, leaving groups out.',
     keywords: [
       'navigate',
       'navigation',
@@ -57,6 +57,15 @@ export const START_ARTICLES: readonly HelpArticle[] = [
       'scope',
       'as of',
       'date',
+      'saved view',
+      'views',
+      'exclude',
+      'leave out',
+      'except',
+      'link',
+      'share',
+      'back',
+      'bookmark',
     ],
     tour: 'getting-started',
     body: [
@@ -65,19 +74,49 @@ export const START_ARTICLES: readonly HelpArticle[] = [
         p: 'The folder tabs along the top are the practices. Each tab shows one live number for the current scope, such as open reqs or median compa-ratio, often with a small trend line. Click a tab to open the view. With the keyboard, move to the tabs and use the left and right arrow keys.',
       },
       {
-        p: "Inside a view, the sub-tabs under its name (Overview, Pipeline and so on) go deeper. The browser's Back and Forward buttons move between views and tabs, and the address in the address bar opens the same tab when you share or bookmark it.",
+        p: 'Inside a view, the sub-tabs under its name (Overview, Pipeline and so on) go deeper.',
       },
       { h: 'The filter row' },
       {
         ul: [
+          'Views: your saved views, and saving the current one. See below.',
           'Period: the window most numbers cover. The default is the last 12 months. You can also pick year to date, the last full quarter, the last 6 or 3 months, or a custom range.',
           'Leader: focus on one leader and everyone who reports to them, directly or through others. The chip under the filters shows the reporting line above them; click a name in it to widen to that leader.',
           'Business unit, department, location and level: narrow who is in scope. Pick one or several values in each.',
-          'The count at the end of the row says how many people are in scope.',
+          'The count at the end of the row says how many people are in scope. The counts in each filter menu say how many people each choice would leave in scope, with the other filters applied.',
         ],
       },
       {
         p: 'Filters apply to every view and are remembered in this browser. Remove one with the cross on its chip, or use Reset to clear them all. The view header always says the scope, the window and the as-of date.',
+      },
+      { h: 'Leaving a group out' },
+      {
+        p: 'Each filter menu starts with Include and Exclude. Include keeps only the values you pick; Exclude keeps everyone except them. For the leader, Exclude leaves out that leader and their whole org. With Exclude on, the count next to each choice says how many people it leaves out, and a group of fewer than five cannot be left out, since comparing the scope with and without it would single those people out. Filters combine, so you can ask for Silicon Engineering, not Bengaluru, not L1.',
+      },
+      {
+        p: 'Chips read "Not Sales" or "Not in Allison Carter\'s org", the view header and exports say "Whole company except Sales", and "vs company" comparisons, the Org chart (left-out people are dimmed), the Scorecard, the Action center and Ask all follow. Someone with no value for a filter you exclude stays in.',
+      },
+      { h: 'Links, Back and Forward' },
+      {
+        p: "The address in the address bar holds the view, the tab and the filters, so a bookmark or a link opens the same page with the same scope. Copy link to this view, in the view header's Export menu, copies it with every filter spelled out. Names are never in the address; a leader is there by employee ID.",
+      },
+      {
+        p: "The browser's Back and Forward buttons move between views and tabs and also undo and redo filter changes. Several quick changes, such as ticking three departments in one open menu, are one step. Opening the records panel, Settings, Help or Ask is not a step.",
+      },
+      {
+        p: "A link shows the same numbers only to someone with the same data loaded. If the link names a leader, department or other value your data doesn't have, it is left out and a message says which. A link's data standard and data quality setting apply to that tab only; they don't change the data standard you saved.",
+      },
+      { h: 'Saved views' },
+      {
+        p: 'Save the scope you use often, such as "My org, last quarter", from Views at the start of the filter row. A saved view holds the period, the leader and the other filters with their Include or Exclude, the data standard and whether data quality is shown. Turn on "Open on this page" to have it open a view and tab as well.',
+      },
+      {
+        ul: [
+          'Pick a saved view from Views to apply it in one step. The menu shows its name while the scope matches it, and "edited" once you change something.',
+          'Update saves your change to the view; Save as new keeps both.',
+          'Manage views renames, reorders and deletes views (with Undo), copies a link to one, and sets Open Census with this view, the view Census starts with when the address names no filters.',
+          'Saved views are kept in this browser and travel in the settings file. The sample data comes with two examples you can remove.',
+        ],
       },
       { h: 'The data standard' },
       {
@@ -170,6 +209,7 @@ export const START_ARTICLES: readonly HelpArticle[] = [
           'Sort by any column, search the list, and download it as CSV or Excel, or copy it to paste into a spreadsheet.',
           'The header shows the tier of the number, so you know how far to trust the list.',
           'Rows that lead somewhere are clickable. A count inside the panel opens its records on top; Back returns to where you were.',
+          'When the number counts one group, such as a bar for Bengaluru, the header offers Filter to Bengaluru and Leave out Bengaluru. Either one closes the panel and narrows the scope for every view, keeping your other filters: Filter to keeps only the people in both, and Leave out takes the group away, so the totals drop by its number. An action that would change nothing, leave no one, or leave out fewer than five people is not offered. Undo in the message, or Back, returns to the scope you had.',
         ],
       },
       { h: 'The person card' },
@@ -178,7 +218,7 @@ export const START_ARTICLES: readonly HelpArticle[] = [
       },
       {
         ul: [
-          'Focus on their org sets the leader filter to them, so every view shows them and their teams.',
+          'Focus on their org sets the leader filter to them, so every view shows them and their teams. Undo, or Back, returns to the scope you had.',
           'Show in org chart opens the Org chart at their card.',
         ],
       },
@@ -217,6 +257,10 @@ export const START_ARTICLES: readonly HelpArticle[] = [
       { h: 'A whole tab or view' },
       {
         p: "The Export button in the view header builds an Excel workbook or a PowerPoint deck of every figure on the tab, or of every tab in the view. Each sheet and slide carries the scope, the window, the as-of date, the data standard and each figure's tier.",
+      },
+      { h: 'A link instead of a file' },
+      {
+        p: 'Copy link to this view, at the end of the same Export menu, copies the address of the tab with its filters, period, data standard and data quality setting spelled out. Someone with the same data loaded who opens it sees the same numbers. A saved view has its own Copy link in Manage views.',
       },
       { h: 'The monthly people report' },
       {

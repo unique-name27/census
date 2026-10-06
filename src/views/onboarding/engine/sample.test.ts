@@ -1,7 +1,7 @@
 /**
  * Smoke test on the generated sample (whole company, last 12 months): every planted onboarding
  * and hiring plan story in src/data/sample/README.md is detected, every number is finite or null,
- * every count opens exactly the records it counts, and the engine runs inside its budget.
+ * and every count opens exactly the records it counts. The time budget is in sample.perf.test.ts.
  */
 import { describe, expect, it } from 'vitest'
 import type { Finding, Kpi } from '@/components/types'
@@ -10,7 +10,7 @@ import { resolveDrill } from '@/drill/Drill'
 import { formatRange } from '@/lib/dates'
 import { hiresVsPlan } from '../api'
 import { coverageDrills, dayOneTasksDrill, readinessDrill } from './drills'
-import { actions, computeOnboarding, computeOnboardingUncached, headline, summary } from './index'
+import { actions, computeOnboarding, headline, summary } from './index'
 import { sampleContext } from './testkit'
 
 const ctx = sampleContext()
@@ -29,13 +29,6 @@ const find = (id: string): Finding => {
 const rowsOf = (src: unknown) => resolveDrill(src as never)?.rows.length ?? 0
 
 describe('Onboarding on the sample company', () => {
-  it('runs inside its budget', () => {
-    computeOnboardingUncached(ctx)
-    const t0 = performance.now()
-    computeOnboardingUncached(ctx)
-    expect(performance.now() - t0).toBeLessThan(400)
-  })
-
   it('returns finite or null numbers, each with a metric, the fields it reads and its records', () => {
     for (const k of allKpis) {
       expect(k.value === null || Number.isFinite(k.value), k.id).toBe(true)

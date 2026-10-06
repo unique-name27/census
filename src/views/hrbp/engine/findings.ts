@@ -9,7 +9,8 @@
  */
 import type { Finding, FindingPerson, Severity } from '@/components/types'
 import type { Employee } from '@/data/schema'
-import { employeeMatcher } from '@/data/scope'
+import { employeeMatcher, focusLeader, scopeInSentence } from '@/data/scope'
+import { groupFilter } from '@/drill/filter'
 import { addDays, daysBetween, formatDate } from '@/lib/dates'
 import { type Dimension, decomposeRate } from '@/lib/decompose'
 import { fmt } from '@/lib/format'
@@ -255,20 +256,27 @@ function attritionVsCompany(p: Prep, kpi: KpiModel, att: AttritionModel): Ranked
         metricId: ID.voluntaryAbove,
         severity:
           kpi.vol.rate >= company * criticalRatio && leavers.length >= criticalExits ? 'critical' : 'warning',
-        title: `Voluntary attrition in ${p.ctx.scopeLabel} is ${pct(kpi.vol.rate)}, ${pts(diff)} above the company`,
+        title: `Voluntary attrition in ${scopeInSentence(p.ctx.scopeLabel)} is ${pct(kpi.vol.rate)}, ${pts(diff)} above the company`,
         detail: [
           `${count(leavers.length, 'voluntary exit', 'voluntary exits')} in ${phrase}${reasonClause(p, leavers)}.`,
           conc,
         ]
           .filter(Boolean)
           .join(' '),
-        action: p.ctx.filters.leaderId
+        action: focusLeader(p.ctx.filters)
           ? stayAction(
               p,
-              p.name(p.ctx.filters.leaderId),
-              `the most affected teams under ${p.name(p.ctx.filters.leaderId)}`,
+              p.name(focusLeader(p.ctx.filters) as string),
+              `the most affected teams under ${p.name(focusLeader(p.ctx.filters) as string)}`,
             )
-          : stayAction(p, `the ${p.ctx.scopeLabel} leaders`, `the most affected ${p.ctx.scopeLabel} teams`),
+          : /^Whole company| · not /.test(p.ctx.scopeLabel)
+            ? // A scope with exclusions reads as a place, not a name: "the leaders in the whole company except Sales".
+              stayAction(
+                p,
+                `the leaders in ${scopeInSentence(p.ctx.scopeLabel)}`,
+                `the most affected teams in ${scopeInSentence(p.ctx.scopeLabel)}`,
+              )
+            : stayAction(p, `the ${p.ctx.scopeLabel} leaders`, `the most affected ${p.ctx.scopeLabel} teams`),
         people: people(leavers, (e) => leaverNote(e, p)),
         drill,
         tab: 'attrition',
@@ -286,7 +294,7 @@ function attritionVsCompany(p: Prep, kpi: KpiModel, att: AttritionModel): Ranked
         id: 'hrbp-voluntary-good',
         metricId: ID.voluntaryAbove,
         severity: 'good',
-        title: `Voluntary attrition in ${p.ctx.scopeLabel} is ${pct(kpi.vol.rate)}, ${pts(diff)} below the company`,
+        title: `Voluntary attrition in ${scopeInSentence(p.ctx.scopeLabel)} is ${pct(kpi.vol.rate)}, ${pts(diff)} below the company`,
         detail: `${count(leavers.length, 'voluntary exit', 'voluntary exits')} in ${phrase}, against ${pct(company)} for the company.`,
         action: 'Ask the leader what is working so other teams can learn from it.',
         drill,
@@ -359,8 +367,8 @@ function attritionVsCompany(p: Prep, kpi: KpiModel, att: AttritionModel): Ranked
           .join(' '),
         action: stayAction(p, `the ${top.group} leaders`, `the most affected ${top.group} teams`),
         people: people(leavers, (e) => leaverNote(e, p)),
-        drill: () =>
-          leaversSpec(p, titled('Voluntary leavers', top.group, periodName(p)), leavers, {
+        drill: () => {
+          const spec = leaversSpec(p, titled('Voluntary leavers', top.group, periodName(p)), leavers, {
             note: rateNote(
               top.voluntary,
               ['voluntary exit', 'voluntary exits'],
@@ -368,7 +376,11 @@ function attritionVsCompany(p: Prep, kpi: KpiModel, att: AttritionModel): Ranked
               p.window.months,
               annualize,
             ),
-          }),
+          })
+          // A site is today's site, as the filters read it; a department rate is rebuilt from the
+          // departments people were in at each month end, so "Filter to" would not reproduce it.
+          return key === 'location' ? { ...spec, filter: groupFilter('location', top.group) } : spec
+        },
         filter: key === 'location' ? { location: [top.group] } : { department: [top.group] },
         tab: 'attrition',
         uses: p.uses(
@@ -424,11 +436,11 @@ function firstYear(p: Prep, kpi: KpiModel): Ranked | null {
       severity: 'warning',
       title: p.ctx.isCompany
         ? `First-year attrition is ${pct(fy.rate)} (${fy.leavers} of ${fy.cohort} hires)`
-        : `First-year attrition in ${p.ctx.scopeLabel} is ${pct(fy.rate)} (${fy.leavers} of ${fy.cohort} hires)${
+        : `First-year attrition in ${scopeInSentence(p.ctx.scopeLabel)} is ${pct(fy.rate)} (${fy.leavers} of ${fy.cohort} hires)${
             company != null ? `, against ${pct(company)} for the company` : ''
           }`,
       detail: `${measured}${mostIn(leavers, DIMS.department)}`,
-      action: `Review onboarding and the first 90 days with the hiring managers in ${p.ctx.scopeLabel}.`,
+      action: `Review onboarding and the first 90 days with the hiring managers in ${scopeInSentence(p.ctx.scopeLabel)}.`,
       people: people(leavers, (e) => leaverNote(e, p)),
       drill: () =>
         firstYearSpec(p, titled('Left within their first year', p.ctx.scopeLabel), leavers, {
@@ -490,14 +502,17 @@ function firstYear(p: Prep, kpi: KpiModel): Ranked | null {
       detail: `${measured}${conc}`,
       action: `Review onboarding and the first 90 days with the ${top.group} hiring managers.`,
       people: people(top.leavers, (e) => leaverNote(e, p)),
-      drill: () =>
-        firstYearSpec(
+      // The cohort is grouped by today's unit, department or site, so "Filter to" keeps the rate.
+      drill: () => ({
+        ...firstYearSpec(
           p,
           titled('Left within their first year', top.group),
           top.leavers,
           { size: top.list.length, from: addDays(fy.from, 1), to: fy.to },
           `${top.group} · ${p.ctx.scopeLabel}`,
         ),
+        filter: groupFilter(dim.key, top.group),
+      }),
       filter: { [dim.key]: [top.group] },
       tab: 'attrition',
       uses: p.uses(FIRST_YEAR, dim.lineage, ifPresent(sub === DIMS.location ? LOCATION : DEPARTMENT)),
@@ -684,7 +699,7 @@ function orgDepth(p: Prep, org: OrgModel): Ranked | null {
     id: 'hrbp-org-depth',
     metricId: ID.orgDepth,
     severity: org.deep.maxDepth + 1 >= warnLayers ? 'warning' : 'info',
-    title: `${count(deep.length, 'person sits', 'people sit')} below layer ${deepChain} of ${p.ctx.scopeLabel}`,
+    title: `${count(deep.length, 'person sits', 'people sit')} below layer ${deepChain} of ${scopeInSentence(p.ctx.scopeLabel)}`,
     detail: `Layer 1 is the top of the group. The deepest reporting chain has ${org.deep.maxDepth + 1} layers.`,
     action: `Map the reporting chains below layer ${deepChain} and look for layers that can be merged at the next reorganization.`,
     people: people(deep, (e) => `${e.jobTitle} · ${e.department}`),
@@ -793,8 +808,10 @@ function rapidGrowth(p: Prep): Ranked | null {
       .filter(Boolean)
       .join(' '),
     action: `Check manager capacity and onboarding support in ${top.dept}.`,
-    drill: () =>
-      employeesOnSpec(p, p.asOf, {
+    // Under a department filter the earlier roster is rebuilt as it stood then, so "Filter to"
+    // keeps both headcounts.
+    drill: () => ({
+      ...employeesOnSpec(p, p.asOf, {
         title: `Employees in ${top.dept} on ${formatDate(p.asOf)}`,
         rows: top.people,
         note: `${top.before} people were in ${top.dept} on ${formatDate(since)}. The last column shows who joined since.`,
@@ -803,6 +820,8 @@ function rapidGrowth(p: Prep): Ranked | null {
           values: (e) => ({ joinedSince: top.beforeIds.has(e.employeeId) ? 'No' : 'Yes' }),
         },
       }),
+      filter: groupFilter('department', top.dept),
+    }),
     filter: { department: [top.dept] },
     tab: 'workforce',
     // Under an org filter, the earlier roster is rebuilt with each person's unit and level on that date.
@@ -886,7 +905,7 @@ function unevenGrowth(p: Prep, wf: WorkforceModel): Ranked | null {
   if ((top.growth ?? 0) < minGrowth || top.change < minAdded) return null
   const byBu = new Set(p.emps.map((e) => e.businessUnit)).size > 1
   const net = wf.growth.reduce((a, g) => a + g.change, 0)
-  const where = p.ctx.isCompany ? 'the company' : p.ctx.scopeLabel
+  const where = p.ctx.isCompany ? 'the company' : scopeInSentence(p.ctx.scopeLabel)
   const rest = net - top.change
   const share =
     net > top.change
@@ -902,7 +921,11 @@ function unevenGrowth(p: Prep, wf: WorkforceModel): Ranked | null {
       .filter(Boolean)
       .join(' '),
     action: `Check manager capacity and onboarding support in ${top.group}.`,
-    drill: () => growthSpec(p, top),
+    drill: () => {
+      const spec = growthSpec(p, top)
+      // The growth rows are grouped by today's unit (or department), as the filters read them.
+      return spec && { ...spec, filter: groupFilter(wf.growthBy, top.group) }
+    },
     filter: byBu ? { businessUnit: [top.group] } : { department: [top.group] },
     tab: 'workforce',
     uses: p.uses(PAST_HEADCOUNT, BUSINESS_UNIT, byBu ? NONE : DEPARTMENT),

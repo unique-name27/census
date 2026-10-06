@@ -146,6 +146,13 @@ Engines read `ctx.data` for the scoped population and `ctx.all` for company benc
 are already applied to `ctx.data`; **period filtering is each engine's job** using `ctx.window` and
 `ctx.prior` (inclusive ISO date bounds; `window.months` for annualizing).
 
+Filters (docs/FILTERS.md): each org filter includes or excludes its values (`filters.modes`; read it with
+`isExcluded(f, dim)`, never assume `leaderId` means "focus on"; use `focusLeader(f)` for the leader a scope
+includes). `ctx.scopeLabel` can read "Whole company except Sales"; inside a sentence use `scopeInSentence()`.
+The address holds route and scope (`#view.tab?…`, `src/data/urlScope.ts`); one writer (`src/app/address.ts`)
+keeps it in step. Move with `goTo` / `navigate`; change filters with `setFilters` (scope changes collapse into
+one history entry; pass `{ history: 'push' }` for a one-step change). Saved views: `src/data/savedViews.ts`.
+
 ## Metric conventions
 
 Shared definitions live in `src/lib/people.ts` (lead-owned, tested): `headcountAt`, `activeAt`, `avgHeadcount`,
@@ -253,7 +260,15 @@ Already written (lead): `Button`, `IconButton`, `Menu` (items API), `Popover`, `
 
 ### Extra shared APIs (from the shell and chart builders)
 
-- Navigation: `goTo(view, tab?)` (pushes history; keeps scroll inside a view), `useCurrentView()`, `routeHash`.
+- Navigation: `goTo(view, tab?)` (pushes history; keeps scroll inside a view), `useCurrentView()`, `routeHash`
+  (a link's href, route only: it keeps the scope on screen), `linkToView()` (the full address with the scope).
+- "Filter to this" (producer pattern, details at the top of `src/drill/testing.ts`): a number that counts a group
+  of a filterable dimension sets `DrillSpec.filter` (`Partial<Filters>`). In a figure say the dimension once with
+  `byGroup(dim, groupKey, build)` from `@/charts` (use its result for `onSelect` via `drill()` and for table
+  `drill`); in an engine set `filter: groupFilter(dim, value)` (plus `periodFilter(start, end)` for a month or
+  quarter). Set nothing for numbers that are not a group, "Other" rows, or groups keyed differently from the
+  filters. Test it with `expectFilterTo` (and `expectLeaveOut` for counts that split the scope) from
+  `@/drill/testing`. Findings' `filter`, person cards and these actions all apply through `focusScope()`.
 - `useTableFigure({ id, title, subtitle?, note?, columns, rows })` registers a table-only export without rendering.
 - Layout: `Span` and `spanClass(span)`; `Section` takes `actions`.
 - `toast(message, { tone?: 'neutral' | 'good' | 'critical', description?, action?: { label, onClick }, timeout? })`.

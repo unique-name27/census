@@ -113,6 +113,8 @@ export interface WorkforceModel {
   avgTenure: number | null
   mix: WorkerMix
   growth: GrowthRow[]
+  /** What the growth rows are: business units, or departments when the scope sits inside one unit. */
+  growthBy: 'businessUnit' | 'department'
   engineering: EngineeringShare
   series: HeadcountPoint[]
   overlay: OverlayPoint[]
@@ -380,6 +382,7 @@ export function computeWorkforce(p: Prep): WorkforceModel {
     avgTenure: active.length >= minGroup ? mean(active.map((e) => tenureYears(e, asOf))) : null,
     mix,
     growth,
+    growthBy: buCount > 1 ? 'businessUnit' : 'department',
     engineering,
     series,
     overlay: yearOverlay(series),

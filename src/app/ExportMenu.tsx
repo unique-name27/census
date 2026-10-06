@@ -6,7 +6,7 @@
  */
 import { useState } from 'react'
 import { useFigureRegistry } from '@/charts/registry'
-import { IconDownload, IconSlides, IconTable } from '@/components/icons'
+import { IconCopy, IconDownload, IconSlides, IconTable } from '@/components/icons'
 import { toast, updateToast } from '@/components/toast'
 import { Button, Menu, type MenuItem } from '@/components/ui'
 import { useAnalytics } from '@/data/context'
@@ -14,6 +14,7 @@ import { SAMPLE_COMPANY } from '@/data/sample'
 import { plural } from '@/lib/format'
 import type { ViewDef } from '@/views/types'
 import { buildExportMeta } from './exportMeta'
+import { copyViewLink } from './viewActions'
 import { renderWholeView } from './wholeView'
 import {
   type ExportKind,
@@ -158,6 +159,11 @@ export function ExportMenu({ view, tab }: { view: ViewDef; tab: string }) {
         onSelect: () => void runView('deck'),
       },
     )
+  // The address with the scope spelled out, so the link opens this tab with these filters.
+  items.push(
+    { separator: true },
+    { label: 'Copy link to this view', icon: <IconCopy />, onSelect: () => void copyViewLink() },
+  )
 
   return (
     <Menu

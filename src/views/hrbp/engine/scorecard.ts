@@ -7,7 +7,7 @@
  * for span, in orgs of 10 or more employees.
  */
 import type { Employee, JobChange } from '@/data/schema'
-import { type Filters, subtreeIds } from '@/data/scope'
+import { type Filters, focusLeader, subtreeIds } from '@/data/scope'
 import { addDays } from '@/lib/dates'
 import { inWindow, isActiveAt } from '@/lib/people'
 import { mean } from '@/lib/stats'
@@ -179,7 +179,8 @@ function metrics(
 
 function orgDefinitions(p: Prep): { label: string; dim: ScoreDim; defs: OrgDef[] } {
   const { ctx, people, asOf } = p
-  const leaderId = ctx.filters.leaderId
+  // Direct reports of the leader the scope focuses on; a left-out leader cuts by business unit and so on.
+  const leaderId = focusLeader(ctx.filters)
   if (leaderId && ctx.org.byId.has(leaderId)) {
     const scoped = new Set(people.map((e) => e.employeeId))
     const defs: OrgDef[] = []

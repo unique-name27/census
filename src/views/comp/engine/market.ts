@@ -3,6 +3,7 @@
  * family, location and level, and the jobs furthest below market. Ratios need no FX. Pure.
  */
 import { LEVELS, MIN_GROUP } from '@/data/schema'
+import type { GroupDim } from './groupFilter'
 import { behind, groupRows, safeMedian, values } from './groups'
 import type { CompPerson } from './population'
 import { defaultRules } from './rules'
@@ -13,7 +14,7 @@ import { defaultRules } from './rules'
  * `rules.ts`; the smallest family ranked is a setting of 'comp.market.gap'.
  */
 
-export interface MarketRow {
+export interface MarketRow extends GroupDim {
   group: string
   n: number
   /** Median base ÷ market median. */

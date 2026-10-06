@@ -10,6 +10,7 @@ import type { Finding, Severity } from '@/components/types'
 import type { AnalyticsContext } from '@/data/context'
 import type { FieldRef } from '@/data/quality/fieldRef'
 import { SITES } from '@/data/schema'
+import { groupFilter } from '@/drill/filter'
 import { formatDate } from '@/lib/dates'
 import { fmt, fmtDelta, plural } from '@/lib/format'
 import { type Breakdown, groupRows } from '@/lib/surveys'
@@ -24,7 +25,7 @@ import type {
   StageCut,
   StayCut,
 } from './cuts'
-import { splitDeptBand } from './cuts'
+import { deptBandFilter, splitDeptBand } from './cuts'
 import { groupsDrill, rowsBy } from './drills'
 import * as L from './lineage'
 import type { SurveyModel } from './measures'
@@ -229,6 +230,8 @@ export function buildFindings(f: FindingInputs): Finding[] {
         : `Review what new starters in ${g.region} are missing in their first week with the onboarding team.`,
       tab: 'onboarding',
       filter: sites.length ? { location: sites } : undefined,
+      // The region's sites, said as the region: "Focus on Asia Pacific".
+      filterLabel: sites.length ? g.region : undefined,
       uses: withItems(p, L.ANSWER, L.ITEM, L.EMP_LOCATION, L.when(laptop, L.LAPTOP_TASKS)),
       drill: () =>
         groupsDrill(groupRows(rows, { survey: 'Onboarding pulse day 30', wave: null, groupBy: 'Region' }), {
@@ -296,6 +299,11 @@ export function buildFindings(f: FindingInputs): Finding[] {
             subtitle: sub,
             min: stay.min,
             note: 'Each person counts once for each reason they named.',
+            filter: deptBandFilter(
+              p,
+              g.group,
+              groupAnswers.map((r) => r.respondentKey),
+            ),
           },
         ),
     })
@@ -341,6 +349,7 @@ export function buildFindings(f: FindingInputs): Finding[] {
             title: `Exit survey reasons in ${g.location}`,
             subtitle: sub,
             min: exit.min,
+            filter: groupFilter('location', g.location),
           },
         ),
     })

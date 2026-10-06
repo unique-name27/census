@@ -42,11 +42,15 @@ const plural = (n: number, one: string, many = `${one}s`) =>
 
 /**
  * The address with any record identifiers dropped: a metric id is fine (it names a definition),
- * a dataset panel is fine (it names a dataset), anything else after the tab is cut.
+ * a dataset panel is fine (it names a dataset), anything else after the tab is cut. The scope
+ * after "?" (leader employee IDs, departments, locations) goes first, on every page.
  */
 export function safeAddress(hash: string): string {
   const h = hash.startsWith('#') ? hash : `#${hash}`
-  const [view, tab = ''] = h.slice(1).split('.')
+  const route = h.slice(1).split('?')[0]
+  const [rawView, tab = ''] = route.split('.')
+  // Views are words; anything else in that place is not one.
+  const view = rawView.match(/^[a-zA-Z0-9-]*/)?.[0] ?? ''
   if (!view) return '#'
   if (!tab) return `#${view}`
   // Tabs are words; metric addresses are words and slashes. Anything after them is cut.

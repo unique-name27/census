@@ -11,11 +11,12 @@ import type { Requisition } from '@/data/schema'
 import { drill } from '@/drill'
 import { formatDate, formatMonth } from '@/lib/dates'
 import { fmt, plural } from '@/lib/format'
-import { coverageDrills, employeesDrill, monthSub, planDrill, reqsDrill, startsDrill } from '../engine/drills'
+import { employeesDrill, monthSub, planDrill, reqsDrill, startsDrill } from '../engine/drills'
 import { forecastWithin } from '../engine/forecast'
 import { ACCEPTED, ACTUAL, FORECAST, OPEN_REQS, PLAN, PLAN_REQ, UPCOMING, union } from '../engine/lineage'
 import { COVERAGE_LABEL, type CoverageRow, cumulative, isUncovered, type PlanLineView } from '../engine/plan'
 import { M } from '../metrics'
+import { coverageRowDrills, quarterRoleDrill } from './drill'
 import { asOfNote, defs, drillIf, NeedData, NO_PLAN, PLAN_SEVERITY, useOnboarding } from './shared'
 
 type Cut = 'unit' | 'department'
@@ -122,7 +123,8 @@ export function PlanTab() {
   type CovRow = (typeof covRows)[number]
   const where = (r: CoverageRow) => (r.department ? `${r.businessUnit}, ${r.department}` : r.businessUnit)
   const covUses = { plan: planUses, actual: ACTUAL, gap: union(planUses, ACCEPTED) }
-  const covDrills = new Map(covRows.map((x) => [x.r, coverageDrills(b, p, x.r, where(x.r), covUses)]))
+  // Every number of a row carries the row's business unit or department as the drill's filter.
+  const covDrills = new Map(covRows.map((x) => [x.r, coverageRowDrills(b, p, x.r, where(x.r), covUses)]))
   const covDrill = (x: CovRow) => covDrills.get(x.r)!
   const covColumns: Column<CovRow>[] = [
     { key: 'businessUnit', label: 'Business unit' },
@@ -148,36 +150,9 @@ export function PlanTab() {
       format: 'int',
       drill: (x) => covDrill(x).planFull,
     },
-    {
-      key: 'committed',
-      label: 'Committed',
-      format: 'int',
-      drill: (x) =>
-        drillIf(x.committed, () =>
-          startsDrill(b, x.r.committedStarts, `Committed starts, ${where(x.r)}`, { uses: UPCOMING }),
-        ),
-    },
-    {
-      key: 'openReqs',
-      label: 'Open reqs',
-      format: 'int',
-      drill: (x) =>
-        drillIf(x.openReqs, () => reqsDrill(b, x.r.reqs, `Open reqs, ${where(x.r)}`, { uses: OPEN_REQS })),
-    },
-    {
-      key: 'forecastRounded',
-      label: 'Forecast',
-      format: 'num1',
-      drill: (x) =>
-        drillIf(x.r.forecastReqs.length, () =>
-          reqsDrill(
-            b,
-            x.r.forecastReqs.map((f) => f.req),
-            `Open reqs behind the forecast, ${where(x.r)}`,
-            { uses: FORECAST },
-          ),
-        ),
-    },
+    { key: 'committed', label: 'Committed', format: 'int', drill: (x) => covDrill(x).committed },
+    { key: 'openReqs', label: 'Open reqs', format: 'int', drill: (x) => covDrill(x).openReqs },
+    { key: 'forecastRounded', label: 'Forecast', format: 'num1', drill: (x) => covDrill(x).forecast },
     {
       key: 'gapRounded',
       label: 'Gap',
@@ -208,14 +183,12 @@ export function PlanTab() {
       })),
   )
   type QRow = (typeof qRows)[number]
-  const qDrill = (r: QRow) => () =>
-    planDrill(b, r.lines, `${q.label} roles, ${r.businessUnit}: ${r.coverage.toLowerCase()}`, {
-      uses: union(planUses, ACCEPTED),
-    })
+  // A segment is one business unit's roles, with the unit as the drill's filter.
+  const qDrill = quarterRoleDrill(b, q.label, union(planUses, ACCEPTED))
   const qColumns: Column<QRow>[] = [
     { key: 'businessUnit', label: 'Business unit' },
     { key: 'coverage', label: 'Behind the role' },
-    { key: 'starts', label: 'Planned starts', format: 'int', drill: (r) => qDrill(r) },
+    { key: 'starts', label: 'Planned starts', format: 'int', drill: qDrill },
   ]
   const qOrder = ['Accepted offer', 'Open req', 'Req on hold', 'Req cancelled', 'No req']
 

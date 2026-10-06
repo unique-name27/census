@@ -9,7 +9,7 @@ import type { AnalyticsContext } from '@/data/context'
 import { drill, openPerson } from '@/drill'
 import { fmt } from '@/lib/format'
 import type { ComplianceView } from '../engine'
-import { expiryDrill, i9Drill, mixDrill } from '../engine/drills'
+import { expiryDrill, mixDrill } from '../engine/drills'
 import type { SiteRow } from '../engine/i9'
 import { USES } from '../engine/lineage'
 import {
@@ -23,6 +23,7 @@ import {
 } from '../engine/wording'
 import type { ExpiryRow, MixRow } from '../engine/work'
 import { M } from '../metrics'
+import { i9SiteCells } from './drill'
 import { defs, NeedData, NO_RTW, STATUS_SEVERITY } from './shared'
 
 interface ExpiringRow {
@@ -93,16 +94,9 @@ export function WorkTab({ m, ctx }: { m: ComplianceView; ctx: AnalyticsContext }
   ]
 
   const target = cfg.targets.i9
-  const siteDrill = (r: SiteRow, late = false) => {
-    const rows = late ? r.rows.filter((x) => !x.onTime) : r.rows
-    return rows.length
-      ? () =>
-          i9Drill(s, rows, {
-            title: `US starts at ${r.site}${late ? ' with I-9 Section 2 late or missing' : ' judged on I-9 Section 2'}`,
-            uses: USES.i9,
-          })
-      : null
-  }
+  // A site's starts carry the site as their filter ("Filter to Austin").
+  const siteCells = i9SiteCells(s, USES.i9)
+  const siteDrill = (r: SiteRow, late = false) => (late ? siteCells.late(r) : siteCells.all(r))
   const siteColumns: Column<SiteRow>[] = [
     { key: 'site', label: 'Site' },
     { key: 'judged', label: 'US starts judged', format: 'int', drill: (r) => siteDrill(r) },

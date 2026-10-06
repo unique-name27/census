@@ -11,6 +11,7 @@
 import type { Finding, FindingPerson, Severity } from '@/components/types'
 import type { Requisition } from '@/data/schema'
 import type { Filters } from '@/data/scope'
+import { groupFilter, periodFilter } from '@/drill/filter'
 import { addDays, addMonths } from '@/lib/dates'
 import { type Dimension, decomposeMedian, decomposeRate, type Segment } from '@/lib/decompose'
 import { fmt } from '@/lib/format'
@@ -27,6 +28,7 @@ import {
   stepExtra,
   unmatchedDrill,
   windowSub,
+  withScope,
 } from './drills'
 import { TRANSITIONS, transitionsIn } from './flow'
 import {
@@ -138,6 +140,16 @@ function filterFor(s: Pick<Segment, 'dim' | 'value'>, apps: readonly App[]): Par
 
 const FILTERABLE: DimKey[] = ['department', 'location', 'level']
 
+/** A segment of a filterable dimension over a stretch of the window, as a scope; none otherwise. */
+function segmentScope(
+  s: Pick<Segment, 'dim' | 'value'> | undefined,
+  w: { start: string; end: string },
+): Partial<Filters> | undefined {
+  if (!s || !FILTERABLE.includes(s.dim as DimKey)) return undefined
+  const group = groupFilter(s.dim as 'department' | 'location' | 'level', s.value)
+  return group && { ...group, ...periodFilter(w.start, w.end) }
+}
+
 /** "at onsite", "at the screen": where a candidate waits before each transition. */
 const STAGE_AT = ['the applied stage', 'the screen', 'the hiring manager stage', 'onsite', 'offer']
 
@@ -240,18 +252,23 @@ function bottleneck(b: RecruitingBase): Scored | null {
     people: waiting.map((x) => person(x, `${x.app.reqId} · ${days(x.daysInStage)} at ${stageWord}`)),
     filter: seg ? filterFor(seg.s, b.apps) : undefined,
     tab: 'pipeline',
+    // A department, site or level over the recent months: "Filter to" keeps the same completed
+    // steps, so the same median. (A hiring manager's reqs are not their whole org: no filter.)
     drill: () =>
-      appDrill(
-        b,
-        measured.map((e) => e.app),
-        {
-          title: `${step}${seg ? ` ${where(seg.s)}` : ''}, ${recent.words.replace(/^the /, '')}`,
-          subtitle: windowSub(b, recent),
-          note: seg
-            ? `Median ${days(seg.s.segValue)} over ${plural(measured.length, 'step')} completed in the window, vs ${days(seg.s.compValue)} elsewhere.`
-            : `Median ${days(stage!.m)} over ${plural(measured.length, 'step')} completed in the window, vs ${days(stage!.others)} for the other steps.`,
-          extras: [stepExtra(measured, i)],
-        },
+      withScope(
+        appDrill(
+          b,
+          measured.map((e) => e.app),
+          {
+            title: `${step}${seg ? ` ${where(seg.s)}` : ''}, ${recent.words.replace(/^the /, '')}`,
+            subtitle: windowSub(b, recent),
+            note: seg
+              ? `Median ${days(seg.s.segValue)} over ${plural(measured.length, 'step')} completed in the window, vs ${days(seg.s.compValue)} elsewhere.`
+              : `Median ${days(stage!.m)} over ${plural(measured.length, 'step')} completed in the window, vs ${days(stage!.others)} for the other steps.`,
+            extras: [stepExtra(measured, i)],
+          },
+        ),
+        segmentScope(seg?.s, recent),
       ),
     uses: uses(NEXT_STEP, appDimUses(seg?.s.dim)),
     score: 100 + ratio,
@@ -630,11 +647,15 @@ function slowTimeToFill(b: RecruitingBase, slow: SlowFill): Scored {
     action: `Review the sourcing plan and interview loop for ${top.value} roles with the recruiters.`,
     filter: filterFor(top, b.apps),
     tab: 'requisitions',
+    // The group's filled reqs: "Filter to" shows the same median as the scope's time to fill.
     drill: () =>
-      filledReqsDrill(
-        b,
-        b.filled.filter((r) => REQ_KEY[top.dim](r) === top.value),
-        `Reqs filled, ${top.value}, ${b.windowWords}`,
+      withScope(
+        filledReqsDrill(
+          b,
+          b.filled.filter((r) => REQ_KEY[top.dim](r) === top.value),
+          `Reqs filled, ${top.value}, ${b.windowWords}`,
+        ),
+        groupFilter(top.dim, top.value),
       ),
     uses: uses(filledUses(b.settings.ttfEnd), reqDimUses(top.dim), reqDimUses(second?.dim)),
     score: 65 + 10 * (ratio - 1),

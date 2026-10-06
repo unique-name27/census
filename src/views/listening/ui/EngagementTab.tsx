@@ -9,12 +9,11 @@ import { drill } from '@/drill'
 import { fmt } from '@/lib/format'
 import type { ListeningModel } from '../engine'
 import { type GroupScore, scoresOf } from '../engine/cuts'
-import { groupsDrill, rowsBy } from '../engine/drills'
 import { npsText } from '../engine/findings'
 import type { SurveyModel } from '../engine/measures'
-import { cutOf } from '../engine/prepare'
 import { M } from '../metrics'
 import { AreaFrame, WithSurvey } from './AreaTab'
+import { engagementOrgDrill } from './drill'
 import { SurveyBlock } from './SurveyBlock'
 import { count, defs, noteOf } from './shared'
 
@@ -54,31 +53,13 @@ function EnpsByOrg({ ctx, m, sm }: { ctx: AnalyticsContext; m: ListeningModel; s
   const rows: Datum[] = b
     ? scoresOf(b, 'nps').map((g) => ({ ...g, shown: g.suppressed ? 'Hidden to protect anonymity' : 'Yes' }))
     : []
-  const bu = cutOf(m.prepared, 'businessUnit')
   const wave = sm.latest?.wave ?? null
-  const open = (g: GroupScore) =>
-    groupsDrill(
-      rowsBy(
-        sm.latestRows.filter((r) => {
-          const v = bu(r)
-          return g.group.startsWith('Other (') ? !!v && !b?.groups.some((x) => x.group === v) : v === g.group
-        }),
-        (r) => r.driver ?? r.item,
-        { survey: sm.survey, wave, groupBy: 'Driver', min: sm.min },
-      ),
-      {
-        survey: sm.survey,
-        wave,
-        title: `Engagement, ${g.group}, by driver`,
-        subtitle: `${wave ?? ''} · ${ctx.scopeLabel}`,
-        min: sm.min,
-        uses: m.uses.engagement,
-      },
-    )
+  // A unit shown at the minimum carries the unit as its filter.
+  const open = engagementOrgDrill(ctx, m, sm)
   const columns: Column<Datum>[] = [
     { key: 'group', label: 'Business unit' },
-    { key: 'value', label: 'eNPS', format: 'int', drill: (r) => (r.suppressed ? null : () => open(r)) },
-    { key: 'respondents', label: 'Respondents', format: 'int', drill: (r) => () => open(r) },
+    { key: 'value', label: 'eNPS', format: 'int', drill: (r) => (r.suppressed ? null : open(r)) },
+    { key: 'respondents', label: 'Respondents', format: 'int', drill: open },
     { key: 'shown', label: 'Shown' },
   ]
   return (
@@ -108,7 +89,7 @@ function EnpsByOrg({ ctx, m, sm }: { ctx: AnalyticsContext; m: ListeningModel; s
         format="int"
         valueText={(d) => (d.value == null ? '—' : npsText(d.value))}
         secondary={(d) => `n ${fmt(d.respondents, 'int')}`}
-        onSelect={(d) => (d.suppressed ? undefined : drill(() => open(d)))}
+        onSelect={(d) => (d.suppressed ? undefined : drill(open(d)))}
       />
     </Figure>
   )

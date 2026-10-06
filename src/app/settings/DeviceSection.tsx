@@ -8,6 +8,7 @@ import { toast } from '@/components/toast'
 import { Button } from '@/components/ui'
 import { settingsFileName } from '@/data/settings'
 import { clearDevice, exportSettings, importSettings } from '@/data/store'
+import { useSavedViews } from '@/data/viewsStore'
 import { todayISO } from '@/lib/dates'
 import { downloadBlob } from '@/lib/export/download'
 import { importDescription } from './model'
@@ -112,10 +113,21 @@ export function DeviceSection() {
       toast('Settings not imported', { tone: 'critical', description: r.error })
       return
     }
+    // Saved views in the file join yours (a view with the same name is replaced).
+    const views = r.viewsSection !== undefined ? useSavedViews.getState().importSection(r.viewsSection) : null
+    const viewsText = views?.ok ? `Saved views: ${views.summary}.` : null
     toast('Settings imported', {
       tone: 'good',
-      description: importDescription(r.applied, r.metrics, r.listsSummary),
+      description:
+        viewsText && !r.applied.length && !r.metrics && !r.listsSummary
+          ? viewsText
+          : [importDescription(r.applied, r.metrics, r.listsSummary), viewsText].filter(Boolean).join(' '),
     })
+    if (views && !views.ok)
+      toast('The saved views were not imported', {
+        tone: 'critical',
+        description: `${views.error} Your saved views stay as they were.`,
+      })
     // The rest of the file applied; its official lists did not, so that gets its own warning.
     if (r.listsError)
       toast('The official lists were not imported', {
@@ -130,7 +142,7 @@ export function DeviceSection() {
     >
       <Field
         label="Settings file"
-        hint="Move your settings to another browser or computer. The file holds display, data and tool link settings, your metric definitions (wording, targets and calculation settings, with their change log) and the official lists you saved; it never holds pay amounts or data."
+        hint="Move your settings to another browser or computer. The file holds display, data and tool link settings, your metric definitions (wording, targets and calculation settings, with their change log), the official lists you saved and your saved views; it never holds pay amounts or data."
       >
         <Button icon={<IconDownload />} onClick={onExport}>
           Export settings

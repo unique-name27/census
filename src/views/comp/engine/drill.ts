@@ -11,10 +11,12 @@
 import type { Column } from '@/charts/types'
 import type { Employee } from '@/data/schema'
 import type { DrillSource } from '@/drill/Drill'
+import { groupFilter } from '@/drill/filter'
 import { type DrillSpec, drillSpec } from '@/drill/types'
 import { formatDate } from '@/lib/dates'
 import { fmt } from '@/lib/format'
 import type { Bin, ExceptionRow, PromotionRow, RewardsMixRow, SpendRow } from './cycle'
+import { filtered, type GroupDim, rowFilter } from './groupFilter'
 import type { MarketRow } from './market'
 import type {
   BonusByRatingRow,
@@ -237,6 +239,16 @@ export function compaGroupDrill(
   /** Title without the group, for the whole scope (a headline tile). */
   scopeTitle = false,
 ): DrillCompSpec | null {
+  return filtered(compaGroupSpec(m, row, what, scopeTitle), scopeTitle ? undefined : rowFilter(row))
+}
+
+function compaGroupSpec(
+  m: DrillScope,
+  row: CompaGroupRow,
+  what: CompaMeasure,
+  /** Title without the group, for the whole scope (a headline tile). */
+  scopeTitle = false,
+): DrillCompSpec | null {
   const s = m.settings
   const people = compaGroupPeople(row, what, s)
   const subtitle = scopeLine(m)
@@ -321,6 +333,10 @@ export function positionDrill(
   row: PositionMixRow,
   pos: Position | null,
 ): DrillCompSpec | null {
+  return filtered(positionSpec(m, row, pos), rowFilter(row))
+}
+
+function positionSpec(m: DrillScope, row: PositionMixRow, pos: Position | null): DrillCompSpec | null {
   const people = positionPeople(row, pos)
   const share = people.length / Math.max(1, row.n)
   return peopleDrill({
@@ -351,6 +367,10 @@ export function compaBinDrill(m: DrillScope, bin: Bin<CompPerson>, last: boolean
 /* ───────── range position tab ───────── */
 
 export function penetrationDrill(m: DrillScope, row: PenetrationRow): DrillCompSpec | null {
+  return filtered(penetrationSpec(m, row), groupFilter('level', row.level))
+}
+
+function penetrationSpec(m: DrillScope, row: PenetrationRow): DrillCompSpec | null {
   return peopleDrill({
     title: `Range penetration, ${row.level}`,
     subtitle: scopeLine(m),
@@ -373,7 +393,18 @@ export function compressionPeople(row: CompressionRow, side: CompressionSide | n
   return [...row.hires, ...row.incumbents]
 }
 
+/** A department and level cell: both as the filter (one group of two filters, so no "Leave out"). */
 export function compressionDrill(
+  m: DrillScope,
+  row: CompressionRow,
+  side: CompressionSide | null,
+): DrillCompSpec | null {
+  const dept = groupFilter('department', row.department)
+  const level = groupFilter('level', row.level)
+  return filtered(compressionSpec(m, row, side), dept && level ? { ...dept, ...level } : undefined)
+}
+
+function compressionSpec(
   m: DrillScope,
   row: CompressionRow,
   side: CompressionSide | null,
@@ -433,6 +464,16 @@ export function differentiationPeople(d: Differentiation, side: RatingSide | nul
 }
 
 export function differentiationDrill(
+  m: DrillScope,
+  d: Differentiation & GroupDim,
+  /** The department, or null for the whole scope. */
+  group: string | null,
+  side: RatingSide | null,
+): DrillCompSpec | null {
+  return filtered(differentiationSpec(m, d, group, side), rowFilter({ group, dim: d.dim }))
+}
+
+function differentiationSpec(
   m: DrillScope,
   d: Differentiation,
   /** The department, or null for the whole scope. */
@@ -501,6 +542,10 @@ export function marketGap(gap: number | null): string {
 }
 
 export function marketDrill(m: DrillScope, row: MarketRow, scopeTitle = false): DrillCompSpec | null {
+  return filtered(marketSpec(m, row, scopeTitle), scopeTitle ? undefined : rowFilter(row))
+}
+
+function marketSpec(m: DrillScope, row: MarketRow, scopeTitle: boolean): DrillCompSpec | null {
   return peopleDrill({
     title: scopeTitle ? 'Market ratios' : `Market ratios, ${row.group}`,
     subtitle: scopeLine(m),
@@ -526,6 +571,15 @@ export function spendPeople(members: readonly CompPerson[], what: 'eligible' | '
 }
 
 export function spendDrill(
+  m: DrillScope,
+  /** A business unit's row, or the scope's spend with `group` null. */
+  row: Pick<SpendRow, 'members' | 'spendPct' | 'budgetPct' | 'dim'> & { group: string | null },
+  what: 'eligible' | 'priced',
+): DrillCompSpec | null {
+  return filtered(spendSpec(m, row, what), rowFilter(row))
+}
+
+function spendSpec(
   m: DrillScope,
   /** A business unit's row, or the scope's spend with `group` null. */
   row: Pick<SpendRow, 'members' | 'spendPct' | 'budgetPct'> & { group: string | null },
@@ -641,6 +695,10 @@ const MIX_PART: Record<string, string> = { Base: 'base', 'Target bonus': 'target
 
 /** One level of the total rewards mix, or one part of it. */
 export function mixDrill(m: DrillScope, row: RewardsMixRow, part: string | null): DrillCompSpec | null {
+  return filtered(mixSpec(m, row, part), groupFilter('level', row.level))
+}
+
+function mixSpec(m: DrillScope, row: RewardsMixRow, part: string | null): DrillCompSpec | null {
   const parts = [
     `base ${fmt(row.base, 'pct')}`,
     `target bonus ${fmt(row.bonus, 'pct')}`,

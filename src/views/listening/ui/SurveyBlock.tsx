@@ -13,10 +13,11 @@ import { formatRange } from '@/lib/dates'
 import { fmt } from '@/lib/format'
 import { type ListeningModel, surveyKpis } from '../engine'
 import { driverDrill, groupsDrill, itemRowsOf } from '../engine/drills'
-import { cutsFor, type DriverRow, type HeatCell, inHeatColumn, type SurveyModel } from '../engine/measures'
-import { CUT_LABEL, type CutKey, cutOf } from '../engine/prepare'
+import { cutsFor, type DriverRow, type HeatCell, type SurveyModel } from '../engine/measures'
+import { CUT_LABEL, type CutKey } from '../engine/prepare'
 import { STATUS_WORD } from '../engine/settings'
 import { M } from '../metrics'
+import { heatCellDrill } from './drill'
 import { count, defs, noteOf, periodWords, statusTone } from './shared'
 
 interface DriverDatum extends DriverRow {
@@ -138,23 +139,8 @@ export function SurveyBlock({
     ...c,
     shown: c.suppressed ? 'Hidden to protect anonymity' : 'Yes',
   }))
-  const cutKey = cutOf(m.prepared, cut)
-  const heatOpen = (c: HeatCell) => {
-    const answers = heat
-      ? sm.period.filter(
-          (r) =>
-            r.scale === '1-5' && (r.driver ?? r.item) === c.driver && inHeatColumn(heat, cutKey(r), c.group),
-        )
-      : []
-    return groupsDrill(itemRowsOf(answers, sm.survey, null, c.driver, min), {
-      survey: sm.survey,
-      wave: null,
-      title: `${c.driver}, ${CUT_LABEL[cut].toLowerCase()} ${c.group}`,
-      subtitle: `${ctx.window.label} · ${ctx.scopeLabel}`,
-      min,
-      uses: m.uses.heat(sm.survey, cut),
-    })
-  }
+  // A cell of a business unit or location column carries its group as the filter.
+  const heatOpen = heatCellDrill(ctx, m, sm, cut)
   const heatColumns: Column<HeatDatum>[] = [
     { key: 'driver', label: 'Driver' },
     { key: 'group', label: CUT_LABEL[cut] },
@@ -162,13 +148,13 @@ export function SurveyBlock({
       key: 'value',
       label: 'Mean score',
       format: 'num2',
-      drill: (r) => (r.suppressed ? null : () => heatOpen(r)),
+      drill: (r) => (r.suppressed ? null : heatOpen(r)),
     },
     {
       key: 'respondents',
       label: 'Respondents',
       format: 'int',
-      drill: (r) => (r.respondents ? () => heatOpen(r) : null),
+      drill: (r) => (r.respondents ? heatOpen(r) : null),
     },
     { key: 'shown', label: 'Shown' },
   ]
@@ -302,7 +288,7 @@ export function SurveyBlock({
           domain={[heatMid - 1, heatMid + 1]}
           xOrder={heat?.groups}
           yOrder={heat?.drivers}
-          onSelect={(d) => (d.suppressed ? undefined : drill(() => heatOpen(d)))}
+          onSelect={(d) => (d.suppressed ? undefined : drill(heatOpen(d)))}
         />
       </Figure>
       {children}

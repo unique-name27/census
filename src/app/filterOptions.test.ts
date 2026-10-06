@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
+import { activeEmployees, smallExcludedValues } from '@/data/exclusion'
 import type { Employee } from '@/data/schema'
-import { buildOrgIndex, DEFAULT_FILTERS } from '@/data/scope'
+import { buildOrgIndex, DEFAULT_FILTERS, type Filters, withMode } from '@/data/scope'
 import {
   customRangeError,
   dimensionOptions,
@@ -9,6 +10,7 @@ import {
   orgSizes,
   otherFilters,
   shortRange,
+  tooFewToLeaveOut,
 } from './filterOptions'
 
 const AS_OF = '2026-09-30'
@@ -142,6 +144,56 @@ describe('orgSizes and leaderOptions', () => {
     const sizes = orgSizes(loop, AS_OF)
     expect(sizes.get('p')).toBe(5)
     expect(sizes.get('q')).toBe(5)
+  })
+})
+
+describe('tooFewToLeaveOut', () => {
+  // The menus' check agrees with the anonymity rule for exclusions that Ask and the records panel
+  // apply: an option's Exclude count is exactly who leaving it out removes.
+  const people = activeEmployees(roster, AS_OF)
+  const MIN = 5
+  const scopes: Filters[] = [
+    { ...DEFAULT_FILTERS, modes: {} },
+    { ...DEFAULT_FILTERS, level: ['L1', 'L3', 'L5'], modes: {} },
+    { ...DEFAULT_FILTERS, businessUnit: ['Networking'], modes: { businessUnit: 'exclude' } },
+  ]
+
+  it('blocks a location or level that removes 1 to min - 1 people, within the other filters', () => {
+    let blocked = 0
+    for (const base of scopes)
+      for (const key of ['location', 'level'] as const) {
+        const within = otherFilters(base, index, key)
+        for (const o of dimensionOptions(roster, AS_OF, key, [], within)) {
+          const next = { ...base, [key]: [o.value], modes: withMode(base.modes, key, 'exclude') }
+          // The value itself (another exclusion may be small already in a roster this tiny).
+          const small = smallExcludedValues(people, next, index, MIN).some(
+            (x) => x.dim === key && x.value === o.value,
+          )
+          expect(tooFewToLeaveOut(o.count, MIN), `${key} ${o.value}`).toBe(small)
+          if (small) blocked++
+        }
+      }
+    expect(blocked).toBeGreaterThan(0)
+    // Austin has 5 people, but only 3 of them are at L1, L3 or L5.
+    const austin = (f: Filters) =>
+      dimensionOptions(roster, AS_OF, 'location', [], otherFilters(f, index, 'location')).find(
+        (o) => o.value === 'Austin',
+      )?.count ?? 0
+    expect(tooFewToLeaveOut(austin(scopes[0]), MIN)).toBe(false)
+    expect(tooFewToLeaveOut(austin(scopes[1]), MIN)).toBe(true)
+    // Leaving out nobody is fine.
+    expect(tooFewToLeaveOut(0, MIN)).toBe(false)
+  })
+
+  it('blocks a leader whose org has 1 to min - 1 people in scope', () => {
+    for (const o of leaderOptions(index, AS_OF, 1)) {
+      const next = { ...DEFAULT_FILTERS, leaderId: o.id, modes: { leaderId: 'exclude' as const } }
+      expect(tooFewToLeaveOut(o.size, MIN), o.id).toBe(
+        smallExcludedValues(people, next, index, MIN).length > 0,
+      )
+    }
+    expect(tooFewToLeaveOut(orgSizes(index, AS_OF).get('a1') ?? 0, MIN)).toBe(true)
+    expect(tooFewToLeaveOut(orgSizes(index, AS_OF).get('vpA') ?? 0, MIN)).toBe(false)
   })
 })
 

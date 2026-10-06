@@ -9,22 +9,8 @@ import type { Employee } from '@/data/schema'
 import { drill, openPerson } from '@/drill'
 import { formatDate, formatMonth } from '@/lib/dates'
 import { fmt, plural } from '@/lib/format'
-import {
-  employeesDrill,
-  monthSub,
-  readinessDrill,
-  startEmployees,
-  surveyDrill,
-  tasksDrill,
-  transactionsDrill,
-} from '../engine/drills'
-import {
-  type CheckInItem,
-  type NewHireTx,
-  PULSE_DRIVER,
-  PULSE_SURVEY,
-  type RateGroup,
-} from '../engine/first90'
+import { tasksDrill } from '../engine/drills'
+import { type CheckInItem, PULSE_DRIVER, type RateGroup } from '../engine/first90'
 import {
   ATTRITION_90,
   DEPARTMENT,
@@ -36,19 +22,16 @@ import {
   TASKS,
   union,
 } from '../engine/lineage'
-import type { Start } from '../engine/starts'
 import { M } from '../metrics'
 import {
-  asOfNote,
-  barTone,
-  defs,
-  drillIf,
-  hiddenNote,
-  NeedData,
-  NO_TASKS,
-  shareTone,
-  useOnboarding,
-} from './shared'
+  attritionDrills,
+  checkInDrills,
+  dayOneMonthDrills,
+  dayOneSiteDrills,
+  newHireSiteDrills,
+  pulseRegionDrill,
+} from './drill'
+import { asOfNote, barTone, defs, hiddenNote, NeedData, NO_TASKS, shareTone, useOnboarding } from './shared'
 
 /** "7 of 9", or the group size alone when the group is under the anonymity minimum. */
 const ofText = (met: number | null, n: number): string =>
@@ -83,7 +66,6 @@ export function First90Tab() {
   const dayOneUses = union(STARTERS, TASKS)
 
   /* Day-one readiness by month. */
-  const people = startEmployees
   const ready = new Set(f.dayOne.ready)
   const monthRows = f.dayOne.byMonth.map((r) => ({
     month: r.month,
@@ -94,33 +76,13 @@ export function First90Tab() {
     rows: r.rows,
   }))
   type MonthRow = (typeof monthRows)[number]
-  const monthDrill = (r: MonthRow) => () =>
-    employeesDrill(b, people(r.rows), `Starts in ${r.monthName}`, {
-      subtitle: monthSub(b, r.month),
-      uses: dayOneUses,
-    })
-  /** A readiness bar: the people not ready, or on a 100% bar the people who were. */
-  const notReadyDrill = (rows: readonly Start[], where: string, subtitle?: string) => () =>
-    readinessDrill(b, rows, ready, where, { subtitle, uses: dayOneUses })
-  const readyDrill = (rows: readonly Start[], where: string, subtitle?: string) => () =>
-    employeesDrill(b, people(rows.filter((p) => ready.has(p))), `Ready on day one, ${where}`, {
-      subtitle,
-      uses: dayOneUses,
-    })
+  // A month's starts set the month as the period ("Filter to Jun 2026"); a site's, the site.
+  // A readiness bar opens the people not ready, or on a 100% bar the people who were.
+  const monthDrills = dayOneMonthDrills(b, ready, dayOneUses)
   const monthColumns: Column<MonthRow>[] = [
     { key: 'monthName', label: 'Start month' },
-    {
-      key: 'starts',
-      label: 'Starts with tasks',
-      format: 'int',
-      drill: (r) => drillIf(r.starts, monthDrill(r)),
-    },
-    {
-      key: 'ready',
-      label: 'Ready on day one',
-      format: 'int',
-      drill: (r) => drillIf(r.ready, readyDrill(r.rows, r.monthName, monthSub(b, r.month))),
-    },
+    { key: 'starts', label: 'Starts with tasks', format: 'int', drill: monthDrills.starts },
+    { key: 'ready', label: 'Ready on day one', format: 'int', drill: monthDrills.ready },
     { key: 'rate', label: 'Day-one readiness', format: 'pct' },
   ]
   const shown = monthRows.filter((r) => r.rate != null)
@@ -130,57 +92,21 @@ export function First90Tab() {
   /* By site. */
   const siteRows = f.dayOne.bySite.map((g) => ({ site: g.group, starts: g.n, ready: g.met, rate: g.rate, g }))
   type SiteRow = (typeof siteRows)[number]
+  const siteDrills = dayOneSiteDrills(b, ready, dayOneUses)
   const siteColumns: Column<SiteRow>[] = [
     { key: 'site', label: 'Site' },
-    {
-      key: 'starts',
-      label: 'Starts with tasks',
-      format: 'int',
-      drill: (r) =>
-        drillIf(r.starts, () =>
-          employeesDrill(b, people(r.g.rows), `Starts, ${r.site}`, { uses: dayOneUses }),
-        ),
-    },
-    {
-      key: 'ready',
-      label: 'Ready on day one',
-      format: 'int',
-      drill: (r) => drillIf(r.ready, readyDrill(r.g.rows, r.site)),
-    },
+    { key: 'starts', label: 'Starts with tasks', format: 'int', drill: (r) => siteDrills.starts(r.g) },
+    { key: 'ready', label: 'Ready on day one', format: 'int', drill: (r) => siteDrills.ready(r.g) },
     { key: 'rate', label: 'Day-one readiness', format: 'pct' },
   ]
   const nh = f.newHire
   const nhRows = nh.bySite.map((g) => ({ site: g.group, due: g.n, onTime: g.met, rate: g.rate, g }))
   type NhRow = (typeof nhRows)[number]
-  const nhDrill = (g: RateGroup<NewHireTx>, title: string) => () =>
-    transactionsDrill(
-      b,
-      g.rows.map((x) => x.tx),
-      title,
-      { uses: NEW_HIRE_TX },
-    )
+  const nhDrills = newHireSiteDrills(b)
   const nhColumns: Column<NhRow>[] = [
     { key: 'site', label: 'Site' },
-    {
-      key: 'due',
-      label: 'New hires due',
-      format: 'int',
-      drill: (r) => drillIf(r.due, nhDrill(r.g, `New hire transactions, ${r.site}`)),
-    },
-    {
-      key: 'onTime',
-      label: 'Entered by day -3',
-      format: 'int',
-      drill: (r) =>
-        drillIf(r.onTime, () =>
-          transactionsDrill(
-            b,
-            r.g.rows.filter((x) => x.onTime).map((x) => x.tx),
-            `New hires entered by day -3, ${r.site}`,
-            { uses: NEW_HIRE_TX },
-          ),
-        ),
-    },
+    { key: 'due', label: 'New hires due', format: 'int', drill: (r) => nhDrills.due(r.g) },
+    { key: 'onTime', label: 'Entered by day -3', format: 'int', drill: (r) => nhDrills.onTime(r.g) },
     { key: 'rate', label: 'On time', format: 'pct' },
   ]
 
@@ -198,38 +124,18 @@ export function First90Tab() {
   const byCheckIn = ciRows(f.checkIns.byCheckIn)
   const byDept = ciRows(f.checkIns.byDepartment)
   type CiRow = (typeof byCheckIn)[number]
-  const ciDrill = (g: RateGroup<CheckInItem>, title: string, only?: 'late' | 'onTime') => () =>
-    tasksDrill(
-      b,
-      g.rows.filter((x) => !only || (only === 'late' ? !x.onTime : x.onTime)).map((x) => x.task),
-      title,
-      { uses: union(ciUses, DEPARTMENT) },
-    )
-  /** A check-in bar opens the late or missed ones; on a 100% bar, the ones held on time. */
-  const ciBarDrill = (g: RateGroup<CheckInItem>, group: string) =>
-    g.met != null && g.met === g.n
-      ? ciDrill(g, `Check-ins on time, ${group}`, 'onTime')
-      : ciDrill(g, `Check-ins late or missed, ${group}`, 'late')
-  const ciColumns = (label: string): Column<CiRow>[] => [
+  // A department's check-ins carry the department as the drill's filter; a check-in is no filter.
+  // A bar opens the late or missed ones; on a 100% bar, the ones held on time.
+  const ciDrills = {
+    checkIn: checkInDrills(b, union(ciUses, DEPARTMENT), null),
+    department: checkInDrills(b, union(ciUses, DEPARTMENT), 'department'),
+  }
+  type CiDrills = (typeof ciDrills)['checkIn']
+  const ciColumns = (label: string, d: CiDrills): Column<CiRow>[] => [
     { key: 'group', label },
-    {
-      key: 'due',
-      label: 'Due',
-      format: 'int',
-      drill: (r) => drillIf(r.due, ciDrill(r.g, `Check-ins due, ${r.group}`)),
-    },
-    {
-      key: 'onTime',
-      label: 'On time',
-      format: 'int',
-      drill: (r) => drillIf(r.onTime, ciDrill(r.g, `Check-ins on time, ${r.group}`, 'onTime')),
-    },
-    {
-      key: 'late',
-      label: 'Late or missed',
-      format: 'int',
-      drill: (r) => drillIf(r.late, ciDrill(r.g, `Check-ins late or missed, ${r.group}`, 'late')),
-    },
+    { key: 'due', label: 'Due', format: 'int', drill: (r) => d.due(r.g) },
+    { key: 'onTime', label: 'On time', format: 'int', drill: (r) => d.onTime(r.g) },
+    { key: 'late', label: 'Late or missed', format: 'int', drill: (r) => d.late(r.g) },
     { key: 'rate', label: 'On time %', format: 'pct' },
   ]
 
@@ -285,30 +191,17 @@ export function First90Tab() {
     : null
   type AttrRow = (typeof attrDept)[number]
   const attrUses = union(ATTRITION_90, MANAGER_AT_HIRE)
-  const attrColumns = (label: string): Column<AttrRow>[] => [
+  // A department's starts carry the department as the drill's filter; the manager someone joined
+  // is no filter (a leader filter is the whole org).
+  const attrDrills = {
+    department: attritionDrills(b, a.leavers, attrUses, 'department'),
+    manager: attritionDrills(b, a.leavers, attrUses, null),
+  }
+  type AttrDrills = (typeof attrDrills)['department']
+  const attrColumns = (label: string, d: AttrDrills): Column<AttrRow>[] => [
     { key: 'group', label },
-    {
-      key: 'starts',
-      label: 'Starts',
-      format: 'int',
-      drill: (r) =>
-        r.rate == null ? null : () => employeesDrill(b, r.g.rows, `Starts, ${r.group}`, { uses: attrUses }),
-    },
-    {
-      key: 'left',
-      label: 'Resigned early',
-      format: 'int',
-      drill: (r) =>
-        r.rate == null || !r.left
-          ? null
-          : () =>
-              employeesDrill(
-                b,
-                r.g.rows.filter((e) => a.leavers.includes(e)),
-                `Resigned early, ${r.group}`,
-                { uses: attrUses },
-              ),
-    },
+    { key: 'starts', label: 'Starts', format: 'int', drill: (r) => d.starts(r.g) },
+    { key: 'left', label: 'Resigned early', format: 'int', drill: (r) => d.left(r.g) },
     { key: 'rate', label: 'Early voluntary attrition', format: 'pct' },
   ]
 
@@ -322,16 +215,15 @@ export function First90Tab() {
       }))
     : []
   type PulseRow = (typeof pulseRows)[number]
-  const pulseDrill = () =>
-    surveyDrill(b, PULSE_SURVEY, p.byRegion, p.overall, 'Day-30 "I had what I needed", by region', {
-      groupBy: 'Region',
-      item: p.item,
-      driver: PULSE_DRIVER,
-      uses: PULSE,
-    })
+  // A region's answers by location, filtered to its sites ("Filter to Asia Pacific").
+  const pulseDrill = pulseRegionDrill(b, ctx.all.employees, p, {
+    title: 'Day-30 "I had what I needed"',
+    driver: PULSE_DRIVER,
+    uses: PULSE,
+  })
   const pulseColumns: Column<PulseRow>[] = [
     { key: 'region', label: 'Region' },
-    { key: 'respondents', label: 'Respondents', format: 'int', drill: () => pulseDrill },
+    { key: 'respondents', label: 'Respondents', format: 'int', drill: pulseDrill },
     { key: 'mean', label: 'Mean score (1 to 5)', format: 'num2' },
   ]
 
@@ -386,7 +278,7 @@ export function First90Tab() {
                   yDomain={[floor, 1]}
                   xTicks="quarter"
                   height={240}
-                  onSelect={(d) => drill(notReadyDrill(d.rows, d.monthName, monthSub(b, d.month)))}
+                  onSelect={(d) => drill(monthDrills.notReady(d))}
                 />
               </Figure>
             )}
@@ -430,7 +322,7 @@ export function First90Tab() {
             tone={(d) => barTone(d.rate, t.dayOne?.value)}
             glyphTone={(d) => shareTone(d.rate, t.dayOne?.value)}
             nullNote={hiddenNote(min)}
-            onSelect={(d) => drill(d.rate == null ? null : notReadyDrill(d.g.rows, d.site))}
+            onSelect={(d) => drill(siteDrills.notReady(d.g))}
           />
         </Figure>
         <Figure
@@ -456,29 +348,7 @@ export function First90Tab() {
             tone={(d) => barTone(d.rate, null)}
             glyphTone={(d) => shareTone(d.rate, null)}
             nullNote={hiddenNote(min)}
-            onSelect={(d) =>
-              drill(
-                d.rate == null
-                  ? null
-                  : () => {
-                      // The late ones; on a 100% bar, the ones entered on time.
-                      const late = d.g.rows.filter((x) => !x.onTime)
-                      return late.length
-                        ? transactionsDrill(
-                            b,
-                            late.map((x) => x.tx),
-                            `New hires entered late, ${d.site}`,
-                            { uses: NEW_HIRE_TX },
-                          )
-                        : transactionsDrill(
-                            b,
-                            d.g.rows.map((x) => x.tx),
-                            `New hires entered by day -3, ${d.site}`,
-                            { uses: NEW_HIRE_TX },
-                          )
-                    },
-              )
-            }
+            onSelect={(d) => drill(nhDrills.bar(d.g))}
           />
         </Figure>
       </Section>
@@ -494,7 +364,7 @@ export function First90Tab() {
           title="Check-ins on time"
           subtitle={`30, 60 and 90-day check-ins due ${b.windowWords}, done by their due date`}
           data={byCheckIn}
-          columns={ciColumns('Check-in')}
+          columns={ciColumns('Check-in', ciDrills.checkIn)}
           note={asOfNote(
             b.asOf,
             plural(f.checkIns.judged.length, 'check-in'),
@@ -525,7 +395,7 @@ export function First90Tab() {
             tone={(d) => barTone(d.rate, t.checkIns?.value)}
             glyphTone={(d) => shareTone(d.rate, t.checkIns?.value)}
             nullNote={hiddenNote(min)}
-            onSelect={(d) => drill(d.rate == null ? null : ciBarDrill(d.g, d.group))}
+            onSelect={(d) => drill(ciDrills.checkIn.bar(d.g))}
           />
         </Figure>
         <Figure
@@ -535,7 +405,7 @@ export function First90Tab() {
           title="Check-ins on time by department"
           subtitle={`Lowest first, check-ins due ${b.windowWords}`}
           data={byDept}
-          columns={ciColumns('Department')}
+          columns={ciColumns('Department', ciDrills.department)}
           note={asOfNote(b.asOf, `departments under ${min} check-ins hidden`)}
           span={6}
           empty={
@@ -567,7 +437,7 @@ export function First90Tab() {
             tone={(d) => barTone(d.rate, t.checkIns?.value)}
             glyphTone={(d) => shareTone(d.rate, t.checkIns?.value)}
             nullNote={hiddenNote(min)}
-            onSelect={(d) => drill(d.rate == null ? null : ciBarDrill(d.g, d.group))}
+            onSelect={(d) => drill(ciDrills.department.bar(d.g))}
           />
         </Figure>
         <Figure
@@ -610,7 +480,7 @@ export function First90Tab() {
           title="Early voluntary attrition by department"
           subtitle={`Starts ${b.windowWords} whose first ${fmt(s.attritionDays, 'days')} have passed`}
           data={attrDept}
-          columns={attrColumns('Department')}
+          columns={attrColumns('Department', attrDrills.department)}
           note={asOfNote(b.asOf, `${fmt(a.leavers.length, 'int')} of ${plural(a.cohort.length, 'start')}`)}
           span={6}
           empty={a.cohort.length ? null : 'No starts whose early exit window has passed in this period.'}
@@ -633,13 +503,7 @@ export function First90Tab() {
                 : undefined
             }
             nullNote={hiddenNote(min)}
-            onSelect={(d) =>
-              drill(
-                d.rate == null
-                  ? null
-                  : () => employeesDrill(b, d.g.rows, `Starts, ${d.group}`, { uses: attrUses }),
-              )
-            }
+            onSelect={(d) => drill(attrDrills.department.starts(d.g))}
           />
         </Figure>
         <Figure
@@ -649,7 +513,7 @@ export function First90Tab() {
           title="Early voluntary attrition by hiring manager"
           subtitle="The manager at the start date; managers with fewer starts than the minimum are grouped as Other"
           data={attrMgr.filter((x) => x.rate != null)}
-          columns={attrColumns('Manager at hire')}
+          columns={attrColumns('Manager at hire', attrDrills.manager)}
           note={asOfNote(b.asOf, mgrFoldedNote)}
           span={6}
           empty={
@@ -671,9 +535,7 @@ export function First90Tab() {
             )}
             secondary={(d) => ofText(d.left, d.starts)}
             nullNote={hiddenNote(min)}
-            onSelect={(d) =>
-              drill(() => employeesDrill(b, d.g.rows, `Starts, ${d.group}`, { uses: attrUses }))
-            }
+            onSelect={(d) => drill(attrDrills.manager.starts(d.g))}
           />
         </Figure>
       </Section>
@@ -726,7 +588,7 @@ export function First90Tab() {
               d.mean != null && p.target != null && d.mean < p.target - 0.5 ? 'warning' : 'default'
             }
             nullNote={hiddenNote(s.surveyMin)}
-            onSelect={() => drill(pulseDrill)}
+            onSelect={(d) => drill(pulseDrill(d))}
           />
         </Figure>
       </Section>

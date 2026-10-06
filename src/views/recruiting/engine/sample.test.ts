@@ -1,6 +1,7 @@
 /**
  * Smoke test on the sample company: every planted recruiting story (src/data/sample/README.md)
- * surfaces in the readout or the figures, every KPI is finite or null, and the engine is fast.
+ * surfaces in the readout or the figures and every KPI is finite or null. The time budget is in
+ * sample.perf.test.ts.
  */
 import { beforeAll, describe, expect, it } from 'vitest'
 import { type AnalyticsContext, buildContext } from '@/data/context'
@@ -8,7 +9,6 @@ import { generateSample } from '@/data/sample'
 import { DATASET_KEYS, type DatasetKey, type Datasets } from '@/data/schema'
 import { DEFAULT_FILTERS } from '@/data/scope'
 import type { SourceMeta } from '@/data/store'
-import { bestCostMs } from '@/lib/testBudget'
 import { computeRecruitingUncached, type RecruitingModel } from '.'
 import { allProblemFindings } from './findings'
 import { headline } from './kpis'
@@ -34,11 +34,6 @@ const finding = (id: string) => {
 }
 
 describe('sample company, whole company, last 12 months', () => {
-  it('runs in under 150 ms', () => {
-    // Best of three after a warm-up, counting work rather than waiting, so a busy machine passes.
-    expect(bestCostMs(() => computeRecruitingUncached(ctx))).toBeLessThan(150)
-  })
-
   it('keeps every KPI finite or null', () => {
     expect(m.kpis.map((k) => k.id)).toEqual([
       'open-reqs',

@@ -3,10 +3,11 @@
  * remembers (`census:help`: the welcome card dismissed, tours finished). Light on purpose: no
  * article or tour content, so the shared components and the Scorecard can import it.
  *
- * A tour remembers the page and the filters it started from and puts both back when it ends.
+ * A tour remembers the page and the filters it started from and puts both back when it ends. It
+ * never adds to the browser history (docs/FILTERS.md: Help does not touch history): its moves
+ * replace the entry on screen.
  */
 import { create } from 'zustand'
-import { goTo } from '@/components/navigation'
 import type { Filters } from '@/data/scope'
 import { closeSettings, type Route, useCensus } from '@/data/store'
 import { useDrillStore } from '@/drill/store'
@@ -140,9 +141,11 @@ export const useHelp = create<HelpState>((set, get) => ({
     const t = get().tour
     if (!t) return
     const census = useCensus.getState()
-    if (JSON.stringify(census.filters) !== JSON.stringify(t.filters)) census.setFilters(t.filters)
+    if (JSON.stringify(census.filters) !== JSON.stringify(t.filters))
+      census.setFilters(t.filters, { history: 'replace' })
     const r = census.route
-    if (r.view !== t.from.view || r.tab !== t.from.tab) goTo(t.from.view, t.from.tab)
+    if (r.view !== t.from.view || r.tab !== t.from.tab)
+      census.navigate(t.from.view, t.from.tab, { history: 'replace', scroll: r.view !== t.from.view })
     const prefs = how === 'done' ? withCompleted(get().prefs, t.id) : get().prefs
     if (prefs !== get().prefs) savePrefs(prefs)
     set((s) => ({

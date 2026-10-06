@@ -36,6 +36,8 @@ export const NO_REASON = 'Not recorded'
 export const OTHER_REASONS = 'Other reasons'
 /** The one series of the on-leave chart when the file has no leave reasons. */
 export const ALL_LEAVES = 'On leave'
+/** The unit of a leave whose person is not on the roster (no business unit to filter to). */
+export const NO_UNIT = 'Unknown business unit'
 
 /** One leave of absence: a leave start with its return or exit. */
 export interface LeaveFact extends Personal {
@@ -254,7 +256,7 @@ export interface OnLeaveRow {
 export function onLeaveByUnit(now: readonly LeaveFact[], hasReasons: boolean, min = MIN_GROUP): OnLeaveRow[] {
   const units = new Map<string, LeaveFact[]>()
   for (const f of now) {
-    const k = f.businessUnit ?? 'Unknown business unit'
+    const k = f.businessUnit ?? NO_UNIT
     const list = units.get(k)
     if (list) list.push(f)
     else units.set(k, [f])

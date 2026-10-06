@@ -14,7 +14,6 @@ import { LinkedSurvey } from '@/views/listening/LinkedSurvey'
 import {
   declineReasonDrill,
   exitReasonDrill,
-  locationOffersDrill,
   type SourceMeasure,
   sourceDrill,
   sourceMonthDrill,
@@ -25,6 +24,7 @@ import type { ExitReasonRow, GroupAcceptance, ReasonRow, SourceMonthRow, SourceR
 import { RM } from '../metrics'
 import { useRecruitingUi } from '../state'
 import { asOfNote, defOf, drillIf, NEED_CANDIDATES, NoRecruitingData, windowText } from './common'
+import { offersLocationDrill } from './drill'
 import { useRecruiting } from './hooks'
 
 type ExitKind = 'Rejected' | 'Withdrawn'
@@ -73,10 +73,8 @@ export function SourcesTab() {
   const src = (measure: SourceMeasure, n: (r: SourceRow) => number | boolean | null) => (r: SourceRow) =>
     drillIf(n(r), () => sourceDrill(b, r, measure))
   const basisWindow = basis === 'quarter' ? { start: q.start, end: q.end } : b.window
-  const locDrill = (only?: 'Hired' | 'Declined') => (r: GroupAcceptance) =>
-    drillIf(only ? r.apps.some((a) => a.outcome === only) : r.apps.length, () =>
-      locationOffersDrill(b, r, basisWindow, only),
-    )
+  // A site's offers carry the site as the drill's filter ("Filter to Bengaluru").
+  const locDrill = (only?: 'Hired' | 'Declined') => offersLocationDrill(b, basisWindow, only)
   const reasonDrill = (r: ReasonRow) => drillIf(r.apps.length, () => declineReasonDrill(b, r, declinedTotal))
   const exitDrill = (r: ExitReasonRow) =>
     drillIf(r.apps.length, () => exitReasonDrill(b, r.apps, r.outcome, r.reason, r.stage))

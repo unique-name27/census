@@ -19,7 +19,7 @@ import type { AnalyticsContext } from '@/data/context'
 import type { FieldRef } from '@/data/quality/fieldRef'
 import type { Tier } from '@/data/quality/tier'
 import { CASE_CATEGORIES, type DatasetKey, ONBOARDING_OWNERS, type ViewKey } from '@/data/schema'
-import { hasOrgFilter, scopeDatasets, scopeLabel, subtreeIds } from '@/data/scope'
+import { focusLeader, hasOrgFilter, scopeDatasets, scopeLabel, subtreeIds } from '@/data/scope'
 import { headcountAt } from '@/lib/people'
 import { minGroupOf } from '@/metrics/privacy'
 import { ownerLookup } from '@/views/hrbp/engine/owners'
@@ -126,7 +126,8 @@ const PERSON_KINDS = new Set(['employees', 'comp', 'rightToWork', 'learning', 'r
 /** The context without the leader filter (other filters kept): where items owned by the leader's org are found. */
 const unled = new WeakMap<AnalyticsContext, AnalyticsContext>()
 export function withoutLeader(ctx: AnalyticsContext): AnalyticsContext {
-  if (!ctx.filters.leaderId) return ctx
+  // Only "My team" (a leader the scope includes) looks outside the scope; a left-out leader stays left out.
+  if (!focusLeader(ctx.filters)) return ctx
   let out = unled.get(ctx)
   if (!out) {
     const filters = { ...ctx.filters, leaderId: null }
@@ -207,8 +208,8 @@ export function collectActions(ctx: AnalyticsContext, views: readonly ViewSource
 export function collectUncached(ctx: AnalyticsContext, views: readonly ViewSource[]): Collected {
   const byKey = new Map(views.map((v) => [v.key, v]))
   const look = ownerLookup(ctx.all.employees, ctx.asOf)
-  const leaderId =
-    ctx.filters.leaderId && ctx.org.byId.has(ctx.filters.leaderId) ? ctx.filters.leaderId : null
+  const focus = focusLeader(ctx.filters)
+  const leaderId = focus && ctx.org.byId.has(focus) ? focus : null
   const subtree = leaderId ? subtreeIds(ctx.org, leaderId) : null
 
   const resolve = (i: ActionItem): string | null => i.ownerId ?? look(i.ownerName)

@@ -11,10 +11,12 @@
  * Pure: no React, no DOM.
  */
 import type { Employee, LearningRecord, Potential, Readiness, Review, SuccessionPlan } from '@/data/schema'
-import { type DrillExtra, type DrillSpec, drillSpec } from '@/drill/types'
-import { addMonths, daysBetween, formatDate, formatMonth } from '@/lib/dates'
+import type { FilterDimension } from '@/data/scope'
+import { groupFilter, periodFilter } from '@/drill/filter'
+import { type DrillExtra, type DrillFilter, type DrillSpec, drillSpec } from '@/drill/types'
+import { addMonths, daysBetween, formatDate, formatMonth, monthEnd } from '@/lib/dates'
 import { fmt, plural } from '@/lib/format'
-import { normRating, type PerfBand, ratingAt, segmentName, type TalentBase } from './base'
+import { normRating, type PerfBand, ratingAt, segmentName, type TalentBase, UNKNOWN } from './base'
 import { completionKey, isOnTime, type LearningResult, type OverdueCell } from './learning'
 import type { NineBoxPerson, NineBoxResult } from './ninebox'
 import { cycleKey, type HighShareRow, type PerformanceResult, ratingLabel } from './performance'
@@ -353,7 +355,7 @@ export function buildDrills(x: DrillInputs): TalentDrills {
     open: 'Required training not completed',
   }
 
-  return {
+  const drills: TalentDrills = {
     ratedActive: () =>
       when(pr.ratedActive.length > 0, () =>
         drillSpec({
@@ -1025,6 +1027,60 @@ export function buildDrills(x: DrillInputs): TalentDrills {
         }),
       )
     },
+  }
+  return withGroupFilters(drills, x)
+}
+
+/** A business unit, department, location or level as a filter; none for the roster's placeholders. */
+const groupOf = (dim: FilterDimension, value: string | null | undefined): DrillFilter | undefined =>
+  value === UNKNOWN || value === 'Unknown' ? undefined : groupFilter(dim, value)
+
+/** The drill with a filter on its spec (when it has records and a filter). */
+const grouped = (d: TalentDrill, filter: DrillFilter | undefined): TalentDrill =>
+  d && filter ? () => ({ ...d(), filter }) : d
+
+/**
+ * "Filter to this" (docs/FILTERS.md, part 4): the numbers that count one group of a filterable
+ * dimension carry the filter that reproduces it. Every group here is keyed by the person's (or
+ * the role incumbent's) business unit, department, location or level today, as the filters read
+ * them, and a completions month is a custom period inside the window. Ratings, boxes, bands,
+ * drivers, courses and the scope's own totals are not groups and set nothing; neither does a
+ * folded "Other" row.
+ */
+function withGroupFilters(d: TalentDrills, x: DrillInputs): TalentDrills {
+  const w = x.base.ctx.window
+  return {
+    ...d,
+    highShare: (dim, row, part, fold) =>
+      grouped(d.highShare(dim, row, part, fold), fold || row.other ? undefined : groupOf(dim, row.group)),
+    unitHigh: (bu) => grouped(d.unitHigh(bu), groupOf('businessUnit', bu)),
+    mix: (bu, rating) => grouped(d.mix(bu, rating), groupOf('businessUnit', bu)),
+    calibration: (bu, part) => grouped(d.calibration(bu, part), groupOf('businessUnit', bu)),
+    cycleUnit: (cycle, bu) => grouped(d.cycleUnit(cycle, bu), groupOf('businessUnit', bu)),
+    coverageCell: (bu, coverage) => grouped(d.coverageCell(bu, coverage), groupOf('businessUnit', bu)),
+    bench: (scope, bu, readiness, perRole) =>
+      grouped(d.bench(scope, bu, readiness, perRole), groupOf('businessUnit', bu)),
+    benchRoles: (scope, bu, part) => grouped(d.benchRoles(scope, bu, part), groupOf('businessUnit', bu)),
+    hipo: (dim, row, part) =>
+      grouped(d.hipo(dim, row, part), dim && row && !row.other ? groupOf(dim, row.group) : undefined),
+    completions: (month, kind) => {
+      // The month as a custom period, cut to the window so a partial first or last month stays the same.
+      const start = `${month}-01` < w.start ? w.start : `${month}-01`
+      const end = monthEnd(`${month}-01`) > w.end ? w.end : monthEnd(`${month}-01`)
+      return grouped(d.completions(month, kind), periodFilter(start, end))
+    },
+    overdueCell: (dim, cell, part) => grouped(d.overdueCell(dim, cell, part), groupOf(dim, cell.group)),
+    overdueSegment: () => {
+      const t = x.learning.concentration?.top
+      const dim = t?.dim
+      return grouped(
+        d.overdueSegment(),
+        t && (dim === 'businessUnit' || dim === 'department' || dim === 'location' || dim === 'level')
+          ? groupOf(dim, t.value)
+          : undefined,
+      )
+    },
+    hours: (bu) => grouped(d.hours(bu), groupOf('businessUnit', bu)),
   }
 }
 

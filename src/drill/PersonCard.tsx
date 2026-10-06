@@ -6,15 +6,14 @@
  */
 import { Dialog as BDialog } from '@base-ui/react/dialog'
 import { useMemo } from 'react'
-import { toast } from '@/components/toast'
 import { Button, StatusPill, Tag } from '@/components/ui'
 import { useAnalytics } from '@/data/context'
 import { RATING_LABELS } from '@/data/schema'
-import { useCensus } from '@/data/store'
 import { formatDate } from '@/lib/dates'
 import { fmt } from '@/lib/format'
 import { openInOrgChart } from '@/views/org/link'
 import { Drill } from './Drill'
+import { focusScope } from './focus'
 import { personSummary } from './person'
 import { directsSpec, openCasesSpec, orgSpec, overdueSpec } from './related'
 import { useDrillStore } from './store'
@@ -234,17 +233,14 @@ function Fact({ label, children }: { label: string; children: React.ReactNode })
 /** "Focus on their org" and "Show in org chart" for a person card. */
 function PersonActions({ employeeId, manages }: { employeeId: string; manages: boolean }) {
   const close = useDrillStore((s) => s.close)
-  const setFilters = useCensus((s) => s.setFilters)
+  const { org } = useAnalytics()
   return (
     <div className="flex flex-wrap gap-2">
       {manages && (
         <Button
           onClick={() => {
-            setFilters({ leaderId: employeeId })
-            close()
-            toast('Focused on their org', {
-              description: 'Every view now shows this leader and their teams.',
-            })
+            // The same merge, history entry and Undo as "Filter to" in the records panel.
+            focusScope({ leaderId: employeeId }, { mode: 'include', org })
           }}
         >
           Focus on their org

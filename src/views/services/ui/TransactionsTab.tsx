@@ -6,18 +6,7 @@ import { fmt } from '@/lib/format'
 import type { ServicesModel } from '../engine'
 import { FINAL_PAY_RULES } from '../engine/catalog'
 import { servicesDefinitions } from '../engine/definitions'
-import {
-  changesDrill,
-  type DrillScope,
-  drillWhen,
-  isLateTx,
-  monthName,
-  monthSub,
-  onTimeDrill,
-  retroDrill,
-  txDrill,
-  txOutcomeDrill,
-} from '../engine/drills'
+import { drillWhen, txDrill } from '../engine/drills'
 import type { TxFact } from '../engine/facts'
 import { onTimeRate } from '../engine/facts'
 import type { ServicesFigureId } from '../engine/lineage'
@@ -26,6 +15,7 @@ import type { FinalPayRow, RetroMonthRow, TimingRow, TypeRow } from '../engine/t
 import { TIMING_BINS } from '../engine/transactions'
 import { isOther } from '../engine/util'
 import { FIGURE_METRIC } from '../metrics'
+import { finalPayCells, onTimeCells, retroCells } from './drill'
 import { asOfNote, count, NeedData, NO_TX, period, rateTone, titled, useProcessHref } from './shared'
 
 const TX_DETAIL_COLUMNS = [
@@ -64,38 +54,8 @@ const inWindow = (m: ServicesModel) =>
 const finalPayTone = (rate: number | null, floor: number, target: number): Tone =>
   rate == null ? 'deemph' : rate < floor ? 'critical' : rate < target ? 'warning' : 'default'
 
-const isOnTime = (f: TxFact) => f.outcome === 'on-time'
-const isCompletedLate = (f: TxFact) => f.outcome === 'late'
-const isOverdue = (f: TxFact) => f.outcome === 'overdue'
-
 /** "Completed 3-5 d late": the bin label read inside a sentence. */
 const lowerFirst = (t: string) => t.charAt(0).toLowerCase() + t.slice(1)
-
-/**
- * Drills for a breakdown of judged transactions (by type, site, jurisdiction): every judged row
- * for the count and the rate, and the on-time, late and open-past-due ones for their counts.
- * A hidden rate hides its counts and their records with it.
- */
-function onTimeCells<T extends { rate: number | null; records: TxFact[] }>(
-  s: DrillScope,
-  noun: string,
-  group: (r: T) => string,
-  o: { exitType?: boolean } = {},
-) {
-  const all = (r: T) =>
-    r.rate == null ? null : () => onTimeDrill(s, r.records, titled(`${noun} due`, group(r), s.per), o)
-  const some = (pick: (f: TxFact) => boolean, words: string) => (r: T) =>
-    r.rate == null || !r.records.some(pick)
-      ? null
-      : () => txOutcomeDrill(s, r.records, pick, titled(`${noun} ${words}`, group(r), s.per), o)
-  return {
-    all,
-    onTime: some(isOnTime, 'on time'),
-    late: some(isLateTx, 'late or open past due'),
-    completedLate: some(isCompletedLate, 'completed late'),
-    overdue: some(isOverdue, 'open past due'),
-  }
-}
 
 function TypeOnTimeFigure({
   id,
@@ -216,29 +176,11 @@ export function TransactionsTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsCo
             order: (a, b) => (b.daysVsDue ?? 0) - (a.daysVsDue ?? 0),
           }),
         )
-  const finalPay = onTimeCells<FinalPayRow>(s, 'Final pay', (r) => r.name, { exitType: true })
-  const byExitType = (type: 'Involuntary' | 'Voluntary') => (r: FinalPayRow) => {
-    const rate = type === 'Involuntary' ? r.involuntaryRate : r.voluntaryRate
-    return rate == null
-      ? null
-      : () =>
-          onTimeDrill(
-            s,
-            r.records.filter((f) => f.exitType === type),
-            titled(`Final pay due, ${type.toLowerCase()} exits`, r.name, per),
-            { exitType: true },
-          )
-  }
-  const retroMonth = (d: RetroMonthRow) =>
-    d.share == null
-      ? null
-      : () =>
-          retroDrill(
-            s,
-            d.records,
-            titled('Retro adjustments', `${monthName(d.month)} cut-off`),
-            monthSub(s, d.month),
-          )
+  // Each jurisdiction's records carry its sites, each retro month its period ("Filter to").
+  const finalPay = finalPayCells(s)
+  const byExitType = finalPay.byExitType
+  const retroCell = retroCells(s)
+  const retroMonth = retroCell.retro
   const finalPayColumns: Column<FinalPayRow>[] = [
     { key: 'name', label: 'Jurisdiction' },
     { key: 'sites', label: 'Sites' },
@@ -261,16 +203,7 @@ export function TransactionsTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsCo
       key: 'changes',
       label: 'Job and pay changes',
       format: 'int',
-      drill: (r) =>
-        r.share == null
-          ? null
-          : () =>
-              changesDrill(
-                s,
-                r.records,
-                titled('Job and pay changes', `${monthName(r.month)} cut-off`),
-                monthSub(s, r.month),
-              ),
+      drill: retroCell.changes,
     },
     {
       key: 'retro',

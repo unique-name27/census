@@ -11,9 +11,9 @@ import type { ListeningModel } from '../engine'
 import type { ExitLocation, GapRow, ReasonRow, StayGroup } from '../engine/cuts'
 import { groupsDrill, rowsBy } from '../engine/drills'
 import type { SurveyModel } from '../engine/measures'
-import { deptBandOf } from '../engine/prepare'
 import { M } from '../metrics'
 import { AreaFrame, WithSurvey } from './AreaTab'
+import { exitLocationDrill, stayGroupDrill } from './drill'
 import { SurveyBlock } from './SurveyBlock'
 import { count, defs, noteOf, periodWords } from './shared'
 
@@ -65,31 +65,15 @@ function StayFigures({ ctx, m, sm }: { ctx: AnalyticsContext; m: ListeningModel;
         uses: m.uses.stay,
       },
     )
-  const inGroup = deptBandOf(m.prepared)
-  const groupOpen = (g: StayGroup) =>
-    groupsDrill(
-      rowsBy(
-        sm.period.filter((r) => inGroup(r) === g.group),
-        (r) => r.reason?.trim() || null,
-        { survey: sm.survey, wave: null, groupBy: 'Top stay risk', min: sm.min },
-      ),
-      {
-        survey: sm.survey,
-        wave: null,
-        title: `Stay risks named by ${g.group} key talent`,
-        subtitle: sub,
-        min: sm.min,
-        uses: m.uses.stay,
-        note: 'Each person counts once for each reason they named.',
-      },
-    )
+  // A group's stay risks carry its department and levels as their filter.
+  const groupOpen = stayGroupDrill(ctx, m, sm)
   const groupColumns: Column<StayGroup>[] = [
     { key: 'group', label: 'Department and career band' },
     { key: 'reason', label: 'Top stay risk' },
-    { key: 'share', label: 'Share of stay interviews', format: 'pct', drill: (g) => () => groupOpen(g) },
-    { key: 'count', label: 'Interviews naming it', format: 'int', drill: (g) => () => groupOpen(g) },
-    { key: 'interviews', label: 'Stay interviews', format: 'int', drill: (g) => () => groupOpen(g) },
-    { key: 'respondents', label: 'People', format: 'int', drill: (g) => () => groupOpen(g) },
+    { key: 'share', label: 'Share of stay interviews', format: 'pct', drill: groupOpen },
+    { key: 'count', label: 'Interviews naming it', format: 'int', drill: groupOpen },
+    { key: 'interviews', label: 'Stay interviews', format: 'int', drill: groupOpen },
+    { key: 'respondents', label: 'People', format: 'int', drill: groupOpen },
   ]
   const flag = stay?.flag
   return (
@@ -186,22 +170,8 @@ function ExitFigures({ ctx, m, sm }: { ctx: AnalyticsContext; m: ListeningModel;
         uses: m.uses.exitReasons,
       },
     )
-  const locationOpen = (l: ExitLocation) =>
-    groupsDrill(
-      rowsBy(
-        sm.period.filter((r) => p.emp.get(r.respondentKey)?.location === l.location),
-        (r) => r.reason?.trim() || null,
-        { survey: sm.survey, wave: null, groupBy: 'Exit reason', min: sm.min },
-      ),
-      {
-        survey: sm.survey,
-        wave: null,
-        title: `Exit survey reasons in ${l.location}`,
-        subtitle: sub,
-        min: sm.min,
-        uses: m.uses.exitReasons,
-      },
-    )
+  // A location's exit reasons carry the location as their filter.
+  const locationOpen = exitLocationDrill(ctx, m, sm)
   const locationRows = locations.map((l) => ({
     ...l,
     nextReason: l.next?.reason ?? '—',
@@ -210,16 +180,16 @@ function ExitFigures({ ctx, m, sm }: { ctx: AnalyticsContext; m: ListeningModel;
   type LocationDatum = (typeof locationRows)[number]
   const locationColumns: Column<LocationDatum>[] = [
     { key: 'location', label: 'Location' },
-    { key: 'respondents', label: 'Leavers who answered', format: 'int', drill: (l) => () => locationOpen(l) },
+    { key: 'respondents', label: 'Leavers who answered', format: 'int', drill: locationOpen },
     { key: 'reason', label: 'Top reason' },
-    { key: 'count', label: 'Naming it', format: 'int', drill: (l) => () => locationOpen(l) },
-    { key: 'share', label: 'Share', format: 'pct', drill: (x) => () => locationOpen(x) },
+    { key: 'count', label: 'Naming it', format: 'int', drill: locationOpen },
+    { key: 'share', label: 'Share', format: 'pct', drill: locationOpen },
     { key: 'nextReason', label: 'Next reason' },
     {
       key: 'nextCount',
       label: 'Naming it',
       format: 'int',
-      drill: (l) => (l.next ? () => locationOpen(l) : null),
+      drill: (l) => (l.next ? locationOpen(l) : null),
     },
   ]
   const gapRows: GapDatum[] = m.regretted.flatMap((g) => [

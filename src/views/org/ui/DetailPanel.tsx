@@ -27,6 +27,7 @@ import {
   type OrgModel,
   type OrgTree,
   orgDrill,
+  orgFilter,
   peopleDrill,
   ratingOf,
   scopeLine,
@@ -83,14 +84,18 @@ export function DetailPanel(p: DetailPanelProps) {
   const drills = stats && {
     directs: () => directsDrill(t, p.id, sc),
     org: () => orgDrill(t, p.id, sc),
+    // The average is over the person's org: "Filter to" their org keeps it.
     tenure: stats.ids.tenure.length
-      ? () =>
-          peopleDrill(t, stats.ids.tenure, {
+      ? () => {
+          const spec = peopleDrill(t, stats.ids.tenure, {
             title: `Tenure in ${e.name}'s org`,
             subtitle: scopeLine(sc),
             columns: ['directs'],
             note: `Average tenure = ${fmt(stats.avgTenure, 'years')} across ${plural(stats.ids.tenure.length, 'person', 'people')}. Tenure is the measured value.`,
           })
+          const filter = orgFilter(p.id, sc)
+          return spec && filter ? { ...spec, filter } : spec
+        }
       : null,
     contingent: () =>
       peopleDrill(t, stats.ids.contingent, {

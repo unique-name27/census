@@ -10,7 +10,8 @@
  * are counts of people and show only when the group they come from reaches the minimum.
  */
 import type { AnalyticsContext } from '@/data/context'
-import type { Employee, ISODate, OnboardingTask, SurveyResponse } from '@/data/schema'
+import { type Employee, type ISODate, LEVELS, type OnboardingTask, type SurveyResponse } from '@/data/schema'
+import type { DrillFilter } from '@/drill/types'
 import {
   aggregate,
   type Breakdown,
@@ -564,6 +565,25 @@ export function stayCut(
 export function splitDeptBand(group: string): { department: string; band: string } {
   const i = group.lastIndexOf(' ')
   return { department: group.slice(0, i), band: group.slice(i + 1) }
+}
+
+/**
+ * The scope that reproduces a department and career band group: its department and the levels
+ * its respondents hold (all within the band), so "Filter to" keeps exactly the group.
+ */
+export function deptBandFilter(
+  p: Prepared,
+  group: string,
+  respondentKeys: Iterable<string>,
+): DrillFilter | undefined {
+  const { department } = splitDeptBand(group)
+  const held = new Set<string>()
+  for (const key of respondentKeys) {
+    const e = p.emp.get(key)
+    if (e?.level && e.department === department) held.add(e.level)
+  }
+  const level = LEVELS.filter((l) => held.has(l))
+  return department && level.length ? { department: [department], level } : undefined
 }
 
 export interface ExitLocation {

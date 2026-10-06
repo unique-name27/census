@@ -25,6 +25,13 @@ export function ms(iso: string | null | undefined): number {
 
 export const isValidDate = (iso: string | null | undefined): iso is string => Number.isFinite(ms(iso))
 
+/**
+ * A real calendar date written as YYYY-MM-DD: "2026-02-30" is not one (`isValidDate` reads it as
+ * 2 March). For dates someone typed or pasted, such as a link's custom period.
+ */
+export const isCalendarDate = (v: unknown): v is ISODate =>
+  typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) && isValidDate(v) && iso(ms(v)) === v
+
 /** ISO date (YYYY-MM-DD) for a UTC millisecond value. */
 export function iso(t: number): ISODate {
   return new Date(t).toISOString().slice(0, 10)

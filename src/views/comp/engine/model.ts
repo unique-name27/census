@@ -32,6 +32,7 @@ import {
 import { figureDefinitions } from './definitions'
 import { tagFindings } from './drillUses'
 import { buildFindings } from './findings'
+import { tagDim } from './groupFilter'
 import { safeMedian, values } from './groups'
 import { buildCycleKpis, buildKpis } from './kpis'
 import { type FigureId, type FigureUses, figureUses, meetsFor, PROMOTED } from './lineage'
@@ -241,7 +242,10 @@ export function computeComp(ctx: AnalyticsContext, settings?: CycleSettings): Co
     companyDifferentiation: ctx.isCompany
       ? differentiation(people, min)
       : differentiation(company.people, min),
-    byDepartment: differentiationBy(people, (p) => p.department, min),
+    byDepartment: tagDim(
+      'department',
+      differentiationBy(people, (p) => p.department, min),
+    ),
     bonus: bonusByRating(people, min),
     equity: equityByRating(people, min),
   }
@@ -250,7 +254,10 @@ export function computeComp(ctx: AnalyticsContext, settings?: CycleSettings): Co
   const cycle = {
     spend,
     companySpend,
-    byBu: spendBy(people, (p) => p.businessUnit, s, min),
+    byBu: tagDim(
+      'businessUnit',
+      spendBy(people, (p) => p.businessUnit, s, min),
+    ),
     hist: meritDomain ? binBy(proposed, (p) => p.merit!, meritDomain[0], meritDomain[1], MERIT_STEP) : [],
     histDomain: meritDomain,
     exceptions: guidelineExceptions(people, s, ratingPeerStats(company.people), rules.exceptions),
@@ -269,8 +276,11 @@ export function computeComp(ctx: AnalyticsContext, settings?: CycleSettings): Co
     total: marketTotal(people, 'All', min),
     byFamily: marketBy(people, (p) => p.jobFamily, undefined, min),
     familyChart: marketLowest(people, (p) => p.jobFamily, 15, rules.marketGap.minFamily, min),
-    byLocation: marketBy(people, (p) => p.location, undefined, min),
-    byLevel: marketByLevel(people, min),
+    byLocation: tagDim(
+      'location',
+      marketBy(people, (p) => p.location, undefined, min),
+    ),
+    byLevel: tagDim('level', marketByLevel(people, min)),
     jobs: jobsBelowMarket(people, 15, min),
   }
   const overview = {
@@ -282,11 +292,24 @@ export function computeComp(ctx: AnalyticsContext, settings?: CycleSettings): Co
       min,
     ),
     people: personRows(people),
-    positionByBu: positionMix(people, (p) => p.businessUnit, undefined, min),
+    positionByBu: tagDim(
+      'businessUnit',
+      positionMix(people, (p) => p.businessUnit, undefined, min),
+    ),
     positionAll: positionTotal(people, ctx.isCompany ? 'Whole company' : ctx.scopeLabel, min),
-    byLocation: compaBy(people, (p) => p.location, s, undefined, min),
-    byLevel: compaBy(people, (p) => p.level, s, LEVELS, min),
-    byDepartment: compaBy(people, (p) => p.department, s, undefined, min),
+    // Breakdowns by an org filter carry it, so their records offer "Filter to" the group.
+    byLocation: tagDim(
+      'location',
+      compaBy(people, (p) => p.location, s, undefined, min),
+    ),
+    byLevel: tagDim(
+      'level',
+      compaBy(people, (p) => p.level, s, LEVELS, min),
+    ),
+    byDepartment: tagDim(
+      'department',
+      compaBy(people, (p) => p.department, s, undefined, min),
+    ),
   }
 
   const scopeLabel = ctx.isCompany ? 'Whole company' : ctx.scopeLabel

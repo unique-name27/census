@@ -102,6 +102,11 @@ export interface Finding {
   peopleTotal?: number
   /** Rescope the whole app to where the problem concentrates. */
   filter?: Partial<Filters>
+  /**
+   * What the reader calls the filter's group when it is not just its values: "Asia Pacific" for
+   * its sites. The button then reads "Focus on Asia Pacific" instead of "Focus on Bengaluru +3".
+   */
+  filterLabel?: string
   /** Open this tab of the current view. */
   tab?: string
   /** The records behind the finding's number (opens the drill panel). */

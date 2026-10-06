@@ -1,7 +1,7 @@
 /**
  * Smoke test on the generated sample (whole company, last 12 months): every planted employee
- * services story in src/data/sample/README.md is detected, every KPI is finite or null, and the
- * engine runs well inside its time budget.
+ * services story in src/data/sample/README.md is detected and every KPI is finite or null. The
+ * time budget is in sample.perf.test.ts.
  */
 import { describe, expect, it } from 'vitest'
 import type { Finding } from '@/components/types'
@@ -18,13 +18,6 @@ const find = (id: string): Finding => {
 const pctIn = (text: string) => Number(/([\d.]+)%/.exec(text)?.[1])
 
 describe('HR ops on the sample company', () => {
-  it('runs in under 150 ms', () => {
-    compute(ctx)
-    const t0 = performance.now()
-    compute(ctx)
-    expect(performance.now() - t0).toBeLessThan(150)
-  })
-
   it('returns finite or null KPIs, all seven of them', () => {
     expect(model.kpis.map((k) => k.id)).toEqual([
       'cases-opened',

@@ -1,11 +1,12 @@
 /**
  * Side effects the shell owns: the display settings on <html> (theme, text size, motion) and
- * following the URL hash.
+ * the address (route and scope in the URL hash).
  */
-import { useEffect, useLayoutEffect } from 'react'
-import { routeHash } from '@/components/navigation'
+import { useLayoutEffect } from 'react'
+import { useAnalytics } from '@/data/context'
 import { type MotionPref, TEXT_SIZE_SCALE, type TextSize } from '@/data/settings'
-import { parseHash, type ThemePref, useCensus } from '@/data/store'
+import { type ThemePref, useCensus } from '@/data/store'
+import { useAddress } from './address'
 
 /** 'system' follows the OS (no attribute); 'light' and 'dark' pin the tokens. */
 export function applyTheme(theme: ThemePref, root: HTMLElement = document.documentElement): void {
@@ -57,25 +58,11 @@ export function useDisplaySettings(): void {
   useLayoutEffect(() => applyMotion(motion), [motion])
 }
 
-/** Keeps the route in step with the hash: on load, and when Back/Forward or a link changes it. */
+/**
+ * Keeps the address and the app in step: the route and the scope (filters, data standard, quality
+ * lens) in the hash, Back and Forward through views, tabs and filter changes (src/app/address.ts).
+ * Call once, inside the analytics provider.
+ */
 export function useHashRouting(): void {
-  useEffect(() => {
-    const sync = () => {
-      const { route, navigate } = useCensus.getState()
-      const next = parseHash(location.hash)
-      if (!next) {
-        // No or unknown hash: write the current route so the address is shareable.
-        try {
-          history.replaceState(null, '', routeHash(route.view, route.tab))
-        } catch {
-          /* file:// pages in some browsers: the route still works without the hash */
-        }
-        return
-      }
-      if (next.view !== route.view || next.tab !== route.tab) navigate(next.view, next.tab)
-    }
-    sync()
-    window.addEventListener('hashchange', sync)
-    return () => window.removeEventListener('hashchange', sync)
-  }, [])
+  useAddress(useAnalytics())
 }

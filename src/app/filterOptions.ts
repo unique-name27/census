@@ -7,7 +7,7 @@
 
 import { type Employee, type ISODate, LEVEL_LABELS, type Level, levelIndex } from '@/data/schema'
 import { employeeMatcher, type Filters, isActiveAt, isEmployee, type OrgIndex } from '@/data/scope'
-import { formatDate, formatMonthShort, isValidDate } from '@/lib/dates'
+import { formatDate, formatMonthShort, isCalendarDate, isValidDate } from '@/lib/dates'
 
 export type DimensionKey = 'businessUnit' | 'department' | 'location' | 'level'
 export const DIMENSIONS: DimensionKey[] = ['businessUnit', 'department', 'location', 'level']
@@ -17,6 +17,8 @@ export interface DimensionOption {
   label: string
   /** Active employees with this value on the as-of date. */
   count: number
+  /** Can't be picked right now (excluding a group too small to leave out, `tooFewToLeaveOut`). */
+  disabled?: boolean
 }
 
 export interface LeaderOption {
@@ -25,7 +27,19 @@ export interface LeaderOption {
   title: string
   /** Active employees in the leader's org, the leader included (the scope size once selected). */
   size: number
+  /** Can't be picked right now (excluding an org too small to leave out, `tooFewToLeaveOut`). */
+  disabled?: boolean
 }
+
+/**
+ * Exclude mode: whether leaving out a choice that removes `count` active employees from the scope
+ * breaks the anonymity rule for exclusions (src/data/exclusion.ts): it removes some, but fewer
+ * than the minimum, so comparing the scope with and without it would single them out. Ask refuses
+ * such a scope and the records panel never offers it, so the filter menus don't either. An
+ * option's count in Exclude mode is exactly who it removes: the other filters apply, and nobody
+ * has two values of one dimension.
+ */
+export const tooFewToLeaveOut = (count: number, min: number): boolean => count > 0 && count < min
 
 const counted = (e: Employee, asOf: ISODate) => isEmployee(e) && isActiveAt(e, asOf)
 
@@ -76,19 +90,30 @@ export function dimensionOptions(
  * For each dimension, who the rest of the filter row lets through: the leader's org and every
  * other dimension's choice, leaving out the dimension's own (so its options can still widen it).
  */
-export function otherFilters(filters: Filters, index: OrgIndex, key: DimensionKey): (e: Employee) => boolean {
-  return employeeMatcher({ ...filters, [key]: [] }, index)
+export function otherFilters(
+  filters: Filters,
+  index: OrgIndex,
+  key: DimensionKey | 'leaderId',
+): (e: Employee) => boolean {
+  return employeeMatcher(
+    key === 'leaderId' ? { ...filters, leaderId: null } : { ...filters, [key]: [] },
+    index,
+  )
 }
 
 /**
  * Active employees in each person's org (themselves included), keyed by employee ID. Walks each
  * active employee up their manager chain once; cycle-safe.
  */
-export function orgSizes(index: OrgIndex, asOf: ISODate): Map<string, number> {
+export function orgSizes(
+  index: OrgIndex,
+  asOf: ISODate,
+  within?: (e: Employee) => boolean,
+): Map<string, number> {
   const sizes = new Map<string, number>()
   const seen = new Set<string>()
   for (const e of index.byId.values()) {
-    if (!counted(e, asOf)) continue
+    if (!counted(e, asOf) || (within && !within(e))) continue
     seen.clear()
     let cur: Employee | undefined = e
     while (cur && !seen.has(cur.employeeId)) {
@@ -102,17 +127,30 @@ export function orgSizes(index: OrgIndex, asOf: ISODate): Map<string, number> {
 
 /**
  * People managers who are active on the as-of date and lead at least `minReports` active
- * employees (directly or indirectly), largest org first.
+ * employees (directly or indirectly), largest org first. With `within` (the rest of the filter
+ * row, exclusions included), each size counts only the people it lets through: who would be in
+ * scope after picking that leader.
  */
-export function leaderOptions(index: OrgIndex, asOf: ISODate, minReports = 3): LeaderOption[] {
+export function leaderOptions(
+  index: OrgIndex,
+  asOf: ISODate,
+  minReports = 3,
+  within?: (e: Employee) => boolean,
+): LeaderOption[] {
   const sizes = orgSizes(index, asOf)
+  const scoped = within ? orgSizes(index, asOf, within) : null
   const out: LeaderOption[] = []
   for (const e of index.byId.values()) {
     if (!isActiveAt(e, asOf)) continue
     const size = sizes.get(e.employeeId) ?? 0
     const reports = size - (isEmployee(e) ? 1 : 0)
     if (reports < minReports) continue
-    out.push({ id: e.employeeId, name: e.name || e.employeeId, title: e.jobTitle ?? '', size })
+    out.push({
+      id: e.employeeId,
+      name: e.name || e.employeeId,
+      title: e.jobTitle ?? '',
+      size: scoped ? (scoped.get(e.employeeId) ?? 0) : size,
+    })
   }
   return out.sort((a, b) => b.size - a.size || a.name.localeCompare(b.name))
 }
@@ -142,7 +180,7 @@ export const shortRange = (start: ISODate, end: ISODate): string =>
  * invented zeros and annualize real events over empty months.
  */
 export function customRangeError(start: string, end: string, asOf?: ISODate): string | null {
-  if (!isValidDate(start) || !isValidDate(end)) return 'Enter both dates.'
+  if (!isCalendarDate(start) || !isCalendarDate(end)) return 'Enter both dates.'
   if (start > end) return 'The start date must be on or before the end date.'
   if (asOf && isValidDate(asOf) && end > asOf)
     return `The end date must be on or before the reporting date, ${formatDate(asOf)}.`

@@ -10,6 +10,7 @@
  */
 import type { Column } from '@/charts/types'
 import type { Employee, ISODate, Requisition } from '@/data/schema'
+import { groupFilter } from '@/drill/filter'
 import { asOfLine, subtitleOf } from '@/drill/subtitle'
 import { type DrillExtra, type DrillSpec, drillSpec } from '@/drill/types'
 import { formatDate } from '@/lib/dates'
@@ -160,6 +161,14 @@ export function directsDrill(tree: OrgTree, id: string, scope: DrillScope): Dril
   })
 }
 
+/**
+ * A person's org as the drill's filter, so the records panel offers "Filter to {name}'s org": the
+ * chart then starts at them and their card keeps its count. None for the virtual company root,
+ * and none in the reorg sandbox, whose orgs are what-ifs the filters can't reproduce.
+ */
+export const orgFilter = (id: string, scope: DrillScope) =>
+  scope.scenario || id === COMPANY_ROOT ? undefined : groupFilter('leaderId', id)
+
 /** Everyone below a person (their whole org); the whole company for the virtual root. */
 export function orgDrill(tree: OrgTree, id: string, scope: DrillScope): DrillSpec<'employees'> | null {
   const below: string[] = []
@@ -170,7 +179,7 @@ export function orgDrill(tree: OrgTree, id: string, scope: DrillScope): DrillSpe
     for (const c of tree.children.get(cur) ?? []) stack.push(c)
   }
   const top = id === COMPANY_ROOT
-  return peopleDrill(tree, below, {
+  const spec = peopleDrill(tree, below, {
     title: top
       ? 'Everyone in the company'
       : `Everyone in ${nameIn(tree, id)}'s org${scope.scenario ? ' in the scenario' : ''}`,
@@ -182,6 +191,8 @@ export function orgDrill(tree: OrgTree, id: string, scope: DrillScope): DrillSpe
       ? 'Everyone active on the as-of date, every worker type.'
       : `Everyone below ${nameIn(tree, id)} at every level, contractors and interns included. ${nameIn(tree, id)} is not counted. Layer 2 reports to them directly.`,
   })
+  const filter = orgFilter(id, scope)
+  return spec && filter ? { ...spec, filter } : spec
 }
 
 /* ───────── key figures ───────── */

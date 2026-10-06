@@ -7,7 +7,7 @@
  */
 import type { AnalyticsContext } from '@/data/context'
 import type { Requisition } from '@/data/schema'
-import { employeeMatcher, type Filters } from '@/data/scope'
+import { employeeMatcher, type Filters, focusLeader, isExcluded } from '@/data/scope'
 import { buildReviewIndex, type ReviewIndex } from '@/lib/people'
 import { computeFlags, type Flag } from './flags'
 import { type ReqStub, reqCardId } from './layout'
@@ -25,9 +25,12 @@ export interface OrgModel {
   /** The raw requisition records behind the stubs, by req ID (for drill-down). */
   reqRecords: Map<string, Requisition>
   reviews: ReviewIndex
-  /** Root from the global leader filter, else the tree's root. */
+  /** Root from the global leader filter (when it includes), else the tree's root. */
   rootId: string
-  /** True when the business unit, department, location or level filters are set. */
+  /**
+   * True when the business unit, department, location or level filters are set, or a leader's
+   * org is left out (its cards are dimmed like non-matching ones).
+   */
   dims: boolean
   /** Whether a person matches those filters (always true without them). */
   matches: (id: string) => boolean
@@ -76,10 +79,12 @@ export function buildOrgModel(ctx: OrgModelInput): OrgModel {
   }
   for (const arr of reqs.values()) arr.sort((a, b) => a.openedDate.localeCompare(b.openedDate))
 
-  const leader = ctx.filters.leaderId
+  const leader = focusLeader(ctx.filters)
   const rootId = leader && tree.people.has(leader) ? leader : tree.rootId
-  const dims = hasDimFilters(ctx.filters)
-  const m = employeeMatcher(dimFilters(ctx.filters), ctx.org)
+  // An excluded leader's org stays in the chart, dimmed, like people outside the other filters.
+  const leaderOut = !!ctx.filters.leaderId && isExcluded(ctx.filters, 'leaderId')
+  const dims = hasDimFilters(ctx.filters) || leaderOut
+  const m = employeeMatcher(leaderOut ? ctx.filters : dimFilters(ctx.filters), ctx.org)
   const matches = dims ? (id: string) => m(tree.people.get(id)) : () => true
   return {
     tree,

@@ -15,10 +15,11 @@ import type { Candidate, Employee, ISODate, Requisition } from '@/data/schema'
 import { STAGES } from '@/data/schema'
 import type { Window } from '@/data/scope'
 import { isActiveAt } from '@/data/scope'
+import { periodFilter } from '@/drill/filter'
 import { PERSON_KEY } from '@/drill/records'
 import { asOfLine, windowLine } from '@/drill/subtitle'
-import { type DrillSpec, drillSpec } from '@/drill/types'
-import { daysBetween, formatDate, formatMonth, formatRange, quarterStart } from '@/lib/dates'
+import { type DrillFilter, type DrillSpec, drillSpec } from '@/drill/types'
+import { daysBetween, formatDate, formatMonth, formatRange, monthEnd, quarterStart } from '@/lib/dates'
 import { fmt, plural } from '@/lib/format'
 import { median } from '@/lib/stats'
 import type { RecruitingBase } from './base'
@@ -54,6 +55,26 @@ export const asOfSub = (b: RecruitingBase): string => asOfLine(b.asOf, b.scopeLa
 /** "Applications received 1 Oct 2025 to 30 Sep 2026 · Whole company" */
 export const cohortSub = (b: RecruitingBase, w: Span = b.window): string =>
   `Applications received ${rangeText(w)} · ${b.scopeLabel}`
+
+/* ───────── "Filter to this" (docs/FILTERS.md, part 4) ───────── */
+
+/**
+ * A spec with the scope that reproduces the group its number counts, so the records panel offers
+ * "Filter to" (and "Leave out" for one org group). Null stays null; no filter leaves it as it is.
+ */
+export function withScope<S extends DrillSpec>(spec: S | null, filter: DrillFilter | undefined): S | null {
+  if (!spec || !filter) return spec
+  return { ...spec, filter: { ...spec.filter, ...filter, modes: { ...spec.filter?.modes, ...filter.modes } } }
+}
+
+/**
+ * The period of one calendar-month bar ("Filter to Mar 2026"): the whole month, ending at `end`
+ * (the window's end) when the month runs past it, as the bar counts.
+ */
+export function monthPeriod(month: string, end: ISODate): DrillFilter {
+  const last = monthEnd(`${month}-01`)
+  return periodFilter(`${month}-01`, last < end ? last : end)
+}
 
 /* ───────── roster links ───────── */
 
@@ -784,19 +805,25 @@ export function exitReasonDrill(
   })
 }
 
-/** Hires in one month (a column of hires by month). */
+/** Hires in one month (a column of hires by month); "Filter to" sets that month as the period. */
 export function hiresMonthDrill(
   b: RecruitingBase,
   row: { month: string; apps: readonly App[] },
 ): DrillSpec<'candidates'> | null {
-  return hiresDrill(b, row.apps, `Offers accepted, ${formatMonth(`${row.month}-01`)}`, {
-    subtitle: b.scopeLabel,
-  })
+  return withScope(
+    hiresDrill(b, row.apps, `Offers accepted, ${formatMonth(`${row.month}-01`)}`, {
+      subtitle: b.scopeLabel,
+    }),
+    monthPeriod(row.month, b.window.end),
+  )
 }
 
 /* ───────── requisitions ───────── */
 
-/** Reqs opened or filled in one month; `series` limits it to one of the two. */
+/**
+ * Reqs opened or filled in one month; `series` limits it to one of the two. "Filter to" sets that
+ * month as the period.
+ */
 export function reqMonthDrill(
   b: RecruitingBase,
   month: string,
@@ -809,18 +836,21 @@ export function reqMonthDrill(
   const list =
     series === 'Opened' ? opened : series === 'Filled' ? filled : [...new Set([...opened, ...filled])]
   const when = formatMonth(`${month}-01`)
-  return reqDrill(list, {
-    title: series ? `Reqs ${lower(series)}, ${when}` : `Reqs opened or filled, ${when}`,
-    subtitle: b.scopeLabel,
-    extras: [
-      {
-        columns: [{ key: 'inMonth', label: `In ${when}` }],
-        values: (r) => ({
-          inMonth: o.has(r) && f.has(r) ? 'Opened and filled' : o.has(r) ? 'Opened' : 'Filled',
-        }),
-      },
-    ],
-  })
+  return withScope(
+    reqDrill(list, {
+      title: series ? `Reqs ${lower(series)}, ${when}` : `Reqs opened or filled, ${when}`,
+      subtitle: b.scopeLabel,
+      extras: [
+        {
+          columns: [{ key: 'inMonth', label: `In ${when}` }],
+          values: (r) => ({
+            inMonth: o.has(r) && f.has(r) ? 'Opened and filled' : o.has(r) ? 'Opened' : 'Filled',
+          }),
+        },
+      ],
+    }),
+    monthPeriod(month, b.window.end),
+  )
 }
 
 /** Reqs whose age falls in a histogram bin [x0, x1). */
@@ -1027,7 +1057,10 @@ export function outcomeDrill(
   })
 }
 
-/** Offers resolved in one quarter (a point on offer acceptance by quarter). */
+/**
+ * Offers resolved in one quarter (a point on offer acceptance by quarter). "Filter to" sets that
+ * quarter (to the window's end, for the quarter in progress) as the period.
+ */
 export function quarterOffersDrill(
   b: RecruitingBase,
   q: { label: string; end: string; apps: readonly App[] },
@@ -1035,12 +1068,10 @@ export function quarterOffersDrill(
 ): DrillSpec<'candidates'> | null {
   const what =
     only === 'Hired' ? 'Offers accepted' : only === 'Declined' ? 'Offers declined' : 'Offers resolved'
-  return groupOffersDrill(
-    b,
-    q.apps,
-    `${what}, ${q.label}`,
-    windowSub(b, { start: quarterStart(q.end), end: q.end }),
-    only,
+  const start = quarterStart(q.end)
+  return withScope(
+    groupOffersDrill(b, q.apps, `${what}, ${q.label}`, windowSub(b, { start, end: q.end }), only),
+    periodFilter(start, q.end),
   )
 }
 

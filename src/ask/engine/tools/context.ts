@@ -10,7 +10,7 @@ import { DATASETS, LEVEL_LABELS, type Level } from '@/data/schema'
 import { isActiveAt, isEmployee } from '@/data/scope'
 import { minGroupOf } from '@/metrics/privacy'
 import { DATA_TABS } from '@/views/data/links'
-import { PERIODS, scopeOut } from '../scope'
+import { ownScopeProblem, PERIODS, scopeOut } from '../scope'
 import { liveViews, ok, type ToolOutput, type ToolRuntime } from './shared'
 
 /** How many leaders get_context lists (largest orgs first). */
@@ -37,9 +37,12 @@ export function getContext(rt: ToolRuntime): ToolOutput {
   }
   // Leaders a scope can be cut to: the app's leader filter, without orgs under the anonymity minimum.
   const leaders = leaderOptions(ctx.org, ctx.asOf).filter((l) => l.size >= minGroupOf(ctx.metrics))
+  // The user's scope can break the exclusion rule tool filters follow; then tools need filters.
+  const own = ownScopeProblem(ctx, rt.tokens)
   return ok({
     as_of: ctx.asOf,
     ...scopeOut(ctx, rt.tokens),
+    ...(own ? { scope_usable: false, scope_problem: own } : {}),
     periods: PERIODS,
     data_standard: { standard: ctx.standard, means: STANDARD_DESCRIPTION[ctx.standard] },
     sample_data: ctx.isSample,
@@ -92,6 +95,8 @@ export function getContext(rt: ToolRuntime): ToolOutput {
     notes: [
       'Headcounts are active employees on the as-of date (contractors and interns excluded).',
       'Pass filters to a tool to use another scope; leave them out to use the user’s scope.',
+      'filters.exclude lists the filters whose values are left out rather than kept: business_unit ["Sales"] with exclude ["business_unit"] is the whole company except Sales; an excluded leader leaves out their whole org. The user’s scope can include exclusions too.',
+      'Each value left out must remove none, or at least the anonymity minimum, of the people in the scope. The user’s scope follows the same rule: when it breaks it, scope_problem says why, and tools need filters.',
     ],
   })
 }

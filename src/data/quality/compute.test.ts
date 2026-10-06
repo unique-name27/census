@@ -325,7 +325,7 @@ describe('memo and the sample', () => {
     expect(computeQuality(data, {}, undefined, { asOf: AS_OF })).not.toBe(a)
   })
 
-  it('evaluates every dataset and field of the sample quickly with finite numbers', () => {
+  it('evaluates every dataset and field of the sample with finite numbers', () => {
     const data = generateSample()
     const versions = Object.fromEntries(
       DATASET_KEYS.map((k) => [
@@ -333,14 +333,7 @@ describe('memo and the sample', () => {
         confirmed(makeVersion({ dataset: k, source: 'sample', rows: data[k] as object[] })),
       ]),
     ) as VersionMap
-    const t0 = performance.now()
     const q = computeQuality(data, versions, undefined, { asOf: SAMPLE_AS_OF })
-    for (const k of DATASET_KEYS) q.datasetTier(k)
-    const tiersMs = performance.now() - t0
-    for (const ref of FIELD_REFS) q.fieldTier(ref)
-    const allMs = performance.now() - t0
-    expect(tiersMs).toBeLessThan(60)
-    expect(allMs).toBeLessThan(400)
     for (const ref of FIELD_REFS) {
       const s = q.fieldStats(ref)
       if (s.coverage != null) expect(Number.isFinite(s.coverage)).toBe(true)

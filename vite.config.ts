@@ -24,9 +24,26 @@ export default defineConfig(({ mode }) => ({
   },
   test: {
     environment: 'node',
-    include: ['src/**/*.test.ts'],
     // Excel round trips (ExcelJS write + SheetJS read of the whole sample) take a few seconds and
     // slow further when the full suite runs in parallel; the default 5 s timeout made them flaky.
     testTimeout: 30_000,
+    // Time budgets ("runs in under 150 ms") live in *.perf.test.ts. They run one file at a time
+    // once the unit tests are done, so they never compete with the parallel run for the CPU.
+    // `npx vitest run` runs both; `npx vitest run --project perf` runs only the budgets.
+    projects: [
+      {
+        extends: true,
+        test: { name: 'unit', include: ['src/**/*.test.ts'], exclude: ['src/**/*.perf.test.ts'] },
+      },
+      {
+        extends: true,
+        test: {
+          name: 'perf',
+          include: ['src/**/*.perf.test.ts'],
+          fileParallelism: false,
+          sequence: { groupOrder: 1 },
+        },
+      },
+    ],
   },
 }))

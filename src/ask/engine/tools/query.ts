@@ -25,13 +25,23 @@
  *    (`values.ts`): uploaded free text can name someone or hold health details;
  *  - means and medians of one person's rating, answer or pay ratio are rounded, and a result that
  *    differs from an earlier one in the chat by fewer people than the minimum is withheld
- *    (`audit.ts`), so two results cannot be subtracted to give one person's value.
+ *    (`audit.ts`), so two results cannot be subtracted to give one person's value;
+ *  - in a scope that leaves values out, a group that differs from the same group without one of
+ *    those values by fewer people than the minimum is left out, name and all.
  */
 import { gateFor } from '@/components/tier/tierModel'
 import type { AnalyticsContext } from '@/data/context'
+import { withoutValue } from '@/data/exclusion'
 import type { FieldRef } from '@/data/quality/fieldRef'
 import { type DatasetKey, type SurveyResponse, type SurveyType, surveyProgramOf } from '@/data/schema'
-import { isActiveAt, isEmployee } from '@/data/scope'
+import {
+  dimensionSet,
+  FILTER_DIMENSIONS,
+  type FilterDimension,
+  isActiveAt,
+  isEmployee,
+  isExcluded,
+} from '@/data/scope'
 import type { DrillSpec, LeaveGroupRow } from '@/drill/types'
 import { quarterKey } from '@/lib/dates'
 import { median } from '@/lib/stats'
@@ -49,7 +59,7 @@ import {
   type Row,
 } from '../allowlist'
 import { DIFFERENCING, type RowSet, unionOf } from '../audit'
-import { scopeOut, scopeWords } from '../scope'
+import { contextFor, scopeOut, scopeWords } from '../scope'
 import { valueMapFor } from '../values'
 import { fail, inputOf, num, ok, scopedCtx, type ToolOutput, type ToolRuntime, unknownKeys } from './shared'
 
@@ -572,6 +582,58 @@ function groupDrill(
   return { kind: d.key, title, subtitle, rows: rows as never } as DrillSpec
 }
 
+/** The excluded values of a scope, one by one (the leader, and each value of an excluded list). */
+function excludedValues(ctx: AnalyticsContext): { dim: FilterDimension; value: string }[] {
+  const f = ctx.filters
+  return FILTER_DIMENSIONS.flatMap((dim) => {
+    if (!isExcluded(f, dim) || !dimensionSet(f, dim)) return []
+    const values = dim === 'leaderId' ? [f.leaderId as string] : f[dim]
+    return values.map((value) => ({ dim, value }))
+  })
+}
+
+/**
+ * The groups (by key) that differ from the same group in the scope without one of its excluded
+ * values by between 1 and the group's minimum − 1 people (rows, for a dataset without people).
+ * Side by side, the two would single those people out, as a scope that leaves out that few would.
+ */
+function groupsCutByExclusion(
+  rt: ToolRuntime,
+  ctx: AnalyticsContext,
+  d: QueryDataset,
+  j: Joins,
+  groups: ReadonlyMap<string, { rows: Row[] }>,
+  rowsIn: (c: AnalyticsContext) => readonly Row[],
+  keyOf: (r: Row) => string,
+  minFor: (rows: readonly Row[]) => number,
+): Set<string> {
+  const out = new Set<string>()
+  const size = (rows: readonly Row[]): number => {
+    if (!d.person) return rows.length
+    const people = new Set<string>()
+    for (const r of rows) {
+      const p = d.person(r, j)
+      if (p) people.add(p)
+    }
+    return people.size
+  }
+  for (const x of excludedValues(ctx)) {
+    const without = contextFor(rt.base, withoutValue(ctx.filters, x.dim, x.value))
+    const byKey = new Map<string, Row[]>()
+    for (const r of rowsIn(without)) {
+      const k = keyOf(r)
+      const hit = byKey.get(k)
+      if (hit) hit.push(r)
+      else byKey.set(k, [r])
+    }
+    for (const [k, g] of groups) {
+      const diff = size(byKey.get(k) ?? []) - size(g.rows)
+      if (diff > 0 && diff < minFor(g.rows)) out.add(k)
+    }
+  }
+  return out
+}
+
 export function queryRecords(rt: ToolRuntime, raw: unknown): ToolOutput {
   const input = inputOf(raw)
   const bad = unknownKeys(input, ['dataset', 'where', 'group_by', 'measures', 'filters', 'sort', 'limit'])
@@ -666,6 +728,7 @@ export function queryRecords(rt: ToolRuntime, raw: unknown): ToolOutput {
 
   // Rows in scope, with the privacy exclusions.
   let rows = ctx.data[d.key as DatasetKey] as unknown as Row[]
+  let dropEr = false
   if (d.key === 'surveyResponses' && !ctx.features.engagementSurveys) {
     const before = rows.length
     rows = rows.filter((r) => r.survey !== 'Engagement')
@@ -677,6 +740,7 @@ export function queryRecords(rt: ToolRuntime, raw: unknown): ToolOutput {
     const scoped = ctx.data.employees.filter((e) => isEmployee(e) && isActiveAt(e, ctx.asOf)).length
     const small = !ctx.isCompany && scoped < min
     if (small || used.some((f) => f.hidesEr)) {
+      dropEr = true
       const before = rows.length
       rows = rows.filter((r) => r.category !== ER)
       if (rows.length < before || small)
@@ -739,6 +803,25 @@ export function queryRecords(rt: ToolRuntime, raw: unknown): ToolOutput {
     const hit = groups.get(key)
     if (hit) hit.rows.push(r)
     else groups.set(key, { raw, rows: [r] })
+  }
+  // Inside a scope that leaves values out, a group the exclusions cut by a few people is left out.
+  if (groupBy.length && excludedValues(ctx).length) {
+    const rowsIn = (c: AnalyticsContext): Row[] => {
+      let rs = c.data[d.key as DatasetKey] as unknown as Row[]
+      if (d.key === 'surveyResponses' && !c.features.engagementSurveys)
+        rs = rs.filter((r) => r.survey !== 'Engagement')
+      if (dropEr) rs = rs.filter((r) => r.category !== ER)
+      for (const w of where) rs = rs.filter((r) => w.test(w.field.get(r, j)))
+      return rs
+    }
+    const keyOf = (r: Row) =>
+      JSON.stringify(groupBy.map((g, i) => valueMaps[i]?.(bucket(g.field.get(r, j), g.part))))
+    const cut = groupsCutByExclusion(rt, ctx, d, j, groups, rowsIn, keyOf, minFor)
+    for (const k of cut) groups.delete(k)
+    if (cut.size)
+      notes.push(
+        `${cut.size} ${cut.size === 1 ? 'group is' : 'groups are'} left out: the scope's exclusions remove fewer than ${min} people from ${cut.size === 1 ? 'it' : 'each'}, so comparing with the same ${cut.size === 1 ? 'group' : 'groups'} without them would single those people out.`,
+      )
   }
   const total = rows.length
   const scopeText = `${ctx.window.label} · ${ctx.scopeLabel}`

@@ -17,7 +17,6 @@ import {
   pipelineCellDrill,
   pipelineStageDrill,
   quarterOffersDrill,
-  ttfGroupDrill,
 } from '../engine/drills'
 import { FIGURE_USES } from '../engine/lineage'
 import { FIGURE_METRICS } from '../engine/metricLinks'
@@ -40,6 +39,7 @@ import {
   ttfSpan,
   windowText,
 } from './common'
+import { openReqsDepartmentDrill, ttfDrill } from './drill'
 import { useRecruiting } from './hooks'
 import { PipelineBars } from './PipelineBars'
 
@@ -110,8 +110,10 @@ export function OverviewTab() {
     drillIf(only ? q.apps.some((a) => a.outcome === only) : q.apps.length, () =>
       quarterOffersDrill(b, q, only),
     )
-  const deptDrill = (d: OpenByDeptRow) => () => openReqsDrill(b, d.reqs, `Open reqs, ${d.department}`)
-  const levelDrill = (d: TtfRow) => drillIf(d.filled.length, () => ttfGroupDrill(b, d))
+  // A department's open reqs and a level's filled reqs carry their group as the drill's filter
+  // ("Filter to Design Verification"); month and quarter points carry their period.
+  const deptDrill = openReqsDepartmentDrill(b)
+  const levelDrill = ttfDrill(b, 'level')
   // An open req older than the old req setting (Open req age) marks its department amber.
   const ageTone = (d: { oldest: number }) => (d.oldest > oldReqDays ? 'warning' : 'default')
   const hiresTotal = m.hiresByMonth.reduce((s, r) => s + r.hires, 0)

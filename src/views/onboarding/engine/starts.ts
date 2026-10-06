@@ -33,6 +33,21 @@ export function regionOf(location: string | null | undefined): string | null {
   return s ? (REGION_NAME[s.region] ?? s.region) : null
 }
 
+/**
+ * The sites of a region that people work at (`employees`) or that `extra` names, sorted; null when
+ * none. A region is the set of its sites for the filters ("Filter to Asia Pacific").
+ */
+export function regionSites(
+  employees: readonly { location: string | null }[],
+  region: string,
+  extra: readonly (string | null | undefined)[] = [],
+): string[] | null {
+  const out = new Set<string>()
+  for (const e of employees) if (e.location && regionOf(e.location) === region) out.add(e.location)
+  for (const l of extra) if (l && regionOf(l) === region) out.add(l)
+  return out.size ? [...out].sort() : null
+}
+
 /** The country of a site, or the record's own country. */
 export function countryOf(location: string | null | undefined, fallback?: string | null): string | null {
   const s = location ? siteByLocation.get(location) : undefined

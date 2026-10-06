@@ -109,7 +109,15 @@ export function SandboxTab() {
   const sc = useScenario(`${ctx.asOf}:${ctx.all.employees.length}`)
   const [mode, setMode] = useState<MoveMode>('team')
   const f = ctx.filters
-  const dimKey = JSON.stringify([f.businessUnit, f.department, f.location, f.level])
+  // Exclusions dim too: their modes and a left-out leader are part of the key.
+  const dimKey = JSON.stringify([
+    f.businessUnit,
+    f.department,
+    f.location,
+    f.level,
+    f.modes,
+    f.modes.leaderId && f.leaderId,
+  ])
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [centerReq, setCenterReq] = useState<{ id: string; n: number } | null>(null)
   const [drag, setDrag] = useState<{ id: string; over: string | null } | null>(null)

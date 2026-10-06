@@ -55,3 +55,40 @@ describe('describeFocus', () => {
     expect(describeFocus({ location: [] }, nameOf)).toBe('')
   })
 })
+
+describe('exclusions', () => {
+  it('read "Not Sales" and "Not in Priya Raman’s org" on chips', () => {
+    const chips = filterChips(
+      f({
+        leaderId: 'E100',
+        businessUnit: ['Sales'],
+        location: ['Hsinchu'],
+        modes: { leaderId: 'exclude', businessUnit: 'exclude' },
+      }),
+      nameOf,
+    )
+    expect(chips.map((c) => [c.label, c.excluded])).toEqual([
+      ["Not in Priya Raman's org", true],
+      ['Not Sales', true],
+      ['Hsinchu', false],
+    ])
+  })
+
+  it('describe a focus that excludes, and a custom period in words', () => {
+    expect(describeFocus({ businessUnit: ['Sales'], modes: { businessUnit: 'exclude' } }, nameOf)).toBe(
+      'not Sales',
+    )
+    expect(describeFocus({ leaderId: 'E100', modes: { leaderId: 'exclude' } }, nameOf)).toBe(
+      "not in Priya Raman's org",
+    )
+    expect(
+      describeFocus({ period: 'custom', customStart: '2026-03-01', customEnd: '2026-03-31' }, nameOf),
+    ).toBe('Mar 2026')
+    expect(
+      describeFocus({ period: 'custom', customStart: '2026-04-01', customEnd: '2026-06-30' }, nameOf),
+    ).toBe('Q2 2026')
+    expect(
+      describeFocus({ period: 'custom', customStart: '2026-03-05', customEnd: '2026-03-31' }, nameOf),
+    ).toBe('5 Mar 2026 – 31 Mar 2026')
+  })
+})

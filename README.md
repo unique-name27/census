@@ -74,6 +74,22 @@ the raw sheet, the mapping, the quality checks and certification for every datas
   on an official list count as not recognized, and one click maps them or adds them. The lists
   export as a workbook with named ranges for Excel dropdowns, and the templates use them.
 
+## Filters and saved views
+
+One filter row scopes every tab: period, leader, business unit, department, location and level.
+Each filter can include or exclude ("everyone except Sales"). The scope is part of the address, so
+a copied link opens the same view with the same numbers, and Back undoes a filter change. Save a
+scope as a view ("My org, last quarter") from the Views menu. In the records behind a group (a
+location bar, a department row), **Filter to** and **Leave out** narrow every view to it.
+
+## Ask Census
+
+The **Ask** button (Alt+A) answers questions about the loaded data with Claude, using your own
+API key (Settings › Ask Census). Census calculates every number in the browser with the same
+engines as the screens; only counts, rates, definitions and org structure are sent. Names and IDs
+are replaced by tokens before anything leaves the browser, pay amounts never do, and "What was
+sent" shows exactly what Claude received. Every number in an answer links to its records.
+
 ## Help
 
 The **Help** button (or the ? key) searches articles and every metric definition, and starts the

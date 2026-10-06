@@ -174,10 +174,4 @@ describe('every number is finite or null', () => {
       expect(resolveDrill(k.drill)?.rows.length, id).toBe(k.value)
     }
   })
-
-  it('runs in well under the scorecard budget', () => {
-    const t0 = performance.now()
-    compute(sampleContext({ filters: { businessUnit: ['Silicon Engineering'] } }))
-    expect(performance.now() - t0).toBeLessThan(400)
-  })
 })

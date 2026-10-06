@@ -14,11 +14,12 @@
  * No item names a respondent; a manager is named only through a manager cut.
  */
 import type { AnalyticsContext } from '@/data/context'
+import { groupFilter } from '@/drill/filter'
 import { formatDate } from '@/lib/dates'
 import { fmt } from '@/lib/format'
 import type { ActionItem } from '@/views/types'
 import { M } from '../metrics'
-import { readinessRows, splitDeptBand } from './cuts'
+import { deptBandFilter, readinessRows, splitDeptBand } from './cuts'
 import { groupsDrill, rowsBy } from './drills'
 import { ofFive } from './findings'
 import { compute, type ListeningModel } from './index'
@@ -84,6 +85,7 @@ export function actionsOf(ctx: AnalyticsContext, m: ListeningModel): ActionItem[
     const g = m.stay.flag
     const { department, band } = splitDeptBand(g.group)
     const inGroup = deptBandOf(p)
+    const groupAnswers = stay.period.filter((r) => inGroup(r) === g.group)
     out.push({
       id: `listening:stay:${g.group}`,
       ownerRole: 'talent',
@@ -99,17 +101,23 @@ export function actionsOf(ctx: AnalyticsContext, m: ListeningModel): ActionItem[
       uses: [...L.union(L.WAVE, L.RESPONDENT, L.REASON, L.EMP_ORG, L.EMP_LEVEL)],
       drill: () =>
         groupsDrill(
-          rowsBy(
-            stay.period.filter((r) => inGroup(r) === g.group),
-            (r) => r.reason?.trim() || null,
-            { survey: 'Stay interview', wave: null, groupBy: 'Top stay risk', min: stay.min },
-          ),
+          rowsBy(groupAnswers, (r) => r.reason?.trim() || null, {
+            survey: 'Stay interview',
+            wave: null,
+            groupBy: 'Top stay risk',
+            min: stay.min,
+          }),
           {
             survey: 'Stay interview',
             wave: null,
             title: `Stay risks named by ${department} ${band} key talent`,
             subtitle: sub,
             min: stay.min,
+            filter: deptBandFilter(
+              p,
+              g.group,
+              groupAnswers.map((r) => r.respondentKey),
+            ),
           },
         ),
     })
@@ -144,6 +152,7 @@ export function actionsOf(ctx: AnalyticsContext, m: ListeningModel): ActionItem[
             title: `Exit survey reasons in ${g.location}`,
             subtitle: sub,
             min: exit.min,
+            filter: groupFilter('location', g.location),
           },
         ),
     })

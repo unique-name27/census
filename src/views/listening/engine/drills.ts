@@ -5,7 +5,7 @@
  */
 import type { FieldRef } from '@/data/quality/fieldRef'
 import type { SurveyResponse, SurveyType } from '@/data/schema'
-import { type DrillExtra, type DrillSpec, drillSpec } from '@/drill/types'
+import { type DrillExtra, type DrillFilter, type DrillSpec, drillSpec } from '@/drill/types'
 import {
   type Breakdown,
   breakdown,
@@ -36,6 +36,11 @@ export interface SurveyDrillMeta {
   uses?: readonly FieldRef[]
   note?: string
   extra?: DrillExtra<SurveyGroupRow>
+  /**
+   * The scope that reproduces the group the answers come from ("Filter to Bengaluru"), only for a
+   * group at the survey minimum. Never a leader from a manager cut.
+   */
+  filter?: DrillFilter
 }
 
 /** A drill over prepared group rows. */
@@ -48,6 +53,7 @@ export function groupsDrill(rows: readonly SurveyGroupRow[], m: SurveyDrillMeta)
     note: groupedNote(m.min, m.note),
     uses: m.uses,
     extra: m.extra,
+    ...(m.filter ? { filter: m.filter } : {}),
   })
 }
 

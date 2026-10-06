@@ -1,11 +1,10 @@
 /**
  * Smoke test on the generated sample company (src/data/sample/README.md, "Span outliers"): the
  * planted span outliers and the new manager with a large team are flagged, every active person
- * appears exactly once, the default view lays out without overlaps, and the whole pipeline stays
- * inside its time budget.
+ * appears exactly once and the default view lays out without overlaps. The time budgets are in
+ * smoke.perf.test.ts.
  */
 import { describe, expect, it } from 'vitest'
-import { bestCostMs } from '@/lib/testBudget'
 import { colorScheme } from './colorBy'
 import { exitImpact } from './detail'
 import { defaultExpanded } from './expand'
@@ -22,14 +21,10 @@ import { entryPoints, subtreeOf } from './tree'
 const ctx = sampleCtx()
 
 describe('Org chart engine on the sample company', () => {
-  it('builds the tree, flags and default layout in under 150 ms', () => {
-    let cards = 0
-    const ms = bestCostMs(() => {
-      const m = buildOrgModel(ctx)
-      const expanded = new Set([m.rootId, ...(m.tree.children.get(m.rootId) ?? [])])
-      cards = layoutTree(visibleTree(m.tree, m.rootId, expanded, { reqs: m.reqs })).cards.length
-    })
-    expect(ms).toBeLessThan(150)
+  it('builds the tree, flags and default layout', () => {
+    const m = buildOrgModel(ctx)
+    const expanded = new Set([m.rootId, ...(m.tree.children.get(m.rootId) ?? [])])
+    const cards = layoutTree(visibleTree(m.tree, m.rootId, expanded, { reqs: m.reqs })).cards.length
     expect(cards).toBeGreaterThan(10)
   })
 
@@ -70,10 +65,8 @@ describe('Org chart engine on the sample company', () => {
 
   it('lays out the whole company expanded without overlapping cards', () => {
     const m = buildOrgModel(ctx)
-    const t0 = performance.now()
     const v = visibleTree(m.tree, m.rootId, new Set(m.tree.people.keys()))
     const layout = layoutTree(v)
-    expect(performance.now() - t0).toBeLessThan(150)
     expect(layout.cards).toHaveLength(1558)
     // Overlap check on a sweep over x.
     const cards = layout.cards.slice().sort((a, b) => a.x - b.x)

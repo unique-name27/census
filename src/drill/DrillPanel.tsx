@@ -11,19 +11,22 @@ import { Dialog as BDialog } from '@base-ui/react/dialog'
 import { useEffect, useLayoutEffect, useMemo, useRef } from 'react'
 import { DataTable } from '@/charts/DataTable'
 import { useExportMeta } from '@/charts/useExportMeta'
-import { IconChevronRight, IconClose, IconCopy, IconDownload, IconFile } from '@/components/icons'
+import { IconChevronRight, IconClose, IconCopy, IconDownload, IconFile, IconFilter } from '@/components/icons'
 import { TierBadge } from '@/components/tier/TierBadge'
 import { toast } from '@/components/toast'
 import { Button, Menu } from '@/components/ui'
 import { useAnalytics } from '@/data/context'
 import { datasetDef } from '@/data/schema'
+import { vocabularyOf } from '@/data/urlScope'
 import { fmt } from '@/lib/format'
 import { DrillNesting } from './Drill'
+import { filterActionLabels, filterInData, groupName, groupScopes, isFilterable } from './filter'
+import { focusScope } from './focus'
 import { PersonCard } from './PersonCard'
 import { buildDrillTable, DRILLS_KEY, drillNoun, drillTableHint, ROW_KEY, rowPerson } from './records'
 import { useDrillStore } from './store'
 import { drillTier } from './tier'
-import { type DrillSpec, drillDataset } from './types'
+import { type DrillFilter, type DrillSpec, drillDataset } from './types'
 
 /**
  * The tier of the drilled number (from the spec's `uses`), or of the dataset the records come
@@ -59,17 +62,44 @@ export function DrillPanel() {
   }, [stack.length])
   // Closing returns focus to the control that opened the panel. Base UI's own choice skips a
   // control inside another open dialog (a count in Settings), which left focus behind that dialog.
+  // "Filter to" and "Leave out" redraw the figure, so the control is gone: then focus goes to the
+  // same figure's title, else to the main region, never to the page body.
   const open = stack.length > 0
   const opener = useRef<HTMLElement | null>(null)
+  const openerFigure = useRef<string | null>(null)
   useLayoutEffect(() => {
-    if (open) opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    if (!open) return
+    opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    openerFigure.current = opener.current?.closest('figure[data-tour]')?.getAttribute('data-tour') ?? null
+  }, [open])
+  const returnFocus = (): HTMLElement | true => returnTarget(opener.current, openerFigure.current)
+  // Base UI picks that control as the popup unmounts. When the unmount lands in the same render
+  // that redraws the figure, the control it picked is removed right after and focus falls to the
+  // page body; so once the panel has closed, check, and put focus where `returnTarget` says.
+  useEffect(() => {
+    if (open || (!opener.current && !openerFigure.current)) return
+    let tries = 0
+    let timer = 0
+    const check = () => {
+      const a = document.activeElement
+      if (a && a !== document.body && a.isConnected) {
+        // Still inside the closing panel: Base UI has not moved focus back yet.
+        if (a.closest('[data-drill-panel]') && tries++ < 6) timer = window.setTimeout(check, 250)
+        return
+      }
+      const target = returnTarget(opener.current, openerFigure.current)
+      if (target !== true) target.focus({ preventScroll: true })
+    }
+    timer = window.setTimeout(check, 250)
+    return () => window.clearTimeout(timer)
   }, [open])
   return (
     <BDialog.Root open={stack.length > 0} onOpenChange={(o) => !o && close()}>
       <BDialog.Portal>
         <BDialog.Backdrop className="fixed inset-0 z-40 bg-overlay transition-opacity duration-150 data-[ending-style]:opacity-0 data-[starting-style]:opacity-0" />
         <BDialog.Popup
-          finalFocus={() => (opener.current?.isConnected ? opener.current : true)}
+          data-drill-panel=""
+          finalFocus={returnFocus}
           className="fixed top-0 right-0 bottom-0 z-50 flex w-[min(820px,100vw)] flex-col bg-page text-ink shadow-(--shadow-pop) outline-none transition-transform duration-200 ease-out data-[ending-style]:translate-x-6 data-[ending-style]:opacity-0 data-[starting-style]:translate-x-6 data-[starting-style]:opacity-0 pt-[env(safe-area-inset-top,0px)] pb-[env(safe-area-inset-bottom,0px)]"
         >
           <div className="flex items-center gap-2 border-b border-rule px-5 pt-3 pb-2.5">
@@ -104,6 +134,75 @@ export function DrillPanel() {
         </BDialog.Popup>
       </BDialog.Portal>
     </BDialog.Root>
+  )
+}
+
+/** Where focus goes when the panel closes: the control that opened it, else `focusFallback`. */
+function returnTarget(opener: HTMLElement | null, figure: string | null): HTMLElement | true {
+  if (opener?.isConnected) return opener
+  return focusFallback(figure) ?? true
+}
+
+/**
+ * Where focus goes when the control that opened the panel is gone: the title of the figure it was
+ * in (found again by the figure's stable id), else the main region. The title is made focusable
+ * from script only (`tabindex="-1"`), so it never joins the tab order.
+ */
+function focusFallback(figure: string | null): HTMLElement | null {
+  const title = figure
+    ? document.querySelector<HTMLElement>(`figure[data-tour="${CSS.escape(figure)}"] figcaption h3`)
+    : null
+  if (title) {
+    if (!title.hasAttribute('tabindex')) title.setAttribute('tabindex', '-1')
+    return title
+  }
+  return document.getElementById('census-main')
+}
+
+/**
+ * "Filter to Bengaluru" and "Leave out Bengaluru" for records whose drill names the group they
+ * count (`DrillSpec.filter`). Each one closes the panel, narrows the scope you are in as one
+ * history entry and offers Undo. An action is shown only when the filters can say it, it changes
+ * something, and it keeps the anonymity minimum (`groupScopes`); both are hidden when a value is
+ * not in the loaded data.
+ */
+function FilterActions({ filter, filterLabel }: { filter: DrillFilter; filterLabel?: string }) {
+  const ctx = useAnalytics()
+  const scopes = useMemo(
+    () => (isFilterable(filter) && filterInData(filter, vocabularyOf(ctx)) ? groupScopes(ctx, filter) : null),
+    [ctx, filter],
+  )
+  if (!scopes || (!scopes.filterTo && !scopes.leaveOut)) return null
+  const nameOf = (id: string) => ctx.org.byId.get(id)?.name
+  const labels = filterActionLabels(filter, nameOf, filterLabel)
+  const name = groupName(filter, nameOf, filterLabel)
+  const { filterTo, leaveOut } = scopes
+  return (
+    <div className="flex flex-wrap items-center gap-2" data-drill-filter="">
+      {filterTo && (
+        <Button
+          icon={<IconFilter />}
+          title={`Narrow every view to ${name}`}
+          onClick={() =>
+            focusScope(filter, { mode: 'include', org: ctx.org, next: filterTo, label: filterLabel })
+          }
+          className="max-w-full"
+        >
+          <span className="truncate">{labels.filterTo}</span>
+        </Button>
+      )}
+      {leaveOut && labels.leaveOut && (
+        <Button
+          title={`Show every view without ${name}`}
+          onClick={() =>
+            focusScope(filter, { mode: 'exclude', org: ctx.org, next: leaveOut, label: filterLabel })
+          }
+          className="max-w-full"
+        >
+          <span className="truncate">{labels.leaveOut}</span>
+        </Button>
+      )}
+    </div>
   )
 }
 
@@ -187,6 +286,7 @@ function RecordsView({ spec, from }: { spec: DrillSpec; from: string | null }) {
           ]}
         />
       </div>
+      {spec.filter && <FilterActions filter={spec.filter} filterLabel={spec.filterLabel} />}
       {!ctx.showPay && spec.kind === 'comp' && (
         <p className="text-[12px] text-muted">
           Pay amounts are hidden. Switch on "Show pay amounts" in Settings or in Compensation to include them.

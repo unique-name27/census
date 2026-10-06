@@ -107,6 +107,11 @@ manager, HRBP, assignee or manager is allowed and returns person tokens.
 - Differencing: per conversation, a mean or median of one person's rating, answer or pay ratio, or a
   grouped-only count, whose rows differ from an earlier result's by fewer people than the minimum is
   withheld; such means and medians are rounded (scores 0.1, ratios 0.01, fractions 0.1 pt).
+- Exclusions (`filters.exclude`): each value left out must remove none, or at least the minimum, of
+  the active employees in the scope, checked value by value. The user's own scope follows the same
+  rule: when it breaks it, a tool given no filters refuses and `get_context` says why. Inside a scope
+  that leaves values out, a `compare_groups` group or a `query_records` group that differs from the
+  same group without one of those values by fewer people than the minimum is hidden or left out.
 
 **Person tokens.** `engine/privacy.ts` builds, per conversation, a token map from every person name
 and ID in the loaded data (employees, candidates, and the person-name fields above). Tools emit

@@ -31,6 +31,7 @@ import {
   X_HIRED,
   X_TENURE,
 } from './drill'
+import { filtered } from './groupFilter'
 import { safeMedian, values } from './groups'
 import {
   BY,
@@ -463,17 +464,21 @@ function compressionFindings(m: FindingsInput): Ranked[] {
       filter: { department: [dept], level: levels },
       tab: 'ranges',
       people: behind.map((p) => person(p, `${p.level}, compa-ratio ${ratio(p.compa)}`)),
+      // The department and its levels: "Filter to" them shows the same cells and medians.
       drill: () =>
-        peopleDrill({
-          title: `New hires and incumbents, ${dept} ${span}`,
-          subtitle: scopeLine(m),
-          people: [...hires, ...inc].filter((p) => p.compa != null),
-          extras: [X_HIRED, X_TENURE],
-          hide: HIDE_POSITION,
-          sort: (a, b) =>
-            Number(b.hiredRecently) - Number(a.hiredRecently) || (a.compa ?? 0) - (b.compa ?? 0),
-          note: `Median compa-ratio ${ratio(newMed)} for ${peopleText(hires.length)} hired in the last 12 months vs ${ratio(incMed)} for ${fmt(inc.length, 'int')} incumbents.`,
-        }),
+        filtered(
+          peopleDrill({
+            title: `New hires and incumbents, ${dept} ${span}`,
+            subtitle: scopeLine(m),
+            people: [...hires, ...inc].filter((p) => p.compa != null),
+            extras: [X_HIRED, X_TENURE],
+            hide: HIDE_POSITION,
+            sort: (a, b) =>
+              Number(b.hiredRecently) - Number(a.hiredRecently) || (a.compa ?? 0) - (b.compa ?? 0),
+            note: `Median compa-ratio ${ratio(newMed)} for ${peopleText(hires.length)} hired in the last 12 months vs ${ratio(incMed)} for ${fmt(inc.length, 'int')} incumbents.`,
+          }),
+          { department: [dept], level: levels },
+        ),
       uses: refs(COMPA, BY.department, BY.level, BY.tenureBand),
       weight: cell.length,
     })

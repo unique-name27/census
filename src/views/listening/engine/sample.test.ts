@@ -1,8 +1,8 @@
 /**
  * Smoke test on the generated sample (whole company, last 12 months): every planted listening
  * story in src/data/sample/README.md (Listening 1 to 6) is detected, every KPI is finite or null,
- * every finding is grouped at the minimum and declares registered fields, and the engine runs well
- * inside its time budget.
+ * and every finding is grouped at the minimum and declares registered fields. The time budget is in
+ * sample.perf.test.ts.
  */
 import { describe, expect, it } from 'vitest'
 import type { Finding } from '@/components/types'
@@ -23,15 +23,6 @@ const num = (re: RegExp, text: string | undefined) =>
   Number((re.exec(text ?? '') ?? [])[1]?.replace('−', '-'))
 
 describe('Listening on the sample company', () => {
-  it('runs in under 150 ms', () => {
-    const fresh = sampleContext()
-    compute(fresh) // warm up the joins
-    const again = sampleContext()
-    const t0 = performance.now()
-    compute(again)
-    expect(performance.now() - t0).toBeLessThan(150)
-  })
-
   it('shows every program except engagement, which is off', () => {
     expect(m.programs.map((r) => r.survey)).not.toContain('Engagement')
     expect(m.programs).toHaveLength(10)

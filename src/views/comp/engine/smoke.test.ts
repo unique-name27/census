@@ -1,6 +1,7 @@
 /**
  * The Compensation engine over the full sample company: every planted comp story in
- * src/data/sample/README.md is detected, every number is finite or null, and it runs fast.
+ * src/data/sample/README.md is detected and every number is finite or null. The time budget is in
+ * smoke.perf.test.ts.
  */
 import { beforeAll, describe, expect, it } from 'vitest'
 import type { Finding, Kpi } from '@/components/types'
@@ -233,11 +234,5 @@ describe('compensation on the sample company', () => {
 
   it('computes the folder-tab headline', () => {
     expect(compaHeadline(ctx)!).toBeCloseTo(kpi('median-compa').value!, 6)
-  })
-
-  it('runs in under 150 ms', () => {
-    const t0 = performance.now()
-    computeComp(ctx, DEFAULT_SETTINGS)
-    expect(performance.now() - t0).toBeLessThan(150)
   })
 })

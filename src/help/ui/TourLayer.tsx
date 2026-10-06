@@ -8,7 +8,6 @@
  */
 import { type KeyboardEvent as ReactKeyboardEvent, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { goTo } from '@/components/navigation'
 import { Button, cx } from '@/components/ui'
 import type { ViewKey } from '@/data/schema'
 import { type RouteView, useCensus } from '@/data/store'
@@ -48,15 +47,15 @@ function landedTab(view: RouteView, tab: string): string {
   return viewByKey.get(view as ViewKey)?.tabs[0]?.key ?? ''
 }
 
-/** Open the page a step needs, unless it is already showing. */
+/** Open the page a step needs, unless it is already showing. A tour never adds to the history. */
 function openStepPage(step: TourStep): void {
   if (!step.view) return
-  const r = useCensus.getState().route
+  const { route: r, navigate } = useCensus.getState()
   const want = step.tab ?? ''
   const here =
     r.view === step.view &&
     (step.tab === undefined || landedTab(r.view, r.tab) === landedTab(step.view, want))
-  if (!here) goTo(step.view, want)
+  if (!here) navigate(step.view, want, { history: 'replace', scroll: r.view !== step.view })
 }
 
 /** Store the popover's size when it changed. */

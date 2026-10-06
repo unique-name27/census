@@ -9,20 +9,11 @@ import { fmt } from '@/lib/format'
 import { TENURE_BANDS } from '@/lib/people'
 import type { HrbpModel } from '../engine'
 import { NO_HISTORY, type Prep } from '../engine/base'
-import {
-  type CountDim,
-  countOtherSpec,
-  countSpec,
-  engineeringSpec,
-  type GrowthCell,
-  growthCellSpec,
-  mixGroupSpec,
-  mixSpec,
-} from '../engine/buckets'
+import { type CountDim, countOtherSpec, countSpec, engineeringSpec, type GrowthCell } from '../engine/buckets'
 import { FIGURE } from '../engine/lineage'
-import { CONTINGENT, type CountRow, type GrowthRow } from '../engine/workforce'
+import { CONTINGENT, type CountRow } from '../engine/workforce'
 import { ID } from './defs'
-import { drillWhen } from './drill'
+import { drillWhen, growthDrill, headcountDrill, type MixDim, mixDrill, mixGroupDrill } from './drill'
 import { EngineeringStat } from './EngineeringStat'
 
 /** Group, employees (each count opens the people) and share, for a headcount breakdown. */
@@ -33,21 +24,19 @@ function countCols(p: Prep, dim: CountDim, label: string): Column<CountRow>[] {
       key: 'headcount',
       label: 'Employees',
       format: 'int',
-      drill: (r) => drillWhen(r.records.length > 0, () => countSpec(p, dim, r)),
+      drill: headcountDrill(p, dim),
     },
     {
       key: 'share',
       label: 'Share',
       format: 'pct',
-      drill: (r) => drillWhen(r.records.length > 0, () => countSpec(p, dim, r)),
+      drill: headcountDrill(p, dim),
     },
   ]
 }
 
 /** Departments shown before the rest fold into "Other". Above the sample's 22, so every department shows. */
 const DEPARTMENTS_SHOWN = 25
-
-type MixDim = 'location' | 'businessUnit'
 
 export function Workforce({ m }: { m: HrbpModel }) {
   const ctx = useAnalytics()
@@ -69,15 +58,10 @@ export function Workforce({ m }: { m: HrbpModel }) {
   const contingentTotal = [...contingentBy.values()].reduce((a, v) => a + v, 0)
   const mixGroups = new Set(mixRows.map((r) => r.group)).size
   const mixNoun = mixDim === 'location' ? ['site', 'sites'] : ['business unit', 'business units']
-  const growthCell = (cell: GrowthCell) => (r: GrowthRow) => {
-    const has =
-      cell === 'yearAgo'
-        ? r.records.before.length > 0
-        : cell === 'now'
-          ? r.records.now.length > 0
-          : r.records.joined.length + r.records.left.length > 0
-    return drillWhen(has, () => growthCellSpec(p, r, cell))
-  }
+  // Growth groups and contractor sites are filterable groups: their records offer "Filter to".
+  const growthCell = (cell: GrowthCell) => growthDrill(p, wf, cell)
+  const mixCell = mixDrill(p, mixDim)
+  const mixBar = mixGroupDrill(p, mixDim, contingentRows)
   const [engRow, otherRow] = eng.rows
 
   return (
@@ -109,7 +93,7 @@ export function Workforce({ m }: { m: HrbpModel }) {
             value="headcount"
             top={DEPARTMENTS_SHOWN}
             secondary={(d) => fmt(d.share, 'pct0')}
-            onSelect={(d) => drill(() => countSpec(p, 'department', d))}
+            onSelect={(d) => drill(headcountDrill(p, 'department')(d))}
             onSelectOther={(rows) => drill(() => countOtherSpec(p, 'department', rows))}
           />
         </Figure>
@@ -132,7 +116,7 @@ export function Workforce({ m }: { m: HrbpModel }) {
               value="headcount"
               top={12}
               secondary={(d) => fmt(d.share, 'pct0')}
-              onSelect={(d) => drill(() => countSpec(p, 'location', d))}
+              onSelect={(d) => drill(headcountDrill(p, 'location')(d))}
               onSelectOther={(rows) => drill(() => countOtherSpec(p, 'location', rows))}
             />
           </Figure>
@@ -160,7 +144,7 @@ export function Workforce({ m }: { m: HrbpModel }) {
               y="headcount"
               xOrder={[...LEVELS]}
               height={200}
-              onSelect={(d) => drill(() => countSpec(p, 'level', d))}
+              onSelect={(d) => drill(headcountDrill(p, 'level')(d))}
             />
           </Figure>
         </div>
@@ -196,17 +180,12 @@ export function Workforce({ m }: { m: HrbpModel }) {
           columns={[
             { key: 'group', label: mixDim === 'location' ? 'Location' : 'Business unit', format: 'text' },
             { key: 'workerType', label: 'Worker type', format: 'text' },
-            {
-              key: 'people',
-              label: 'People',
-              format: 'int',
-              drill: (r) => drillWhen(r.records.length > 0, () => mixSpec(p, r)),
-            },
+            { key: 'people', label: 'People', format: 'int', drill: mixCell },
             {
               key: 'share',
               label: mixDim === 'location' ? 'Share of site' : 'Share of unit',
               format: 'pct',
-              drill: (r) => drillWhen(r.records.length > 0, () => mixSpec(p, r)),
+              drill: mixCell,
             },
           ]}
           definitions={p.defs(ID.contingent)}
@@ -234,8 +213,8 @@ export function Workforce({ m }: { m: HrbpModel }) {
             series="workerType"
             stack
             seriesOrder={CONTINGENT}
-            onSelect={(d) => drill(() => mixGroupSpec(p, contingentRows, d.group))}
-            onSelectSegment={(d) => drill(() => mixSpec(p, d))}
+            onSelect={(d) => drill(mixBar(d))}
+            onSelectSegment={(d) => drill(mixCell(d))}
           />
         </Figure>
       </Section>
@@ -283,7 +262,7 @@ export function Workforce({ m }: { m: HrbpModel }) {
             format="pct"
             sort="none"
             secondary={(d) => `${d.yearAgo} to ${d.now}`}
-            onSelect={(d) => drill(() => growthCellSpec(p, d, 'growth'))}
+            onSelect={(d) => drill(growthCell('growth')(d))}
           />
         </Figure>
         <Figure

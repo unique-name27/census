@@ -5,16 +5,14 @@
 import { BarList, type Column, Figure } from '@/charts'
 import type { AnalyticsContext } from '@/data/context'
 import { drill } from '@/drill'
-import { drillSpec } from '@/drill/types'
 import { fmt } from '@/lib/format'
 import type { ListeningModel } from '../engine'
-import { laptopLate, type RegionReadiness, readinessRows } from '../engine/cuts'
-import { groupsDrill, rowsBy } from '../engine/drills'
+import { type RegionReadiness, readinessRows } from '../engine/cuts'
 import * as L from '../engine/lineage'
 import type { SurveyModel } from '../engine/measures'
-import { regionOfLocation } from '../engine/prepare'
 import { M } from '../metrics'
 import { AreaFrame, WithSurvey } from './AreaTab'
+import { readinessDrills } from './drill'
 import { SurveyBlock } from './SurveyBlock'
 import { count, defs, noteOf, periodWords } from './shared'
 
@@ -52,69 +50,32 @@ function ReadinessFigures({ ctx, m, sm }: { ctx: AnalyticsContext; m: ListeningM
   }))
   const ready = readinessRows(p, sm.period)
   const target = m.settings.readinessTarget
-  const shownRegions = new Set(cut?.byRegion.groups.map((g) => g.group) ?? [])
-  const inRegion = (r: { respondentKey: string }, region: string) => {
-    const g = regionOfLocation(p.emp.get(r.respondentKey)?.location)
-    return region.startsWith('Other (') ? !!g && !shownRegions.has(g) : g === region
-  }
-  const open = (r: RegionReadiness) =>
-    groupsDrill(
-      rowsBy(
-        ready.filter((x) => inRegion(x, r.region)),
-        (x) => p.emp.get(x.respondentKey)?.location ?? null,
-        { survey: sm.survey, wave: null, groupBy: 'Location', min: sm.min },
-      ),
-      {
-        survey: sm.survey,
-        wave: null,
-        title: `Day-30 readiness in ${r.region}, by location`,
-        subtitle: `${ctx.window.label} · ${ctx.scopeLabel}`,
-        min: sm.min,
-        uses: m.uses.readiness,
-      },
-    )
-  const lateOpen = (r: RegionReadiness) => {
-    const tie = laptopLate(ctx, ctx.window, (loc) => regionOfLocation(loc) === r.region)
-    return drillSpec({
-      kind: 'onboardingTasks',
-      title: `Laptops shipped late for ${r.region} starts`,
-      subtitle: `${ctx.window.label} · ${ctx.scopeLabel}`,
-      note: 'Laptop tasks completed after their due date, or not shipped and past due, for people who started in the period.',
-      rows: tie.lateTasks,
-      uses: [...L.LAPTOP_TASKS],
-    })
-  }
-  const startsOpen = (r: RegionReadiness) => {
-    const tie = laptopLate(ctx, ctx.window, (loc) => regionOfLocation(loc) === r.region)
-    return drillSpec({
-      kind: 'onboardingTasks',
-      title: `Laptop tasks for ${r.region} starts`,
-      subtitle: `${ctx.window.label} · ${ctx.scopeLabel}`,
-      rows: tie.tasks,
-      uses: [...L.LAPTOP_TASKS],
-    })
-  }
+  // Each region's numbers carry the region's sites as their filter ("Filter to Bengaluru, Hsinchu").
+  const regionDrill = readinessDrills(ctx, m, sm)
+  const open = regionDrill.survey
+  const lateOpen = regionDrill.late
+  const startsOpen = regionDrill.starts
   const columns: Column<RegionDatum>[] = [
     { key: 'region', label: 'Region' },
-    { key: 'mean', label: 'Readiness', format: 'num2', drill: (r) => (r.suppressed ? null : () => open(r)) },
+    { key: 'mean', label: 'Readiness', format: 'num2', drill: (r) => (r.suppressed ? null : open(r)) },
     {
       key: 'respondents',
       label: 'Respondents',
       format: 'int',
-      drill: (r) => (r.respondents ? () => open(r) : null),
+      drill: (r) => (r.respondents ? open(r) : null),
     },
     {
       key: 'starts',
       label: 'Starts with a laptop task',
       format: 'int',
-      drill: (r) => (r.starts ? () => startsOpen(r) : null),
+      drill: (r) => (r.starts ? startsOpen(r) : null),
     },
-    { key: 'late', label: 'Laptops late', format: 'int', drill: (r) => (r.late ? () => lateOpen(r) : null) },
+    { key: 'late', label: 'Laptops late', format: 'int', drill: (r) => (r.late ? lateOpen(r) : null) },
     {
       key: 'lateShare',
       label: 'Late share',
       format: 'pct',
-      drill: (r) => (r.late ? () => lateOpen(r) : null),
+      drill: (r) => (r.late ? lateOpen(r) : null),
     },
     { key: 'shown', label: 'Shown' },
   ]
@@ -153,7 +114,7 @@ function ReadinessFigures({ ctx, m, sm }: { ctx: AnalyticsContext; m: ListeningM
         ref={target ? { value: target.value, label: `target ${fmt(target.value, 'num1')}` } : undefined}
         secondary={(d) => (d.lateShare != null ? `${fmt(d.lateShare, 'pct0')} laptops late` : null)}
         glyphTone={(d) => (m.readiness?.flag?.region === d.region ? 'warning' : 'default')}
-        onSelect={(d) => (d.suppressed ? undefined : drill(() => open(d)))}
+        onSelect={(d) => (d.suppressed ? undefined : drill(open(d)))}
       />
     </Figure>
   )

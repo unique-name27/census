@@ -14,7 +14,7 @@ import { QUERY_DATASETS, queryDataset } from './allowlist'
 import { ReleaseAudit } from './audit'
 import type { TokenMap } from './privacy'
 import type { RefRegistry } from './refs'
-import { chatContext, PERIODS, scopePhrase } from './scope'
+import { chatContext, EXCLUDE_ARGS, PERIODS, scopePhrase } from './scope'
 import { openItems } from './tools/actions'
 import { getContext } from './tools/context'
 import { findMetrics } from './tools/metrics'
@@ -75,6 +75,12 @@ const FILTERS_SCHEMA = {
     },
     start: { type: 'string', description: 'YYYY-MM-DD, with period custom.' },
     end: { type: 'string', description: 'YYYY-MM-DD, with period custom; on or before the as-of date.' },
+    exclude: {
+      type: 'array',
+      items: { type: 'string', enum: EXCLUDE_ARGS },
+      description:
+        'Filters to leave out instead of keep: everyone except those values (for leader, everyone except that leader’s whole org). Name the filter here and give its values as usual, e.g. {"business_unit": ["Sales"], "exclude": ["business_unit"]} is the whole company except Sales. Filters combine with AND. Leaving out fewer people than the anonymity minimum is refused.',
+    },
   },
   additionalProperties: false,
 } as const

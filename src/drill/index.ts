@@ -30,4 +30,11 @@ export {
   reqApplicationsSpec,
 } from './related'
 export { type DrillEntry, openDrill, openPerson, pushDrill, useDrillStore } from './store'
-export { type DrillExtra, type DrillKind, type DrillRecordMap, type DrillSpec, drillSpec } from './types'
+export {
+  type DrillExtra,
+  type DrillFilter,
+  type DrillKind,
+  type DrillRecordMap,
+  type DrillSpec,
+  drillSpec,
+} from './types'

@@ -13,9 +13,10 @@ import { type GroupScore, type ReasonRow, type StageCell, scoresOf } from '../en
 import { groupsDrill, rowsBy } from '../engine/drills'
 import { npsText, stageWords } from '../engine/findings'
 import type { SurveyModel } from '../engine/measures'
-import { candidateOf, cutOf } from '../engine/prepare'
+import { candidateOf } from '../engine/prepare'
 import { M, scoreMetric } from '../metrics'
 import { AreaFrame, WithSurvey } from './AreaTab'
+import { stageCellDrill } from './drill'
 import { SurveyBlock } from './SurveyBlock'
 import { count, defs, noteOf, periodWords } from './shared'
 
@@ -66,43 +67,17 @@ function CandidateCuts({ ctx, m, sm }: { ctx: AnalyticsContext; m: ListeningMode
     ...c,
     shown: c.suppressed ? 'Hidden to protect anonymity' : 'Yes',
   }))
-  const dept = cutOf(p, 'department')
-  const big = new Set(stage?.departments ?? [])
-  const inDept = (d: string | null, column: string) =>
-    d != null && (column.startsWith('Other (') ? !big.has(d) : d === column)
-  const cellOpen = (c: StageCell) => {
-    const keys = new Set(
-      sm.latestRows
-        .filter(
-          (r) => r.scale === '0-10' && r.touchpoint?.trim() === c.stage && inDept(dept(r), c.department),
-        )
-        .map((r) => r.respondentKey),
-    )
-    return groupsDrill(
-      rowsBy(
-        sm.latestRows.filter((r) => keys.has(r.respondentKey)),
-        (r) => r.driver ?? r.item,
-        { survey: sm.survey, wave, groupBy: 'Driver', min: sm.min },
-      ),
-      {
-        survey: sm.survey,
-        wave,
-        title: `${c.department}, ${stageWords(c.stage)}, ${wave ?? ''}`,
-        subtitle: ctx.scopeLabel,
-        min: sm.min,
-        uses: m.uses.stage,
-      },
-    )
-  }
+  // A cell of a department shown at the minimum carries the department as its filter.
+  const cellOpen = stageCellDrill(ctx, m, sm)
   const stageColumns: Column<StageDatum>[] = [
     { key: 'department', label: 'Department' },
     { key: 'stage', label: 'Furthest stage' },
-    { key: 'nps', label: 'NPS', format: 'int', drill: (r) => (r.suppressed ? null : () => cellOpen(r)) },
+    { key: 'nps', label: 'NPS', format: 'int', drill: (r) => (r.suppressed ? null : cellOpen(r)) },
     {
       key: 'respondents',
       label: 'Respondents',
       format: 'int',
-      drill: (r) => (r.respondents ? () => cellOpen(r) : null),
+      drill: (r) => (r.respondents ? cellOpen(r) : null),
     },
     { key: 'shown', label: 'Shown' },
   ]
@@ -197,7 +172,7 @@ function CandidateCuts({ ctx, m, sm }: { ctx: AnalyticsContext; m: ListeningMode
           domain={[-60, 60]}
           xOrder={stage?.stages}
           yOrder={stage?.departments}
-          onSelect={(d) => (d.suppressed ? undefined : drill(() => cellOpen(d)))}
+          onSelect={(d) => (d.suppressed ? undefined : drill(cellOpen(d)))}
         />
       </Figure>
       <Figure

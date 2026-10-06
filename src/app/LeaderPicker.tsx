@@ -3,12 +3,14 @@
  * scopes every view to them and everyone below them.
  */
 import { Combobox } from '@base-ui/react/combobox'
-import { useMemo, useState } from 'react'
+import { type ReactNode, useMemo, useState } from 'react'
 import { IconCheck, IconSearch } from '@/components/icons'
 import { PICKER_ITEM, POPUP_SURFACE, SEARCH_INPUT } from '@/components/styles'
 import { Button, cx } from '@/components/ui'
-import { plural } from '@/lib/format'
+import type { FilterMode } from '@/data/scope'
+import { fmt, plural } from '@/lib/format'
 import type { LeaderOption } from './filterOptions'
+import { leaderModeHint, ModeSwitch } from './ModeSwitch'
 
 const matches = (o: LeaderOption, query: string) => {
   const q = query.trim().toLowerCase()
@@ -24,6 +26,10 @@ export function LeaderPicker({
   emptyText = 'No people managers with 3 or more employees in this data.',
   clearLabel = 'Whole company',
   noun = 'leader',
+  mode = 'include',
+  onModeChange,
+  onOpenChange,
+  note,
 }: {
   options: LeaderOption[]
   value: string | null
@@ -38,6 +44,13 @@ export function LeaderPicker({
   clearLabel?: string
   /** What the options are, for the count under the list: "12 leaders". */
   noun?: string
+  /** Include or exclude the leader's org; with `onModeChange`, the switch shows at the top of the list. */
+  mode?: FilterMode
+  onModeChange?: (mode: FilterMode) => void
+  /** Called when the list opens or closes. */
+  onOpenChange?: (open: boolean) => void
+  /** A muted line under the list, e.g. why some leaders can't be picked (`LeaderOption.disabled`). */
+  note?: ReactNode
 }) {
   const items = useMemo(
     () => Combobox.createItems(options, { getValue: (o) => o.id, getLabel: (o) => o.name }),
@@ -45,6 +58,7 @@ export function LeaderPicker({
   )
   // Controlled so the clear button can close the list as well (picking a leader closes it already).
   const [open, setOpen] = useState(false)
+  const excluded = mode === 'exclude'
   return (
     <Combobox.Root
       items={items}
@@ -52,19 +66,36 @@ export function LeaderPicker({
       onValueChange={(v) => onChange(v ?? null)}
       filter={matches}
       open={open}
-      onOpenChange={(o) => setOpen(o)}
+      onOpenChange={(o) => {
+        setOpen(o)
+        onOpenChange?.(o)
+      }}
     >
       <Combobox.Trigger
         render={
           <Button
             caret
             data-tour="filter-leader"
-            aria-label={value ? `${label}: ${currentName ?? value}` : label}
+            aria-label={
+              value
+                ? excluded
+                  ? `${label}: everyone except ${currentName ? `${currentName}'s org` : "the leader's org"}`
+                  : `${label}: ${currentName ?? value}`
+                : label
+            }
           >
             {value ? (
-              <span className="flex max-w-[200px] min-w-0 items-baseline gap-1">
+              <span className="flex max-w-[220px] min-w-0 items-baseline gap-1">
                 <span className="font-normal text-muted">{label}</span>
-                <span className="truncate text-ink">{currentName ?? value}</span>
+                {/* Excluding leaves out the leader's whole org, so the trigger names the org. */}
+                {excluded && <span className="shrink-0 text-ink">not in</span>}
+                <span className="truncate text-ink">
+                  {excluded
+                    ? currentName
+                      ? `${currentName}'s org`
+                      : "the leader's org"
+                    : (currentName ?? value)}
+                </span>
               </span>
             ) : (
               label
@@ -78,6 +109,9 @@ export function LeaderPicker({
             aria-label={label}
             className={cx(POPUP_SURFACE, 'w-[360px] max-w-[calc(100vw-32px)]')}
           >
+            {onModeChange && (
+              <ModeSwitch label={label} value={mode} onChange={onModeChange} hint={leaderModeHint(mode)} />
+            )}
             <div className="relative">
               <IconSearch className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-muted" />
               <Combobox.Input placeholder="Search by name or title" className={SEARCH_INPUT} />
@@ -87,7 +121,12 @@ export function LeaderPicker({
             </Combobox.Empty>
             <Combobox.List className="max-h-[min(360px,calc(var(--available-height)-90px))] overflow-y-auto overscroll-contain py-1 empty:p-0">
               {(o: LeaderOption) => (
-                <Combobox.Item key={o.id} value={o.id} className={cx('group', PICKER_ITEM, 'items-start')}>
+                <Combobox.Item
+                  key={o.id}
+                  value={o.id}
+                  disabled={o.disabled}
+                  className={cx('group', PICKER_ITEM, 'items-start data-[disabled]:text-muted')}
+                >
                   <span className="mt-0.5 flex w-4 shrink-0 justify-center">
                     <IconCheck
                       className="size-4 opacity-0 group-data-[selected]:opacity-100"
@@ -99,13 +138,15 @@ export function LeaderPicker({
                     {o.title && <span className="block truncate text-[12px] text-muted">{o.title}</span>}
                   </span>
                   {/* Headcount basis (employees only), like every other count in the filters; the Org
-                      chart's own counts include contractors and interns and say "people". */}
+                      chart's own counts include contractors and interns and say "people". Excluding,
+                      the org is who would be left out. */}
                   <span className="tnum mt-0.5 shrink-0 text-[12px] text-muted">
-                    {plural(o.size, 'employee')}
+                    {excluded ? `leaves out ${fmt(o.size, 'int')}` : plural(o.size, 'employee')}
                   </span>
                 </Combobox.Item>
               )}
             </Combobox.List>
+            {note && <p className="border-t border-rule px-3 py-1.5 text-[12px] text-muted">{note}</p>}
             <div className="flex items-center justify-between border-t border-rule py-1.5 pr-1.5 pl-3">
               <span className="text-[12px] text-muted">{plural(options.length, noun)}</span>
               <Button
@@ -115,6 +156,7 @@ export function LeaderPicker({
                 onClick={() => {
                   onChange(null)
                   setOpen(false)
+                  onOpenChange?.(false)
                 }}
               >
                 {clearLabel}

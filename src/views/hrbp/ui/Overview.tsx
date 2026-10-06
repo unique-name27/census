@@ -2,6 +2,7 @@ import { Columns, Figure, Lines } from '@/charts'
 import { Grid, KpiStrip, Readout } from '@/components'
 import { useAnalytics } from '@/data/context'
 import { BELOW_STANDARD_TEXT } from '@/data/quality'
+import { focusLeader } from '@/data/scope'
 import { drill } from '@/drill/Drill'
 import { addDays, formatDate } from '@/lib/dates'
 import { fmt } from '@/lib/format'
@@ -61,7 +62,7 @@ export function Overview({ m }: { m: HrbpModel }) {
       uses={p.uses(FIGURE.scorecard(card.dim, withPromotions, p.set.regretted))}
       title="Sub-org scorecard"
       subtitle={`${
-        ctx.filters.leaderId ? 'Each direct report’s organization' : card.rowsLabel
+        focusLeader(ctx.filters) ? 'Each direct report’s organization' : card.rowsLabel
       } against the company: headcount on ${asOf}, rates over ${ctx.window.label}. Select a row to focus on it.`}
       data={card.rows.map((r) => ({
         organization: r.label,
