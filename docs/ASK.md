@@ -30,7 +30,8 @@ are never sent. Answers link to the records, which open locally in the drill pan
   - **Copy answer** (names included, since the copy stays on this computer)
   - **What was sent:** an expandable list of each tool call with the exact (tokenized) result that
     went to Claude, and the tokens used. This is how a user can check the privacy promise.
-- **Errors** in plain words, with what to do: key not accepted (link to Settings), rate limited or
+- **Errors** in plain words, with what to do, followed by Anthropic's own reason, the HTTP status and
+  the request ID whenever Anthropic answered (an account with no API credits has its own case): key not accepted (link to Settings), rate limited or
   overloaded (retried automatically twice, then "try again in a minute"), offline, request blocked
   by the browser or the page's host (e.g. when Census runs as a claude.ai artifact), stopped by you.
 
@@ -38,7 +39,8 @@ are never sent. Answers link to the records, which open locally in the drill pan
 
 - API key field (password input, with Show), **Keep on this device** (off by default: the key is
   kept in sessionStorage for this tab only; on: localStorage). **Forget key**.
-- **Check key** sends one minimal request and reports success or the error.
+- **Check key** sends one tiny request (a few tokens) to the chosen model, so it proves the key, the
+  model and the account's API credits together, and reports success or Anthropic's own reason.
 - Model: Claude Opus 5.5 (`claude-opus-5-5`, default), Claude Sonnet 5.5 (`claude-sonnet-5-5`,
   faster), Claude Haiku 4.5 (`claude-haiku-4-5-20251001`, fastest).
 - What is sent and what never is, in three short bullets, and a link to Anthropic's API terms is

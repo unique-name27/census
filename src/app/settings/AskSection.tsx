@@ -19,7 +19,7 @@ import {
   saveModelChoice,
   WHAT_IS_SENT,
 } from '@/ask/engine'
-import { keyLine, settingsErrorDetail } from '@/ask/ui/model'
+import { errorFacts, keyLine, settingsErrorDetail } from '@/ask/ui/model'
 import { checkAskKey } from '@/ask/ui/session'
 import { openAsk, useAsk } from '@/ask/ui/store'
 import { IconEye } from '@/components/icons'
@@ -171,6 +171,11 @@ export function AskSection() {
                 <span>
                   <span className="font-semibold text-ink">{check.error.title}</span>{' '}
                   {settingsErrorDetail(check.error)}
+                  {errorFacts(check.error) && (
+                    <span className="mt-1 block break-words text-muted select-text">
+                      {errorFacts(check.error)}
+                    </span>
+                  )}
                 </span>
               </span>
             )}

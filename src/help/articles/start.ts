@@ -332,7 +332,7 @@ export const START_ARTICLES: readonly HelpArticle[] = [
         ol: [
           'Create an API key in the Claude Console.',
           'Open [Settings, Ask Census](settings:ask) and paste it in. It is kept for this tab only, unless you turn on "Keep on this device".',
-          'Use Check key to try it, and pick a model: Claude Opus 5.5 by default, or Sonnet or Haiku for faster answers.',
+          'Use Check key to try it: it sends one tiny request, so it also tells you when the account has no API credits. Then pick a model: Claude Opus 5.5 by default, or Sonnet or Haiku for faster answers.',
         ],
       },
       {

@@ -232,7 +232,7 @@ export interface FakeFetchCall {
  * status with an error body), and the models endpoint with a model.
  */
 export function fakeFetch(
-  script: (Reply | { status: number; type: string; headers?: Record<string, string> })[],
+  script: (Reply | { status: number; type: string; message?: string; headers?: Record<string, string> })[],
 ): typeof fetch & { calls: FakeFetchCall[] } {
   const calls: FakeFetchCall[] = []
   let n = 0
@@ -250,15 +250,35 @@ export function fakeFetch(
         status: 200,
         headers: { 'content-type': 'application/json', 'request-id': 'req_test' },
       })
+    // A request that is not streamed (Settings > Check key) gets a whole message back.
+    const whole = !!body && body.stream !== true
     const step = script[n++]
-    if (!step) throw new TypeError('fetch failed')
-    if ('status' in step)
+    if (!step && !whole) throw new TypeError('fetch failed')
+    if (step && 'status' in step)
       return new Response(
-        JSON.stringify({ type: 'error', error: { type: step.type, message: 'Scripted error' } }),
+        JSON.stringify({
+          type: 'error',
+          error: { type: step.type, message: step.message ?? 'Scripted error' },
+          request_id: 'req_test',
+        }),
         {
           status: step.status,
           headers: { 'content-type': 'application/json', 'request-id': 'req_test', ...step.headers },
         },
+      )
+    if (whole)
+      return new Response(
+        JSON.stringify({
+          id: 'msg_test',
+          type: 'message',
+          role: 'assistant',
+          model: body?.model,
+          content: [{ type: 'text', text: 'OK' }],
+          stop_reason: 'max_tokens',
+          stop_sequence: null,
+          usage: { input_tokens: 5, output_tokens: 1 },
+        }),
+        { status: 200, headers: { 'content-type': 'application/json', 'request-id': 'req_test' } },
       )
     return new Response(sseOf(step, typeof body?.model === 'string' ? body.model : undefined), {
       status: 200,

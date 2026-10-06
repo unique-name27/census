@@ -19,7 +19,7 @@ import { Button, cx, SeverityIcon } from '@/components/ui'
 import { openSettings } from '@/data/store'
 import { Answer } from './Answer'
 import { IconWorking } from './icons'
-import { exportScope, statusLine, type Turn, withNames, withoutPartial } from './model'
+import { errorFacts, exportScope, statusLine, type Turn, withNames, withoutPartial } from './model'
 import { askQuestion } from './session'
 import { closeAsk } from './store'
 
@@ -79,6 +79,11 @@ function ErrorNote({ turn, env, busy }: { turn: Turn; env: () => ToolEnv; busy: 
       <div className="min-w-0 flex-1">
         <p className="text-[13px] font-semibold text-ink">{e.title}</p>
         <p className="mt-0.5 text-[13px] leading-snug text-ink-2">{e.detail}</p>
+        {errorFacts(e) && (
+          <p className="mt-1.5 text-[12px] leading-snug break-words text-muted select-text">
+            {errorFacts(e)}
+          </p>
+        )}
         {e.action && (
           <div className="mt-2">
             {e.action === 'settings' ? (

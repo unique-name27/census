@@ -4,11 +4,16 @@
  * by the browser or the page's host). Rate limits and overloads that came back as an HTTP status have
  * already been retried twice by the SDK by the time they reach here; one that arrives inside a stream
  * after the answer started has not (the SDK retries only before a response starts).
+ *
+ * Every error Anthropic sends back keeps its own message and request ID (`apiMessage`,
+ * `requestId`), so the sheet can say exactly why a request was turned down; the plain-words title
+ * alone hid reasons such as an account with no API credits behind "could not read this request".
  */
 
 export type AskErrorKind =
   | 'no_key'
   | 'key'
+  | 'billing'
   | 'permission'
   | 'model'
   | 'rate_limited'
@@ -31,6 +36,10 @@ export interface AskError {
   action: 'settings' | 'retry' | null
   /** The HTTP status, when there was one. */
   status?: number
+  /** Anthropic's own explanation, as it sent it ("Your credit balance is too low …"). */
+  apiMessage?: string
+  /** Anthropic's request ID, for its support team. */
+  requestId?: string
 }
 
 const E = (
@@ -91,6 +100,30 @@ function typeOf(err: unknown): string | undefined {
 
 const isAbort = (err: unknown): boolean => (err as { name?: unknown } | null)?.name === 'AbortError'
 
+const text = (v: unknown): string | undefined => (typeof v === 'string' && v.trim() ? v.trim() : undefined)
+
+/**
+ * Anthropic's explanation and request ID from an SDK error. The SDK's `APIError` keeps the response
+ * body in `error` (`{ type: 'error', error: { type, message }, request_id }`) and the request ID in
+ * `requestID`; an error that arrives inside a stream carries the same body. The message is cut to a
+ * readable length; it never holds people data, since every request is tokenized before it is sent.
+ */
+export function apiDetails(err: unknown): { apiMessage?: string; requestId?: string } {
+  const e = err as {
+    requestID?: unknown
+    error?: { message?: unknown; request_id?: unknown; error?: { message?: unknown } }
+  } | null
+  const message = text(e?.error?.error?.message) ?? text(e?.error?.message)
+  const requestId = text(e?.requestID) ?? text(e?.error?.request_id)
+  return {
+    ...(message ? { apiMessage: message.length > 400 ? `${message.slice(0, 399)}…` : message } : {}),
+    ...(requestId ? { requestId } : {}),
+  }
+}
+
+/** A 400 that is about the account's API credits, not the request. */
+const BILLING = /credit balance|purchase credits|plans\s*&\s*billing|billing/i
+
 /** The HTTP status an API error type stands for, when an error arrives mid-stream. */
 const TYPE_STATUS: Record<string, number> = {
   invalid_request_error: 400,
@@ -113,11 +146,24 @@ export function classifyError(
   opts: { aborted?: boolean; online?: boolean; connection?: boolean } = {},
 ): AskError {
   if (opts.aborted || isAbort(err)) return STOPPED
+  const found = classify(err, opts)
+  return found.status != null ? { ...found, ...apiDetails(err) } : found
+}
+
+function classify(err: unknown, opts: { online?: boolean; connection?: boolean }): AskError {
   const type = typeOf(err)
   const http = statusOf(err)
   const status = http ?? (type ? TYPE_STATUS[type] : undefined)
   // The SDK retried only errors that came back as an HTTP status, not one inside a stream.
   const later = http != null ? 'Census tried again twice. Try again in a minute.' : 'Try again in a minute.'
+  if (status === 400 && BILLING.test(apiDetails(err).apiMessage ?? ''))
+    return E(
+      'billing',
+      'Your Anthropic account has no API credits left.',
+      'Add credits under Plans & Billing in the Claude Console, then ask again. API use is billed separately from a Claude.ai subscription.',
+      null,
+      status,
+    )
   if (status === 401)
     return E(
       'key',
@@ -158,8 +204,8 @@ export function classifyError(
   if (status === 400)
     return E(
       'bad_request',
-      'Claude could not read this request.',
-      'Start a new chat and ask again. If it keeps happening, use Report a problem.',
+      'Anthropic turned down this request.',
+      'Its reason is below. Start a new chat and ask again; if it keeps happening, use Report a problem.',
       null,
       status,
     )

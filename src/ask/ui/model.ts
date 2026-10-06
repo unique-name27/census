@@ -242,12 +242,15 @@ export function announcement(
 const int = (n: number) => new Intl.NumberFormat('en-US').format(Math.round(n))
 
 /** "1,240 input tokens and 320 output tokens, 2,100 read from cache. 3 requests to Claude Opus 5.5." */
-export function usageLine(u: Usage, model: string): string {
+export function usageLine(u: Usage, model: string, error?: Pick<AskError, 'status'> | null): string {
   const parts = [plural(u.input, 'input token'), plural(u.output, 'output token')]
   const cache: string[] = []
   if (u.cacheRead) cache.push(`${int(u.cacheRead)} read from cache`)
   if (u.cacheWrite) cache.push(`${int(u.cacheWrite)} written to cache`)
   const tokens = `${parts.join(' and ')}${cache.length ? `, ${cache.join(' and ')}` : ''}.`
+  // A status means Anthropic answered: the request arrived and was turned down before Claude read it.
+  if (!u.requests && error?.status != null)
+    return `Anthropic turned the request down before ${modelById(model).label} read it (HTTP ${error.status}), so no tokens were used.`
   if (!u.requests) return `No request reached ${modelById(model).label}.`
   const partial = u.partial ? ' A request that was stopped or failed is counted as far as it got.' : ''
   return `${tokens} ${plural(u.requests, 'request')} to ${modelById(model).label}.${partial}`
@@ -535,6 +538,20 @@ export function keyLine(stored: StoredKey | null, masked: (key: string) => strin
  * Settings, Ask Census: an error's "what to do" for the Settings page itself, which should not
  * send the reader to the page they are on.
  */
+/**
+ * Anthropic's own reason and the request's reference, under an error's plain-words title:
+ * 'Anthropic said: "Your credit balance is too low …" (HTTP 400, request req_011…)'. Null when the
+ * request never got an answer from Anthropic.
+ */
+export function errorFacts(e: Pick<AskError, 'status' | 'apiMessage' | 'requestId'>): string | null {
+  if (e.status == null && !e.apiMessage) return null
+  const ref = [e.status != null ? `HTTP ${e.status}` : null, e.requestId ? `request ${e.requestId}` : null]
+    .filter(Boolean)
+    .join(', ')
+  if (!e.apiMessage) return `Anthropic sent no reason (${ref}).`
+  return `Anthropic said: “${e.apiMessage}”${ref ? ` (${ref})` : ''}`
+}
+
 export function settingsErrorDetail(e: Pick<AskError, 'kind' | 'detail'>): string {
   switch (e.kind) {
     case 'key':

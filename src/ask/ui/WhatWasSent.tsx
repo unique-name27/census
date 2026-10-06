@@ -65,7 +65,7 @@ export function WhatWasSent({ turn, conversation }: { turn: Turn; conversation: 
       </section>
       <section>
         <h4 className="eyebrow">Tokens</h4>
-        <p className="mt-1">{usageLine(turn.usage, turn.model)}</p>
+        <p className="mt-1">{usageLine(turn.usage, turn.model, turn.error)}</p>
       </section>
       <p className="text-[12px] leading-snug text-muted">
         Every request also carries Census's instructions for Claude and the tool definitions, which hold no

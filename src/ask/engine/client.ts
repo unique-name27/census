@@ -5,7 +5,7 @@
  * The SDK retries rate limits, overloads and server errors twice before giving up.
  */
 import type { AskClient, AskRequest, AskStream } from './loop'
-import type { ModelId } from './models'
+import { type ModelId, modelById } from './models'
 
 export interface ClientOptions {
   /** A fetch to use instead of the browser's (tests pass a scripted one). */
@@ -15,7 +15,7 @@ export interface ClientOptions {
 }
 
 export interface AnthropicAskClient extends AskClient {
-  /** Settings > Check key: one minimal request (the model's details), throws on failure. */
+  /** Settings > Check key: one tiny request (a few tokens) to the model, throws on failure. */
   check(model: ModelId): Promise<void>
 }
 
@@ -49,8 +49,16 @@ export async function createAnthropicClient(
     stream: (body: AskRequest, o: { signal?: AbortSignal }): AskStream =>
       sdk.beta.messages.stream(body, o.signal ? { signal: o.signal } : undefined),
     isConnectionError: (err: unknown) => err instanceof mod.APIConnectionError,
+    // One tiny request (a few tokens): it proves the key, the model and the account's API credits
+    // together. Looking the model up alone succeeds on an account with no credits left.
     check: async (model: ModelId) => {
-      await sdk.models.retrieve(model)
+      const { effort } = modelById(model)
+      await sdk.messages.create({
+        model,
+        max_tokens: 1,
+        messages: [{ role: 'user', content: 'Reply with OK.' }],
+        ...(effort ? { output_config: { effort: 'low' as const } } : {}),
+      })
     },
   }
 }

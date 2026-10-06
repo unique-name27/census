@@ -386,6 +386,40 @@ describe('classifyError', () => {
     expect(classifyError(new Error('bug')).kind).toBe('unknown')
     expect(classifyError({ error: { error: { type: 'authentication_error' } } }).kind).toBe('key')
   })
+
+  it('keeps Anthropic’s own reason and request ID on every error it sent back', () => {
+    const bad = classifyError({
+      status: 400,
+      requestID: 'req_011',
+      error: {
+        type: 'error',
+        error: { type: 'invalid_request_error', message: 'max_tokens: must be at least 1' },
+      },
+    })
+    expect(bad).toMatchObject({
+      kind: 'bad_request',
+      status: 400,
+      apiMessage: 'max_tokens: must be at least 1',
+      requestId: 'req_011',
+    })
+    expect(bad.title).toBe('Anthropic turned down this request.')
+    // A stream error carries the same body and the request ID in it.
+    const mid = classifyError({
+      error: {
+        type: 'error',
+        error: { type: 'overloaded_error', message: 'Overloaded' },
+        request_id: 'req_022',
+      },
+    })
+    expect(mid).toMatchObject({ kind: 'overloaded', apiMessage: 'Overloaded', requestId: 'req_022' })
+    // No answer from Anthropic, no reason to show.
+    const offline = classifyError(new Error('x'), { connection: true, online: false })
+    expect(offline.apiMessage).toBeUndefined()
+    expect(offline.status).toBeUndefined()
+    // Long reasons are cut to a readable length.
+    const long = classifyError({ status: 400, error: { error: { message: 'x'.repeat(900) } } })
+    expect(long.apiMessage?.length).toBe(400)
+  })
 })
 
 describe('ask with the real SDK reading scripted Server-Sent Events', () => {
@@ -528,11 +562,45 @@ describe('ask with the real SDK reading scripted Server-Sent Events', () => {
     expect(r2.error?.kind).toBe('offline')
   }, 30_000)
 
-  it('checks a key with one minimal request', async () => {
+  it('checks a key with one tiny request that also proves the account has API credits', async () => {
     const f = fakeFetch([])
     expect(await checkKey(FAKE_KEY, 'claude-opus-5-5', { fetch: f })).toEqual({ ok: true })
     expect(f.calls).toHaveLength(1)
-    expect(f.calls[0]?.url).toBe('https://api.anthropic.com/v1/models/claude-opus-5-5')
-    expect(f.calls[0]?.method).toBe('GET')
+    expect(f.calls[0]?.url).toMatch(/^https:\/\/api\.anthropic\.com\/v1\/messages/)
+    expect(f.calls[0]?.method).toBe('POST')
+    expect(f.calls[0]?.body).toMatchObject({
+      model: 'claude-opus-5-5',
+      max_tokens: 1,
+      output_config: { effort: 'low' },
+    })
+    // Haiku 4.5 takes no effort setting.
+    const h = fakeFetch([])
+    await checkKey(FAKE_KEY, 'claude-haiku-4-5-20251001', { fetch: h })
+    expect(h.calls[0]?.body).not.toHaveProperty('output_config')
+  })
+
+  it('reports an account with no API credits, with Anthropic’s own reason and the request ID', async () => {
+    const billing =
+      'Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.'
+    const f = fakeFetch([{ status: 400, type: 'invalid_request_error', message: billing }])
+    const r = await checkKey(FAKE_KEY, 'claude-sonnet-5-5', { fetch: f })
+    expect(r.ok).toBe(false)
+    const e = r.ok ? null : classifyError(r.error, { connection: r.connection })
+    expect(e).toMatchObject({ kind: 'billing', status: 400, apiMessage: billing, requestId: 'req_test' })
+    expect(e?.title).toBe('Your Anthropic account has no API credits left.')
+
+    // The same through a question: the answer says why, not just "could not read this request".
+    const q = fakeFetch([{ status: 400, type: 'invalid_request_error', message: billing }])
+    const client = await createAnthropicClient(FAKE_KEY, { fetch: q })
+    const res = await ask({
+      client,
+      conversation: new Conversation(),
+      question: 'What team hires the slowest?',
+      env: envOf(ctx),
+      model: 'claude-sonnet-5-5',
+    })
+    expect(res.status).toBe('error')
+    expect(res.error).toMatchObject({ kind: 'billing', apiMessage: billing, requestId: 'req_test' })
+    expect(q.calls).toHaveLength(1)
   })
 })

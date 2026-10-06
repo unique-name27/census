@@ -13,6 +13,7 @@ import {
   askedScope,
   cellValue,
   composerKey,
+  errorFacts,
   exportScope,
   failTurn,
   finalText,
@@ -268,6 +269,14 @@ describe('what was sent', () => {
       '10 input tokens and 2 output tokens. 1 request to Claude Haiku 4.5.',
     )
     expect(usageLine(NO_USAGE, 'claude-opus-5-5')).toBe('No request reached Claude Opus 5.5.')
+    // Anthropic answered with an error: the request arrived and was turned down, so it does not say
+    // that nothing reached Claude.
+    expect(usageLine(NO_USAGE, 'claude-sonnet-5-5', { status: 400 })).toBe(
+      'Anthropic turned the request down before Claude Sonnet 5.5 read it (HTTP 400), so no tokens were used.',
+    )
+    expect(usageLine(NO_USAGE, 'claude-opus-5-5', { status: undefined })).toBe(
+      'No request reached Claude Opus 5.5.',
+    )
     expect(
       usageLine({ ...NO_USAGE, input: 100, output: 1, requests: 1, partial: true }, 'claude-opus-5-5'),
     ).toBe(
@@ -540,5 +549,15 @@ describe('keys', () => {
     expect(keyLine({ key: 'sk-ant-test-fake-0000', kept: true }, mask)).toBe(
       'Using sk-ant-…0000, kept on this device until you forget it.',
     )
+  })
+})
+
+describe('errorFacts', () => {
+  it('quotes Anthropic and gives the status and request ID', () => {
+    expect(
+      errorFacts({ status: 400, apiMessage: 'Your credit balance is too low.', requestId: 'req_011' }),
+    ).toBe('Anthropic said: “Your credit balance is too low.” (HTTP 400, request req_011)')
+    expect(errorFacts({ status: 529 })).toBe('Anthropic sent no reason (HTTP 529).')
+    expect(errorFacts({})).toBeNull()
   })
 })
