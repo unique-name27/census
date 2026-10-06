@@ -165,6 +165,11 @@ export interface SettingsRequest {
   open: boolean
   section: SettingsSection | null
   nonce: number
+  /**
+   * A control in the section to land on instead of its heading: the `data-settings-focus` name it
+   * carries ("ask-workspace"). Absent: the section's heading.
+   */
+  focus?: string
 }
 
 export type MetricImportResult = { ok: true; report: MetricImportReport } | { ok: false; error: string }
@@ -238,7 +243,7 @@ export interface CensusState extends Settings {
   setToolLink: (id: string, url: string | null | undefined) => boolean
   resetTools: () => void
   updateSettings: (patch: Partial<Settings>) => void
-  openSettings: (section?: SettingsSection | null) => void
+  openSettings: (section?: SettingsSection | null, focus?: string) => void
   closeSettings: () => void
   /** The settings as a JSON file (never pay amounts). */
   exportSettings: () => Blob
@@ -761,8 +766,10 @@ export const useCensus = create<CensusState>((set, getState) => {
       if (patch.tools) next.tools = sanitizeTools(patch.tools)
       patchSettings({ ...cur, ...next })
     },
-    openSettings(section = null) {
-      set((s) => ({ settingsOpen: { open: true, section, nonce: s.settingsOpen.nonce + 1 } }))
+    openSettings(section = null, focus) {
+      set((s) => ({
+        settingsOpen: { open: true, section, nonce: s.settingsOpen.nonce + 1, ...(focus ? { focus } : {}) },
+      }))
     },
     closeSettings() {
       set((s) => ({ settingsOpen: { ...s.settingsOpen, open: false } }))
@@ -1013,9 +1020,12 @@ export const useCensus = create<CensusState>((set, getState) => {
 
 /* ───────────── standalone helpers for code outside React ───────────── */
 
-/** Open the Settings sheet, optionally at a section (the Tools menu opens 'tools'). */
-export const openSettings = (section?: SettingsSection | null): void =>
-  useCensus.getState().openSettings(section)
+/**
+ * Open the Settings sheet, optionally at a section (the Tools menu opens 'tools'), and optionally
+ * on one control in it (`focus`: its `data-settings-focus` name).
+ */
+export const openSettings = (section?: SettingsSection | null, focus?: string): void =>
+  useCensus.getState().openSettings(section, focus)
 export const closeSettings = (): void => useCensus.getState().closeSettings()
 export const exportSettings = (): Blob => useCensus.getState().exportSettings()
 export const importSettings = (json: unknown): ImportSettingsResult =>

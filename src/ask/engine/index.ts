@@ -6,11 +6,15 @@
  *
  *  1. Key. `readKey()` gives the key in force (sessionStorage by default, localStorage when kept);
  *     `saveKey(key, keep)` and `forgetKey()` change it. No key: show `NO_KEY` and send nothing.
- *     Settings > Check key: `checkKey(key, model)`, then `classifyError(error, { connection })`.
+ *     Workspace ID (optional, for a key that belongs to no workspace): `readWorkspaceId()`,
+ *     `saveWorkspaceId(id)`, `clearWorkspaceId()`, `looksLikeWorkspaceId(id)`.
+ *     Settings > Check key: `checkKey(key, model, { workspaceId })`, then
+ *     `classifyError(error, { connection, workspaceSent })`.
  *     Model: `MODELS`, `DEFAULT_MODEL`, `readModelChoice()`, `saveModelChoice(id)`.
  *  2. Conversation. `createConversation()` once per chat (in memory only; New chat makes a new
  *     one). It holds the person tokens, the record refs and the history sent to Claude.
- *  3. Client. `await createAnthropicClient(key)`: the SDK, imported lazily, browser-direct.
+ *  3. Client. `await createAnthropicClient(key, { workspaceId })`: the SDK, imported lazily,
+ *     browser-direct; a workspace ID goes as the `anthropic-workspace-id` header.
  *  4. Question. `ask({ client, conversation, question, env: { ctx, views, marks }, model, signal,
  *     onEvent })` streams: `question` (what was sent), `request`, `text` deltas, `tool_start` (a
  *     plain progress line), `tool_end` (a `ToolCallRecord` for "What was sent"), `round_limit`,
@@ -46,16 +50,23 @@ export {
   EMPTY_QUESTION,
   NO_KEY,
   STOPPED,
+  WORKSPACE_NEEDED,
+  WORKSPACE_REJECTED,
 } from './errors'
 export {
+  clearWorkspaceId,
   forgetKey,
   KEY_STORAGE_KEY,
   type KeyStores,
   looksLikeKey,
+  looksLikeWorkspaceId,
   maskKey,
   readKey,
+  readWorkspaceId,
   type StoredKey,
   saveKey,
+  saveWorkspaceId,
+  WORKSPACE_STORAGE_KEY,
 } from './keys'
 export {
   type AskClient,

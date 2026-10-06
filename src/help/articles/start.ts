@@ -297,6 +297,8 @@ export const START_ARTICLES: readonly HelpArticle[] = [
       'anthropic',
       'ai',
       'api key',
+      'workspace',
+      'workspace id',
       'conversation',
       'natural language',
     ],
@@ -337,6 +339,22 @@ export const START_ARTICLES: readonly HelpArticle[] = [
       },
       {
         p: 'The key is never part of the settings file, Report a problem, exports or the page address. Forget key removes it.',
+      },
+      { h: 'If Anthropic asks for a workspace ID' },
+      {
+        p: 'A key that is not tied to a workspace gets "This key needs a workspace ID." Either of these fixes it:',
+      },
+      {
+        ul: [
+          'Add the workspace ID: in the Claude Console, open Settings, Workspaces and copy the ID of the workspace to use. It starts with wrkspc_. Paste it under Workspace ID in [Settings, Ask Census](settings:ask) and save it.',
+          'Or create a key inside a workspace: in the Claude Console, open the workspace, create an API key there, and replace your key with it. Such a key needs no workspace ID, so clear the field.',
+        ],
+      },
+      {
+        p: 'If Census says "Anthropic did not accept this workspace ID.", check the ID in the Claude Console under Settings, Workspaces, or clear it when the key already belongs to a workspace.',
+      },
+      {
+        p: 'The workspace ID is kept on this device and goes to Anthropic with each request, nowhere else. Forget key leaves it; Clear removes it.',
       },
       { h: 'Good to know' },
       {

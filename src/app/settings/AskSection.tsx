@@ -1,25 +1,30 @@
 /**
  * Settings > Ask Census (docs/ASK.md): the Claude API key (kept for this tab unless "Keep on this
  * device" is on; never in the settings file, Report a problem, exports, logs or the address),
- * Check key, the model, and what is sent and what never is.
+ * Check key, the optional workspace ID (for a key that belongs to no workspace; kept on this
+ * device, kept out of the same places), the model, and what is sent and what never is.
  */
 import { useId, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 import {
   type AskError,
+  clearWorkspaceId,
   forgetKey,
   isModelId,
   looksLikeKey,
+  looksLikeWorkspaceId,
   MODELS,
   type ModelId,
   maskKey,
   readKey,
   readModelChoice,
+  readWorkspaceId,
   saveKey,
   saveModelChoice,
+  saveWorkspaceId,
   WHAT_IS_SENT,
 } from '@/ask/engine'
-import { errorFacts, keyLine, settingsErrorDetail } from '@/ask/ui/model'
+import { errorFacts, keyLine, settingsErrorDetail, WORKSPACE_FIELD } from '@/ask/ui/model'
 import { checkAskKey } from '@/ask/ui/session'
 import { openAsk, useAsk } from '@/ask/ui/store'
 import { IconEye } from '@/components/icons'
@@ -37,13 +42,20 @@ type Check =
   | { state: 'ok'; model: string }
   | { state: 'failed'; error: AskError }
 
-/** The key and model as stored; `version` changes when they are saved, so they are read again. */
-const storedNow = (_version: number) => ({ key: readKey(), model: readModelChoice() })
+/**
+ * The key, model and workspace ID as stored; `version` changes when they are saved, so they are
+ * read again.
+ */
+const storedNow = (_version: number) => ({
+  key: readKey(),
+  model: readModelChoice(),
+  workspace: readWorkspaceId(),
+})
 
 export function AskSection() {
   const version = useAsk((s) => s.keyVersion)
   const changed = useAsk((s) => s.keyChanged)
-  const { key: stored, model } = storedNow(version)
+  const { key: stored, model, workspace } = storedNow(version)
   const [draft, setDraft] = useState('')
   const [show, setShow] = useState(false)
   const [keep, setKeep] = useState(() => readKey()?.kept ?? false)
@@ -56,6 +68,20 @@ export function AskSection() {
   const submitRef = useRef<HTMLButtonElement>(null)
   const checkRef = useRef<HTMLButtonElement>(null)
   const lineRef = useRef<HTMLParagraphElement>(null)
+  const wsId = `${id}-workspace`
+  const wsRef = useRef<HTMLInputElement>(null)
+  const wsSaveRef = useRef<HTMLButtonElement>(null)
+  const [wsDraft, setWsDraft] = useState(() => workspace ?? '')
+  const [wsProblem, setWsProblem] = useState<string | null>(null)
+  // The saved ID changed (here, or in another tab): the field shows it.
+  const [wsShown, setWsShown] = useState(workspace)
+  if (wsShown !== workspace) {
+    setWsShown(workspace)
+    setWsDraft(workspace ?? '')
+    setWsProblem(null)
+  }
+  const wsNext = wsDraft.trim()
+  const wsDirty = wsNext !== '' && wsNext !== workspace
 
   const save = () => {
     const k = draft.trim()
@@ -109,6 +135,46 @@ export function AskSection() {
     setCheck({ state: 'checking' })
     const error = await checkAskKey(k, model)
     setCheck(error ? { state: 'failed', error } : { state: 'ok', model })
+  }
+
+  const saveWorkspace = () => {
+    if (!wsDirty) return
+    if (!looksLikeWorkspaceId(wsNext)) {
+      setWsProblem(
+        'This does not look like a workspace ID. It starts with wrkspc_, followed by letters and numbers.',
+      )
+      return
+    }
+    setWsProblem(null)
+    const ok = saveWorkspaceId(wsNext)
+    // Saving disables the button: focus moves to the field, never left on a disabled control.
+    const fromButton = document.activeElement === wsSaveRef.current
+    flushSync(() => {
+      setCheck({ state: 'idle' })
+      changed()
+    })
+    if (fromButton) wsRef.current?.focus({ preventScroll: true })
+    if (ok)
+      toast('Workspace ID saved', {
+        tone: 'good',
+        description: 'Ask sends it to Anthropic with every request.',
+      })
+    else
+      toast('Workspace ID not saved', {
+        tone: 'critical',
+        description: 'This browser would not store it. Allow site data for Census and try again.',
+      })
+  }
+
+  const clearWorkspace = () => {
+    // The Clear button goes with the saved ID: focus moves to the field first.
+    wsRef.current?.focus({ preventScroll: true })
+    clearWorkspaceId()
+    setWsDraft('')
+    setWsProblem(null)
+    setCheck({ state: 'idle' })
+    changed()
+    toast('Workspace ID cleared', { description: 'Ask sends no workspace ID from now on.' })
   }
 
   const pickModel = (m: ModelId) => {
@@ -240,6 +306,58 @@ export function AskSection() {
         hint="Off: the key is kept for this tab and is gone when you close it. On: it stays in this browser until you choose Forget key or clear Census from this device."
       >
         <Switch checked={kept} onChange={setKeepOn} label="Keep the key on this device" />
+      </Field>
+      <Field
+        label="Workspace ID"
+        htmlFor={wsId}
+        hintId={`${wsId}-hint`}
+        hint="Only needed when your key is not tied to a workspace. Find it in the Claude Console under Settings, Workspaces. It goes to Anthropic with each request and nowhere else."
+      >
+        <div className="flex w-full flex-col gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              ref={wsRef}
+              id={wsId}
+              type="text"
+              value={wsDraft}
+              onChange={(e) => {
+                setWsDraft(e.currentTarget.value)
+                setWsProblem(null)
+              }}
+              onKeyDown={(e) => {
+                if (e.key !== 'Enter' || e.nativeEvent.isComposing) return
+                e.preventDefault()
+                saveWorkspace()
+              }}
+              placeholder="wrkspc_…"
+              autoComplete="off"
+              autoCapitalize="off"
+              autoCorrect="off"
+              spellCheck={false}
+              data-lpignore="true"
+              data-1p-ignore="true"
+              data-bwignore="true"
+              data-form-type="other"
+              data-settings-focus={WORKSPACE_FIELD}
+              aria-invalid={wsProblem ? true : undefined}
+              aria-describedby={wsProblem ? `${wsId}-hint ${wsId}-problem` : `${wsId}-hint`}
+              className={cx(INPUT, 'w-full font-mono text-[12px] sm:w-auto sm:min-w-0 sm:flex-1')}
+            />
+            <Button ref={wsSaveRef} size="sm" variant="primary" onClick={saveWorkspace} disabled={!wsDirty}>
+              Save workspace ID
+            </Button>
+            {workspace && (
+              <Button size="sm" variant="ghost" onClick={clearWorkspace} aria-label="Clear workspace ID">
+                Clear
+              </Button>
+            )}
+          </div>
+          {wsProblem && (
+            <p id={`${wsId}-problem`} role="alert" className="text-[12px] text-bad-text">
+              {wsProblem}
+            </p>
+          )}
+        </div>
       </Field>
       <fieldset className="flex flex-col gap-1.5">
         <legend className="text-[13px] font-semibold text-ink">Model</legend>

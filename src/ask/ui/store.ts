@@ -6,7 +6,13 @@
  */
 import { createRef } from 'react'
 import { create } from 'zustand'
-import { type Conversation, createConversation, KEY_STORAGE_KEY, MODEL_STORAGE_KEY } from '@/ask/engine'
+import {
+  type Conversation,
+  createConversation,
+  KEY_STORAGE_KEY,
+  MODEL_STORAGE_KEY,
+  WORKSPACE_STORAGE_KEY,
+} from '@/ask/engine'
 import { useCensus } from '@/data/store'
 import type { Turn } from './model'
 
@@ -23,7 +29,7 @@ interface AskState {
   turns: Turn[]
   busy: boolean
   draft: string
-  /** Changes when the key or model is saved or forgotten (here or in another tab). */
+  /** Changes when the key, model or workspace ID is saved or forgotten (here or in another tab). */
   keyVersion: number
   /** An answer finished while the sheet was closed and has not been seen yet. */
   unseen: boolean
@@ -117,11 +123,17 @@ if (typeof window !== 'undefined')
       }
   })
 
-// A key kept on this device (or the model choice) changed in another tab: read them again.
+// A key kept on this device (or the model choice or workspace ID) changed in another tab: read
+// them again.
 if (typeof window !== 'undefined') {
   try {
     window.addEventListener('storage', (e) => {
-      if (e.key === KEY_STORAGE_KEY || e.key === MODEL_STORAGE_KEY || e.key === null)
+      if (
+        e.key === KEY_STORAGE_KEY ||
+        e.key === MODEL_STORAGE_KEY ||
+        e.key === WORKSPACE_STORAGE_KEY ||
+        e.key === null
+      )
         useAsk.getState().keyChanged()
     })
   } catch {

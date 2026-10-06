@@ -47,12 +47,15 @@ export function SettingsBlock({
 export function Field({
   label,
   hint,
+  hintId,
   htmlFor,
   children,
   className,
 }: {
   label: string
   hint?: ReactNode
+  /** An id for the hint, so the control can point to it with `aria-describedby`. */
+  hintId?: string
   /** The input the label names; without it the label is plain text and the control names itself. */
   htmlFor?: string
   children: ReactNode
@@ -68,7 +71,11 @@ export function Field({
         ) : (
           <span className="text-[13px] font-semibold text-ink">{label}</span>
         )}
-        {hint && <p className="mt-0.5 text-[12px] leading-snug text-muted">{hint}</p>}
+        {hint && (
+          <p id={hintId} className="mt-0.5 text-[12px] leading-snug text-muted">
+            {hint}
+          </p>
+        )}
       </div>
       <div className="flex min-w-0 flex-wrap items-center gap-2">{children}</div>
     </div>

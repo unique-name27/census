@@ -19,7 +19,15 @@ import { Button, cx, SeverityIcon } from '@/components/ui'
 import { openSettings } from '@/data/store'
 import { Answer } from './Answer'
 import { IconWorking } from './icons'
-import { errorFacts, exportScope, statusLine, type Turn, withNames, withoutPartial } from './model'
+import {
+  errorFacts,
+  exportScope,
+  statusLine,
+  type Turn,
+  WORKSPACE_FIELD,
+  withNames,
+  withoutPartial,
+} from './model'
 import { askQuestion } from './session'
 import { closeAsk } from './store'
 
@@ -91,7 +99,8 @@ function ErrorNote({ turn, env, busy }: { turn: Turn; env: () => ToolEnv; busy: 
                 size="sm"
                 onClick={() => {
                   closeAsk()
-                  openSettings('ask')
+                  // A workspace error lands on the Workspace ID field, where the fix is.
+                  openSettings('ask', e.kind === 'workspace' ? WORKSPACE_FIELD : undefined)
                 }}
               >
                 Open Settings, Ask Census

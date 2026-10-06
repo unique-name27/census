@@ -21,6 +21,7 @@ import {
   type ToolCallRecord,
   tableData,
   type Usage,
+  WORKSPACE_REJECTED,
 } from '@/ask/engine'
 import type { AnalyticsContext } from '@/data/context'
 import type { DataStandard } from '@/data/quality/tier'
@@ -528,6 +529,12 @@ export function composerKey(
   return 'send'
 }
 
+/**
+ * The Workspace ID field in Settings, Ask Census, by its `data-settings-focus` name: the Settings
+ * button of a workspace error opens Settings on it.
+ */
+export const WORKSPACE_FIELD = 'ask-workspace'
+
 /** Settings: where the key in force is kept, in words. */
 export function keyLine(stored: StoredKey | null, masked: (key: string) => string): string {
   if (!stored) return 'No key yet. Nothing is sent until you add one.'
@@ -556,6 +563,10 @@ export function settingsErrorDetail(e: Pick<AskError, 'kind' | 'detail'>): strin
   switch (e.kind) {
     case 'key':
       return 'Check the key, or create a new one in the Claude Console.'
+    case 'workspace':
+      return e.detail === WORKSPACE_REJECTED.detail
+        ? 'Check the workspace ID below, or clear it if the key belongs to a workspace.'
+        : 'Add the workspace ID below, or create a key inside a workspace in the Claude Console.'
     case 'model':
       return 'Pick another model below.'
     case 'permission':

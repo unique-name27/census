@@ -1,11 +1,24 @@
 /**
  * Where the API key is kept: this tab by default, this device when kept, gone after Forget, never
- * in the settings file; and the model choice.
+ * in the settings file; the optional workspace ID; and the model choice.
  */
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_SETTINGS, loadSettings, SETTINGS_KEY, saveSettings, settingsBlob } from '@/data/settings'
 import { FAKE_KEY } from './fakeApi'
-import { forgetKey, KEY_STORAGE_KEY, type KeyStores, looksLikeKey, maskKey, readKey, saveKey } from './keys'
+import {
+  clearWorkspaceId,
+  forgetKey,
+  KEY_STORAGE_KEY,
+  type KeyStores,
+  looksLikeKey,
+  looksLikeWorkspaceId,
+  maskKey,
+  readKey,
+  readWorkspaceId,
+  saveKey,
+  saveWorkspaceId,
+  WORKSPACE_STORAGE_KEY,
+} from './keys'
 import { DEFAULT_MODEL, MODEL_STORAGE_KEY, modelById, readModelChoice, saveModelChoice } from './models'
 
 class MemoryStorage implements Storage {
@@ -104,6 +117,69 @@ describe('the API key', () => {
     expect(looksLikeKey('hello')).toBe(false)
     expect(maskKey(FAKE_KEY)).toBe('sk-ant-…0000')
     expect(maskKey(FAKE_KEY)).not.toContain('test-fake')
+  })
+})
+
+describe('the workspace ID', () => {
+  const WS = 'wrkspc_01TestFake'
+
+  it('is kept on this device, trimmed, and cleared', () => {
+    const local = new MemoryStorage()
+    expect(readWorkspaceId(local)).toBeNull()
+    expect(saveWorkspaceId(`  ${WS} `, local)).toBe(true)
+    expect(local.getItem(WORKSPACE_STORAGE_KEY)).toBe(WS)
+    expect(readWorkspaceId(local)).toBe(WS)
+    clearWorkspaceId(local)
+    expect(readWorkspaceId(local)).toBeNull()
+    expect(local.getItem(WORKSPACE_STORAGE_KEY)).toBeNull()
+    // Saving a blank one clears it.
+    saveWorkspaceId(WS, local)
+    expect(saveWorkspaceId('   ', local)).toBe(true)
+    expect(readWorkspaceId(local)).toBeNull()
+  })
+
+  it('saves only what looks like a workspace ID, and reads nothing else back', () => {
+    const local = new MemoryStorage()
+    saveWorkspaceId(WS, local)
+    expect(saveWorkspaceId('workspace one', local)).toBe(false)
+    expect(saveWorkspaceId('wrkspc_01 Test', local)).toBe(false)
+    expect(readWorkspaceId(local)).toBe(WS)
+    local.setItem(WORKSPACE_STORAGE_KEY, 'wrkspc_01\nX-Other: 1')
+    expect(readWorkspaceId(local)).toBeNull()
+    expect(looksLikeWorkspaceId(WS)).toBe(true)
+    expect(looksLikeWorkspaceId(` ${WS} `)).toBe(true)
+    expect(looksLikeWorkspaceId('wrkspc_')).toBe(false)
+    expect(looksLikeWorkspaceId('wrkspc_01-Test')).toBe(false)
+    expect(looksLikeWorkspaceId('sk-ant-test-fake-0001')).toBe(false)
+  })
+
+  it('stays when the key is forgotten', () => {
+    const s = stores()
+    saveKey(FAKE_KEY, true, s)
+    saveWorkspaceId(WS, s.local)
+    forgetKey(s)
+    expect(readKey(s)).toBeNull()
+    expect(readWorkspaceId(s.local)).toBe(WS)
+  })
+
+  it('survives blocked or missing storage without throwing', () => {
+    const blocked = new BlockedStorage()
+    expect(saveWorkspaceId(WS, blocked)).toBe(false)
+    expect(readWorkspaceId(blocked)).toBeNull()
+    expect(() => clearWorkspaceId(blocked)).not.toThrow()
+    expect(saveWorkspaceId(WS, null)).toBe(false)
+    expect(readWorkspaceId(null)).toBeNull()
+  })
+
+  it('is never part of the settings file', async () => {
+    const local = new MemoryStorage()
+    saveSettings({ ...DEFAULT_SETTINGS, theme: 'dark' }, local)
+    saveWorkspaceId(WS, local)
+    expect(WORKSPACE_STORAGE_KEY).not.toBe(SETTINGS_KEY)
+    expect(local.getItem(SETTINGS_KEY)).not.toContain(WS)
+    const file = await settingsBlob(loadSettings(local)).text()
+    expect(file).toContain('"theme": "dark"')
+    expect(file).not.toContain('wrkspc_')
   })
 })
 

@@ -18,7 +18,7 @@ import type {
   MessageCreateParamsBase,
 } from '@anthropic-ai/sdk/resources/beta/messages/messages'
 import type { Conversation } from './conversation'
-import { type AskError, CUT_OFF, classifyError, DECLINED, EMPTY_QUESTION, STOPPED } from './errors'
+import { type AskError, CUT_OFF, classifyError, DECLINED, EMPTY_QUESTION, errorLog, STOPPED } from './errors'
 import { type ModelId, modelById } from './models'
 import { ROUND_LIMIT_NOTE, SYSTEM_BLOCKS } from './prompt'
 import { runTool, TOOL_DEFINITIONS, toolLabel } from './tools'
@@ -37,6 +37,8 @@ export interface AskClient {
   stream(body: AskRequest, options: { signal?: AbortSignal }): AskStream
   /** True when an error means the request never reached the API (the SDK's connection errors). */
   isConnectionError?(err: unknown): boolean
+  /** Requests carry a workspace ID (the `anthropic-workspace-id` header), so Anthropic can turn it down. */
+  sendsWorkspaceId?: boolean
 }
 
 export const MAX_TOKENS = 4096
@@ -347,8 +349,10 @@ export async function ask(o: AskOptions): Promise<AskResult> {
       aborted,
       online: o.online?.(),
       connection: o.client.isConnectionError?.(err),
+      workspaceSent: o.client.sendsWorkspaceId,
     })
-    if (error.kind !== 'stopped') console.warn('Ask Census: the request failed', err)
+    // A summary, never the error itself: it holds the response headers (docs/ASK.md, logs).
+    if (error.kind !== 'stopped') console.warn('Ask Census: the request failed', errorLog(err))
     return result(error.kind === 'stopped' ? 'stopped' : 'error', error)
   }
 }

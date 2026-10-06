@@ -4,7 +4,16 @@
  * rules and the key line in Settings.
  */
 import { describe, expect, it } from 'vitest'
-import { type AskResult, type Block, NO_USAGE, type PersonLookup, parseAnswer, STOPPED } from '@/ask/engine'
+import {
+  type AskResult,
+  type Block,
+  NO_USAGE,
+  type PersonLookup,
+  parseAnswer,
+  STOPPED,
+  WORKSPACE_NEEDED,
+  WORKSPACE_REJECTED,
+} from '@/ask/engine'
 import {
   type AskedScope,
   announcement,
@@ -476,6 +485,12 @@ describe('Settings wording for errors', () => {
     )
     expect(settingsErrorDetail({ kind: 'model', detail: 'x' })).toBe('Pick another model below.')
     expect(settingsErrorDetail({ kind: 'offline', detail: 'Ask again later.' })).toBe('Ask again later.')
+    expect(settingsErrorDetail(WORKSPACE_NEEDED)).toBe(
+      'Add the workspace ID below, or create a key inside a workspace in the Claude Console.',
+    )
+    expect(settingsErrorDetail(WORKSPACE_REJECTED)).toBe(
+      'Check the workspace ID below, or clear it if the key belongs to a workspace.',
+    )
   })
 })
 

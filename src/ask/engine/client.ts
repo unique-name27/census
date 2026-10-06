@@ -12,6 +12,11 @@ export interface ClientOptions {
   fetch?: typeof fetch
   /** Another API host (tests). */
   baseURL?: string
+  /**
+   * The Claude Console workspace for a key that belongs to none (Settings > Ask Census). Sent as
+   * the `anthropic-workspace-id` header on every request; blank sends no header.
+   */
+  workspaceId?: string | null
 }
 
 export interface AnthropicAskClient extends AskClient {
@@ -31,17 +36,22 @@ export function loadSdk(): Promise<Sdk> {
   return sdkPromise
 }
 
-/** A client for this key. The key stays in this object and the request headers, nowhere else. */
+/**
+ * A client for this key (and workspace, when one is given). The key stays in this object and the
+ * request headers, nowhere else; so does the workspace ID.
+ */
 export async function createAnthropicClient(
   apiKey: string,
   opts: ClientOptions = {},
 ): Promise<AnthropicAskClient> {
   const mod = await loadSdk()
   const Anthropic = mod.default
+  const workspace = opts.workspaceId?.trim()
   const sdk = new Anthropic({
     apiKey: apiKey.trim(),
     dangerouslyAllowBrowser: true,
     maxRetries: 2,
+    ...(workspace ? { defaultHeaders: { 'anthropic-workspace-id': workspace } } : {}),
     ...(opts.fetch ? { fetch: opts.fetch } : {}),
     ...(opts.baseURL ? { baseURL: opts.baseURL } : {}),
   })
@@ -49,6 +59,7 @@ export async function createAnthropicClient(
     stream: (body: AskRequest, o: { signal?: AbortSignal }): AskStream =>
       sdk.beta.messages.stream(body, o.signal ? { signal: o.signal } : undefined),
     isConnectionError: (err: unknown) => err instanceof mod.APIConnectionError,
+    sendsWorkspaceId: !!workspace,
     // One tiny request (a few tokens): it proves the key, the model and the account's API credits
     // together. Looking the model up alone succeeds on an account with no credits left.
     check: async (model: ModelId) => {
@@ -64,24 +75,30 @@ export async function createAnthropicClient(
 }
 
 /**
- * Settings > Check key: null when the key works with the model, else the error (classify it with
- * `classifyError`, passing `connection: isConnectionError`).
+ * Settings > Check key: `ok` when the key works with the model, else the error (classify it with
+ * `classifyError`, passing `connection` and `workspaceSent`). Pass the saved `workspaceId`, so
+ * the check sends what a question would.
  */
 export async function checkKey(
   apiKey: string,
   model: ModelId,
   opts: ClientOptions = {},
-): Promise<{ ok: true } | { ok: false; error: unknown; connection: boolean }> {
+): Promise<{ ok: true } | { ok: false; error: unknown; connection: boolean; workspaceSent: boolean }> {
   let client: AnthropicAskClient
   try {
     client = await createAnthropicClient(apiKey, opts)
   } catch (error) {
-    return { ok: false, error, connection: true }
+    return { ok: false, error, connection: true, workspaceSent: false }
   }
   try {
     await client.check(model)
     return { ok: true }
   } catch (error) {
-    return { ok: false, error, connection: client.isConnectionError?.(error) ?? false }
+    return {
+      ok: false,
+      error,
+      connection: client.isConnectionError?.(error) ?? false,
+      workspaceSent: !!client.sendsWorkspaceId,
+    }
   }
 }

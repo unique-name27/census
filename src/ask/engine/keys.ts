@@ -1,5 +1,5 @@
 /**
- * Where the Claude API key is kept (Settings > Ask Census).
+ * Where the Claude API key is kept (Settings > Ask Census), and the optional workspace ID below.
  *
  *  - By default in sessionStorage: this tab only, gone when the tab closes.
  *  - With "Keep on this device": in localStorage, until Forget key (or Clear all data, which
@@ -96,4 +96,56 @@ export function maskKey(key: string): string {
   const k = key.trim()
   if (k.length <= 12) return '••••'
   return `${k.slice(0, 7)}…${k.slice(-4)}`
+}
+
+/* ───────────── the workspace ID ───────────── */
+
+/**
+ * The Claude Console workspace a key that belongs to none should use (Settings > Ask Census,
+ * optional). It goes to Anthropic as the `anthropic-workspace-id` request header and nowhere else.
+ * It is an identifier, not a secret, so it is kept on this device (localStorage), apart from the
+ * settings file like the key; Forget key leaves it alone, Clear all data removes it.
+ */
+export const WORKSPACE_STORAGE_KEY = 'census:ask-workspace'
+
+/** Looks like a Claude Console workspace ID ("wrkspc_01..."). */
+export const looksLikeWorkspaceId = (id: string): boolean => /^wrkspc_[A-Za-z0-9]+$/.test(id.trim())
+
+/** The workspace ID saved in Settings, or null (none saved, not a workspace ID, or blocked storage). */
+export function readWorkspaceId(local: Storage | null = store('local')): string | null {
+  try {
+    const v = local?.getItem(WORKSPACE_STORAGE_KEY)?.trim()
+    return v && looksLikeWorkspaceId(v) ? v : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Keep a workspace ID (trimmed). A blank one clears it. False when it does not look like a
+ * workspace ID (nothing is saved) or the browser would not store it.
+ */
+export function saveWorkspaceId(id: string, local: Storage | null = store('local')): boolean {
+  const v = id.trim()
+  if (!v) {
+    clearWorkspaceId(local)
+    return true
+  }
+  if (!looksLikeWorkspaceId(v)) return false
+  try {
+    if (!local) return false
+    local.setItem(WORKSPACE_STORAGE_KEY, v)
+    return true
+  } catch {
+    return false
+  }
+}
+
+/** Remove the workspace ID: requests then go without one. */
+export function clearWorkspaceId(local: Storage | null = store('local')): void {
+  try {
+    local?.removeItem(WORKSPACE_STORAGE_KEY)
+  } catch {
+    /* blocked: nothing was kept there */
+  }
 }

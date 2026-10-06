@@ -277,8 +277,13 @@ describe('store', () => {
     const n = st().settingsOpen.nonce
     S.openSettings('tools')
     expect(st().settingsOpen).toEqual({ open: true, section: 'tools', nonce: n + 1 })
+    expect(st().settingsOpen).not.toHaveProperty('focus')
     S.closeSettings()
     expect(st().settingsOpen.open).toBe(false)
+    // Opened on one control in a section (Ask's workspace error lands on the Workspace ID field).
+    S.openSettings('ask', 'ask-workspace')
+    expect(st().settingsOpen).toEqual({ open: true, section: 'ask', nonce: n + 2, focus: 'ask-workspace' })
+    S.closeSettings()
   })
 
   it('exports and imports settings', async () => {

@@ -1,6 +1,7 @@
 /**
  * The Settings sheet: slides in from the right, like the drill panel, with one home for every
- * preference (docs/DATA-TIERS.md, Settings). `openSettings(section)` opens it at a section.
+ * preference (docs/DATA-TIERS.md, Settings). `openSettings(section)` opens it at a section, and
+ * `openSettings(section, focus)` on one control in it (Ask's workspace error lands on the field).
  * Escape or Close closes it, and focus returns to what opened it (the masthead button by default).
  */
 import { Dialog as BDialog } from '@base-ui/react/dialog'
@@ -59,12 +60,19 @@ function SectionNav({ onGo }: { onGo: (s: SettingsSection) => void }) {
   )
 }
 
-/** Scroll the sheet to a section and put focus on its heading. */
-function goToSection(s: SettingsSection) {
+/**
+ * Scroll the sheet to a section and put focus on its heading, or on the control named by `focus`
+ * (its `data-settings-focus`) when the section has it.
+ */
+function goToSection(s: SettingsSection, focus?: string) {
   const el = document.getElementById(sectionId(s))
   if (!el) return
   el.scrollIntoView({ block: 'start' })
-  el.querySelector<HTMLElement>('h2')?.focus({ preventScroll: true })
+  const target = focus ? el.querySelector<HTMLElement>(`[data-settings-focus="${CSS.escape(focus)}"]`) : null
+  if (target) {
+    target.scrollIntoView({ block: 'nearest' })
+    target.focus({ preventScroll: true })
+  } else el.querySelector<HTMLElement>('h2')?.focus({ preventScroll: true })
 }
 
 export function SettingsSheet() {
@@ -78,11 +86,11 @@ export function SettingsSheet() {
   useEffect(() => {
     if (!req.open) return
     const frame = requestAnimationFrame(() => {
-      if (req.section) goToSection(req.section)
+      if (req.section) goToSection(req.section, req.focus)
       else bodyRef.current?.scrollTo({ top: 0 })
     })
     return () => cancelAnimationFrame(frame)
-  }, [req.open, req.nonce, req.section])
+  }, [req.open, req.nonce, req.section, req.focus])
 
   return (
     <BDialog.Root open={req.open} onOpenChange={(o) => !o && close()}>

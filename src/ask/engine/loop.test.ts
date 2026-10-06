@@ -5,11 +5,11 @@
  * fake and no request leaves the process.
  */
 import type { BetaMessageParam } from '@anthropic-ai/sdk/resources/beta/messages/messages'
-import { beforeAll, describe, expect, it } from 'vitest'
+import { beforeAll, describe, expect, it, vi } from 'vitest'
 import type { AnalyticsContext } from '@/data/context'
 import { checkKey, createAnthropicClient } from './client'
 import { Conversation } from './conversation'
-import { classifyError } from './errors'
+import { classifyError, errorLog } from './errors'
 import { FAKE_KEY, fakeClient, fakeFetch, type Reply, sseOf } from './fakeApi'
 import { type AskEvent, ask, echoContent, FALLBACK_BETA, MAX_TOKENS } from './loop'
 import { ROUND_LIMIT_NOTE, SYSTEM_PROMPT } from './prompt'
@@ -25,6 +25,11 @@ const answer = (text: string, usage?: Reply['usage']): Reply => ({ blocks: [{ ty
 
 const lastUser = (body: { messages: BetaMessageParam[] }) =>
   body.messages[body.messages.length - 1] as BetaMessageParam
+
+/** What Anthropic says to a key that belongs to no workspace, word for word. */
+const NOT_SCOPED =
+  'This API key is not scoped to a workspace, so this request must include the anthropic-workspace-id header with the ID of the workspace to use. Add the header, or use an API key that is scoped to a workspace.'
+const FAKE_WORKSPACE = 'wrkspc_01TestFake'
 
 describe('ask with a fake client', () => {
   it('runs scripted tool calls here, sends tokenized results back, then streams the answer', async () => {
@@ -420,6 +425,140 @@ describe('classifyError', () => {
     const long = classifyError({ status: 400, error: { error: { message: 'x'.repeat(900) } } })
     expect(long.apiMessage?.length).toBe(400)
   })
+
+  const apiError = (status: number, message: string, type = 'invalid_request_error') => ({
+    status,
+    requestID: 'req_033',
+    error: { type: 'error', error: { type, message } },
+  })
+
+  it('asks for a workspace ID when the key belongs to no workspace', () => {
+    const e = classifyError(apiError(400, NOT_SCOPED))
+    expect(e).toMatchObject({
+      kind: 'workspace',
+      title: 'This key needs a workspace ID.',
+      detail:
+        'Add the workspace ID in Settings, Ask Census, or create a key inside a workspace in the Claude Console.',
+      action: 'settings',
+      status: 400,
+      apiMessage: NOT_SCOPED,
+      requestId: 'req_033',
+    })
+    // The same inside a stream, which has no HTTP status.
+    const mid = classifyError({
+      error: { type: 'error', error: { type: 'invalid_request_error', message: NOT_SCOPED } },
+    })
+    expect(mid).toMatchObject({ kind: 'workspace', title: 'This key needs a workspace ID.' })
+    expect(classifyError(apiError(400, 'anthropic-workspace-id header is required')).title).toBe(
+      'This key needs a workspace ID.',
+    )
+  })
+
+  const sent = { workspaceSent: true }
+
+  it('says when Anthropic does not accept the workspace ID that was sent', () => {
+    for (const [status, type] of [
+      [404, 'not_found_error'],
+      [403, 'permission_error'],
+      [400, 'invalid_request_error'],
+    ] as const) {
+      const e = classifyError(apiError(status, 'Workspace wrkspc_01TestFake not found.', type), sent)
+      expect(e).toMatchObject({ kind: 'workspace', action: 'settings', status })
+      expect(e.title).toBe('Anthropic did not accept this workspace ID.')
+      expect(e.apiMessage).toBe('Workspace wrkspc_01TestFake not found.')
+    }
+    expect(classifyError(apiError(400, 'Invalid anthropic-workspace-id header.'), sent).title).toBe(
+      'Anthropic did not accept this workspace ID.',
+    )
+    // A 404 or 403 that says nothing about a workspace is still about the model or the key.
+    expect(classifyError(apiError(404, 'model: claude-x', 'not_found_error'), sent).kind).toBe('model')
+    expect(classifyError(apiError(403, 'Not allowed', 'permission_error'), sent).kind).toBe('permission')
+    // Other statuses keep their own case.
+    expect(
+      classifyError(apiError(401, 'invalid x-api-key for workspace', 'authentication_error'), sent).kind,
+    ).toBe('key')
+  })
+
+  it('never blames a workspace ID that was not sent', () => {
+    const cases = [
+      [404, 'Workspace wrkspc_01TestFake not found.', 'not_found_error', 'model'],
+      [403, 'This workspace does not have access to claude-opus-5-5.', 'permission_error', 'permission'],
+      [404, 'model: claude-opus-5-5 is not available in this workspace', 'not_found_error', 'model'],
+      [400, 'Your workspace has exceeded its monthly spend cap.', 'invalid_request_error', 'bad_request'],
+      [
+        400,
+        'inference_geo "global" is not allowed for this workspace',
+        'invalid_request_error',
+        'bad_request',
+      ],
+    ] as const
+    for (const [status, message, type, kind] of cases) {
+      expect(classifyError(apiError(status, message, type)).kind).toBe(kind)
+      expect(classifyError(apiError(status, message, type), { workspaceSent: false }).kind).toBe(kind)
+    }
+    // Asking for an ID needs none to have been sent.
+    expect(classifyError(apiError(400, NOT_SCOPED), sent).title).toBe('This key needs a workspace ID.')
+  })
+
+  it('keeps an error about what the workspace has or lacks in its own case, even with an ID sent', () => {
+    const cases = [
+      [403, 'This workspace does not have access to claude-opus-5-5.', 'permission_error', 'permission'],
+      [404, 'model: claude-opus-5-5 is not available in this workspace', 'not_found_error', 'model'],
+      [404, 'The model is not enabled for workspace wrkspc_01TestFake.', 'not_found_error', 'model'],
+      [400, 'Your workspace has exceeded its monthly spend cap.', 'invalid_request_error', 'bad_request'],
+      [
+        400,
+        'inference_geo "global" is not allowed for this workspace',
+        'invalid_request_error',
+        'bad_request',
+      ],
+      [400, 'This workspace has used its quota.', 'invalid_request_error', 'bad_request'],
+      [403, 'This feature is not enabled for your workspace.', 'permission_error', 'permission'],
+    ] as const
+    for (const [status, message, type, kind] of cases)
+      expect(classifyError(apiError(status, message, type), sent).kind).toBe(kind)
+  })
+
+  it('keeps the no-credits case ahead of the workspace only when it is about credits', () => {
+    const credits = classifyError(
+      apiError(400, 'Your credit balance is too low to access the Anthropic API in this workspace.'),
+      sent,
+    )
+    expect(credits.kind).toBe('billing')
+    const billing = classifyError(
+      apiError(400, 'Workspace wrkspc_01TestFake is not set up for billing.'),
+      sent,
+    )
+    expect(billing.kind).toBe('workspace')
+    // A workspace's usage limit is not about its ID.
+    const limit = classifyError(
+      apiError(400, 'You have reached your specified workspace API usage limits.'),
+      sent,
+    )
+    expect(limit.kind).toBe('bad_request')
+  })
+
+  it('logs a summary with any workspace ID cut, never the error itself', () => {
+    const err = Object.assign(new Error('raw'), {
+      ...apiError(404, 'Workspace wrkspc_01TestFake not found.', 'not_found_error'),
+      workspaceID: 'wrkspc_01TestFake',
+      headers: new Headers({ 'anthropic-workspace-id': 'wrkspc_01TestFake' }),
+    })
+    const log = errorLog(err)
+    expect(log).toEqual({
+      name: 'Error',
+      status: 404,
+      type: 'not_found_error',
+      requestId: 'req_033',
+      message: 'Workspace wrkspc_… not found.',
+    })
+    // A local failure keeps its stack, cut the same way.
+    const local = errorLog(new TypeError('bad wrkspc_01TestFake'))
+    expect(local).toMatchObject({ name: 'TypeError', message: 'bad wrkspc_…' })
+    expect(String(local.stack)).toContain('bad wrkspc_…')
+    expect(JSON.stringify(local)).not.toContain('wrkspc_01')
+    expect(errorLog('plain')).toEqual({ message: 'plain' })
+  })
 })
 
 describe('ask with the real SDK reading scripted Server-Sent Events', () => {
@@ -602,5 +741,111 @@ describe('ask with the real SDK reading scripted Server-Sent Events', () => {
     expect(res.status).toBe('error')
     expect(res.error).toMatchObject({ kind: 'billing', apiMessage: billing, requestId: 'req_test' })
     expect(q.calls).toHaveLength(1)
+  })
+
+  it('sends the workspace ID as a header on every question request, and none when blank', async () => {
+    const f = fakeFetch([toolCall('get_context', {}), answer('Done.')])
+    const r = await ask({
+      client: await createAnthropicClient(FAKE_KEY, { fetch: f, workspaceId: ` ${FAKE_WORKSPACE} ` }),
+      conversation: new Conversation(),
+      question: 'Q',
+      env: envOf(ctx),
+    })
+    expect(r.status).toBe('done')
+    expect(f.calls).toHaveLength(2)
+    for (const c of f.calls) {
+      expect(c.headers['anthropic-workspace-id']).toBe(FAKE_WORKSPACE)
+      expect(c.headers['x-api-key']).toBe(FAKE_KEY)
+      expect(JSON.stringify(c.body)).not.toContain(FAKE_WORKSPACE)
+      expect(c.url).not.toContain(FAKE_WORKSPACE)
+    }
+    for (const blank of [undefined, null, '', '   ']) {
+      const g = fakeFetch([answer('Done.')])
+      await ask({
+        client: await createAnthropicClient(FAKE_KEY, { fetch: g, workspaceId: blank }),
+        conversation: new Conversation(),
+        question: 'Q',
+        env: envOf(ctx),
+      })
+      expect(g.calls).toHaveLength(1)
+      expect(g.calls[0]?.headers).not.toHaveProperty('anthropic-workspace-id')
+    }
+  })
+
+  it('sends the workspace ID with Check key too, and none when blank', async () => {
+    const f = fakeFetch([])
+    expect(await checkKey(FAKE_KEY, 'claude-opus-5-5', { fetch: f, workspaceId: FAKE_WORKSPACE })).toEqual({
+      ok: true,
+    })
+    expect(f.calls[0]?.headers['anthropic-workspace-id']).toBe(FAKE_WORKSPACE)
+    const g = fakeFetch([])
+    await checkKey(FAKE_KEY, 'claude-opus-5-5', { fetch: g, workspaceId: '' })
+    expect(g.calls[0]?.headers).not.toHaveProperty('anthropic-workspace-id')
+  })
+
+  it('reports a key that belongs to no workspace, on a question and on Check key', async () => {
+    const step = { status: 400, type: 'invalid_request_error', message: NOT_SCOPED }
+    const q = fakeFetch([step])
+    const res = await ask({
+      client: await createAnthropicClient(FAKE_KEY, { fetch: q }),
+      conversation: new Conversation(),
+      question: 'Q',
+      env: envOf(ctx),
+    })
+    expect(res.error).toMatchObject({
+      kind: 'workspace',
+      title: 'This key needs a workspace ID.',
+      action: 'settings',
+      status: 400,
+      apiMessage: NOT_SCOPED,
+      requestId: 'req_test',
+    })
+    expect(q.calls).toHaveLength(1)
+    const c = await checkKey(FAKE_KEY, 'claude-opus-5-5', { fetch: fakeFetch([step]) })
+    const e = c.ok ? null : classifyError(c.error, { connection: c.connection })
+    expect(e).toMatchObject({ kind: 'workspace', apiMessage: NOT_SCOPED })
+  })
+
+  it('blames the workspace ID only when one was sent, on a question and on Check key', async () => {
+    const step = {
+      status: 404,
+      type: 'not_found_error',
+      message: `Workspace ${FAKE_WORKSPACE} not found.`,
+      headers: { 'anthropic-workspace-id': FAKE_WORKSPACE },
+    }
+    const run = async (workspaceId: string | null) => {
+      const res = await ask({
+        client: await createAnthropicClient(FAKE_KEY, { fetch: fakeFetch([step]), workspaceId }),
+        conversation: new Conversation(),
+        question: 'Q',
+        env: envOf(ctx),
+      })
+      const c = await checkKey(FAKE_KEY, 'claude-opus-5-5', { fetch: fakeFetch([step]), workspaceId })
+      expect(c.ok).toBe(false)
+      const checked = c.ok
+        ? null
+        : classifyError(c.error, { connection: c.connection, workspaceSent: c.workspaceSent })
+      return [res.error, checked]
+    }
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      for (const e of await run(FAKE_WORKSPACE))
+        expect(e).toMatchObject({
+          kind: 'workspace',
+          title: 'Anthropic did not accept this workspace ID.',
+          action: 'settings',
+          status: 404,
+        })
+      for (const e of await run(null)) expect(e).toMatchObject({ kind: 'model', status: 404 })
+      // The console gets a summary: no workspace ID from the message or the response headers.
+      expect(warn).toHaveBeenCalled()
+      for (const args of warn.mock.calls) {
+        expect(args[1]).toMatchObject({ status: 404, type: 'not_found_error', requestId: 'req_test' })
+        expect(args[1]).not.toBeInstanceOf(Error)
+        expect(JSON.stringify(args)).not.toContain(FAKE_WORKSPACE)
+      }
+    } finally {
+      warn.mockRestore()
+    }
   })
 })

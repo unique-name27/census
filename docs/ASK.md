@@ -31,7 +31,11 @@ are never sent. Answers link to the records, which open locally in the drill pan
   - **What was sent:** an expandable list of each tool call with the exact (tokenized) result that
     went to Claude, and the tokens used. This is how a user can check the privacy promise.
 - **Errors** in plain words, with what to do, followed by Anthropic's own reason, the HTTP status and
-  the request ID whenever Anthropic answered (an account with no API credits has its own case): key not accepted (link to Settings), rate limited or
+  the request ID whenever Anthropic answered (an account with no API credits has its own case): key not accepted (link to Settings),
+  a key that needs a workspace ID, or a workspace ID Anthropic did not accept (both link to
+  Settings and land on the Workspace ID field; the second only when an ID was sent and Anthropic's
+  reason is about the workspace itself, not a model, usage, spend, a quota, a limit, credits, a
+  region or a feature, which keep their own case), rate limited or
   overloaded (retried automatically twice, then "try again in a minute"), offline, request blocked
   by the browser or the page's host (e.g. when Census runs as a claude.ai artifact), stopped by you.
 
@@ -39,19 +43,36 @@ are never sent. Answers link to the records, which open locally in the drill pan
 
 - API key field (password input, with Show), **Keep on this device** (off by default: the key is
   kept in sessionStorage for this tab only; on: localStorage). **Forget key**.
+- **Workspace ID** (optional, under the key): only needed when the key is not tied to a workspace,
+  which Anthropic answers with HTTP 400 "This API key is not scoped to a workspace". Placeholder
+  `wrkspc_…`; the hint says where to find it (Claude Console, Settings, Workspaces) and that it
+  goes to Anthropic with each request and nowhere else. Trimmed, and
+  saved only when it matches `wrkspc_` followed by letters and numbers; otherwise a short format
+  message is announced and nothing is saved. **Clear** removes it. Kept in localStorage under
+  `census:ask-workspace` (an identifier, not a secret), so it stays on this device; Forget key
+  leaves it alone, Clear all data removes it.
 - **Check key** sends one tiny request (a few tokens) to the chosen model, so it proves the key, the
-  model and the account's API credits together, and reports success or Anthropic's own reason.
+  model, the workspace ID and the account's API credits together, and reports success or
+  Anthropic's own reason.
 - Model: Claude Opus 5.5 (`claude-opus-5-5`, default), Claude Sonnet 5.5 (`claude-sonnet-5-5`,
   faster), Claude Haiku 4.5 (`claude-haiku-4-5-20251001`, fastest).
 - What is sent and what never is, in three short bullets, and a link to Anthropic's API terms is
   not needed; keep it factual.
-- The key is never part of the settings file, Report a problem, exports, logs or the URL.
+- The key is never part of the settings file, Report a problem, exports, logs or the URL, and
+  neither is the workspace ID.
+- What is sent: the workspace ID goes to Anthropic as the `anthropic-workspace-id` request header,
+  on every question and on Check key, and nowhere else. With no workspace ID, no header is sent.
 
 ## How it works
 
 Code lives in `src/ask/` (`engine/` pure and tested, `ui/` React). The SDK is
 `@anthropic-ai/sdk` (installed), loaded with a dynamic import on first use and created with
-`dangerouslyAllowBrowser: true`. Requests go straight from the browser to the Anthropic API.
+`dangerouslyAllowBrowser: true`. Requests go straight from the browser to the Anthropic API. The SDK
+has no workspace option, so a saved workspace ID goes through its `defaultHeaders` as
+`anthropic-workspace-id` (`createAnthropicClient(key, { workspaceId })`; `checkKey` takes the same).
+Anthropic allows that header in browser requests. A failed request goes to the browser console as
+a summary (`errorLog`: status, error type, request ID and message, any workspace ID cut to
+`wrkspc_…`), never as the SDK's error object, which keeps the response headers.
 
 **Agent loop** (`engine/loop.ts`), with the client injected so tests use a fake:
 - `messages.stream` with the system prompt, the tool definitions and the tokenized conversation;
@@ -161,4 +182,7 @@ Ask button. Help content tests must pass.
   value is returned. Tokenizing the user's question replaces typed names and IDs.
 - Loop with a fake client: scripted tool calls then text; the 10-round cap; Stop; error mapping.
 - Answer rendering: links, refs, tokens, tables, unknown markers, no raw HTML.
-- Key storage: session vs remembered, Forget, never in the settings file.
+- Key storage: session vs remembered, Forget, never in the settings file. Workspace ID: format,
+  save, clear, kept when the key is forgotten, never in the settings file; the header on questions
+  and Check key, and none when blank; the workspace errors with Anthropic's exact message, the
+  rejected one only when an ID was sent; no workspace ID in what the console logs.

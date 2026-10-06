@@ -1,8 +1,8 @@
 /**
- * Asking one question from the sheet: read the key and model, make the client (the real SDK, or
- * in a development build the scripted client for the test key), run the engine's `ask` with the
- * app's live context, and turn its events into the turn the sheet shows. Stop aborts the request
- * in flight; New chat stops it and starts a fresh conversation.
+ * Asking one question from the sheet: read the key, workspace ID and model, make the client (the
+ * real SDK, or in a development build the scripted client for the test key), run the engine's
+ * `ask` with the app's live context, and turn its events into the turn the sheet shows. Stop
+ * aborts the request in flight; New chat stops it and starts a fresh conversation.
  */
 import {
   type AskClient,
@@ -14,6 +14,7 @@ import {
   NO_KEY,
   readKey,
   readModelChoice,
+  readWorkspaceId,
   type ToolEnv,
 } from '@/ask/engine'
 import { applyEvent, askedScope, failTurn, finishTurn, newTurn } from './model'
@@ -24,23 +25,29 @@ let nextId = 1
 
 const online = (): boolean => (typeof navigator === 'undefined' ? true : navigator.onLine !== false)
 
-/** The client for a key. A development build answers the test key from a scripted Claude, with no network. */
+/**
+ * The client for a key, with the workspace ID saved in Settings (read for every question). A
+ * development build answers the test key from a scripted Claude, with no network.
+ */
 async function clientFor(key: string): Promise<AskClient & { online?: () => boolean }> {
   if (import.meta.env.DEV && key === 'sk-ant-test-fake-0000') {
     const { createDevClient } = await import('./devClient')
     return createDevClient()
   }
-  return createAnthropicClient(key)
+  return createAnthropicClient(key, { workspaceId: readWorkspaceId() })
 }
 
 /**
- * Settings > Check key: null when the key works, else the error in plain words. The test key of a
- * development build always works and sends nothing.
+ * Settings > Check key: null when the key works, else the error in plain words. It sends the saved
+ * workspace ID, as a question would. The test key of a development build always works and sends
+ * nothing.
  */
 export async function checkAskKey(key: string, model: ModelId) {
   if (import.meta.env.DEV && key.trim() === 'sk-ant-test-fake-0000') return null
-  const r = await checkKey(key, model)
-  return r.ok ? null : classifyError(r.error, { connection: r.connection, online: online() })
+  const r = await checkKey(key, model, { workspaceId: readWorkspaceId() })
+  return r.ok
+    ? null
+    : classifyError(r.error, { connection: r.connection, workspaceSent: r.workspaceSent, online: online() })
 }
 
 /** Ask a question in the current chat. Does nothing while another answer is coming. */

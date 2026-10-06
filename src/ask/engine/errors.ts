@@ -13,6 +13,7 @@
 export type AskErrorKind =
   | 'no_key'
   | 'key'
+  | 'workspace'
   | 'billing'
   | 'permission'
   | 'model'
@@ -121,8 +122,77 @@ export function apiDetails(err: unknown): { apiMessage?: string; requestId?: str
   }
 }
 
+/** A workspace ID in a message, cut to its prefix. */
+const redact = (s: string): string => s.replace(/wrkspc_[A-Za-z0-9]+/g, 'wrkspc_…')
+
+/**
+ * What the console gets for a failed request: the error's name, HTTP status, API error type,
+ * request ID and message, with any workspace ID cut to "wrkspc_…" (and the stack, cut the same
+ * way, for an error that is not Anthropic's answer). Never the error object itself: the SDK's
+ * error keeps the response headers and the workspace ID it reads from them.
+ */
+export function errorLog(err: unknown): Record<string, unknown> {
+  const status = statusOf(err)
+  const type = typeOf(err)
+  const { apiMessage, requestId } = apiDetails(err)
+  const e = err as { name?: unknown; message?: unknown; stack?: unknown } | null
+  const message = apiMessage ?? (typeof e?.message === 'string' ? e.message : String(err))
+  const fromApi = status != null || type != null
+  return {
+    ...(typeof e?.name === 'string' ? { name: e.name } : {}),
+    ...(status != null ? { status } : {}),
+    ...(type ? { type } : {}),
+    ...(requestId ? { requestId } : {}),
+    message: redact(message),
+    ...(!fromApi && typeof e?.stack === 'string' ? { stack: redact(e.stack) } : {}),
+  }
+}
+
 /** A 400 that is about the account's API credits, not the request. */
 const BILLING = /credit balance|purchase credits|plans\s*&\s*billing|billing/i
+
+/** About the credits themselves: this wins over a message that also names the workspace. */
+const CREDITS = /credit balance|purchase credits|\bcredits?\b/i
+
+/** The key belongs to no workspace and no workspace ID was sent. */
+const NEEDS_WORKSPACE =
+  /not scoped to a workspace|must include the anthropic-workspace-id|anthropic-workspace-id header is (?:required|missing)|missing (?:the )?anthropic-workspace-id/i
+
+/** Names the workspace: about the ID itself only when one was sent and nothing below applies. */
+const WORKSPACE = /workspace/i
+
+/**
+ * About something the workspace has or lacks rather than its ID: a model (by name or ID), usage,
+ * spend, quotas, limits, credits, a region or a feature. Such an error keeps its own case.
+ */
+const NOT_THE_ID =
+  /\bmodels?\b|\bclaude-[a-z0-9]|usage|spend|quota|\blimits?\b|\bcaps?\b|\bcredits?\b|inference_geo|\bgeo\b|\bregions?\b|\bfeatures?\b/i
+
+export const WORKSPACE_NEEDED: AskError = E(
+  'workspace',
+  'This key needs a workspace ID.',
+  'Add the workspace ID in Settings, Ask Census, or create a key inside a workspace in the Claude Console.',
+  'settings',
+)
+
+export const WORKSPACE_REJECTED: AskError = E(
+  'workspace',
+  'Anthropic did not accept this workspace ID.',
+  'Check the workspace ID in Settings, Ask Census. Find it in the Claude Console under Settings, Workspaces, or clear it if the key belongs to a workspace.',
+  'settings',
+)
+
+/**
+ * The workspace case for a 400, 403 or 404, or null when it is not about the workspace ID. Only a
+ * request that carried an ID (`sent`) can have it turned down; with none, a message that mentions
+ * the workspace keeps its own case, unless it asks for an ID.
+ */
+function workspaceError(message: string, status: number, sent: boolean): AskError | null {
+  if (status !== 400 && status !== 403 && status !== 404) return null
+  if (NEEDS_WORKSPACE.test(message)) return { ...WORKSPACE_NEEDED, status }
+  if (sent && WORKSPACE.test(message) && !NOT_THE_ID.test(message)) return { ...WORKSPACE_REJECTED, status }
+  return null
+}
 
 /** The HTTP status an API error type stands for, when an error arrives mid-stream. */
 const TYPE_STATUS: Record<string, number> = {
@@ -136,27 +206,38 @@ const TYPE_STATUS: Record<string, number> = {
   overloaded_error: 529,
 }
 
-/**
- * The plain-words case for an error thrown while asking. `aborted` is the Stop button's signal;
- * `online` is `navigator.onLine`; `connection` says the request never reached the API (the real
- * client checks the SDK's connection error classes). All passed in so this stays pure.
- */
-export function classifyError(
-  err: unknown,
-  opts: { aborted?: boolean; online?: boolean; connection?: boolean } = {},
-): AskError {
+/** What `classifyError` is told about the request, all passed in so it stays pure. */
+export interface ClassifyOptions {
+  /** The Stop button's signal fired. */
+  aborted?: boolean
+  /** `navigator.onLine`, for telling "offline" from "blocked". */
+  online?: boolean
+  /** The request never reached the API (the real client checks the SDK's connection error classes). */
+  connection?: boolean
+  /** The request carried a workspace ID (the `anthropic-workspace-id` header). */
+  workspaceSent?: boolean
+}
+
+/** The plain-words case for an error thrown while asking. */
+export function classifyError(err: unknown, opts: ClassifyOptions = {}): AskError {
   if (opts.aborted || isAbort(err)) return STOPPED
   const found = classify(err, opts)
   return found.status != null ? { ...found, ...apiDetails(err) } : found
 }
 
-function classify(err: unknown, opts: { online?: boolean; connection?: boolean }): AskError {
+function classify(err: unknown, opts: ClassifyOptions): AskError {
   const type = typeOf(err)
   const http = statusOf(err)
   const status = http ?? (type ? TYPE_STATUS[type] : undefined)
   // The SDK retried only errors that came back as an HTTP status, not one inside a stream.
   const later = http != null ? 'Census tried again twice. Try again in a minute.' : 'Try again in a minute.'
-  if (status === 400 && BILLING.test(apiDetails(err).apiMessage ?? ''))
+  const message = apiDetails(err).apiMessage ?? ''
+  // No credits left says so first; a request turned down over the workspace comes next, ahead of
+  // a message that only mentions billing in passing.
+  const credits = status === 400 && CREDITS.test(message)
+  const ws = status != null && !credits ? workspaceError(message, status, !!opts.workspaceSent) : null
+  if (ws) return ws
+  if (status === 400 && BILLING.test(message))
     return E(
       'billing',
       'Your Anthropic account has no API credits left.',
