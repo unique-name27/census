@@ -98,8 +98,8 @@ const GETTING_STARTED: Tour = {
     },
     {
       target: tourTarget('masthead-tools'),
-      title: 'Tools and the Action center',
-      body: "Tools links to the team's companion tools. Actions, next to it, opens the Action center: open items from every view, grouped by who they wait on.",
+      title: 'Tools',
+      body: "Tools links to the team's companion tools.",
       placement: 'bottom',
     },
     {
@@ -903,6 +903,8 @@ const MANAGER_START: Tour = {
     {
       ...at('team'),
       target: tourTarget('masthead-actions'),
+      // A control a mode can hide: the tour skips the step there.
+      surface: 'masthead:actions',
       title: 'Waiting on your team',
       body: 'The Action center lists the open items about your org and the ones your team owns, with a polite note to copy for each owner.',
       placement: 'bottom',

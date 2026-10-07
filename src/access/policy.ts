@@ -86,6 +86,41 @@ export const isDeveloperOnly = (s: string): boolean =>
 /** Pages only Developer mode shows; a surface placed on one is hidden in HR. */
 const DEV_PAGES = new Set(['team', 'dev'])
 
+/* ───────────── not ready yet: Developer mode only, in every other mode ───────────── */
+
+const NOT_READY_HOW = 'Not ready yet: Developer mode only.'
+
+/**
+ * Features still being finished. Developer mode shows them; HR and Manager mode hide them, with
+ * every way in (page, masthead button, numbers and figures that come from them, Help, Ask, drills).
+ * The Action center is here until the team signs it off.
+ */
+export const NOT_READY: readonly string[] = [
+  'page:actions',
+  'masthead:actions',
+  'ui:actions-team',
+  'ask:open_items',
+  'drill:actionItems',
+  'drill:actionOwners',
+  'help:article:view-actions',
+  'help:tour:view-actions',
+  // Numbers and sections built from Action center items on the homes.
+  'figure:scorecard-items',
+  'figure:team-waiting',
+]
+/** Its figures and metrics (a KPI tile is judged by its metric). */
+export const NOT_READY_PREFIXES: readonly string[] = ['figure:actions-', 'metric:actions.']
+/** Pages that are not ready: their routes redirect outside Developer mode. */
+const NOT_READY_PAGES = new Set(['actions'])
+
+const NOT_READY_SET = new Set(NOT_READY)
+
+export const isNotReady = (s: string, at?: At, info?: DecideInfo): boolean =>
+  NOT_READY_SET.has(s) ||
+  NOT_READY_PREFIXES.some((p) => s.startsWith(p)) ||
+  (!!info?.metric && info.metric.startsWith('actions.')) ||
+  (!!at && NOT_READY_PAGES.has(at.view))
+
 /* ───────────── Manager: views and tabs (3.2) ───────────── */
 
 const N_A = 'Its view is not shown in Manager mode.'
@@ -546,6 +581,7 @@ function decideHr(s: string, at?: At): Decision {
 /** Shown, limited or hidden: the one answer for a surface in a mode. */
 export function decide(mode: Mode, surface: SurfaceId | string, at?: At, info?: DecideInfo): Decision {
   if (mode === 'developer') return SHOWN
+  if (isNotReady(surface, at, info)) return hidden(NOT_READY_HOW)
   if (mode === 'hr') return decideHr(surface, at)
   return decideManager(surface, at, info)
 }
@@ -576,6 +612,7 @@ export interface RouteDecision {
 /** Whether a route (a view or page, and a tab) is shown in a mode. */
 export function routeShown(mode: Mode, view: string, t = ''): boolean {
   if (mode === 'developer') return true
+  if (NOT_READY_PAGES.has(view)) return false
   if (mode === 'hr') return !DEV_PAGES.has(view)
   if (managerPlace(view).access === 'hidden') return false
   if (!t) return true
@@ -592,6 +629,15 @@ export function routeShown(mode: Mode, view: string, t = ''): boolean {
 export function routeDecision(mode: Mode, route: Route): RouteDecision {
   const same: RouteDecision = { route, redirected: false }
   if (mode === 'developer') return same
+  if (NOT_READY_PAGES.has(route.view))
+    return {
+      route: homeOf(mode),
+      redirected: true,
+      reason: {
+        title: `${placeLabel(route.view)} is not ready yet.`,
+        description: `It is only in Developer mode for now. ${openedInstead(mode)}`,
+      },
+    }
   if (mode === 'hr') {
     if (!DEV_PAGES.has(route.view)) return same
     return {

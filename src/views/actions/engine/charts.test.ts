@@ -203,9 +203,11 @@ describe('on the sample company', () => {
 })
 
 describe('modes', () => {
-  it('shows the three charts in every mode, over the items the mode lists', () => {
-    for (const id of ['actions-due-timeline', 'actions-top-owners', 'actions-by-kind'])
-      for (const mode of ['hr', 'developer', 'manager'] as const)
-        expect(can(mode, `figure:${id}`, { view: 'actions' }), `${mode} ${id}`).toBe(true)
+  it('shows the three charts in Developer mode only while the Action center is not ready', () => {
+    for (const id of ['actions-due-timeline', 'actions-top-owners', 'actions-by-kind']) {
+      expect(can('developer', `figure:${id}`, { view: 'actions' }), `developer ${id}`).toBe(true)
+      for (const mode of ['hr', 'manager'] as const)
+        expect(can(mode, `figure:${id}`, { view: 'actions' }), `${mode} ${id}`).toBe(false)
+    }
   })
 })

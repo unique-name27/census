@@ -78,9 +78,10 @@ export const VIEW_ARTICLES: readonly HelpArticle[] = [
           'Required training on time by course, and every overdue assignment.',
         ],
       },
-      { h: 'Waiting on this org' },
+      { h: 'Waiting on this org', surface: 'page:actions' },
       {
         p: "The open items the leader or someone in their org owns, anywhere in the company, the leader's own first. The [Action center](route:actions) lists them all, with a note to copy for each owner.",
+        surface: 'page:actions',
       },
       { h: MEETING },
       {

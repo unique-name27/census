@@ -246,7 +246,7 @@ export function Masthead() {
         <span className={WIDE_ONLY}>
           <ToolsMenu />
         </span>
-        <ActionsButton />
+        {access.can('masthead:actions') && <ActionsButton />}
         {access.can('masthead:data') && (
           <Button
             className="max-md:hidden"

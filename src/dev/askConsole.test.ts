@@ -66,8 +66,11 @@ describe('the Ask tools console', () => {
         expect(() => JSON.parse(out.content), `${mode} ${name}`).not.toThrow()
         expect(out.pretty, `${mode} ${name}`).toBe(JSON.stringify(JSON.parse(out.content), null, 2))
         expect(out.label.length, `${mode} ${name}`).toBeGreaterThan(0)
-        // HR and Developer run every tool; Manager mode refuses explain_quality, as Ask does.
+        // Developer runs every tool; Manager mode refuses explain_quality, as Ask does; HR and
+        // Manager refuse open_items while the Action center is not ready (Developer mode only).
         if (mode === 'manager' && name === 'explain_quality') expect(out.isError).toBe(true)
+        else if (mode !== 'developer' && name === 'open_items')
+          expect(out.isError, `${mode} ${name}`).toBe(true)
         else expect(out.isError, `${mode} ${name}: ${out.content.slice(0, 200)}`).toBe(false)
       }
     expect(fetchSpy).not.toHaveBeenCalled()

@@ -55,7 +55,7 @@ tab:listening.managers                         Shown     Shown     Hidden    Man
 tab:listening.services                         Shown     Shown     Hidden    Manager: Its view is not shown in Manager mode.
 tab:listening.engagement                       Shown     Shown     Hidden    Manager: Its view is not shown in Manager mode.
 tab:ai.agents                                  Shown     Shown     Hidden    Manager: Its view is not shown in Manager mode.
-page:actions                                   Shown     Shown     Limited   Manager: Items from the shown views, for the org.
+page:actions                                   Shown     Hidden    Hidden    HR: Not ready yet: Developer mode only. Manager: Not ready yet: Developer mode only.
 page:data                                      Shown     Shown     Hidden    Manager: The Data room is HR's.
 page:dev                                       Shown     Hidden    Hidden    HR: HR mode leaves out the developer surfaces and My team. Manager: Developer mode only.
 data:datasets                                  Shown     Shown     Hidden    Manager: The Data room is not shown in Manager mode.
@@ -71,7 +71,7 @@ masthead:company                               Shown     Shown     Shown
 masthead:mode                                  Shown     Shown     Limited   Manager: Reads "Manager:" and the manager's name.
 masthead:pay-tags                              Shown     Shown     Hidden    Manager: Pay amounts and immigration details are off in this mode.
 masthead:tools                                 Shown     Shown     Limited   Manager: Lists only the links shown in this mode; hidden when none is left.
-masthead:actions                               Shown     Shown     Limited   Manager: Counts the items Manager mode lists.
+masthead:actions                               Shown     Hidden    Hidden    HR: Not ready yet: Developer mode only. Manager: Not ready yet: Developer mode only.
 masthead:data                                  Shown     Shown     Hidden    Manager: The Data room is HR's.
 masthead:dev                                   Shown     Hidden    Hidden    HR: HR mode leaves out the developer surfaces and My team. Manager: Developer mode only.
 masthead:settings                              Shown     Shown     Limited   Manager: Lists only the sections shown in this mode.
@@ -128,7 +128,7 @@ help:article:view-comp                         Shown     Shown     Hidden    Man
 help:article:view-compliance                   Shown     Shown     Hidden    Manager: Not shown in Manager mode.
 help:article:view-listening                    Shown     Shown     Hidden    Manager: Not shown in Manager mode.
 help:article:view-ai                           Shown     Shown     Hidden    Manager: Not shown in Manager mode.
-help:article:view-actions                      Shown     Shown     Shown
+help:article:view-actions                      Shown     Hidden    Hidden    HR: Not ready yet: Developer mode only. Manager: Not ready yet: Developer mode only.
 help:article:data-loading                      Shown     Shown     Hidden    Manager: Not shown in Manager mode.
 help:article:data-mapping                      Shown     Shown     Hidden    Manager: Not shown in Manager mode.
 help:article:data-categories                   Shown     Shown     Hidden    Manager: Not shown in Manager mode.
@@ -168,7 +168,7 @@ help:tour:view-comp                            Shown     Shown     Hidden    Man
 help:tour:view-compliance                      Shown     Shown     Hidden    Manager: Not shown in Manager mode.
 help:tour:view-listening                       Shown     Shown     Hidden    Manager: Not shown in Manager mode.
 help:tour:view-ai                              Shown     Shown     Hidden    Manager: Not shown in Manager mode.
-help:tour:view-actions                         Shown     Shown     Limited   Manager: Steps on hidden tabs or controls are skipped.
+help:tour:view-actions                         Shown     Hidden    Hidden    HR: Not ready yet: Developer mode only. Manager: Not ready yet: Developer mode only.
 help:tour:developer-tools                      Shown     Hidden    Hidden    HR: HR mode leaves out the developer surfaces and My team. Manager: Not shown in Manager mode.
 help:search                                    Shown     Shown     Limited   Manager: Covers the shown articles and the glossary of shown metrics.
 help:shortcuts                                 Shown     Shown     Shown
@@ -183,7 +183,7 @@ ask:view_summary                               Shown     Shown     Limited   Man
 ask:compare_groups                             Shown     Shown     Limited   Manager: The same views; by leader lists leaders inside the org only.
 ask:query_records                              Shown     Shown     Limited   Manager: The eight Manager mode datasets only.
 ask:explain_quality                            Shown     Shown     Hidden    Manager: Not sent to Claude, and refused if called.
-ask:open_items                                 Shown     Shown     Limited   Manager: The items Manager mode lists.
+ask:open_items                                 Shown     Hidden    Hidden    HR: Not ready yet: Developer mode only. Manager: Not ready yet: Developer mode only.
 ask:console                                    Shown     Hidden    Hidden    HR: HR mode leaves out the developer surfaces and My team. Manager: Developer mode only.
 filter:saved-views                             Shown     Shown     Limited   Manager: Every view applies through the pin; one whose page is hidden opens My team.
 filter:period                                  Shown     Shown     Shown
@@ -226,8 +226,8 @@ drill:surveyResponses                          Shown     Shown     Hidden    Man
 drill:surveyItems                              Shown     Shown     Hidden    Manager: These records are not shown in Manager mode.
 drill:surveyGroups                             Shown     Shown     Hidden    Manager: These records are not shown in Manager mode.
 drill:leaveGroups                              Shown     Shown     Hidden    Manager: These records are not shown in Manager mode.
-drill:actionItems                              Shown     Shown     Limited   Manager: Rows about people outside the org are left out.
-drill:actionOwners                             Shown     Shown     Limited   Manager: Rows about people outside the org are left out.
+drill:actionItems                              Shown     Hidden    Hidden    HR: Not ready yet: Developer mode only. Manager: Not ready yet: Developer mode only.
+drill:actionOwners                             Shown     Hidden    Hidden    HR: Not ready yet: Developer mode only. Manager: Not ready yet: Developer mode only.
 dataset:employees                              Shown     Shown     Shown
 dataset:jobChanges                             Shown     Shown     Shown
 dataset:requisitions                           Shown     Shown     Shown
@@ -297,7 +297,7 @@ figure:team-succession                         Shown     Hidden    Shown     HR:
 figure:team-training-by-course                 Shown     Hidden    Shown     HR: HR mode leaves out the developer surfaces and My team.
 figure:team-training-overdue                   Shown     Hidden    Shown     HR: HR mode leaves out the developer surfaces and My team.
 figure:team-critical-roles                     Shown     Hidden    Shown     HR: HR mode leaves out the developer surfaces and My team.
-figure:team-waiting                            Shown     Hidden    Shown     HR: HR mode leaves out the developer surfaces and My team.
+figure:team-waiting                            Shown     Hidden    Hidden    HR: Not ready yet: Developer mode only. Manager: Not ready yet: Developer mode only.
 figure:scorecard-standing                      Shown     Shown     Hidden    Manager: Its view is not shown in Manager mode.
 figure:scorecard-measures                      Shown     Shown     Hidden    Manager: Its view is not shown in Manager mode.
 figure:scorecard-findings                      Shown     Shown     Hidden    Manager: Its view is not shown in Manager mode.
@@ -306,7 +306,7 @@ figure:scorecard-flow                          Shown     Shown     Hidden    Man
 figure:scorecard-attrition-trend               Shown     Shown     Hidden    Manager: Its view is not shown in Manager mode.
 figure:scorecard-attrition-bu                  Shown     Shown     Hidden    Manager: Its view is not shown in Manager mode.
 figure:scorecard-pipeline                      Shown     Shown     Hidden    Manager: Its view is not shown in Manager mode.
-figure:scorecard-items                         Shown     Shown     Hidden    Manager: Its view is not shown in Manager mode.
+figure:scorecard-items                         Shown     Hidden    Hidden    HR: Not ready yet: Developer mode only. Manager: Not ready yet: Developer mode only.
 figure:scorecard-people                        Shown     Shown     Hidden    Manager: Its view is not shown in Manager mode.
 metric:onboarding.first90.i9Section2           Shown     Shown     Hidden    Manager: On the Manager mode metric list.
 metric:onboarding.first90.newHireEntered       Shown     Shown     Hidden    Manager: On the Manager mode metric list.
@@ -337,5 +337,5 @@ ui:tier-badge                                  Shown     Shown     Limited   Man
 ui:edit-definition                             Shown     Shown     Hidden    Manager: The metric dictionary is in the Data room.
 ui:kpi-delta-company                           Shown     Shown     Hidden    Manager: A company comparison opens no records: the company's records are not listed.
 ui:route-link                                  Shown     Shown     Limited   Manager: A link to a page this mode hides reads as plain text.
-ui:actions-team                                Shown     Shown     Limited   Manager: The pinned org replaces the "My team" picker; narrowing to a leader inside it works.
+ui:actions-team                                Shown     Hidden    Hidden    HR: Not ready yet: Developer mode only. Manager: Not ready yet: Developer mode only.
 org:simulate-exit                              Shown     Shown     Hidden    Manager: An exit what-if is a reorg scenario, worked through with the HRBP.

@@ -38,11 +38,13 @@ const ROUTES: Route[] = [
 /** What 3.15 says each mode does with a route. */
 function expected(mode: Mode, r: Route): Route {
   if (mode === 'developer') return r
+  // The Action center is not ready yet: Developer mode only.
+  if (r.view === 'actions') return homeOf(mode)
   if (mode === 'hr') return r.view === 'dev' || r.view === 'team' ? homeOf('hr') : r
   const hiddenPage =
     r.view === 'data' ||
     r.view === 'dev' ||
-    (r.view !== 'actions' && MANAGER_VIEWS[r.view as keyof typeof MANAGER_VIEWS]?.access === 'hidden')
+    MANAGER_VIEWS[r.view as keyof typeof MANAGER_VIEWS]?.access === 'hidden'
   if (hiddenPage) return homeOf('manager')
   const named = MANAGER_TABS[r.view as keyof typeof MANAGER_TABS]?.find(
     (t) => t.key === r.tab.split(/[:/]/)[0],
@@ -60,7 +62,8 @@ describe('routeDecision', () => {
         expect(d.redirected, `${mode} #${r.view}.${r.tab}`).toBe(
           d.route.view !== r.view || d.route.tab !== r.tab,
         )
-        if (d.redirected) expect(d.reason?.title, `${mode} #${r.view}.${r.tab}`).toMatch(/is not shown in/)
+        if (d.redirected)
+          expect(d.reason?.title, `${mode} #${r.view}.${r.tab}`).toMatch(/is not shown in|is not ready yet/)
       }
     })
 
@@ -101,7 +104,12 @@ describe('routeDecision', () => {
       title: 'Compensation is not shown in Manager mode',
       description: 'Census opened My team instead.',
     })
-    expect(routeDecision('manager', { view: 'actions', tab: '' }).redirected).toBe(false)
+    expect(routeDecision('hr', { view: 'actions', tab: '' }).reason).toEqual({
+      title: 'The Action center is not ready yet.',
+      description: 'It is only in Developer mode for now. Census opened the Scorecard instead.',
+    })
+    expect(routeDecision('manager', { view: 'actions', tab: '' }).route).toEqual(homeOf('manager'))
+    expect(routeDecision('developer', { view: 'actions', tab: '' }).redirected).toBe(false)
     expect(routeDecision('developer', { view: 'team', tab: '' }).redirected).toBe(false)
     expect(HOME_OF).toEqual({ hr: 'scorecard', manager: 'team', developer: 'dev' })
   })

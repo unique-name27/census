@@ -258,6 +258,7 @@ export const TOOL_DEFINITIONS: BetaTool[] = [
 type ModeAccess = Pick<AccessContext, 'mode' | 'can'>
 
 let managerTools: BetaTool[] | null = null
+let hrTools: BetaTool[] | null = null
 
 /**
  * The tool definitions sent to Claude in a mode. HR and Developer mode send every tool. Manager
@@ -265,7 +266,21 @@ let managerTools: BetaTool[] | null = null
  * what Manager mode shows. The last tool keeps the cache breakpoint.
  */
 export function toolDefinitionsFor(access: ModeAccess | null | undefined): BetaTool[] {
-  if (access?.mode !== 'manager') return TOOL_DEFINITIONS
+  if (!access || access.mode === 'developer') return TOOL_DEFINITIONS
+  if (access.mode !== 'manager') {
+    // HR mode: every tool but the ones not ready yet (open_items while the Action center is
+    // Developer mode only). The last tool keeps the cache breakpoint.
+    if (hrTools) return hrTools
+    const shown = TOOL_DEFINITIONS.filter((t) => access.can(`ask:${t.name}`))
+    if (shown.length === TOOL_DEFINITIONS.length) {
+      hrTools = TOOL_DEFINITIONS
+      return hrTools
+    }
+    hrTools = shown.map(({ cache_control: _cache, ...rest }, i) =>
+      i === shown.length - 1 ? { ...rest, cache_control: { type: 'ephemeral' as const } } : rest,
+    )
+    return hrTools
+  }
   if (managerTools) return managerTools
   const views = VIEW_KEYS_WITH_DATA.filter((v) => access.can(`view:${v}`))
   const datasets = QUERY_DATASETS.filter((d) => access.can(`dataset:${d.key}`))
@@ -412,7 +427,12 @@ export function runTool(
   if (off) return { content: JSON.stringify({ error: off }), isError: true, label, ms: clock() - t }
   if (access && isToolName(name) && !access.can(`ask:${name}`))
     return {
-      content: JSON.stringify({ error: `${name} is not available in Manager mode.` }),
+      content: JSON.stringify({
+        error:
+          access.mode === 'manager'
+            ? `${name} is not available in Manager mode.`
+            : `${name} is not available: the Action center it reads is not ready yet.`,
+      }),
       isError: true,
       label,
       ms: clock() - t,

@@ -38,9 +38,12 @@ const summarized = VIEWS.filter((v) => typeof v.summary === 'function')
 const viewOf = (key: string) => VIEWS.find((v) => v.key === key) as ViewDef
 
 let ctx: AnalyticsContext
+/** The Action center (open_items) is not ready yet: Developer mode only. */
+let dev: AnalyticsContext
 let conv: Conversation
 beforeAll(() => {
   ctx = sampleCtx()
+  dev = sampleCtx({ access: { mode: 'developer' } })
   conv = new Conversation()
 }, 60_000)
 
@@ -395,10 +398,10 @@ describe('the other tools', () => {
   })
 
   it('open_items counts what the Action center lists, marks included', () => {
-    const collected = collectActions(ctx, VIEWS)
+    const collected = collectActions(dev, VIEWS)
     const open = collected.items.filter((a) => isOpen(a.id, {}, Date.now()))
-    const counts = countActions(open, ctx)
-    const r = call(conv, envOf(ctx), 'open_items')
+    const counts = countActions(open, dev)
+    const r = call(conv, envOf(dev), 'open_items')
     expect((r.json.open as { count: number }).count).toBe(counts.open.length)
     expect((r.json.overdue as { count: number }).count).toBe(counts.overdue.length)
     expect((r.json.critical as { count: number }).count).toBe(counts.critical.length)
@@ -410,12 +413,17 @@ describe('the other tools', () => {
     const first = open[0]?.id as string
     const marked = call(
       conv,
-      envOf(ctx, { marks: { [first]: { state: 'handled', at: '2026-09-30T00:00:00Z' } } }),
+      envOf(dev, { marks: { [first]: { state: 'handled', at: '2026-09-30T00:00:00Z' } } }),
       'open_items',
     )
     expect((marked.json.open as { count: number }).count).toBe(counts.open.length - 1)
-    const managers = call(conv, envOf(ctx), 'open_items', { owner_group: 'manager', overdue_only: true })
+    const managers = call(conv, envOf(dev), 'open_items', { owner_group: 'manager', overdue_only: true })
     expect((managers.json.open as { count: number }).count).toBeLessThanOrEqual(counts.overdue.length)
+
+    // HR mode does not offer it while the Action center is not ready.
+    const hr = call(new Conversation(), envOf(ctx), 'open_items')
+    expect(hr.isError).toBe(true)
+    expect(hr.json.error).toMatch(/not available/)
   })
 
   it('reports an unknown tool, unknown arguments and broken input as errors Claude can act on', () => {
@@ -423,7 +431,7 @@ describe('the other tools', () => {
     expect(call(conv, envOf(ctx), 'view_summary', { view: 'hrbp', extra: 1 }).json.error).toMatch(
       /Unknown argument/,
     )
-    expect(call(conv, envOf(ctx), 'open_items', { owner_group: 'ceo' }).json.error).toMatch(/owner_group/)
+    expect(call(conv, envOf(dev), 'open_items', { owner_group: 'ceo' }).json.error).toMatch(/owner_group/)
     expect(call(conv, envOf(ctx), 'find_metrics', 'nonsense').isError).toBe(false)
   })
 

@@ -27,6 +27,8 @@ interface Row {
 
 export function WaitingSection({ items }: { items: TeamItems | null }) {
   const ctx = useAnalytics()
+  // The Action center is not ready yet (Developer mode only): its items stay off My team too.
+  if (!ctx.access.can('page:actions')) return null
   const actions = (
     <RouteLink view="actions" className={LINK}>
       Open the Action center

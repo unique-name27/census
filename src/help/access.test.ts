@@ -92,9 +92,12 @@ describe('help in each mode', () => {
     }
     // Manager mode's articles do link into the Data room in HR mode: those read as text here.
     expect(texted).toBeGreaterThan(0)
-    // HR mode keeps every link.
+    // HR mode keeps every link but the ones to the Action center (not ready yet: Developer mode only).
     for (const a of ARTICLES)
-      for (const l of articleLinks(a)) expect(linkShown(hr.access, l), `${a.id} ${l.target}`).toBe(true)
+      for (const l of articleLinks(a))
+        expect(linkShown(hr.access, l), `${a.id} ${l.target}`).toBe(
+          !(l.kind === 'route' && l.target.startsWith('actions')),
+        )
   })
 
   it('keeps the modes article plain: no em dash and none of the words that make a mode sound like security', () => {

@@ -23,6 +23,7 @@ import { type AccessInventory, accessMatrix, matrixText } from './matrix'
 import {
   decide,
   isDeveloperOnly,
+  isNotReady,
   MANAGER_DATASETS,
   MANAGER_DRILL_KINDS,
   MANAGER_HIDDEN_FIGURES,
@@ -77,11 +78,30 @@ describe('access matrix', () => {
     for (const r of rows) expect(r.developer.access, r.surface).toBe('shown')
   })
 
-  it('differs between HR and Developer only on the developer surfaces', () => {
+  it('differs between HR and Developer only on the developer surfaces and the ones not ready yet', () => {
     for (const r of rows) {
-      if (isDeveloperOnly(r.surface)) expect(r.hr.access, r.surface).toBe('hidden')
+      if (isDeveloperOnly(r.surface) || isNotReady(r.surface)) expect(r.hr.access, r.surface).toBe('hidden')
       else expect(r.hr.access, r.surface).toBe('shown')
     }
+  })
+
+  it('keeps the Action center in Developer mode only while it is not ready', () => {
+    for (const r of rows.filter((x) => isNotReady(x.surface))) {
+      expect(r.developer.access, r.surface).toBe('shown')
+      expect(r.hr.access, r.surface).toBe('hidden')
+      expect(r.manager.access, r.surface).toBe('hidden')
+    }
+    for (const s of ['page:actions', 'masthead:actions', 'ask:open_items', 'drill:actionItems'])
+      expect(
+        rows.some((r) => r.surface === s),
+        s,
+      ).toBe(true)
+    // Its numbers on other pages go with it.
+    expect(decide('hr', 'kpi:critical', undefined, { metric: 'actions.items.critical' }).access).toBe(
+      'hidden',
+    )
+    expect(decide('manager', 'metric:actions.items.open').access).toBe('hidden')
+    expect(decide('developer', 'metric:actions.items.open').access).toBe('shown')
   })
 
   it('names every view and every tab of a shown view in Manager mode, in tab order', () => {
@@ -152,11 +172,14 @@ describe('access matrix', () => {
   it('shows My team in Manager and Developer mode and the Scorecard in HR and Developer mode', () => {
     const at = (id: string) => rows.find((r) => r.surface === `figure:${id}`)
     for (const id of TEAM_FIGURES) {
+      // "Waiting on this org" comes from the Action center, which is Developer mode only for now.
+      if (isNotReady(`figure:${id}`)) continue
       expect(at(id)?.manager.access, id).toBe('shown')
       expect(at(id)?.hr.access, id).toBe('hidden')
     }
     for (const id of SCORECARD_FIGURES) {
       expect(at(id)?.manager.access, id).toBe('hidden')
+      if (isNotReady(`figure:${id}`)) continue
       expect(at(id)?.hr.access, id).toBe('shown')
     }
   })

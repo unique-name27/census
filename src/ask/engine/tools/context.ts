@@ -94,7 +94,9 @@ export function getContext(rt: ToolRuntime): ToolOutput {
             },
           ]
         : []),
-      { view: 'actions', label: 'Action center', tabs: [] },
+      ...(!access || access.can('page:actions')
+        ? [{ view: 'actions', label: 'Action center', tabs: [] }]
+        : []),
     ],
     vocabularies: {
       business_unit: counts('businessUnit'),
