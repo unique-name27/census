@@ -16,6 +16,7 @@ import { clampFilters } from '@/access/lock'
 import { leaderOptions } from '@/app/filterOptions'
 import type { AnalyticsContext } from '@/data/context'
 import { activeEmployees, smallExcludedValues } from '@/data/exclusion'
+import type { DataStandard } from '@/data/quality/tier'
 import { LEVEL_LABELS, type Level, levelIndex } from '@/data/schema'
 import {
   type FilterDimension,
@@ -123,6 +124,19 @@ export function contextFor(base: AnalyticsContext, asked: Filters): AnalyticsCon
     byKey.set(key, out)
   }
   return out
+}
+
+/**
+ * An env whose context computes for the scope on screen: the filters (through `contextFor`) and
+ * the data standard. The same env when both are already its own.
+ */
+export function withScope<E extends { ctx: AnalyticsContext }>(
+  env: E,
+  scope: { filters: Filters; standard: DataStandard },
+): E {
+  const scoped = contextFor(env.ctx, scope.filters)
+  const ctx = scoped.standard === scope.standard ? scoped : { ...scoped, standard: scope.standard }
+  return ctx === env.ctx ? env : { ...env, ctx }
 }
 
 /** Distinct values of an org dimension across the roster and requisitions, in a stable order. */

@@ -106,7 +106,13 @@ describe('turns', () => {
     expect(t.requests).toBe(2)
     expect(t.text).toBe('Voluntary attrition is [18.8%](ref:r1) in Bengaluru. More follows.')
     expect(t.steps).toEqual([
-      { id: 'a', label: 'Calculating People stats key figures for {{P1}}', done: true, isError: false },
+      {
+        id: 'a',
+        label: 'Calculating People stats key figures for {{P1}}',
+        done: true,
+        isError: false,
+        at: 0,
+      },
     ])
     expect(t.calls).toHaveLength(1)
     expect(t.usage.cacheRead).toBe(2000)
@@ -135,7 +141,7 @@ describe('turns', () => {
     expect(done.error).toBeNull()
     expect(done.steps.every((s) => s.done)).toBe(true)
     const stopped = finishTurn(
-      { ...t, steps: [{ id: 'b', label: 'x', done: false, isError: false }] },
+      { ...t, steps: [{ id: 'b', label: 'x', done: false, isError: false, at: 0 }] },
       {
         ...r,
         status: 'stopped',

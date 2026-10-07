@@ -306,10 +306,16 @@ export const START_ARTICLES: readonly HelpArticle[] = [
       'workspace id',
       'conversation',
       'natural language',
+      'chart',
+      'graph',
+      'undo',
+      'my charts',
+      'filter',
+      'panel',
     ],
     body: [
       {
-        p: 'Ask, in the masthead, opens a sheet where you can ask about your people data in plain words, such as "Where is voluntary attrition highest, and how has it changed?" Claude reads the question and asks Census for the numbers it needs. Census works them out in this browser, with the same definitions, filters and data standard as the views, and Claude writes the answer.',
+        p: 'Ask, in the masthead, opens a panel beside the page where you can ask about your people data in plain words, such as "Where is voluntary attrition highest, and how has it changed?" Claude reads the question and asks Census for the numbers it needs. Census works them out in this browser, with the same definitions, filters and data standard as the views, and Claude writes the answer. The page stays usable while Ask is open: change tabs and filters, open records, and the conversation carries on.',
       },
       { h: 'What it can answer' },
       {
@@ -321,7 +327,41 @@ export const START_ARTICLES: readonly HelpArticle[] = [
         ],
       },
       {
-        p: 'Every number in an answer opens its records in the panel on the right, as it does anywhere in Census, and a name opens the person card. A link to a view takes you there, and a metric name shows its definition. Tables in an answer download as CSV or Excel, or copy. Copy answer copies the whole answer with names, for your notes.',
+        p: 'Every number in an answer opens its records in the records panel, as it does anywhere in Census, and a name opens the person card. A link to a view takes you there, and a metric name shows its definition. Tables in an answer download as CSV or Excel, or copy. Copy answer copies the whole answer with names, for your notes.',
+      },
+      { h: 'Ask on the screen' },
+      {
+        p: 'Ask can also change what is on screen as it answers. Ask it to "filter to Bengaluru, last 6 months", "open Talent, Succession", "point to the chart" or "open the records", and it does that straight away. Each change shows as a line at the top of the answer, such as "Filtered to Bengaluru, last 6 months", with Undo. Undo puts back only what that change did. Back in the browser undoes it too. Records Ask opened offer Open again instead: closing the records panel is their undo.',
+      },
+      {
+        ul: [
+          'Ask can set or reset the filters and the period, open a view or tab, scroll to a figure and show it as a table, open the records behind a number, and apply a saved view.',
+          'It never changes your data, your settings, the mode, metric definitions, mappings or official lists.',
+          "In Manager mode it stays inside the manager's org and opens only the views Manager mode shows. When asked for something else, it says why it can't.",
+          'Each question tells Claude which view, tab, scope and period are on screen, so "explain this chart" works.',
+          'To stop it changing the screen, turn off "Let Ask change the screen" in [Settings, Ask Census](settings:ask). Ask then answers with links to the views instead.',
+        ],
+      },
+      { h: 'Charts Ask draws' },
+      {
+        p: 'Ask "draw a chart of headcount by business unit" and Ask draws it in the answer. Census works out every number in it, never Claude, so the chart matches the views. It has what any figure in Census has: the table view, definitions, the tier, the records behind every bar or point, and exports to CSV, Excel, PNG and SVG. When a figure on screen already shows what you asked, Ask points to that figure instead.',
+      },
+      {
+        ul: [
+          'Open full size shows the chart large, for a meeting.',
+          'Pin to My charts keeps it in the panel until you reload the page or close the tab. Once you pin one, My charts sits beside the conversation.',
+          'Small groups stay hidden in a chart as they are everywhere else, and the note under it says so.',
+          'A count that is not limited to the period, such as headcount, says the date it is for: "as of 30 Sep 2026".',
+        ],
+      },
+      { h: 'The panel' },
+      {
+        ul: [
+          'On a wide screen the panel sits on the right and the page narrows to make room. Drag its left edge to make it wider or narrower; Census remembers the width on this device.',
+          'Collapse shrinks it to a slim strip on the right, and Close puts it away. Esc in the panel collapses it.',
+          "On a phone it is a sheet along the bottom: a short bar with the last answer's first line and the question box, half the screen, or the full screen. Drag the handle or use the arrow button. The page above stays usable at the short bar and at half height.",
+          'Open or collapsed is remembered until you close the tab. The records panel, person cards, Settings and Help open above it.',
+        ],
       },
       { h: 'What is sent, and what never is' },
       {
@@ -364,8 +404,8 @@ export const START_ARTICLES: readonly HelpArticle[] = [
       { h: 'Good to know' },
       {
         ul: [
-          'The conversation stays when you close the sheet. It lasts until you choose New chat, reload the page or close the tab.',
-          'Alt+A (Option+A on a Mac) opens Ask from anywhere outside a text field. Enter asks; Shift+Enter starts a new line. [Keyboard shortcuts](article:shortcuts)',
+          'The conversation stays when you collapse or close the panel. It lasts until you choose New chat, reload the page or close the tab.',
+          'Alt+A (Option+A on a Mac) opens Ask from anywhere outside a text field, and moves you between the page and the question box. Enter asks; Shift+Enter starts a new line. [Keyboard shortcuts](article:shortcuts)',
           'When Census runs inside another page, such as a claude.ai artifact, the browser may block requests to Anthropic. Open Census in its own tab.',
           'Claude can misread a question. The numbers come from Census and each one opens its records, so check the ones you will repeat.',
         ],

@@ -160,10 +160,17 @@ function Measure({
             'Nothing due in the period'
           ))}
       </p>
-      <div>
-        <Button size="sm" variant="ghost" className="-ml-2.5" onClick={link.onClick}>
-          {link.label}
-          <IconChevronRight className="size-3.5" />
+      <div className="min-w-0">
+        {/* The label wraps in a narrow column (the page beside Ask) instead of running past it. */}
+        <Button
+          size="sm"
+          variant="ghost"
+          className="-ml-2.5 min-h-7 max-w-full justify-start py-1 text-left"
+          style={{ height: 'auto' }}
+          onClick={link.onClick}
+        >
+          <span className="min-w-0 whitespace-normal">{link.label}</span>
+          <IconChevronRight className="size-3.5 shrink-0" />
         </Button>
       </div>
     </div>

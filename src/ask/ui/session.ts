@@ -2,7 +2,8 @@
  * Asking one question from the sheet: read the key, workspace ID and model, make the client (the
  * real SDK, or in a development build the scripted client for the test key), run the engine's
  * `ask` with the app's live context, and turn its events into the turn the sheet shows. Stop
- * aborts the request in flight; New chat stops it and starts a fresh conversation.
+ * aborts the request in flight; New chat and a change of mode stop it and start a fresh
+ * conversation (`inflight.ts`).
  */
 import {
   type AskClient,
@@ -17,10 +18,12 @@ import {
   readWorkspaceId,
   type ToolEnv,
 } from '@/ask/engine'
+import { abortAnswer, beginAnswer, endAnswer } from './inflight'
 import { applyEvent, askedScope, failTurn, finishTurn, newTurn } from './model'
 import { useAsk } from './store'
 
-let controller: AbortController | null = null
+export { stopAnswer } from './inflight'
+
 let nextId = 1
 
 const online = (): boolean => (typeof navigator === 'undefined' ? true : navigator.onLine !== false)
@@ -69,8 +72,7 @@ export async function askQuestion(question: string, env: ToolEnv): Promise<void>
     return
   }
   store.setBusy(true)
-  const abort = new AbortController()
-  controller = abort
+  const abort = beginAnswer()
   try {
     let client: AskClient & { online?: () => boolean }
     try {
@@ -92,7 +94,7 @@ export async function askQuestion(question: string, env: ToolEnv): Promise<void>
     })
     update((t) => finishTurn(t, result))
   } finally {
-    if (controller === abort) controller = null
+    endAnswer(abort)
     if (useAsk.getState().chat === chat) {
       useAsk.getState().setBusy(false)
       useAsk.getState().answered()
@@ -100,14 +102,8 @@ export async function askQuestion(question: string, env: ToolEnv): Promise<void>
   }
 }
 
-/** The Stop button. */
-export function stopAnswer(): void {
-  controller?.abort()
-}
-
 /** New chat: stop any answer and forget the conversation (its tokens, refs and history). */
 export function newChat(): void {
-  controller?.abort()
-  controller = null
+  abortAnswer()
   useAsk.getState().reset()
 }

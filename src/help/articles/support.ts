@@ -13,7 +13,7 @@ export const SUPPORT_ARTICLES: readonly HelpArticle[] = [
       {
         ul: [
           '? opens Help.',
-          'Alt+A opens [Ask Census](article:ask-census) (Option+A on a Mac) from anywhere outside a text field.',
+          'Alt+A opens [Ask Census](article:ask-census) (Option+A on a Mac) from anywhere outside a text field. While Ask is open, it moves you between the page and the question box.',
           'Tab and Shift+Tab move between controls. The first Tab on a page offers "Skip to content".',
           'Left and right arrows move between folder tabs, and between sub-tabs; Home and End go to the first and last.',
           'Enter or Space on an underlined number opens the records behind it.',
@@ -28,8 +28,9 @@ export const SUPPORT_ARTICLES: readonly HelpArticle[] = [
       {
         ul: [
           'Enter asks the question. Shift+Enter starts a new line.',
-          'Esc closes the sheet. The conversation lasts until you choose New chat, reload the page or close the tab.',
-          'Records or a person card opened from an answer sit on top of the sheet: Esc closes them first.',
+          'Esc in the panel collapses it to a slim strip. The conversation lasts until you choose New chat, reload the page or close the tab.',
+          "On the panel's left edge, the left and right arrows make it wider or narrower; Home and End go to the narrowest and widest.",
+          'Records or a person card opened from an answer open above the panel: Esc closes them first.',
         ],
       },
       { h: 'Org chart' },

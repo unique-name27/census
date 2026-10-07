@@ -4,18 +4,31 @@
  */
 import { expect } from 'vitest'
 import type { AccessInput } from '@/access/context'
+import { clampFilters } from '@/access/lock'
+import { routeDecision } from '@/access/policy'
 import { type AnalyticsContext, buildContext } from '@/data/context'
 import type { DataStandard } from '@/data/quality/tier'
 import type { DatasetVersion } from '@/data/quality/types'
 import type { ReferenceMapping } from '@/data/reference/types'
 import { generateSample } from '@/data/sample'
 import { DATASET_KEYS, type DatasetKey, type Datasets } from '@/data/schema'
-import { DEFAULT_FILTERS, type Filters } from '@/data/scope'
-import type { SourceMeta } from '@/data/store'
+import { DEFAULT_FILTERS, type Filters, normalizeFilters, sameFilters } from '@/data/scope'
+import type { RouteView, SourceMeta } from '@/data/store'
+import type { DrillSpec } from '@/drill/types'
 import type { MetricsApi } from '@/metrics/types'
 import { VIEWS } from '@/views/registry'
 import { tieredSampleContext } from '@/views/scorecard/engine/testkit'
+import {
+  type AppSnapshot,
+  type AskApp,
+  type FigureData,
+  type SavedViewInfo,
+  type ScreenRoute,
+  type ScreenState,
+  undoState,
+} from './app'
 import { Conversation } from './conversation'
+import { type PriorResult, runScreenTool } from './screenTools'
 import { runTool } from './tools'
 import type { ToolEnv } from './types'
 
@@ -223,3 +236,150 @@ export function expectClean(text: string, what: string): void {
 }
 
 export { Conversation }
+
+/* ───────────── a fake app for the screen tools (docs/ASK-ACTIONS.md) ───────────── */
+
+/** One entry of the fake app's history: the route and the filters it showed. */
+export interface FakeEntry {
+  route: ScreenRoute
+  filters: Filters
+  standard: DataStandard
+}
+
+export interface FakeAppOptions {
+  route?: ScreenRoute
+  filters?: Filters
+  figures?: FigureData[]
+  savedViews?: (SavedViewInfo & { filters: Filters; standard?: DataStandard })[]
+  actions?: boolean
+}
+
+/**
+ * An `AskApp` over plain state, with a history stack, the mode's filter clamp and route guard
+ * (as the store's guards apply them), for the engine's tests.
+ */
+export function fakeApp(ctx: AnalyticsContext, o: FakeAppOptions = {}) {
+  const lock = ctx.access?.lock ?? null
+  const mode = ctx.access?.mode ?? 'hr'
+  const guard = (f: Filters): Filters => clampFilters(normalizeFilters(f), lock)
+  const start: FakeEntry = {
+    route: o.route ?? { view: 'hrbp', tab: 'overview' },
+    filters: guard(o.filters ?? ctx.filters),
+    standard: ctx.standard,
+  }
+  const history: FakeEntry[] = [start]
+  let at = 0
+  let stack: DrillSpec[] = []
+  let applied: string | null = null
+  const events: { id: string; table: boolean }[] = []
+  const state = { actions: o.actions ?? true }
+  const now = () => history[at] as FakeEntry
+  const push = (e: FakeEntry) => {
+    history.splice(at + 1)
+    history.push(e)
+    at = history.length - 1
+  }
+  const figures = () =>
+    (o.figures ?? []).filter((f) => f.view === now().route.view && f.tab === now().route.tab)
+  const app: AskApp = {
+    actionsOn: () => state.actions,
+    screen: (): ScreenState => {
+      const top = stack[stack.length - 1]
+      const views = o.savedViews ?? []
+      const match = views.find((v) => v.id === applied)
+      return {
+        route: now().route,
+        filters: now().filters,
+        standard: now().standard,
+        figures: figures().map((f) => ({
+          id: f.id,
+          title: f.title,
+          metric: f.metric,
+          rows: f.rows.length,
+          tier: f.tier,
+          withheld: f.withheld,
+          chart: true,
+        })),
+        records: top
+          ? { title: top.title, subtitle: top.subtitle ?? null, kind: top.kind, rows: top.rows.length }
+          : null,
+        savedView: match
+          ? { id: match.id, name: match.name, edited: !sameFilters(match.filters, now().filters) }
+          : null,
+        savedViews: views.map(({ id, name, page }) => ({ id, name, page })),
+      }
+    },
+    settle: async () => undefined,
+    snapshot: (): AppSnapshot => ({
+      route: now().route,
+      filters: now().filters,
+      standard: now().standard,
+      lens: false,
+      savedViewId: applied,
+      records: stack,
+      entry: at,
+    }),
+    restore: (before, after, parts) => {
+      if (parts.includes('records')) stack = before.records as DrillSpec[]
+      if (!parts.includes('scope') && !parts.includes('route')) return
+      if (after.entry !== before.entry && at === after.entry) {
+        at--
+        return
+      }
+      // Only what the action changed, over the screen now (as liveApp does).
+      const next = undoState({ ...now(), lens: false, savedViewId: applied }, { before, after, parts })
+      if (!next.changed) return
+      push({ route: next.route, filters: guard(next.filters), standard: next.standard })
+      applied = next.savedViewId
+    },
+    setFilters: (f) => push({ ...now(), filters: guard(f) }),
+    resetFilters: () => push({ ...now(), filters: guard({ ...DEFAULT_FILTERS, modes: {} }) }),
+    goTo: (view, tab) => {
+      const d = routeDecision(mode, { view: view as RouteView, tab })
+      push({ ...now(), route: d.route })
+    },
+    showFigure: (id, opts) => {
+      events.push({ id, table: opts.table })
+    },
+    openRecords: (spec) => {
+      stack = [spec]
+    },
+    applySavedView: (id) => {
+      const v = (o.savedViews ?? []).find((x) => x.id === id)
+      if (!v) return { leftOut: 'That saved view no longer exists.' }
+      push({
+        route: v.page ?? now().route,
+        filters: guard(v.filters),
+        standard: v.standard ?? now().standard,
+      })
+      applied = id
+      return { leftOut: null }
+    },
+    figure: async (id) => (o.figures ?? []).find((f) => f.id === id) ?? null,
+  }
+  return {
+    app,
+    history,
+    events,
+    state,
+    /** The entry on screen. */
+    get at() {
+      return at
+    },
+    get records() {
+      return stack
+    },
+  }
+}
+
+/** Run a screen tool and parse its result. */
+export async function callScreen(
+  conv: Conversation,
+  env: ToolEnv,
+  name: string,
+  input: unknown = {},
+  results?: (id: string) => PriorResult | undefined,
+) {
+  const run = await runScreenTool(name, input, env, conv, { id: `toolu_${name}`, results })
+  return { ...run, json: JSON.parse(run.content) as Record<string, unknown> }
+}

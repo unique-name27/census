@@ -41,6 +41,11 @@ export interface Column<T = any> {
    * `drill` for that cell. Only web, mail and same-site links render. Exports keep the plain value.
    */
   href?: { bivarianceHack(row: T): string | null }['bivarianceHack']
+  /**
+   * What the table sorts the column by, when the value shown does not sort in order (a month
+   * shown as "Apr 2026" sorts by "2026-04"). Exports keep the value shown.
+   */
+  sortValue?: { bivarianceHack(row: T): unknown }['bivarianceHack']
 }
 
 /** A row of the "datasheet" popover that defines a metric. */

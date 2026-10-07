@@ -6,14 +6,18 @@
  * `withAccessTabs`).
  */
 import { MotionConfig, motion } from 'motion/react'
-import { lazy, Suspense, useEffect } from 'react'
+import { type CSSProperties, lazy, Suspense, useEffect, useRef } from 'react'
 import { connectAccessUi } from '@/access/ui/connectUi'
 import { ManagerPicker } from '@/access/ui/ManagerPicker'
+import { AskPanel } from '@/ask/ui/AskPanel'
+import { AskScreenBridge } from '@/ask/ui/AskScreenBridge'
+import { useDock } from '@/ask/ui/useDock'
 import { FigureRegistryProvider } from '@/charts/registry'
 import { CurrentViewProvider } from '@/components/currentView'
 import { IconLock } from '@/components/icons'
+import { AreaContext, mainArea } from '@/components/mainArea'
 import { Toaster, toast } from '@/components/toast'
-import { TooltipProvider } from '@/components/ui'
+import { cx, TooltipProvider } from '@/components/ui'
 import { AnalyticsProvider, useAnalytics } from '@/data/context'
 import { SAMPLE_COMPANY } from '@/data/sample'
 import { DATASET_KEYS, type ViewKey } from '@/data/schema'
@@ -88,6 +92,8 @@ function ViewPage({ view: registered, requestedTab }: { view: ViewDef; requested
               </motion.div>
             </ViewErrorBoundary>
           </div>
+          {/* What Ask Census reads of the page: this tab's figures and the scope it shows. */}
+          <AskScreenBridge />
         </CurrentViewProvider>
       </FigureRegistryProvider>
     </div>
@@ -119,6 +125,7 @@ function ActionsPage({ requestedTab }: { requestedTab: string }) {
           <ViewErrorBoundary resetKey={`actions.${JSON.stringify(filters)}`} onResetFilters={resetFilters}>
             <ActionCenter />
           </ViewErrorBoundary>
+          <AskScreenBridge />
         </CurrentViewProvider>
       </FigureRegistryProvider>
     </div>
@@ -137,6 +144,7 @@ function DevRoute({ requestedTab }: { requestedTab: string }) {
             <DevPage tab={requestedTab} />
           </Suspense>
         </ViewErrorBoundary>
+        <AskScreenBridge />
       </CurrentViewProvider>
     </FigureRegistryProvider>
   )
@@ -171,42 +179,77 @@ function Shell() {
   const route = useCensus((s) => s.route)
   const page = PAGE_VIEWS.includes(route.view) ? route.view : null
   const view = page ? null : (viewByKey.get(route.view as ViewKey) ?? VIEWS[0])
+  // Ask docked beside the page (docs/ASK-ACTIONS.md, part 1): the page gives up the panel's width
+  // (or the phone sheet's height) and, while narrower than the window, lays out for its own width:
+  // it becomes an area (src/components/mainArea.ts) whose breakpoints read the room it has.
+  const dock = useDock()
+  const docked = dock.right > 0
+  const rootRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const el = rootRef.current
+    if (!el || !docked || typeof ResizeObserver === 'undefined') return mainArea.set(null)
+    const ro = new ResizeObserver((entries) => {
+      const width = entries[0]?.contentRect.width
+      if (width) mainArea.set(width)
+    })
+    ro.observe(el)
+    return () => {
+      ro.disconnect()
+      mainArea.set(null)
+    }
+  }, [docked])
   return (
-    <div className="flex min-h-dvh flex-col">
-      {/* biome-ignore lint/a11y/useValidAnchor: a skip link stays a link; it moves focus itself because the address holds the route and scope, and "#census-main" would add a history entry */}
-      <a
-        href="#census-main"
-        onClick={(e) => {
-          e.preventDefault()
-          document.getElementById('census-main')?.focus()
-        }}
-        className="sr-only z-50 rounded-control bg-ink px-3 py-1.5 text-small text-on-ink focus:not-sr-only focus:fixed focus:top-2 focus:left-2"
+    <AreaContext value={mainArea}>
+      <div
+        ref={rootRef}
+        data-area={docked ? '' : undefined}
+        className={cx('flex min-h-dvh flex-col', docked && '@container/shell')}
+        style={
+          docked
+            ? // The side gutter follows the main area too (tokens.css: 2.4% of the width, 16 to 32px).
+              ({ paddingRight: dock.right, '--gutter': 'clamp(16px, 2.4cqi, 32px)' } as CSSProperties)
+            : { paddingBottom: dock.bottom || undefined }
+        }
       >
-        Skip to content
-      </a>
-      <header className="band">
-        <div className={PAGE}>
-          <Masthead />
-          <FolderTabs />
-        </div>
-      </header>
-      <main id="census-main" tabIndex={-1} className="flex-1 outline-none">
-        <div className={`${PAGE} pb-16`}>
-          {view ? (
-            <ViewPage view={view} requestedTab={route.tab} />
-          ) : page === 'actions' ? (
-            <ActionsPage requestedTab={route.tab} />
-          ) : page === 'dev' ? (
-            <DevRoute requestedTab={route.tab} />
-          ) : (
-            <ViewErrorBoundary resetKey="data">
-              <DataRoom />
-            </ViewErrorBoundary>
-          )}
-        </div>
-      </main>
-      <Footer />
-    </div>
+        {/* biome-ignore lint/a11y/useValidAnchor: a skip link stays a link; it moves focus itself because the address holds the route and scope, and "#census-main" would add a history entry */}
+        <a
+          href="#census-main"
+          onClick={(e) => {
+            e.preventDefault()
+            document.getElementById('census-main')?.focus()
+          }}
+          className="sr-only z-50 rounded-control bg-ink px-3 py-1.5 text-small text-on-ink focus:not-sr-only focus:fixed focus:top-2 focus:left-2"
+        >
+          Skip to content
+        </a>
+        <header className="band">
+          <div className={PAGE}>
+            <Masthead />
+            <FolderTabs />
+          </div>
+        </header>
+        <main id="census-main" tabIndex={-1} className="flex-1 outline-none">
+          <div className={`${PAGE} pb-16`}>
+            {view ? (
+              <ViewPage view={view} requestedTab={route.tab} />
+            ) : page === 'actions' ? (
+              <ActionsPage requestedTab={route.tab} />
+            ) : page === 'dev' ? (
+              <DevRoute requestedTab={route.tab} />
+            ) : (
+              <ViewErrorBoundary resetKey="data">
+                {/* A registry, so Ask Census sees the Data room's figures as it does a view's. */}
+                <FigureRegistryProvider key="data">
+                  <DataRoom />
+                  <AskScreenBridge />
+                </FigureRegistryProvider>
+              </ViewErrorBoundary>
+            )}
+          </div>
+        </main>
+        <Footer />
+      </div>
+    </AreaContext>
   )
 }
 
@@ -234,6 +277,8 @@ export function App() {
         {ready ? (
           <AnalyticsProvider>
             <Shell />
+            {/* Ask Census beside the page: docked on wide screens, a bottom sheet on phones. */}
+            <AskPanel />
             {/* Inside the provider: the panels read the analytics context (names, as-of, tiers, pay setting). */}
             <DrillPanel />
             <SettingsSheet />

@@ -372,6 +372,16 @@ export function compareGroups(rt: ToolRuntime, raw: unknown): ToolOutput {
         .sort((a, b) => b.size - a.size || a.label.localeCompare(b.label))
         .slice(0, DEFAULT_GROUPS)
 
+  // Grouping by a list dimension the scope filters on compares every value of it: each group's
+  // scope leaves that filter out, which the result says. (Leaders' orgs sit inside the scope.)
+  const byDim = by === 'leader' ? null : DIM[by]
+  const groupsScope =
+    byDim && s.filters[byDim].length
+      ? scopeWords(
+          { ...s.filters, [byDim]: [], modes: withMode(s.filters.modes, byDim, 'include') },
+          rt.tokens,
+        )
+      : null
   const min = minGroupOf(rt.base.metrics)
   const rows = chosen.map((g) => {
     // The exclusion rule holds for each group too: a group the scope's exclusions cut by a few
@@ -397,9 +407,15 @@ export function compareGroups(rt: ToolRuntime, raw: unknown): ToolOutput {
     overall: kpiOut(rt, baseCtx, view, kpi),
     groups: rows,
     groups_total: named?.length ? rows.length : sized.filter((g) => g.size > 0).length,
+    ...(groupsScope ? { groups_scope: groupsScope } : {}),
     notes: [
       'headcount is active employees in the group on the as-of date.',
       'Small groups follow the figure’s own suppression.',
+      ...(groupsScope
+        ? [
+            `Grouped by ${by === 'business_unit' ? 'business unit' : by}, so the scope's own ${by === 'business_unit' ? 'business unit' : by} filter is not applied to the groups: they cover ${groupsScope.replace(/^Whole company/, 'the whole company').replaceAll(' · ', ', ')}. overall is the scope itself.`,
+          ]
+        : []),
     ],
   })
 }

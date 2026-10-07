@@ -93,6 +93,10 @@ Layout and surfaces:
   separate parts with `border-rule` hairlines.
 - 12-column grid with 16px gaps on desktop; everything stacks to one column under 768px. Side gutter
   `var(--gutter)`. Max content width 1440px.
+- Breakpoints follow the area, not the window (docs/ASK-ACTIONS.md, part 1): while Ask is docked beside the
+  page, the shell is an area (`data-area`, a size container named `shell`) and Tailwind's `sm` to `xl` and
+  `max-*` read its width (src/styles/index.css); the Ask panel is an area too. In code use `useNarrow`,
+  `useMinWidth` or `mainAreaAtLeast(px)` (src/components/mainArea.ts), never `window.matchMedia` on a width.
 - Don't put cards inside cards. Don't put a colored accent rail on the side of anything. Don't round
   everything to 12px+. Don't use gradients, glows, glassmorphism or emoji. Don't center page content.
 - Side sheets (drill panel, Settings, Ask, Help) are one surface: `bg-sheet`, parts divided by

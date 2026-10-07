@@ -112,6 +112,94 @@
   --text-hero--line-height: 1;
 }
 
+/* Breakpoints follow the area an element lays out in (docs/ASK-ACTIONS.md, part 1;
+   src/components/mainArea.ts). While Ask is docked beside the page the shell's main area is
+   narrower than the window: it carries `data-area` and is a size container named `shell`, so
+   inside it sm to xl and max-* read the container's width. The Ask panel is such an area too.
+   Outside any area (sheets, menus, toasts) they read the window, as Tailwind's own do. Same
+   widths as Tailwind's defaults: sm 40rem, md 48rem, lg 64rem, xl 80rem. (2xl stays Tailwind's:
+   the stylesheet linter cannot read a name that starts with a digit.) */
+@custom-variant sm {
+  @media (width >= 40rem) {
+    &:where(:not([data-area] *)) {
+      @slot;
+    }
+  }
+  @container shell (width >= 40rem) {
+    @slot;
+  }
+}
+@custom-variant md {
+  @media (width >= 48rem) {
+    &:where(:not([data-area] *)) {
+      @slot;
+    }
+  }
+  @container shell (width >= 48rem) {
+    @slot;
+  }
+}
+@custom-variant lg {
+  @media (width >= 64rem) {
+    &:where(:not([data-area] *)) {
+      @slot;
+    }
+  }
+  @container shell (width >= 64rem) {
+    @slot;
+  }
+}
+@custom-variant xl {
+  @media (width >= 80rem) {
+    &:where(:not([data-area] *)) {
+      @slot;
+    }
+  }
+  @container shell (width >= 80rem) {
+    @slot;
+  }
+}
+@custom-variant max-sm {
+  @media (width < 40rem) {
+    &:where(:not([data-area] *)) {
+      @slot;
+    }
+  }
+  @container shell (width < 40rem) {
+    @slot;
+  }
+}
+@custom-variant max-md {
+  @media (width < 48rem) {
+    &:where(:not([data-area] *)) {
+      @slot;
+    }
+  }
+  @container shell (width < 48rem) {
+    @slot;
+  }
+}
+@custom-variant max-lg {
+  @media (width < 64rem) {
+    &:where(:not([data-area] *)) {
+      @slot;
+    }
+  }
+  @container shell (width < 64rem) {
+    @slot;
+  }
+}
+@custom-variant max-xl {
+  @media (width < 80rem) {
+    &:where(:not([data-area] *)) {
+      @slot;
+    }
+  }
+  @container shell (width < 80rem) {
+    @slot;
+  }
+}
+
 @layer base {
   html,
   body {

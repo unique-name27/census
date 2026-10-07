@@ -7,6 +7,7 @@ import { useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState
 import { notInOrg } from '@/access/copy'
 import { DataTable, Figure } from '@/charts'
 import { Button, Grid, IconSlides, KpiStrip, Switch, toast } from '@/components'
+import { mainAreaAtLeast } from '@/components/mainArea'
 import { useAnalytics } from '@/data/context'
 import type { Employee } from '@/data/schema'
 import { useCensus } from '@/data/store'
@@ -62,7 +63,7 @@ const FLAG_KINDS = new Set([...STRUCTURAL, 'placement'])
 const isPerson = (e: Employee | undefined): e is Employee => !!e
 
 /** Under the lg breakpoint the detail panel sits below the chart. */
-const panelBelow = () => typeof window !== 'undefined' && !window.matchMedia('(min-width: 1024px)').matches
+const panelBelow = () => typeof window !== 'undefined' && !mainAreaAtLeast(1024)
 
 export function ChartTab() {
   const ctx = useAnalytics()

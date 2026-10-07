@@ -41,6 +41,8 @@ export interface Step {
   label: string
   done: boolean
   isError: boolean
+  /** Where the answer text stood when the tool started: a chart it draws sits there in the answer. */
+  at: number
 }
 
 export interface Turn {
@@ -101,7 +103,7 @@ export function applyEvent(t: Turn, e: AskEvent): Turn {
       return {
         ...t,
         answerFrom: t.text.length,
-        steps: [...t.steps, { id: e.id, label: e.label, done: false, isError: false }],
+        steps: [...t.steps, { id: e.id, label: e.label, done: false, isError: false, at: t.text.length }],
       }
     case 'tool_end':
       return {
@@ -111,7 +113,10 @@ export function applyEvent(t: Turn, e: AskEvent): Turn {
           ? t.steps.map((s) =>
               s.id === e.call.id ? { ...s, label: e.call.label, done: true, isError: e.call.isError } : s,
             )
-          : [...t.steps, { id: e.call.id, label: e.call.label, done: true, isError: e.call.isError }],
+          : [
+              ...t.steps,
+              { id: e.call.id, label: e.call.label, done: true, isError: e.call.isError, at: t.text.length },
+            ],
       }
     case 'round_limit':
       return { ...t, roundLimited: true }

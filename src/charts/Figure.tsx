@@ -59,8 +59,9 @@ import { DefinitionChangedMark, EditDefinitionLink } from '@/views/data/metrics/
 import { QualityLensLine } from '@/views/data/quality-overview/LensLine'
 import { DataTable, type DataTableProps } from './DataTable'
 import { HeldBackState, PreviewBar, PreviewFrame } from './FigureGate'
+import { FIGURE_VIEW_EVENT } from './figureView'
 import { nextFigureOrder, useFigureRegistry } from './registry'
-import type { Column, Definition } from './types'
+import type { Column, Definition, ExportMeta } from './types'
 import { useExportMeta } from './useExportMeta'
 
 /** Desktop grid columns; the shared mapping in `@/lib/spans` (also used by Section, Readout, EmptyState). */
@@ -133,6 +134,11 @@ export interface FigureProps<T extends object> {
    * false for figures about the data itself rather than a people number.
    */
   gate?: boolean
+  /**
+   * What the exports are stamped with, over the view's own (a chart drawn by Ask Census carries
+   * "Ask Census" and the scope and period it was calculated for).
+   */
+  exportMeta?: Partial<ExportMeta>
   className?: string
   children?: ReactNode
 }
@@ -161,6 +167,7 @@ export function Figure<T extends object>({
   uses,
   metric: metricId,
   gate: gated = true,
+  exportMeta,
   className,
   children,
 }: FigureProps<T>) {
@@ -173,7 +180,8 @@ export function Figure<T extends object>({
     (!!metricId && !access.can(`metric:${metricId}`))
   const pending = useAnalyticsPending()
   const compact = variant === 'compact'
-  const meta = useExportMeta()
+  const viewMeta = useExportMeta()
+  const meta = exportMeta ? { ...viewMeta, ...exportMeta } : viewMeta
   const registry = useFigureRegistry()
   const [order] = useState(nextFigureOrder)
   const [showTable, setShowTable] = useState(false)
@@ -182,6 +190,7 @@ export function Figure<T extends object>({
   const [toggled, setToggled] = useState(false)
   const [status, setStatus] = useState<Status>(null)
   const chartRef = useRef<HTMLDivElement>(null)
+  const rootRef = useRef<HTMLElement>(null)
   const timer = useRef<number | undefined>(undefined)
   const titleId = useId()
   // The dictionary entry behind the figure: its wording stands in when the figure gives no
@@ -254,6 +263,15 @@ export function Figure<T extends object>({
   ])
 
   useEffect(() => () => window.clearTimeout(timer.current), [])
+  // Ask Census can switch the figure to its table (or back) when it points at it.
+  const canToggle = hasChart && tableToggle && !compact
+  useEffect(() => {
+    const el = rootRef.current
+    if (!el || !canToggle) return
+    const onView = (e: Event) => setShowTable(!!(e as CustomEvent<{ table?: boolean }>).detail?.table)
+    el.addEventListener(FIGURE_VIEW_EVENT, onView)
+    return () => el.removeEventListener(FIGURE_VIEW_EVENT, onView)
+  }, [canToggle])
   if (modeHides) return null
 
   const flash = (s: Status) => {
@@ -381,6 +399,7 @@ export function Figure<T extends object>({
 
   return (
     <figure
+      ref={rootRef}
       aria-labelledby={titleId}
       data-tour={`figure-${id}`}
       data-metric={metric ?? undefined}

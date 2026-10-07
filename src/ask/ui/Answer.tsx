@@ -248,6 +248,7 @@ export function Answer({
   question,
   turnNo,
   exportScope,
+  tablesBefore = 0,
 }: {
   text: string
   conversation: Conversation
@@ -256,6 +257,8 @@ export function Answer({
   turnNo?: number
   /** The scope its exported tables are stamped with. */
   exportScope?: () => ExportScope | null
+  /** Tables in the parts of the answer above this one (a chart splits an answer), so numbering runs on. */
+  tablesBefore?: number
 }) {
   const { metrics, access } = useAnalytics()
   // A link to a page the mode hides reads as plain text; so does every metric link where the
@@ -267,7 +270,7 @@ export function Answer({
   })
   // Tables are numbered in the answer for their export titles.
   const tableNo: number[] = []
-  let n = 0
+  let n = tablesBefore
   for (const b of blocks) tableNo.push(b.type === 'table' ? ++n : 0)
   return (
     <AnswerCtx value={{ conversation, question, turnNo, exportScope }}>

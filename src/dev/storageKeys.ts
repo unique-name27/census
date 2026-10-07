@@ -84,6 +84,21 @@ export const STORAGE_KEYS: readonly StorageKeyDef[] = [
     secret: 'workspace',
   },
   { key: 'census:ask-model', where: ['localStorage'], holds: 'The model Ask Census uses' },
+  {
+    key: 'census:ask-actions',
+    where: ['localStorage'],
+    holds: 'Whether Ask Census may change the screen (filters, views, records); absent means on',
+  },
+  {
+    key: 'census:ask-panel',
+    where: ['sessionStorage'],
+    holds: 'Whether the Ask Census panel is open or collapsed, for this tab; absent means closed',
+  },
+  {
+    key: 'census:ask-width',
+    where: ['localStorage'],
+    holds: 'The width the Ask Census panel was dragged to; absent means the default',
+  },
   { key: 'census:theme', where: ['localStorage'], holds: 'An older theme setting', legacy: true },
   { key: 'census:tools', where: ['localStorage'], holds: 'Older related tool links', legacy: true },
   {

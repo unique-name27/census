@@ -15,8 +15,8 @@
  *     one). It holds the person tokens, the record refs and the history sent to Claude.
  *  3. Client. `await createAnthropicClient(key, { workspaceId })`: the SDK, imported lazily,
  *     browser-direct; a workspace ID goes as the `anthropic-workspace-id` header.
- *  4. Question. `ask({ client, conversation, question, env: { ctx, views, marks }, model, signal,
- *     onEvent })` streams: `question` (what was sent), `request`, `text` deltas, `tool_start` (a
+ *  4. Question. `ask({ client, conversation, question, env: { ctx, views, marks, app }, model,
+ *     signal, onEvent })` streams: `question` (what was sent), `request`, `text` deltas, `tool_start` (a
  *     plain progress line), `tool_end` (a `ToolCallRecord` for "What was sent"), `round_limit`,
  *     `usage`. It resolves to an `AskResult` (status done, stopped or error; never throws). Abort
  *     the signal for Stop. `env.ctx` is `useAnalytics()`, `env.views` is `VIEWS` from
@@ -29,9 +29,62 @@
  *
  * Text from the engine (`ASK_INTRO`, `PRIVACY_LINE`, `WHAT_IS_SENT`, `suggestionsFor(view)`) is in
  * the house style.
+ *
+ * Ask on the screen (docs/ASK-ACTIONS.md): pass `env.app = liveAskApp` and Ask reads and drives
+ * the screen; without `app` it is the chat it was.
+ *
+ *  6. The screen. `liveAskApp` (an `AskApp`) is the app as Ask drives it: the store's filters
+ *     through the mode's clamp, `goTo` through the route guard, the records panel, the saved
+ *     views. It needs `<AskScreenBridge />` inside each figure registry (it calls `connectScreen`
+ *     with the registry, the analytics context and the route rendered). Each question then starts
+ *     with a screen line ("On screen: People stats, Attrition; Bengaluru; last 12 months.") built
+ *     by `screenLine`; it is in `sent` and on its own in the `question` event's `screen` and
+ *     `AskResult.screen`.
+ *  7. Actions. `set_filters`, `reset_filters`, `open_view`, `show_figure`, `open_records`,
+ *     `apply_saved_view` run straight away. Each that changed something puts an `AskAction` on its
+ *     call (`tool_end`'s `call.action`, and `AskResult.actions`): the action line (`line`, with
+ *     person tokens: render it with `parseInline`) and `undo`; Undo is
+ *     `undoAction(liveAskApp, action)` (Back while its history entry is on screen, else only what
+ *     it changed); `undoWaits` holds back an Undo until a later action that changed the same
+ *     filter, period or route is undone, and `steppedBack` says the person went Back past it. show_figure
+ *     carries `figure` ({ id, table }) and emits a screen event: subscribe with `onScreenEvent` to
+ *     scroll to `figureElement(id)`, highlight it and switch it to its table.
+ *     "Let Ask change the screen": `readScreenActions()`, `saveScreenActions(on)` (on by default).
+ *     Off: no action tools, and Claude is told to give view links instead.
+ *  8. Charts. `make_chart` puts an `AskChart` on its call (`call.chart`, `AskResult.charts`): rows,
+ *     columns (formats), the encoded fields (x, y, series, value, target, label, xType), refs per
+ *     row (open with `conversation.records(ref)`), notes (what is hidden and why), source, scope,
+ *     period, tier and metric. Draw it in a `Figure` with `chartWithNames(chart, name)` so person
+ *     tokens show as names; `AskChart` says which kit component each form uses.
  */
 
 export { groupableFields, QUERY_DATASETS, type QueryDataset, type QueryField } from './allowlist'
+export {
+  type ActionPart,
+  type ActionTool,
+  type AppSnapshot,
+  type AskAction,
+  type AskApp,
+  type FigureData,
+  type SavedViewInfo,
+  type ScreenFigure,
+  type ScreenRecords,
+  type ScreenRoute,
+  type ScreenState,
+  steppedBack,
+  stillShown,
+  undoAction,
+  undoWaits,
+} from './app'
+export {
+  type AskChart,
+  CHART_FORMS,
+  type ChartColumn,
+  type ChartFieldKind,
+  type ChartForm,
+  chartWithNames,
+  FORM_WORDS,
+} from './chart'
 export {
   type AnthropicAskClient,
   type ClientOptions,
@@ -68,6 +121,15 @@ export {
   saveWorkspaceId,
   WORKSPACE_STORAGE_KEY,
 } from './keys'
+export {
+  connectScreen,
+  figureElement,
+  liveAskApp,
+  onScreenEvent,
+  type RenderedScreen,
+  type ScreenEvent,
+  type ScreenRegistry,
+} from './liveApp'
 export {
   type AskClient,
   type AskEvent,
@@ -109,10 +171,35 @@ export {
   saveModelChoice,
 } from './models'
 export { AMOUNT_WITHHELD, TOKEN_RE, TokenMap, tokenText } from './privacy'
-export { managerPromptLine, ROUND_LIMIT_NOTE, SYSTEM_PROMPT, systemBlocksFor } from './prompt'
-export { type RefEntry, RefRegistry } from './refs'
-export { askOffReason, chatContext, contextFor, type FilterInput, resolveFilters, scopeWords } from './scope'
 export {
+  managerPromptLine,
+  ROUND_LIMIT_NOTE,
+  SYSTEM_PROMPT,
+  screenPrompt,
+  systemBlocksFor,
+} from './prompt'
+export { type RefEntry, RefRegistry } from './refs'
+export {
+  askOffReason,
+  chatContext,
+  contextFor,
+  type FilterInput,
+  resolveFilters,
+  scopeWords,
+  withScope,
+} from './scope'
+export { periodWords, placeOf, placeWords, scopeInWords, screenLine } from './screen'
+export { readScreenActions, SCREEN_ACTIONS_STORAGE_KEY, saveScreenActions } from './screenSetting'
+export {
+  isScreenTool,
+  type PriorResult,
+  runScreenTool,
+  SCREEN_TOOL_NAMES,
+  type ScreenRun,
+  screenToolDefinitions,
+} from './screenTools'
+export {
+  ALL_TOOL_NAMES,
   isToolName,
   runTool,
   TOOL_DEFINITIONS,
@@ -121,9 +208,12 @@ export {
   toolDefinitionsFor,
   toolLabel,
 } from './tools'
+export { ACTIONS_OFF } from './tools/screenActions'
 export {
+  type AnyToolName,
   NO_USAGE,
   type PersonInfo,
+  type ScreenToolName,
   type ToolCallRecord,
   type ToolEnv,
   type ToolName,

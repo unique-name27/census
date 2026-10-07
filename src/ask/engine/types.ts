@@ -5,8 +5,10 @@
 import type { AnalyticsContext } from '@/data/context'
 import type { Marks } from '@/views/actions/engine/marks'
 import type { ViewDef } from '@/views/types'
+import type { AskAction, AskApp } from './app'
+import type { AskChart } from './chart'
 
-/** The tools Claude can call. Names and JSON schemas are in `tools.ts`. */
+/** The tools that compute numbers. Names and JSON schemas are in `tools.ts`. */
 export type ToolName =
   | 'get_context'
   | 'find_metrics'
@@ -15,6 +17,20 @@ export type ToolName =
   | 'query_records'
   | 'explain_quality'
   | 'open_items'
+
+/** The tools that read and drive the screen and draw charts (docs/ASK-ACTIONS.md); in `screenTools.ts`. */
+export type ScreenToolName =
+  | 'get_screen'
+  | 'set_filters'
+  | 'reset_filters'
+  | 'open_view'
+  | 'show_figure'
+  | 'open_records'
+  | 'apply_saved_view'
+  | 'make_chart'
+
+/** Every tool Claude can call. */
+export type AnyToolName = ToolName | ScreenToolName
 
 /** What the tools read: the app's live state when the question was asked. */
 export interface ToolEnv {
@@ -30,6 +46,11 @@ export interface ToolEnv {
   marks?: Marks
   /** Now, in ms since the epoch (for snoozes that end). Defaults to `Date.now()`. */
   now?: number
+  /**
+   * The screen (docs/ASK-ACTIONS.md): what is on it and how to change it, `createLiveApp()` in the
+   * app. Without it Ask sends only the data tools and no screen line (tests, the Developer console).
+   */
+  app?: AskApp
 }
 
 /** One tool call as it went to Claude, for "What was sent". */
@@ -48,6 +69,10 @@ export interface ToolCallRecord {
   label: string
   /** Which request to Claude asked for it (1-based). */
   round: number
+  /** An action tool that changed the screen: the action line and its Undo. */
+  action?: AskAction
+  /** make_chart: the chart to draw in the answer. */
+  chart?: AskChart
 }
 
 /** Tokens used by one answer (summed over its requests). */

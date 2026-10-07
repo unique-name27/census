@@ -1,10 +1,12 @@
 /**
  * One question and its answer. The question is a quiet heading as it was typed; the answer is a
  * document under it. While it is answered, plain progress lines say what Census is calculating.
- * Afterwards: Copy answer (names included, since the copy stays on this computer), What was sent,
- * and any error in plain words with where to fix it.
+ * What Ask changed on the screen shows as action lines with Undo (docs/ASK-ACTIONS.md, part 3),
+ * and a chart Ask drew sits in the answer where it was drawn (part 4). Afterwards: Copy answer
+ * (names included, since the copy stays on this computer), What was sent, and any error in plain
+ * words with where to fix it.
  */
-import { useState } from 'react'
+import { Fragment, useState } from 'react'
 import {
   answerText,
   type Conversation,
@@ -17,7 +19,10 @@ import { IconCheck, IconChevronDown, IconCopy } from '@/components/icons'
 import { toast } from '@/components/toast'
 import { Button, cx, SeverityIcon } from '@/components/ui'
 import { openSettings } from '@/data/store'
+import { ActionLines } from './ActionLines'
 import { Answer } from './Answer'
+import { AskChartFigure } from './AskChartFigure'
+import { actionCallIds, answerParts, chartsOf } from './answerParts'
 import { IconWorking } from './icons'
 import {
   errorFacts,
@@ -29,7 +34,7 @@ import {
   withoutPartial,
 } from './model'
 import { askQuestion } from './session'
-import { closeAsk } from './store'
+import { useAsk } from './store'
 
 /**
  * Ask the question again. Focus moves to the question box first: the button is disabled (or
@@ -45,7 +50,9 @@ import { WhatWasSent } from './WhatWasSent'
 function Progress({ turn, conversation }: { turn: Turn; conversation: Conversation }) {
   const person = (t: string) => conversation.person(t)
   const line = statusLine(turn, person)
-  const done = turn.steps.filter((s) => s.done)
+  // An action's own line says what it changed, with Undo: its progress line would repeat it.
+  const acted = actionCallIds(turn.calls)
+  const done = turn.steps.filter((s) => s.done && !acted.has(s.id))
   return (
     <ul className="flex flex-col gap-1 text-small">
       {done.map((s) => (
@@ -96,8 +103,8 @@ function ErrorNote({ turn, env, busy }: { turn: Turn; env: () => ToolEnv; busy: 
               <Button
                 size="sm"
                 onClick={() => {
-                  closeAsk()
-                  // A workspace error lands on the Workspace ID field, where the fix is.
+                  // Settings opens above the panel. A workspace error lands on the Workspace ID
+                  // field, where the fix is.
                   openSettings('ask', e.kind === 'workspace' ? WORKSPACE_FIELD : undefined)
                 }}
               >
@@ -134,10 +141,17 @@ export function TurnView({
   busy: boolean
 }) {
   const [sentOpen, setSentOpen] = useState(false)
+  const chat = useAsk((s) => s.chat)
   const answering = turn.status === 'answering'
   // An answer still arriving, stopped or cut off may end in half a link: leave that out.
   const shown = turn.status === 'done' && !turn.truncated ? turn.text : withoutPartial(turn.text)
   const person = (t: string) => conversation.person(t)
+  // The answer in pieces: text, and the charts Ask drew where they were drawn.
+  const parts = answerParts(
+    shown,
+    chartsOf(turn.calls, turn.steps),
+    (t) => parseAnswer(t).filter((b) => b.type === 'table').length,
+  )
   const copy = async () => {
     const text = answerText(parseAnswer(shown), person)
     try {
@@ -164,17 +178,36 @@ export function TurnView({
       >
         {turn.question}
       </h3>
+      <ActionLines calls={turn.calls} conversation={conversation} />
       {answering && <Progress turn={turn} conversation={conversation} />}
-      {shown.trim() && (
-        <Answer
-          text={shown}
-          conversation={conversation}
-          question={turn.question}
-          turnNo={turnNo}
-          exportScope={() =>
-            turn.asked ? exportScope(turn.asked, turn.calls, earlier(), (t) => conversation.person(t)) : null
-          }
-        />
+      {parts.map((p, i) =>
+        p.kind === 'text' ? (
+          <Answer
+            key={`t${i}`}
+            text={p.text}
+            conversation={conversation}
+            question={turn.question}
+            turnNo={turnNo}
+            tablesBefore={p.tablesBefore}
+            exportScope={() =>
+              turn.asked
+                ? exportScope(turn.asked, turn.calls, earlier(), (t) => conversation.person(t))
+                : null
+            }
+          />
+        ) : (
+          <Fragment key={`c${i}`}>
+            {p.charts.map((c) => (
+              <AskChartFigure
+                key={c.id}
+                chart={c}
+                conversation={conversation}
+                question={turn.question}
+                pinKey={`${chat}:${c.id}`}
+              />
+            ))}
+          </Fragment>
+        ),
       )}
       {turn.truncated && turn.status === 'done' && (
         <p className="text-meta text-muted">

@@ -17,11 +17,15 @@ import type {
   BetaToolUseBlock,
   MessageCreateParamsBase,
 } from '@anthropic-ai/sdk/resources/beta/messages/messages'
+import type { AskAction } from './app'
+import type { AskChart } from './chart'
 import type { Conversation } from './conversation'
 import { type AskError, CUT_OFF, classifyError, DECLINED, EMPTY_QUESTION, errorLog, STOPPED } from './errors'
 import { type ModelId, modelById } from './models'
 import { ROUND_LIMIT_NOTE, SYSTEM_BLOCKS, systemBlocksFor } from './prompt'
-import { askOffReason } from './scope'
+import { askOffReason, withScope } from './scope'
+import { screenLine } from './screen'
+import { isScreenTool, type PriorResult, runScreenTool, type ScreenRun } from './screenTools'
 import { runTool, TOOL_DEFINITIONS, toolDefinitionsFor, toolLabel } from './tools'
 import { NO_USAGE, type ToolCallRecord, type ToolEnv, type Usage } from './types'
 
@@ -47,8 +51,11 @@ export const MAX_TOOL_ROUNDS = 10
 export const FALLBACK_BETA = 'server-side-fallback-2026-07-01'
 
 export type AskEvent =
-  /** The question as it was sent (tokenized). */
-  | { type: 'question'; sent: string }
+  /**
+   * The question as it was sent (tokenized), after the screen line when Ask is connected to the
+   * app; `screen` is that line on its own.
+   */
+  | { type: 'question'; sent: string; screen?: string | null }
   /** A request to Claude starts (1-based). */
   | { type: 'request'; round: number }
   /** Answer text as it streams: person tokens and ref/view/metric links, never names. */
@@ -79,9 +86,15 @@ export interface AskResult {
   status: 'done' | 'stopped' | 'error'
   /** The answer as Claude wrote it (person tokens, ref/view/metric links). Render it with `parseAnswer`. */
   text: string
-  /** The question as it was sent (tokenized). */
+  /** The question as it was sent (tokenized), after the screen line when there is one. */
   sent: string
+  /** The screen line the question carried ("On screen: People stats, Attrition; ..."), or null (always set by `ask`). */
+  screen?: string | null
   calls: ToolCallRecord[]
+  /** What Ask changed on screen, in order, each with its action line and Undo (always set by `ask`). */
+  actions?: AskAction[]
+  /** The charts Ask drew, in order (always set by `ask`). */
+  charts?: AskChart[]
   usage: Usage
   /** Tool rounds run. */
   rounds: number
@@ -198,7 +211,10 @@ export async function ask(o: AskOptions): Promise<AskResult> {
       status: 'error',
       text: '',
       sent: '',
+      screen: null,
       calls: [],
+      actions: [],
+      charts: [],
       usage: { ...NO_USAGE },
       rounds: 0,
       roundLimited: false,
@@ -214,7 +230,10 @@ export async function ask(o: AskOptions): Promise<AskResult> {
       status: 'error',
       text: '',
       sent: '',
+      screen: null,
       calls: [],
+      actions: [],
+      charts: [],
       usage: { ...NO_USAGE },
       rounds: 0,
       roundLimited: false,
@@ -223,15 +242,29 @@ export async function ask(o: AskOptions): Promise<AskResult> {
       error: { kind: 'bad_request', title: off, detail: 'Nothing was sent.', action: null },
       model: modelById(o.model).id,
     }
-  const sent = conv.tokenize(o.question.trim(), o.env.ctx)
-  emit({ type: 'question', sent })
+  // The scope on screen: the store's filters can be a step ahead of the context the page last
+  // rendered, and the tools must compute what the screen shows.
+  let env = syncEnv(o.env)
+  const question = conv.tokenize(o.question.trim(), env.ctx)
+  const app = env.app
+  const screen = app ? lineFor(env, conv) : null
+  const sent = screen ? [screen, question].join('\n\n') : question
+  emit({ type: 'question', sent, screen })
   // The mode's system blocks and tool definitions: the Manager line names the manager by token.
-  const access = o.env.ctx.access
-  conv.tokens.index(o.env.ctx)
+  // With the app connected, the screen tools follow (the action tools while Ask may change it).
+  const access = env.ctx.access
+  conv.tokens.index(env.ctx)
+  const actionsOn = !!app && safeActionsOn(app)
   const mode = {
-    system: systemBlocksFor(access?.lock ? conv.tokens.forEmployee(access.lock.managerId) : null),
-    tools: toolDefinitionsFor(access),
+    system: systemBlocksFor(
+      access?.lock ? conv.tokens.forEmployee(access.lock.managerId) : null,
+      app ? { actions: actionsOn } : null,
+    ),
+    tools: toolDefinitionsFor(access, app ? { views: env.views, actions: actionsOn } : null),
   }
+  // Results of this answer's tool calls, for make_chart's result source (kept once it completes).
+  const turnResults = new Map<string, PriorResult>()
+  const resultOf = (id: string) => turnResults.get(id) ?? conv.results.get(id)
   const turn: BetaMessageParam[] = [{ role: 'user', content: sent }]
   const calls: ToolCallRecord[] = []
   let usage: Usage = { ...NO_USAGE }
@@ -260,12 +293,18 @@ export async function ask(o: AskOptions): Promise<AskResult> {
       requests: conv.usage.requests + usage.requests,
       ...(conv.usage.partial || usage.partial ? { partial: true } : {}),
     }
-    if (status === 'done') conv.history.push(...turn)
+    if (status === 'done') {
+      conv.history.push(...turn)
+      for (const [id, r] of turnResults) conv.results.set(id, r)
+    }
     return {
       status,
       text,
       sent,
+      screen,
       calls,
+      actions: calls.flatMap((c) => (c.action ? [c.action] : [])),
+      charts: calls.flatMap((c) => (c.chart ? [c.chart] : [])),
       usage,
       rounds,
       roundLimited,
@@ -335,12 +374,17 @@ export async function ask(o: AskOptions): Promise<AskResult> {
       const results: BetaContentBlockParam[] = []
       for (const u of uses) {
         if (o.signal?.aborted) return result('stopped', STOPPED)
-        const label = runLabel(u, o, conv)
+        const label = runLabel(u, env, conv)
         emit({ type: 'tool_start', id: u.id, name: u.name, label, round: requests })
         await yieldToUi()
         if (o.signal?.aborted) return result('stopped', STOPPED)
         const t = clock()
-        const run = runTool(u.name, u.input, o.env, conv)
+        const run: ScreenRun = isScreenTool(u.name)
+          ? await runScreenTool(u.name, u.input, env, conv, { id: u.id, results: resultOf })
+          : runTool(u.name, u.input, env, conv)
+        // An action that changed the scope: the tools after it compute what the screen now shows.
+        if (run.scope) env = withScope(env, run.scope)
+        if (!run.isError) turnResults.set(u.id, { name: u.name, input: u.input, content: run.content })
         const call: ToolCallRecord = {
           id: u.id,
           name: u.name,
@@ -350,6 +394,8 @@ export async function ask(o: AskOptions): Promise<AskResult> {
           ms: clock() - t,
           label: run.label,
           round: requests,
+          ...(run.action ? { action: run.action } : {}),
+          ...(run.chart ? { chart: run.chart } : {}),
         }
         calls.push(call)
         emit({ type: 'tool_end', call })
@@ -384,11 +430,42 @@ export async function ask(o: AskOptions): Promise<AskResult> {
 }
 
 /** The progress line for a call, shown before it runs (the same line `runTool` reports). */
-function runLabel(u: BetaToolUseBlock, o: AskOptions, conv: Conversation): string {
+function runLabel(u: BetaToolUseBlock, env: ToolEnv, conv: Conversation): string {
   try {
-    conv.tokens.index(o.env.ctx)
-    return toolLabel(u.name, u.input, o.env, conv.tokens)
+    conv.tokens.index(env.ctx)
+    return conv.tokens.scan(toolLabel(u.name, u.input, env, conv.tokens))
   } catch {
     return `Running ${u.name}`
+  }
+}
+
+/** The env with its context matched to the scope on screen (the same env without an app). */
+function syncEnv(env: ToolEnv): ToolEnv {
+  if (!env.app) return env
+  try {
+    const s = env.app.screen()
+    return withScope(env, { filters: s.filters, standard: s.standard })
+  } catch (err) {
+    console.warn('Ask Census: the screen could not be read', err)
+    return env
+  }
+}
+
+/** The screen line for the question, or null when the screen cannot be read. */
+function lineFor(env: ToolEnv, conv: Conversation): string | null {
+  try {
+    conv.tokens.index(env.ctx)
+    return env.app ? screenLine(env.app.screen(), env.ctx, env.views, conv.tokens) : null
+  } catch (err) {
+    console.warn('Ask Census: the screen line could not be built', err)
+    return null
+  }
+}
+
+const safeActionsOn = (app: NonNullable<ToolEnv['app']>): boolean => {
+  try {
+    return app.actionsOn()
+  } catch {
+    return false
   }
 }

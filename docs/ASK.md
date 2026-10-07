@@ -8,9 +8,10 @@ are never sent. Answers link to the records, which open locally in the drill pan
 ## What the user sees
 
 - **Ask** button in the masthead (beside Help), plus a keyboard shortcut that conflicts with
-  nothing already bound (list it in Help > Keyboard shortcuts). It opens the Ask sheet, a right-side
-  sheet like Help. The conversation lasts for the browser session (in memory only, never written to
-  storage) and survives closing and reopening the sheet; **New chat** clears it.
+  nothing already bound (list it in Help > Keyboard shortcuts). It opens the Ask panel, docked beside
+  the page and not modal (docs/ASK-ACTIONS.md, part 1, which replaces the earlier right-side sheet).
+  The conversation lasts for the browser session (in memory only, never written to storage) and
+  survives collapsing, closing and reopening the panel; **New chat** clears it.
 - **Empty state:** one line on what it does, the privacy line ("Your questions and the numbers
   Census calculates go to Anthropic under your API key. Names, IDs and pay amounts never do."), and
   four suggested questions for the view on screen (e.g. on People stats: "Where is voluntary
@@ -104,7 +105,10 @@ fields, then passed through the privacy pass):
 **Allowlist for `query_records`:** categorical fields (enum, level, and string fields that hold
 categories: business unit, department, location, country, job family, job function, cost center,
 source, category, channel, team, termination reason, stage, status, reason and similar), dates,
-booleans, and number and percent fields that are not pay. **Never allowed:** `id` fields, person
+booleans, and number and percent fields that are not pay. Derived fields: on employees `active`
+(active on the as-of date, contractors and interns included), `inHeadcount` (an employee, not a
+contractor or intern, active on the as-of date: headcount as every screen counts it) and
+`tenureYears`. **Never allowed:** `id` fields, person
 name fields (employee name, candidate name, hiring manager, recruiter, coordinator, HRBP, assignee),
 `money` and `pay: true` fields (ratios such as compa-ratio are allowed), free text, survey
 `respondentKey`, and immigration fields except as grouped counts. Grouping by recruiter, hiring

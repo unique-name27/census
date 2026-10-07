@@ -10,6 +10,7 @@
  * links from any KPI or figure land on the metric, and Back walks through the metrics opened.
  */
 import { useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
+import { mainAreaAtLeast } from '@/components/mainArea'
 import { goTo } from '@/components/navigation'
 import { useAnalytics } from '@/data/context'
 import { useCensus } from '@/data/store'
@@ -32,7 +33,8 @@ import { Overview } from './ui/Overview'
 /** The datasets each view reads: the tier of a metric that names no fields. */
 const VIEW_DATASETS: ViewDatasets = Object.fromEntries(VIEWS.map((v) => [v.key, v.datasets]))
 
-const LG = '(min-width: 1024px)'
+/** The list and the detail sit side by side from this main area width (Ask docked narrows it). */
+const LG = 1024
 
 export function MetricsTab() {
   const ctx = useAnalytics()
@@ -61,7 +63,7 @@ export function MetricsTab() {
   const revealNow = (a: Arrival | null) => {
     if (a) setReveal((r) => ({ ...a, n: (r?.n ?? 0) + 1 }))
   }
-  const narrow = () => typeof window !== 'undefined' && !window.matchMedia(LG).matches
+  const narrow = () => typeof window !== 'undefined' && !mainAreaAtLeast(LG)
 
   // An address that names a view or a metric (a link from a KPI, Back) shows it: the view becomes
   // the filter, filters that would hide the metric are cleared, and the metric is brought into view.

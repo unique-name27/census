@@ -145,9 +145,11 @@ export function DataTable<T extends object>({
   if (q) list = list.filter(({ row }) => cols.some((_, i) => text(row, i).toLowerCase().includes(q)))
   if (sort) {
     const dir = sort.dir === 'asc' ? 1 : -1
+    const by = cols.find((c) => c.key === sort.key)?.sortValue
+    const sortOf = (row: T) => (by ? by(row) : (row as Record<string, unknown>)[sort.key])
     list = list.slice().sort((a, b) => {
-      const av = (a.row as Record<string, unknown>)[sort.key]
-      const bv = (b.row as Record<string, unknown>)[sort.key]
+      const av = sortOf(a.row)
+      const bv = sortOf(b.row)
       if (isBlank(av)) return isBlank(bv) ? a.index - b.index : 1
       if (isBlank(bv)) return -1
       return compareValues(av, bv) * dir || a.index - b.index

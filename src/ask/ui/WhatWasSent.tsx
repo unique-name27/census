@@ -4,13 +4,13 @@
  * check that no name, ID or pay amount left the browser.
  */
 import { useCan } from '@/access/hooks'
-import type { Conversation } from '@/ask/engine'
+import { type Conversation, isScreenTool } from '@/ask/engine'
 import { goTo } from '@/components/navigation'
 import { useDev } from '@/dev/store'
 import { devTab } from '@/dev/tabs'
 import { plural } from '@/lib/format'
 import { sentCalls, type Turn, usageLine } from './model'
-import { closeAsk } from './store'
+import { leaveAsk } from './store'
 
 const PRE =
   'mt-1 max-h-72 overflow-auto rounded-control bg-sheet-2 p-2.5 font-mono text-label leading-relaxed whitespace-pre-wrap break-words text-ink'
@@ -61,12 +61,13 @@ export function WhatWasSent({ turn, conversation }: { turn: Turn; conversation: 
                     <pre className={PRE}>{c.input}</pre>
                     <p className="mt-2 text-meta text-muted">What Census sent back</p>
                     <pre className={PRE}>{c.result}</pre>
-                    {toConsole && (
+                    {/* The console runs the data tools; the screen tools act on this page only. */}
+                    {toConsole && !isScreenTool(c.name) && (
                       <button
                         type="button"
                         onClick={() => {
                           useDev.getState().seedConsole(c.name, c.input)
-                          closeAsk()
+                          leaveAsk()
                           goTo('dev', devTab('ask', c.name))
                         }}
                         className="mt-2 rounded-mark text-meta font-medium text-link underline-offset-2 hover:underline"

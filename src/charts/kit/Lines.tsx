@@ -435,11 +435,24 @@ export function Lines<T extends object>({
       },
     })
     const keyAt = new Map(slices.map((s) => [s.t, s.points[0]?.key ?? '']))
+    // Named x values tick on the data dates, every nth one when the names would overlap (the last
+    // always kept, as timeTicks does); the tooltip still names every point.
+    const namedTicks = (() => {
+      if (!xLabel) return []
+      const widest = Math.max(...slices.map((s) => textWidth(xLabel(keyAt.get(s.t) ?? ''), 11)))
+      const span = lastT - slices[0].t || 1
+      let gap = Number.POSITIVE_INFINITY
+      for (let i = 1; i < slices.length; i++)
+        gap = Math.min(gap, (((slices[i]?.t ?? 0) - (slices[i - 1]?.t ?? 0)) / span) * plotW)
+      const every = Number.isFinite(gap) && gap > 0 ? Math.max(1, Math.ceil((widest + 12) / gap)) : 1
+      const last = slices.length - 1
+      return slices.filter((_, i) => (last - i) % every === 0).map((s) => s.date)
+    })()
     marks.push(
       axisY(t, { ticks: axis.ticks, tickFormat: axis.format }),
       xLabel
         ? axisX(t, {
-            ticks: slices.map((s) => s.date),
+            ticks: namedTicks,
             tickFormat: (d: Date) => xLabel(keyAt.get(d.getTime()) ?? ''),
           })
         : explicit

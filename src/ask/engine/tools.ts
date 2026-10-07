@@ -12,12 +12,14 @@ import type { AccessContext } from '@/access/context'
 import { errorMessage, logDevError } from '@/app/devlog'
 import { DATASET_KEYS, DATASETS } from '@/data/schema'
 import { recordSince } from '@/lib/timing'
-import { ACTION_OWNER_ROLES } from '@/views/types'
+import { ACTION_OWNER_ROLES, type ViewDef } from '@/views/types'
 import { QUERY_DATASETS, queryDataset } from './allowlist'
+import { MODE_CHANGED, modeMoved } from './app'
 import { ReleaseAudit } from './audit'
 import type { TokenMap } from './privacy'
 import type { RefRegistry } from './refs'
 import { askOffReason, chatContext, EXCLUDE_ARGS, PERIODS, scopePhrase } from './scope'
+import { SCREEN_TOOL_NAMES, screenToolDefinitions, screenToolLabel } from './screenTools'
 import { openItems } from './tools/actions'
 import { getContext } from './tools/context'
 import { findMetrics } from './tools/metrics'
@@ -25,8 +27,9 @@ import { explainQuality } from './tools/quality'
 import { DATE_PARTS, MEASURE_OPS, OPS, queryRecords } from './tools/query'
 import type { ToolOutput, ToolRuntime } from './tools/shared'
 import { COMPARE_BY, compareGroups, viewSummary } from './tools/summary'
-import type { ToolEnv, ToolName } from './types'
+import type { AnyToolName, ScreenToolName, ToolEnv, ToolName } from './types'
 
+/** The tools that compute numbers (the Developer page's Ask tools console runs these). */
 export const TOOL_NAMES: readonly ToolName[] = [
   'get_context',
   'find_metrics',
@@ -35,6 +38,12 @@ export const TOOL_NAMES: readonly ToolName[] = [
   'query_records',
   'explain_quality',
   'open_items',
+]
+
+/** Every tool, the screen tools (`screenTools.ts`) after the data tools: what the modes' policy lists. */
+export const ALL_TOOL_NAMES: readonly AnyToolName[] = [
+  ...TOOL_NAMES,
+  ...(SCREEN_TOOL_NAMES as ScreenToolName[]),
 ]
 
 export const isToolName = (v: unknown): v is ToolName => TOOL_NAMES.includes(v as ToolName)
@@ -94,7 +103,7 @@ const queryFieldHelp = fieldHelp(QUERY_DATASETS)
 
 /** query_records' description, over the datasets a mode lets Ask read. */
 const queryDescription = (help: string) =>
-  `Aggregates over the rows of one dataset in scope: count, distinct people, share, and sum, mean, median, min or max of a number field. Group by up to 2 fields (dates by month, quarter or year); at most 50 rows, each with a ref to its records. Rows are not limited to the period unless a where clause uses op in_period on a date. People come back as person tokens. Groups smaller than the anonymity minimum show counts with their other numbers hidden. Fields named org.* are the org of the person the row is about. Fields per dataset:\n${help}`
+  `Aggregates over the rows of one dataset in scope: count, distinct people, share, and sum, mean, median, min or max of a number field. Group by up to 2 fields (dates by month, quarter or year); at most 50 rows, each with a ref to its records. Rows are not limited to the period unless a where clause uses op in_period on a date. People come back as person tokens. Groups smaller than the anonymity minimum show counts with their other numbers hidden. Fields named org.* are the org of the person the row is about. Headcount on every screen counts employees only (not contractors or interns): for it, filter employees on inHeadcount; active is true for contractors and interns too. Fields per dataset:\n${help}`
 
 /** Tool definitions as the Messages API takes them; the last one carries the cache breakpoint. */
 export const TOOL_DEFINITIONS: BetaTool[] = [
@@ -261,11 +270,42 @@ let managerTools: BetaTool[] | null = null
 let hrTools: BetaTool[] | null = null
 
 /**
- * The tool definitions sent to Claude in a mode. HR and Developer mode send every tool. Manager
- * mode leaves out `explain_quality`, and the view and dataset enums and descriptions list only
- * what Manager mode shows. The last tool keeps the cache breakpoint.
+ * The tool definitions sent to Claude in a mode. HR and Developer mode send every data tool (HR
+ * leaves out the ones not ready yet). Manager mode leaves out `explain_quality`, and the view and
+ * dataset enums and descriptions list only what Manager mode shows. The screen tools follow when
+ * the app is connected. The last tool keeps the cache breakpoint.
  */
-export function toolDefinitionsFor(access: ModeAccess | null | undefined): BetaTool[] {
+export function toolDefinitionsFor(
+  access: ModeAccess | null | undefined,
+  /**
+   * The screen tools to add (docs/ASK-ACTIONS.md): get_screen and make_chart, and the action
+   * tools when `actions` is on. Left out: the data tools only.
+   */
+  screen?: { views: readonly ViewDef[]; actions: boolean } | null,
+): BetaTool[] {
+  const data = dataToolsFor(access)
+  if (!screen) return data
+  const extra = screenToolDefinitions(access, screen.views, screen.actions)
+  let byExtra = withScreen.get(data)
+  if (!byExtra) {
+    byExtra = new WeakMap()
+    withScreen.set(data, byExtra)
+  }
+  let out = byExtra.get(extra)
+  if (!out) {
+    // One cache breakpoint, on the last tool.
+    const all = [...data, ...extra].map(({ cache_control: _cache, ...rest }) => rest as BetaTool)
+    const last = all[all.length - 1]
+    if (last) all[all.length - 1] = { ...last, cache_control: { type: 'ephemeral' } }
+    out = all
+    byExtra.set(extra, out)
+  }
+  return out
+}
+
+const withScreen = new WeakMap<BetaTool[], WeakMap<BetaTool[], BetaTool[]>>()
+
+function dataToolsFor(access: ModeAccess | null | undefined): BetaTool[] {
   if (!access || access.mode === 'developer') return TOOL_DEFINITIONS
   if (access.mode !== 'manager') {
     // HR mode: every tool but the ones not ready yet (open_items while the Action center is
@@ -384,7 +424,7 @@ export function toolLabel(name: string, input: unknown, env: ToolEnv, tokens: To
     case 'open_items':
       return 'Counting open items in the Action center'
     default:
-      return `Running ${name}`
+      return screenToolLabel(name, input, env)
   }
 }
 
@@ -423,6 +463,9 @@ export function runTool(
   let out: ToolOutput
   // The mode's policy first: a tool it hides returns a plain error, never a number.
   const access = env.ctx.access
+  // An answer that outlived a change of mode: its context is the old mode's.
+  if (modeMoved(env.app, access))
+    return { content: JSON.stringify({ error: MODE_CHANGED }), isError: true, label, ms: clock() - t }
   const off = access?.lock ? askOffReason(env.ctx) : null
   if (off) return { content: JSON.stringify({ error: off }), isError: true, label, ms: clock() - t }
   if (access && isToolName(name) && !access.can(`ask:${name}`))
@@ -461,7 +504,12 @@ export function runTool(
         out = openItems(rt, input)
         break
       default:
-        out = { ok: false, error: `There is no tool "${name}". Tools: ${TOOL_NAMES.join(', ')}.` }
+        out = {
+          ok: false,
+          error: SCREEN_TOOL_NAMES.includes(name)
+            ? `${name} works on the screen; it runs in Ask, not here.`
+            : `There is no tool "${name}". Tools: ${TOOL_NAMES.join(', ')}.`,
+        }
     }
   } catch (err) {
     console.error(`Ask Census: ${name} could not be computed`, err)

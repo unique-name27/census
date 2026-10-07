@@ -2,7 +2,8 @@
  * Settings > Ask Census (docs/ASK.md): the Claude API key (kept for this tab unless "Keep on this
  * device" is on; never in the settings file, Report a problem, exports, logs or the address),
  * Check key, the optional workspace ID (for a key that belongs to no workspace; kept on this
- * device, kept out of the same places), the model, and what is sent and what never is.
+ * device, kept out of the same places), the model, "Let Ask change the screen" (on by default;
+ * docs/ASK-ACTIONS.md, part 3), and what is sent and what never is.
  */
 import { useId, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
@@ -18,9 +19,11 @@ import {
   maskKey,
   readKey,
   readModelChoice,
+  readScreenActions,
   readWorkspaceId,
   saveKey,
   saveModelChoice,
+  saveScreenActions,
   saveWorkspaceId,
   WHAT_IS_SENT,
 } from '@/ask/engine'
@@ -50,12 +53,13 @@ const storedNow = (_version: number) => ({
   key: readKey(),
   model: readModelChoice(),
   workspace: readWorkspaceId(),
+  actions: readScreenActions(),
 })
 
 export function AskSection() {
   const version = useAsk((s) => s.keyVersion)
   const changed = useAsk((s) => s.keyChanged)
-  const { key: stored, model, workspace } = storedNow(version)
+  const { key: stored, model, workspace, actions } = storedNow(version)
   const [draft, setDraft] = useState('')
   const [show, setShow] = useState(false)
   const [keep, setKeep] = useState(() => readKey()?.kept ?? false)
@@ -184,6 +188,16 @@ export function AskSection() {
   }
 
   const modelLabel = (m: string) => MODELS.find((x) => x.id === m)?.label ?? m
+
+  const setActions = (on: boolean) => {
+    const ok = saveScreenActions(on)
+    changed()
+    if (!ok)
+      toast('Not saved', {
+        tone: 'critical',
+        description: 'This browser would not store the setting. Allow site data for Census and try again.',
+      })
+  }
 
   return (
     <SettingsBlock
@@ -386,6 +400,12 @@ export function AskSection() {
           ))}
         </div>
       </fieldset>
+      <Field
+        label="Let Ask change the screen"
+        hint="On: as it answers, Ask can filter, open a view or tab, point to a chart, open the records behind a number or apply a saved view, and each change has Undo. Off: Ask answers with links to the views instead. Ask never changes your data, settings, the mode or metric definitions."
+      >
+        <Switch checked={actions} onChange={setActions} label="Let Ask change the screen" />
+      </Field>
       <div className="flex flex-col gap-1.5">
         <h3 className="text-small font-semibold text-ink">What is sent</h3>
         <ul className="flex list-disc flex-col gap-1 pl-5 text-small leading-snug text-ink-2 marker:text-muted">

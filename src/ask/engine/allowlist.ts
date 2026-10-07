@@ -28,7 +28,7 @@ import {
   type ISODate,
   type Requisition,
 } from '@/data/schema'
-import { isActiveAt } from '@/data/scope'
+import { isActiveAt, isEmployee } from '@/data/scope'
 import { hoursBetween } from '@/lib/dates'
 import { tenureYears } from '@/lib/people'
 import { type RespondentRecord, respondentIndex } from '@/lib/surveys'
@@ -254,6 +254,17 @@ function derived(dataset: DatasetKey): QueryField[] {
           kind: 'boolean',
           uses: ['employees.hireDate', 'employees.terminationDate'],
           get: (row, j) => isActiveAt(row as unknown as Employee, j.asOf),
+        },
+        {
+          // Headcount as every screen counts it: employees only (not contractors or interns).
+          name: 'inHeadcount',
+          label: 'In headcount (an employee, not a contractor or intern, active on the as-of date)',
+          kind: 'boolean',
+          uses: ['employees.hireDate', 'employees.terminationDate', 'employees.employmentType'],
+          get: (row, j) => {
+            const e = row as unknown as Employee
+            return isEmployee(e) && isActiveAt(e, j.asOf)
+          },
         },
         {
           name: 'tenureYears',

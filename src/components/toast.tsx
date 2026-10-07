@@ -94,12 +94,16 @@ function ToastList() {
   ))
 }
 
-/** Renders the toast stack, bottom right. Mount once near the app root. */
+/**
+ * Renders the toast stack, bottom right of the page: clear of the Ask panel when it is docked or
+ * the phone sheet is up (`--ask-right` and `--ask-bottom`, set by the panel). Mount once near the
+ * app root.
+ */
 export function Toaster() {
   return (
     <Toast.Provider toastManager={manager} limit={3}>
       <Toast.Portal>
-        <Toast.Viewport className="pointer-events-none fixed right-4 bottom-4 z-[60] flex w-[360px] max-w-[calc(100vw-32px)] flex-col-reverse gap-2 outline-none">
+        <Toast.Viewport className="pointer-events-none fixed right-[calc(var(--ask-right,0px)_+_16px)] bottom-[calc(var(--ask-bottom,0px)_+_16px)] z-[60] flex w-[360px] max-w-[calc(100vw_-_32px_-_var(--ask-right,0px))] flex-col-reverse gap-2 outline-none">
           <ToastList />
         </Toast.Viewport>
       </Toast.Portal>

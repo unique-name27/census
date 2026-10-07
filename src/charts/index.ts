@@ -50,6 +50,7 @@ export {
   type FigureSpan,
   type FigureTableOptions,
 } from './Figure'
+export { FIGURE_VIEW_EVENT } from './figureView'
 export { BAR_LIST_FOLD, BarList, type BarListProps } from './kit/BarList'
 export { BulletList, type BulletListProps, type BulletStatus } from './kit/BulletList'
 export { type BulletRow, bulletLayout, type SplitSegment, splitSegments } from './kit/bulletModel'

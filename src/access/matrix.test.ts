@@ -7,7 +7,7 @@ import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_TOOLS } from '@/app/tools'
-import { TOOL_NAMES } from '@/ask/engine/tools'
+import { ALL_TOOL_NAMES } from '@/ask/engine/tools'
 import { DATASET_KEYS, VIEW_KEYS } from '@/data/schema'
 import { SETTINGS_SECTIONS } from '@/data/settings'
 import { DRILL_KINDS } from '@/drill/records'
@@ -45,7 +45,7 @@ const inventory: AccessInventory = {
   tools: DEFAULT_TOOLS.map((t) => t.id),
   articles: ARTICLES.map((a) => a.id),
   tours: TOURS.map((t) => t.id),
-  askTools: TOOL_NAMES,
+  askTools: ALL_TOOL_NAMES,
   drillKinds: DRILL_KINDS,
   datasets: DATASET_KEYS,
   // The role homes' figures (docs/ROLES.md 2.1 and 2.2), on their page.

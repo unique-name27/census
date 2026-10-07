@@ -8,6 +8,7 @@
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import { type Column, DataTable, Figure, useExportMeta } from '@/charts'
 import { Button, Grid, IconDownload, IconReset, Segmented, toast } from '@/components'
+import { mainAreaAtLeast } from '@/components/mainArea'
 import { useAnalytics } from '@/data/context'
 import type { Employee } from '@/data/schema'
 import { Drill } from '@/drill'
@@ -97,7 +98,7 @@ const SPAN_EXPORT_COLUMNS: Column<SpanRow>[] = SPAN_COLUMNS.map((c) =>
 )
 
 const isPerson = (e: Employee | undefined): e is Employee => !!e
-const panelBelow = () => typeof window !== 'undefined' && !window.matchMedia('(min-width: 1024px)').matches
+const panelBelow = () => typeof window !== 'undefined' && !mainAreaAtLeast(1024)
 
 export function SandboxTab() {
   const ctx = useAnalytics()

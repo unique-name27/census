@@ -401,6 +401,15 @@ export const MANAGER_SURFACES: Readonly<Record<string, Decision>> = {
   'ask:query_records': limited('The eight Manager mode datasets only.'),
   'ask:explain_quality': hidden('Not sent to Claude, and refused if called.'),
   'ask:open_items': limited('The items Manager mode lists.'),
+  // Ask on the screen (docs/ASK-ACTIONS.md): every action passes the clamp and the route guard.
+  'ask:get_screen': limited('The views, tabs and figures Manager mode shows.'),
+  'ask:set_filters': limited("Through the clamp: the scope stays inside the manager's org."),
+  'ask:reset_filters': limited("Back to the manager's whole org."),
+  'ask:open_view': limited('Only the views and tabs Manager mode shows; others are refused with the reason.'),
+  'ask:show_figure': limited('Only the figures Manager mode shows.'),
+  'ask:open_records': limited('The records panel keeps to the org and the kinds Manager mode lists.'),
+  'ask:apply_saved_view': limited('Applied through the clamp; a page this mode hides opens My team.'),
+  'ask:make_chart': limited('From the Manager mode tools and the figures it shows.'),
   'ask:console': hidden(DEV_ONLY),
   // Filter row (3.10)
   'filter:saved-views': limited(

@@ -16,8 +16,8 @@ export const SHORTCUTS: readonly Shortcut[] = [
   { keys: '?', where: 'Everywhere outside a text field', what: 'Opens Help', surface: 'help' },
   {
     keys: 'Alt+A (Option+A)',
-    where: 'Everywhere outside a text field',
-    what: 'Opens Ask Census',
+    where: 'Everywhere outside a text field, and in the Ask panel',
+    what: 'Opens Ask Census, or moves between the page and its question box',
     surface: 'ask',
   },
   {
@@ -55,6 +55,13 @@ export const SHORTCUTS: readonly Shortcut[] = [
     keys: 'Enter, Shift+Enter',
     where: 'The Ask composer',
     what: 'Asks the question; starts a new line',
+    surface: 'ask',
+  },
+  { keys: 'Esc', where: 'The Ask panel', what: 'Collapses it to its rail', surface: 'ask' },
+  {
+    keys: 'Left, Right, Home, End',
+    where: "The Ask panel's left edge",
+    what: 'Makes the panel wider or narrower',
     surface: 'ask',
   },
   { keys: '/', where: 'Org chart', what: 'Jumps to Find a person', surface: 'org' },
