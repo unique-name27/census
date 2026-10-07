@@ -74,6 +74,42 @@
 
   --radius-sheet: var(--radius-sheet);
   --radius-control: var(--radius-control);
+  --radius-chip: var(--radius-chip);
+  --radius-mark: var(--radius-mark);
+}
+
+/* The type scale (docs/DESIGN-REFRESH.md 2.2). One class per job; src/styles/typeScale.test.ts
+   fails on any arbitrary text-[Npx] size. Each token sets its size and line height; an explicit
+   leading-* class still wins. Weight and cut are set beside it (font-semibold cut-head).
+     text-label    11 / 1.35  tier word, tags, pills, axis ticks, dense legends
+     text-meta     12 / 1.4   notes, deltas, scope extras, drill table cells, tooltips
+     text-small    13 / 1.45  subtitles, deks, table cells, buttons, finding detail
+     text-body     14 / 1.45  body text, readout headlines (600)
+     text-title    16 / 1.3   every sheet title (600, cut-head)
+     text-section  20 / 1.2   Section headings, side-sheet titles, wide folder-tab numbers
+     text-page-title 28 / 1.1 view title (h1), KPI values (650, cut-head)
+     text-display  40 / 1.05  Person card headline number, Data room big counts
+     text-hero     48 / 1.0   one hero figure per role home page, nowhere else
+   The 28px step is text-page-title, not text-page: text-page is the page color as text. */
+@theme {
+  --text-label: 11px;
+  --text-label--line-height: 1.35;
+  --text-meta: 12px;
+  --text-meta--line-height: 1.4;
+  --text-small: 13px;
+  --text-small--line-height: 1.45;
+  --text-body: 14px;
+  --text-body--line-height: 1.45;
+  --text-title: 16px;
+  --text-title--line-height: 1.3;
+  --text-section: 20px;
+  --text-section--line-height: 1.2;
+  --text-page-title: 28px;
+  --text-page-title--line-height: 1.1;
+  --text-display: 40px;
+  --text-display--line-height: 1.05;
+  --text-hero: 48px;
+  --text-hero--line-height: 1;
 }
 
 @layer base {
@@ -205,7 +241,8 @@
   .tnum {
     font-variant-numeric: tabular-nums;
   }
-  /* Small uppercase labels get a little tracking. */
+  /* Small uppercase section eyebrows get a little tracking. Not for table headers: those are
+     sentence case (text-meta, font-medium, ink-2). */
   .eyebrow {
     font-size: 11px;
     font-weight: 600;
@@ -241,4 +278,11 @@
 .census-plot [aria-label="y-axis label"] text {
   fill: var(--ink-2);
   font-weight: 500;
+}
+
+/* Developer mode's debug overlays (src/dev/DevOverlay.tsx): every element a tour can point at gets
+   a 1px dashed outline while the "Tour targets" overlay is on. */
+html[data-dev-overlay~="tours"] [data-tour] {
+  outline: 1px dashed var(--rule-strong);
+  outline-offset: 1px;
 }

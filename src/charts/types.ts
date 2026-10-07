@@ -73,6 +73,39 @@ export interface RegisteredFigure {
   metric?: string
 }
 
+/** One KPI tile or readout finding, as the Developer page's contract checks read it. */
+export interface FigureItemFacts {
+  id: string
+  metricId?: string
+  /** It declares `uses`. */
+  uses: boolean
+  /** It opens its records. */
+  drill: boolean
+}
+
+/**
+ * What a figure on screen declares, whether or not it has rows (the registry's `track`): the
+ * Developer page's figure scan and contract checks read these. Never exported.
+ */
+export interface FigureFacts {
+  id: string
+  title: string
+  metric?: string
+  uses?: readonly string[]
+  /** Judged against the data standard (`Figure`'s `gate`); false for figures about the app or the data itself. */
+  gated: boolean
+  rows: number
+  tier?: Tier | null
+  withheld?: boolean
+  /** It has a chart image to export. */
+  image: boolean
+  /** 'figure' for a Figure, 'table' for a table-only registration (a KPI strip, a readout). */
+  kind: 'figure' | 'table'
+  /** A KPI strip's tiles or a readout's findings. */
+  items?: { kind: 'kpi' | 'finding'; list: readonly FigureItemFacts[] }
+  order: number
+}
+
 /** Context stamped on every export (header rows, file names, slide footers). */
 export interface ExportMeta {
   /** The view's label, e.g. "People stats". */
@@ -87,4 +120,9 @@ export interface ExportMeta {
   company: string
   /** The data standard in force; every sheet, slide and CSV preamble states it. */
   standard?: DataStandard
+  /**
+   * The mode a whole-view export was made in, when it shapes what is in it: "Made in Manager mode
+   * for Priya Raman's org." (docs/ROLES.md, 3.11). The workbook's cover and the deck's title slide state it.
+   */
+  modeLine?: string
 }

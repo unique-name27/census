@@ -29,8 +29,13 @@ export function NineBoxFigure({ m, span }: { m: TalentModel; span: FigureSpan })
       subtitle={`Active employees by rating and potential${cycle ? ` in ${cycle}` : ''}, as of ${formatDate(ctx.asOf)}`}
       data={rows}
       columns={nineBoxColumns(m.drill, m.riskOverlay)}
-      definitions={defsFor(ctx.metrics, [M.nineBox, M.highPerformers, M.flightRisk], [], [M.riskBands])}
-      note={`${plural(nb.placed, 'person', 'people')} placed · ${plural(nb.notPlaced, 'person', 'people')} without a rating and potential in that cycle${m.riskOverlay ? '' : ` · flight risk not shown: ${m.belowStandard.toLowerCase()}`}`}
+      definitions={defsFor(
+        ctx.metrics,
+        [M.nineBox, M.highPerformers, ...(m.riskShown ? [M.flightRisk] : [])],
+        [],
+        m.riskShown ? [M.riskBands] : [],
+      )}
+      note={`${plural(nb.placed, 'person', 'people')} placed · ${plural(nb.notPlaced, 'person', 'people')} without a rating and potential in that cycle${m.riskOverlay || !m.riskShown ? '' : ` · flight risk not shown: ${m.belowStandard.toLowerCase()}`}`}
       span={span}
       className="self-start"
       empty={empty}

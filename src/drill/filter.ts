@@ -13,6 +13,7 @@
  * Focus on (findings and person cards, `mergeFilter`): each org dimension the filter names
  * replaces that dimension's values and mode; a period it names replaces the period.
  */
+import { clampFilters } from '@/access/lock'
 import { describeFocus, type NameOf } from '@/components/filterLabels'
 import type { AnalyticsContext } from '@/data/context'
 import { activeEmployees, peopleIn, smallExcludedValues } from '@/data/exclusion'
@@ -214,7 +215,8 @@ export function narrowFilters(
 }
 
 /** What `groupScopes` reads from the analytics context. */
-export type ScopeContext = Pick<AnalyticsContext, 'filters' | 'all' | 'data' | 'org' | 'asOf' | 'metrics'>
+export type ScopeContext = Pick<AnalyticsContext, 'filters' | 'all' | 'data' | 'org' | 'asOf' | 'metrics'> &
+  Partial<Pick<AnalyticsContext, 'access'>>
 
 /** The scope each records-panel action would apply, or null when the panel doesn't offer it. */
 export interface GroupScopes {
@@ -273,6 +275,13 @@ export function groupScopes(ctx: ScopeContext, patch: DrillFilter): GroupScopes 
     const after = peopleIn(people, leaveOut, ctx.org)
     const removed = before - after
     if ((before > 0 && after === 0) || (removed > 0 && removed < min) || !safe(leaveOut)) leaveOut = null
+  }
+  // Manager mode (docs/ROLES.md, 3.13): only a scope the lock leaves unchanged (it stays inside the
+  // org) is offered, and leaving out a leader never is.
+  const lock = ctx.access?.lock
+  if (lock) {
+    if (filterTo && clampFilters(filterTo, lock) !== filterTo) filterTo = null
+    if (leaveOut && (patch.leaderId || clampFilters(leaveOut, lock) !== leaveOut)) leaveOut = null
   }
   return { filterTo, leaveOut }
 }

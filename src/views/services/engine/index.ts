@@ -10,6 +10,7 @@ import type { AnalyticsContext } from '@/data/context'
 import { CASE_OPEN_STATUSES } from '@/data/schema'
 import type { Window } from '@/data/scope'
 import { dateOf, monthsBetween } from '@/lib/dates'
+import { monthPoints } from '@/lib/people'
 import type { Headline } from '@/views/types'
 import { M } from '../metrics'
 import {
@@ -53,6 +54,7 @@ import { buildKpis, type CaseSummary, caseSummary, openAt } from './kpis'
 import { computeLeave, type LeaveModel } from './leaveModel'
 import { type LevelRow, type ProcessRow, processCoverage, scorecard } from './levels'
 import { figureUses, leaveFigureUses, lineage, type Refs, type ServicesFigureId } from './lineage'
+import { type CasesPer100, casesPer100 } from './rates'
 import { type ServicesSettings, servicesSettings } from './settings'
 import {
   type FinalPayRow,
@@ -70,6 +72,18 @@ import {
   type TypeRow,
   timingBins,
 } from './transactions'
+import {
+  type BacklogPoint,
+  backlogByMonth,
+  type LeaveCoverage,
+  lastQuarters,
+  leaveCoverage,
+  type OnLeavePoint,
+  onLeaveByMonth,
+  onTimeByTypeQuarter,
+  type Quarter,
+  type TypeQuarterCell,
+} from './trends'
 import { peopleIn, trailingMonths } from './util'
 
 export interface ServicesModel {
@@ -104,6 +118,10 @@ export interface ServicesModel {
   categories: CategoryRow[]
   backlog: BacklogRow[]
   backlogTotal: number
+  /** Open cases, and those past the age limit, at the 24 month ends to the as-of date. */
+  backlogTrend: BacklogPoint[]
+  /** Cases per 100 employees a year, by the requesters' business unit, in the window. */
+  per100: CasesPer100
   aged: AgedCaseRow[]
   /** Aged employee relations cases: counted, never listed. */
   agedPrivate: AgedPrivateRow[]
@@ -119,6 +137,10 @@ export interface ServicesModel {
   timing: TimingRow[]
   /** Transactions on time by due month, 24 months. */
   txMonths: TxMonthRow[]
+  /** The last 8 calendar quarters, the last one ending at the as-of date. */
+  quarters: Quarter[]
+  /** Transactions on time by type and due quarter, over `quarters`. */
+  txQuarters: TypeQuarterCell[]
   retro: RetroMonthRow[]
   /** Retro share over the window (DS-01); the count is hidden with the share. */
   retroSummary: { rate: number | null; retro: number | null; n: number }
@@ -126,6 +148,10 @@ export interface ServicesModel {
   processes: ProcessRow[]
   /** Leave & return: its measures, KPI strip and readout (engine/leaveModel.ts). */
   leave: LeaveModel
+  /** People on leave at the 24 month ends to the as-of date. */
+  leaveTrend: OnLeavePoint[]
+  /** How far back the leave history reaches (the trend starts once it covers a whole leave). */
+  leaveCoverage: LeaveCoverage
   /** The fields behind each figure, for its `uses` (engine/lineage.ts). */
   uses: Record<ServicesFigureId, Refs>
 }
@@ -156,6 +182,8 @@ export function compute(ctx: AnalyticsContext): ServicesModel {
   const windowMonths = monthsBetween(window.start, window.end)
   const backlogFacts = openAt(cases, asOf)
   const txMonths = onTimeByMonth(tx, months, min)
+  const monthEnds = monthPoints(asOf, 24)
+  const quarters = lastQuarters(asOf, 8)
   const L = lineage(caseCols)
 
   const kpis = buildKpis({
@@ -221,6 +249,13 @@ export function compute(ctx: AnalyticsContext): ServicesModel {
     scope,
     metrics: ctx.metrics,
   })
+  // The leave history of the whole file (not the scope) says how far back a count can reach.
+  const coverage = leaveCoverage(
+    ctx.all.transactions.flatMap((t) =>
+      t.type === 'Leave start' && t.effectiveDate ? [t.effectiveDate.slice(0, 10)] : [],
+    ),
+    leave.facts,
+  )
 
   return {
     asOf,
@@ -245,6 +280,21 @@ export function compute(ctx: AnalyticsContext): ServicesModel {
     categories,
     backlog: backlogByAge(cases),
     backlogTotal: backlogFacts.length,
+    backlogTrend: backlogByMonth(cases, monthEnds, settings.agedDays),
+    per100: casesPer100({
+      facts: cases,
+      employees: ctx.data.employees,
+      people: ctx.org.byId,
+      window,
+      company: {
+        cases: ctx.all.cases.filter((c) => {
+          const d = dateOf(c.openedAt)
+          return d >= window.start && d <= window.end && d <= asOf
+        }).length,
+        employees: ctx.all.employees,
+      },
+      min,
+    }),
     aged,
     agedPrivate: agedPrivate(cases, settings.agedDays, min),
     resolve: caseCols.resolvedAt ? timeToResolve(cases, window, min, settings.caseTargets.resolution) : [],
@@ -258,11 +308,15 @@ export function compute(ctx: AnalyticsContext): ServicesModel {
     newHireRegions,
     timing: timingBins(tx, window, min),
     txMonths,
+    quarters,
+    txQuarters: onTimeByTypeQuarter(tx, quarters, min, settings.onTimeTarget),
     retro: retroByMonth(tx, windowMonths, min),
     retroSummary: retroSummary(tx, window, min),
     levels,
     processes,
     leave,
+    leaveTrend: onLeaveByMonth(leave.facts, monthEnds, min, coverage.from),
+    leaveCoverage: coverage,
     uses: {
       ...figureUses(L, {
         caseCols,

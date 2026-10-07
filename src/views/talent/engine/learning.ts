@@ -25,6 +25,7 @@ export interface CourseRow {
   late: number
   /** Not completed and past due. */
   open: number
+  /** Null unless the assignments and the people they belong to reach the anonymity minimum. */
   onTimeRate: number | null
 }
 
@@ -79,9 +80,12 @@ export interface OverdueConcentration {
 }
 
 export interface OnTime {
+  /** Null under the anonymity minimum: fewer assignments, or fewer people, than the minimum. */
   rate: number | null
   due: number
   onTime: number
+  /** The employees the assignments belong to (a 4-person org can have 22 assignments due). */
+  people: number
 }
 
 /** A required assignment past its due date, for an employee active today. */
@@ -158,9 +162,17 @@ function dueIn(
 /** Completed on or before the due date. */
 export const isOnTime = (l: LearningRecord): boolean => !!l.completedDate && l.completedDate <= l.dueDate!
 
+/** The distinct employees behind some assignments. */
+const peopleIn = (rows: readonly LearningRecord[]): number => new Set(rows.map((l) => l.employeeId)).size
+
+/**
+ * The on-time share, hidden unless both the assignments and the people they belong to reach the
+ * anonymity minimum: the rate of a 4-person org would describe those four people.
+ */
 function onTimeOf(due: readonly LearningRecord[], min: number): OnTime {
   const onTime = due.filter(isOnTime).length
-  return { rate: rateOf(min)(onTime, due.length), due: due.length, onTime }
+  const people = peopleIn(due)
+  return { rate: people >= min ? rateOf(min)(onTime, due.length) : null, due: due.length, onTime, people }
 }
 
 function onTimeIn(
@@ -225,9 +237,13 @@ export function computeLearning(base: TalentBase): LearningResult {
   const prior = onTimeOf(duePrior, minGroup)
   const mixDiffers = dueNow.length > 0 && duePrior.length > 0 && mixDistance(dueNow, duePrior) > 0.25
 
-  // By course: assignments due in the window.
+  // By course: assignments due in the window, and whose they are (a rate needs 5 people too).
   const courses = new Map<string, CourseRow>()
+  const coursePeople = new Map<string, Set<string>>()
   for (const l of dueNow) {
+    const who = coursePeople.get(l.course) ?? new Set<string>()
+    who.add(l.employeeId)
+    coursePeople.set(l.course, who)
     const c = courses.get(l.course) ?? {
       course: l.course,
       category: l.category,
@@ -244,7 +260,10 @@ export function computeLearning(base: TalentBase): LearningResult {
     courses.set(l.course, c)
   }
   const byCourse = [...courses.values()]
-    .map((c) => ({ ...c, onTimeRate: rate(c.onTime, c.due) }))
+    .map((c) => ({
+      ...c,
+      onTimeRate: (coursePeople.get(c.course)?.size ?? 0) >= minGroup ? rate(c.onTime, c.due) : null,
+    }))
     .sort((a, b) => (a.onTimeRate ?? 2) - (b.onTimeRate ?? 2))
 
   // Overdue today, for employees active today.

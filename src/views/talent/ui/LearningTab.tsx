@@ -11,6 +11,7 @@ import type { TalentModel } from '../engine'
 import type { CourseRow, OverdueCell } from '../engine/learning'
 import { FIGURE_METRIC, TALENT_METRIC as M } from '../engine/settings'
 import { targetWords } from '../engine/wording'
+import { OverdueTrend } from './ChartFigures'
 import {
   completionColumns,
   courseColumns,
@@ -63,6 +64,8 @@ export function LearningTab({ m }: { m: TalentModel }) {
 
   return (
     <>
+      <OverdueTrend m={m} />
+
       <Section
         title="Required training"
         dek={`Whether required courses due in the period (${period}) were finished by their due date, and how completions moved month by month.`}
@@ -76,7 +79,11 @@ export function LearningTab({ m }: { m: TalentModel }) {
           data={l.byCourse}
           columns={courseColumns(m.drill)}
           definitions={defsFor(ctx.metrics, [M.requiredOnTime], [TERM.required])}
-          note={`${plural(l.current.due, 'assignment')} due · ${fmt(l.current.rate, 'pct')} on time overall${targetText ? ` · ${targetText.toLowerCase()}` : ''}`}
+          note={`${plural(l.current.due, 'assignment')} due · ${
+            l.current.rate == null && l.current.due > 0
+              ? `on-time shares hidden: fewer than ${minGroup} people`
+              : `${fmt(l.current.rate, 'pct')} on time overall`
+          }${targetText ? ` · ${targetText.toLowerCase()}` : ''}`}
           span={6}
           empty={noDue ?? (l.byCourse.length ? null : 'No required assignments were due in this period.')}
         >

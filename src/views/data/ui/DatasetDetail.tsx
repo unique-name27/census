@@ -81,7 +81,7 @@ export function DatasetDetail({ row, data, id }: { row: ManifestRow; data: Datas
   return (
     <div id={id} data-tour="dataset-detail" className="border-t border-rule bg-sheet">
       <div className="px-4 pt-3">
-        <p className="max-w-[80ch] text-[13px] text-ink-2">{row.description}</p>
+        <p className="max-w-[80ch] text-small text-ink-2">{row.description}</p>
         <div
           role="tablist"
           aria-label={`${row.label} panels`}
@@ -106,7 +106,7 @@ export function DatasetDetail({ row, data, id }: { row: ManifestRow; data: Datas
                 onClick={() => setPanel(row.key, p)}
                 onKeyDown={onKeyDown(i)}
                 className={cx(
-                  'relative flex h-9 shrink-0 items-center gap-1.5 text-[13px] whitespace-nowrap transition-colors focus-visible:-outline-offset-2',
+                  'relative flex h-9 shrink-0 items-center gap-1.5 text-small whitespace-nowrap transition-colors focus-visible:-outline-offset-2',
                   selected
                     ? 'font-semibold text-ink after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:bg-ink'
                     : 'font-medium text-ink-2 hover:text-ink',
@@ -114,7 +114,7 @@ export function DatasetDetail({ row, data, id }: { row: ManifestRow; data: Datas
               >
                 <span className="tnum text-muted">{i + 1}</span>
                 {PANEL_LABEL[p]}
-                {s && <span className="hidden text-[12px] font-normal text-muted sm:inline">· {s}</span>}
+                {s && <span className="hidden text-meta font-normal text-muted sm:inline">· {s}</span>}
               </button>
             )
           })}

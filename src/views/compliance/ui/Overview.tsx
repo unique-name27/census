@@ -1,5 +1,5 @@
 import { BarList, type Column, Columns, Figure } from '@/charts'
-import { Grid, KpiStrip, Readout, Section } from '@/components'
+import { cx, Grid, KpiStrip, Readout, Section, spanClass } from '@/components'
 import type { AnalyticsContext } from '@/data/context'
 import { drill } from '@/drill'
 import { formatMonth } from '@/lib/dates'
@@ -111,112 +111,119 @@ export function Overview({ m, ctx }: { m: ComplianceView; ctx: AnalyticsContext 
   const shownQuarters = w.byQuarter.filter((r) => r.rate != null)
 
   return (
-    <>
-      <Grid>
-        <KpiStrip kpis={m.kpis} />
-        <Readout findings={m.findings} span={4} />
-        {has ? (
+    <Grid>
+      <KpiStrip kpis={m.kpis} />
+      {/* The readout sits beside a right column that runs as long as it (the lead chart and the
+          two sections), so a short chart never stretches to the readout's height. Phones: the
+          lead figure first, then the readout, then the sections (max-md:order). */}
+      <Readout findings={m.findings} span={12} className="lg:sticky lg:top-4 lg:col-span-4 max-md:order-1" />
+      <div className={cx(spanClass(8), 'max-md:contents')}>
+        <Grid>
+          {has ? (
+            <Figure
+              id="compliance-expiries-by-month"
+              uses={USES.expiringByUnit}
+              metric={M.expiring}
+              span={12}
+              title="Authorization expiries by month"
+              subtitle={`Work authorizations of active people ending in the next ${daysText(cfg.horizonDays)}, by business unit`}
+              data={monthRows}
+              columns={monthColumns}
+              definitions={defs(ctx.metrics, [M.expiring, M.reverificationOverdue])}
+              note={asOfNote(
+                m.base.asOf,
+                `${people(w.expiringHorizon.length)}`,
+                w.overdue.length ? `${people(w.overdue.length)} with reverification overdue` : null,
+              )}
+              empty={
+                !m.base.has.expiry
+                  ? 'Upload Right to work with an authorization expiry column to see this.'
+                  : w.expiringHorizon.length
+                    ? null
+                    : `No work authorization ends in the next ${daysText(cfg.horizonDays)}.`
+              }
+            >
+              <Columns
+                data={chartRows}
+                x="month"
+                y="people"
+                series="businessUnit"
+                stack
+                xType="month"
+                seriesOrder={w.units}
+                height={300}
+                onSelect={(d) => drill(monthDrill(d.month))}
+                onSelectSegment={(d) => drill(cellDrill(d))}
+              />
+            </Figure>
+          ) : (
+            <NeedData {...NO_RTW} span={12} />
+          )}
+        </Grid>
+
+        <Section
+          title="Verification and training"
+          className="max-md:order-2"
+          dek="Whether reverification starts early enough, and how required training and policy acknowledgments stand. Training lives in Talent and acknowledgments in Onboarding; the numbers here link there."
+        >
           <Figure
-            id="compliance-expiries-by-month"
-            uses={USES.expiringByUnit}
-            metric={M.expiring}
-            span={8}
-            title="Authorization expiries by month"
-            subtitle={`Work authorizations of active people ending in the next ${daysText(cfg.horizonDays)}, by business unit`}
-            data={monthRows}
-            columns={monthColumns}
-            definitions={defs(ctx.metrics, [M.expiring, M.reverificationOverdue])}
+            id="compliance-reverification-by-quarter"
+            uses={USES.reverification}
+            metric={M.reverificationOnTime}
+            span={6}
+            title="Reverification on time by quarter"
+            subtitle={`Share of authorizations whose reverification started at least ${daysText(cfg.leadDays)} before expiry, by the quarter they end in`}
+            data={w.byQuarter}
+            columns={quarterColumns}
+            definitions={defs(ctx.metrics, [M.reverificationOnTime])}
             note={asOfNote(
               m.base.asOf,
-              `${people(w.expiringHorizon.length)}`,
-              w.overdue.length ? `${people(w.overdue.length)} with reverification overdue` : null,
+              w.reverification.judged.length
+                ? `${ofText(w.reverification.onTime.length, w.reverification.judged.length)} on time`
+                : null,
+              target != null ? `target ${targetPct(target)}` : null,
             )}
             empty={
-              !m.base.has.expiry
-                ? 'Upload Right to work with an authorization expiry column to see this.'
-                : w.expiringHorizon.length
-                  ? null
-                  : `No work authorization ends in the next ${daysText(cfg.horizonDays)}.`
+              !has
+                ? 'Upload Right to work to see this.'
+                : !w.reverification.judged.length
+                  ? 'No authorization is due for reverification yet.'
+                  : shownQuarters.length
+                    ? null
+                    : `Every quarter has fewer than ${cfg.minGroup} authorizations judged, so the shares are hidden to protect anonymity.`
             }
           >
-            <Columns
-              data={chartRows}
-              x="month"
-              y="people"
-              series="businessUnit"
-              stack
-              xType="month"
-              seriesOrder={w.units}
-              height={300}
-              onSelect={(d) => drill(monthDrill(d.month))}
-              onSelectSegment={(d) => drill(cellDrill(d))}
+            <BarList
+              data={w.byQuarter}
+              label="quarter"
+              value="rate"
+              format="pct"
+              sort="none"
+              domain={[0, 1]}
+              ref={target != null ? { value: target, label: `target ${targetPct(target)}` } : undefined}
+              secondary={(d) => (d.rate == null ? `${d.judged} judged` : ofText(d.onTime, d.judged))}
+              glyphTone={(d) =>
+                d.rate == null || target == null || d.rate >= target
+                  ? 'default'
+                  : d.rate < target - 0.1
+                    ? 'critical'
+                    : 'warning'
+              }
+              nullNote={`Hidden to protect anonymity (n < ${cfg.minGroup})`}
+              onSelect={(d) => drill(quarterDrill(d, 'all'))}
             />
           </Figure>
-        ) : (
-          <NeedData {...NO_RTW} span={8} />
-        )}
-      </Grid>
+          <TrainingSummary m={m} ctx={ctx} span={6} />
+        </Section>
 
-      <Section
-        title="Verification and training"
-        dek="Whether reverification starts early enough, and how required training and policy acknowledgments stand. Training lives in Talent and acknowledgments in Onboarding; the numbers here link there."
-      >
-        <Figure
-          id="compliance-reverification-by-quarter"
-          uses={USES.reverification}
-          metric={M.reverificationOnTime}
-          span={6}
-          title="Reverification on time by quarter"
-          subtitle={`Share of authorizations whose reverification started at least ${daysText(cfg.leadDays)} before expiry, by the quarter they end in`}
-          data={w.byQuarter}
-          columns={quarterColumns}
-          definitions={defs(ctx.metrics, [M.reverificationOnTime])}
-          note={asOfNote(
-            m.base.asOf,
-            w.reverification.judged.length
-              ? `${ofText(w.reverification.onTime.length, w.reverification.judged.length)} on time`
-              : null,
-            target != null ? `target ${targetPct(target)}` : null,
-          )}
-          empty={
-            !has
-              ? 'Upload Right to work to see this.'
-              : !w.reverification.judged.length
-                ? 'No authorization is due for reverification yet.'
-                : shownQuarters.length
-                  ? null
-                  : `Every quarter has fewer than ${cfg.minGroup} authorizations judged, so the shares are hidden to protect anonymity.`
-          }
+        <Section
+          title="Statutory deadlines"
+          className="max-md:order-2"
+          dek={`Calendar entries in the next ${daysText(cfg.deadlineDays)} for the jurisdictions where people in this scope work. The Deadlines tab has the detail and the sources.`}
         >
-          <BarList
-            data={w.byQuarter}
-            label="quarter"
-            value="rate"
-            format="pct"
-            sort="none"
-            domain={[0, 1]}
-            ref={target != null ? { value: target, label: `target ${targetPct(target)}` } : undefined}
-            secondary={(d) => (d.rate == null ? `${d.judged} judged` : ofText(d.onTime, d.judged))}
-            glyphTone={(d) =>
-              d.rate == null || target == null || d.rate >= target
-                ? 'default'
-                : d.rate < target - 0.1
-                  ? 'critical'
-                  : 'warning'
-            }
-            nullNote={`Hidden to protect anonymity (n < ${cfg.minGroup})`}
-            onSelect={(d) => drill(quarterDrill(d, 'all'))}
-          />
-        </Figure>
-        <TrainingSummary m={m} ctx={ctx} span={6} />
-      </Section>
-
-      <Section
-        title="Statutory deadlines"
-        dek={`Calendar entries in the next ${daysText(cfg.deadlineDays)} for the jurisdictions where people in this scope work. The Deadlines tab has the detail and the sources.`}
-      >
-        <DeadlinesFigure m={m} ctx={ctx} compact />
-      </Section>
-    </>
+          <DeadlinesFigure m={m} ctx={ctx} compact />
+        </Section>
+      </div>
+    </Grid>
   )
 }

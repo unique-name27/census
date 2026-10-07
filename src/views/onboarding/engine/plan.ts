@@ -429,3 +429,95 @@ export function cumulative(p: PlanModel, asOf: ISODate): CumulativeRow[] {
   }
   return out
 }
+
+/* ───────────── starts against plan by unit and month ───────────── */
+
+/** The org cut of the month grid: business unit, or department when the scope sits in one unit. */
+export type UnitCut = 'businessUnit' | 'department'
+
+export interface UnitMonthCell {
+  /** The business unit or department ("Unknown" when blank). */
+  unit: string
+  /** The business unit the row sits in (the department's unit on a department cut). */
+  businessUnit: string
+  /** "YYYY-MM". */
+  month: string
+  planned: number
+  actual: number
+  /** Actual starts − planned starts: negative is behind plan. */
+  gap: number
+  /** The people who started (for the drill panel; not exported). */
+  people: Employee[]
+  /** The plan lines of the month (for the drill panel; not exported). */
+  lines: HiringPlanLine[]
+}
+
+export interface UnitMonthGrid {
+  cut: UnitCut
+  /** Rows, the largest plan first. */
+  units: string[]
+  /** Months from the plan year's start to the as-of month (the last one counts starts to date). */
+  months: string[]
+  cells: UnitMonthCell[]
+}
+
+/**
+ * Starts against plan by business unit and month, from the plan year's start to the as-of month,
+ * with the same Actual as the cumulative chart (employees by hire date, to date). By department
+ * when every plan line and start in scope sits in one business unit. Every unit and month has a
+ * cell, so a month with nothing planned and nobody started reads 0.
+ */
+export function byUnitMonth(p: PlanModel, asOf: ISODate): UnitMonthGrid {
+  const units = new Set([
+    ...p.lines.map((l) => l.businessUnit || 'Unknown'),
+    ...p.actual.map((e) => e.businessUnit || 'Unknown'),
+  ])
+  const cut: UnitCut = units.size <= 1 ? 'department' : 'businessUnit'
+  const unitOf = (x: { businessUnit?: string | null; department?: string | null }) =>
+    (cut === 'department' ? x.department : x.businessUnit) || 'Unknown'
+  const now = monthKey(asOf)
+  const months = p.months.map((m) => m.month).filter((m) => m <= now)
+  const inMonths = new Set(months)
+  const cells = new Map<string, UnitMonthCell>()
+  const cell = (unit: string, bu: string, month: string): UnitMonthCell => {
+    const k = `${unit}\u0001${month}`
+    let c = cells.get(k)
+    if (!c) {
+      c = { unit, businessUnit: bu, month, planned: 0, actual: 0, gap: 0, people: [], lines: [] }
+      cells.set(k, c)
+    }
+    return c
+  }
+  const buOf = new Map<string, string>()
+  for (const l of p.lines) {
+    const month = monthKey(l.period)
+    const u = unitOf(l)
+    if (!buOf.has(u)) buOf.set(u, l.businessUnit || 'Unknown')
+    if (!inMonths.has(month)) continue
+    const c = cell(u, buOf.get(u)!, month)
+    c.planned += l.plannedHires
+    c.lines.push(l)
+  }
+  for (const e of p.actual) {
+    const month = monthKey(e.hireDate)
+    const u = unitOf(e)
+    if (!buOf.has(u)) buOf.set(u, e.businessUnit || 'Unknown')
+    if (!inMonths.has(month)) continue
+    const c = cell(u, buOf.get(u)!, month)
+    c.actual++
+    c.people.push(e)
+  }
+  const planOf = new Map<string, number>()
+  for (const c of cells.values()) planOf.set(c.unit, (planOf.get(c.unit) ?? 0) + c.planned)
+  const order = [...buOf.keys()].sort(
+    (a, b) => (planOf.get(b) ?? 0) - (planOf.get(a) ?? 0) || a.localeCompare(b),
+  )
+  const out: UnitMonthCell[] = []
+  for (const u of order)
+    for (const month of months) {
+      const c = cells.get(`${u}\u0001${month}`) ?? cell(u, buOf.get(u)!, month)
+      c.gap = c.actual - c.planned
+      out.push(c)
+    }
+  return { cut, units: order, months, cells: out }
+}

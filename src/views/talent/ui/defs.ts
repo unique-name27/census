@@ -18,6 +18,11 @@ export const TERM = {
     term: 'Risk of loss',
     text: 'The incumbent’s risk of leaving as recorded in the succession plan. Flight risk (model) is the Census score for the same person, for comparison.',
   },
+  /** Risk of loss where the mode hides the model's scores (Manager): no mention of the model. */
+  riskOfLossPlan: {
+    term: 'Risk of loss',
+    text: 'The incumbent’s risk of leaving as recorded in the succession plan.',
+  },
   lift: {
     term: 'Lift',
     text: 'How many times more often people with a factor left than people without it. Above 1 means the factor went with more exits.',

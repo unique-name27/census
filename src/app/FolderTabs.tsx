@@ -8,8 +8,13 @@
  * number down a size and sets its caption at 11px (container queries on the tab itself), so the
  * longest caption ("critical roles covered") still reads in full. Below that the strip scrolls
  * sideways on its own; the page never does.
+ *
+ * The open tab changes instantly: only hover fades (docs/DESIGN-REFRESH.md 2.12), so a tab never
+ * passes through a mid gray on its way to the desk. On a masthead page (Action center, Data room)
+ * no practice is open, so the strip ends in one open tab for that page: the desk always hangs
+ * from a tab.
  */
-import { type KeyboardEvent, useEffect, useMemo, useRef } from 'react'
+import { type KeyboardEvent, type Ref, useEffect, useMemo, useRef } from 'react'
 import { Sparkline } from '@/charts/Sparkline'
 import { goTo } from '@/components/navigation'
 import { cx, Tip } from '@/components/ui'
@@ -17,7 +22,7 @@ import { useAnalytics } from '@/data/context'
 import { useCensus } from '@/data/store'
 import { DASH } from '@/lib/format'
 import { useAiAgents } from '@/views/ai/state'
-import { VIEWS } from '@/views/registry'
+import { folderViews } from '@/views/registry'
 import type { Headline, ViewDef } from '@/views/types'
 import { folderHeadlines, type GatedHeadline } from './headlineGate'
 import { useHeadlineVersion } from './headlineRefresh'
@@ -67,17 +72,17 @@ function FolderTab({
       onKeyDown={onKeyDown}
       title={headline.hidden ? undefined : folderTitle(view.label, headline)}
       className={cx(
-        '@container relative flex min-w-[104px] max-w-[184px] flex-1 basis-0 flex-col rounded-t-[6px] px-2 pt-2.5 pb-3 text-left transition-colors duration-100 focus-visible:-outline-offset-2 min-[1440px]:px-2.5 min-[1500px]:px-3.5',
+        '@container relative flex min-w-[104px] max-w-[184px] flex-1 basis-0 flex-col rounded-t-sheet px-2 pt-2.5 pb-3 text-left focus-visible:-outline-offset-2 min-[1440px]:px-2.5 min-[1500px]:px-3.5',
         active
           ? 'on-desk z-10 bg-page text-ink'
-          : 'mt-1 bg-tab-idle text-ink-2 hover:bg-tab-idle-hover hover:text-ink',
+          : 'mt-1 bg-tab-idle text-ink-2 hover:bg-tab-idle-hover hover:text-ink hover:transition-colors hover:duration-100',
       )}
     >
-      <span className="cut-tab truncate text-[13px] leading-tight font-semibold">{view.label}</span>
+      <span className="cut-tab truncate text-small leading-tight font-semibold">{view.label}</span>
       <span className="mt-2 flex items-end justify-between gap-2">
         <span
           className={cx(
-            'cut-head truncate text-[18px] leading-none font-semibold @min-[9.5rem]:text-[21px]',
+            'cut-head truncate text-title leading-none font-semibold @min-[9.5rem]:text-section',
             !active && 'text-ink-2',
           )}
         >
@@ -89,7 +94,7 @@ function FolderTab({
           </span>
         )}
       </span>
-      <span className="cut-head mt-1 truncate text-[12px] leading-tight text-muted @max-[6rem]:text-[11px]">
+      <span className="cut-head mt-1 truncate text-meta leading-tight text-muted @max-[6rem]:text-label">
         {headline.label || ' '}
       </span>
       {headline.hidden && <span className="sr-only">{`. ${headline.hidden}`}</span>}
@@ -100,6 +105,33 @@ function FolderTab({
 }
 
 const capLabel = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
+
+/** Pages opened from the masthead rather than a folder tab, by route view. */
+const MASTHEAD_PAGES: Record<string, string> = {
+  actions: 'Action center',
+  data: 'Data room',
+  dev: 'Developer',
+}
+
+/** The open tab for a masthead page, at the right end of the strip, so the desk hangs from a tab. */
+function PageTab({ label, ref }: { label: string; ref?: Ref<HTMLDivElement> }) {
+  return (
+    <div
+      ref={ref}
+      role="tab"
+      aria-selected="true"
+      aria-controls={VIEW_PANEL_ID}
+      tabIndex={-1}
+      className="on-desk relative z-10 ml-auto flex min-w-[104px] max-w-[184px] shrink-0 flex-col rounded-t-sheet bg-page px-3 pt-2.5 pb-3 text-ink"
+    >
+      <span className="cut-tab truncate text-small leading-tight font-semibold">{label}</span>
+      {/* The same height as a practice tab: number row and caption row. */}
+      <span aria-hidden="true" className="mt-2 block h-5" />
+      <span aria-hidden="true" className="mt-1 block h-4" />
+      <Flares />
+    </div>
+  )
+}
 
 /** The whole headline on hover, for tabs too narrow to show it: "Recruiting: 114 open reqs". */
 export function folderTitle(label: string, headline: Pick<Headline, 'value' | 'label'>): string {
@@ -117,15 +149,23 @@ export function FolderTabs() {
   // paint; this changes when it does, so the tabs read their headlines again.
   // The version is read inside the memo (not only listed) so the React Compiler keeps it as a key.
   const late = useHeadlineVersion()
-  const headlines = useMemo(() => (late >= 0 ? folderHeadlines(VIEWS, ctx, agents) : []), [ctx, agents, late])
+  // The folder tabs this mode shows (docs/ROLES.md, 3.2); arrow keys move over these only.
+  const VIEWS = useMemo(() => folderViews(ctx.access), [ctx.access])
+  const headlines = useMemo(
+    () => (late >= 0 ? folderHeadlines(VIEWS, ctx, agents) : []),
+    [VIEWS, ctx, agents, late],
+  )
   const strip = useRef<HTMLDivElement>(null)
   const tabs = useRef<(HTMLButtonElement | null)[]>([])
   const activeIndex = VIEWS.findIndex((v) => v.key === current)
 
-  // Keep the open tab visible on narrow screens (horizontal only: the page itself never moves).
+  const pageTab = useRef<HTMLDivElement>(null)
+  // Keep the open tab visible on narrow screens (horizontal only: the page itself never moves),
+  // the open masthead page's tab at the strip's right end too.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a new masthead page (current) renders a new page tab to reveal
   useEffect(() => {
-    if (activeIndex >= 0) revealInStrip(strip.current, tabs.current[activeIndex])
-  }, [activeIndex])
+    revealInStrip(strip.current, activeIndex >= 0 ? tabs.current[activeIndex] : pageTab.current)
+  }, [activeIndex, current])
 
   const onKeyDown = (i: number) => (e: KeyboardEvent<HTMLButtonElement>) => {
     const next = rovingIndex(e.key, i, VIEWS.length)
@@ -156,6 +196,9 @@ export function FolderTabs() {
           }}
         />
       ))}
+      {activeIndex < 0 && MASTHEAD_PAGES[current] && (
+        <PageTab ref={pageTab} label={MASTHEAD_PAGES[current]} />
+      )}
     </div>
   )
 }

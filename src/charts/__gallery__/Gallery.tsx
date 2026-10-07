@@ -9,9 +9,11 @@ import { Button, Segmented, Switch, TooltipProvider } from '@/components/ui'
 import { AnalyticsProvider, useAnalytics } from '@/data/context'
 import { useCensus } from '@/data/store'
 import { exportViewDeck, exportViewWorkbook } from '@/lib/export/view'
+import { fmt } from '@/lib/format'
 import { DataTable } from '../DataTable'
 import { Figure } from '../Figure'
 import { BarList } from '../kit/BarList'
+import { BulletList } from '../kit/BulletList'
 import { Columns } from '../kit/Columns'
 import { DotStrip } from '../kit/DotStrip'
 import { HBars } from '../kit/HBars'
@@ -21,6 +23,8 @@ import { Lines } from '../kit/Lines'
 import { Meter } from '../kit/Meter'
 import { RangeBars } from '../kit/RangeBars'
 import { Scatter } from '../kit/Scatter'
+import { StatusSplit } from '../kit/StatusSplit'
+import { TREND_GRID_COLUMNS, TrendGrid, trendGridRows } from '../kit/TrendGrid'
 import { Legend } from '../Legend'
 import { FigureRegistryProvider, useFigureRegistry } from '../registry'
 import { useChartTheme } from '../theme'
@@ -99,7 +103,7 @@ function Charts() {
   const theme = useChartTheme()
   return (
     <div className="grid grid-cols-12 gap-4">
-      <p className="col-span-12 text-[13px] text-ink-2" aria-live="polite">
+      <p className="col-span-12 text-small text-ink-2" aria-live="polite">
         Click a bar, segment, line or Other row to test drill-down. {picked && `Selected: ${picked}`}
       </p>
       <TierGallery onOpen={(tier) => setPicked(`${tier} badge`)} />
@@ -698,7 +702,7 @@ function Charts() {
       <Figure
         id="gal-legend-shapes"
         title="Legend swatches"
-        subtitle="Rect, line, dot and diamond"
+        subtitle="Rect, line, dot, diamond and medal"
         data={D.legendShapes}
         columns={[
           { key: 'shape', label: 'Shape' },
@@ -721,6 +725,111 @@ function Charts() {
       </Figure>
 
       <Figure
+        id="gal-status-split"
+        title="Targets met"
+        subtitle="StatusSplit: one 100% bar in status order"
+        data={Object.entries(D.statusCounts).map(([status, measures]) => ({ status, measures }))}
+        columns={[
+          { key: 'status', label: 'Status' },
+          { key: 'measures', label: 'Measures', format: 'int' },
+        ]}
+        span={4}
+      >
+        <div className="cut-head mb-3 text-hero font-semibold">
+          4 <span className="text-title font-medium text-ink-2">of 21 met</span>
+        </div>
+        <StatusSplit counts={D.statusCounts} onSelect={(k) => setPicked(`Status: ${k}`)} />
+      </Figure>
+
+      <Figure
+        id="gal-bullets"
+        title="Measures against target"
+        subtitle="BulletList: each row on its own scale; tick is the target"
+        data={D.measures}
+        columns={[
+          { key: 'practice', label: 'Practice' },
+          { key: 'measure', label: 'Measure' },
+          { key: 'value', label: 'Value', format: (r) => r.format },
+          { key: 'target', label: 'Target', format: (r) => r.format },
+          { key: 'status', label: 'Status' },
+        ]}
+        span={8}
+      >
+        <BulletList
+          data={D.measures}
+          label="measure"
+          value="value"
+          target="target"
+          group="practice"
+          format={(r, v) => fmt(v, r.format)}
+          status={(r) =>
+            r.status === 'none'
+              ? { tone: 'none', label: 'No target' }
+              : {
+                  tone: r.status === 'met' ? 'good' : r.status === 'watch' ? 'warning' : 'critical',
+                  label: r.status === 'met' ? 'Met' : r.status === 'watch' ? 'Watch' : 'Missed',
+                }
+          }
+          onSelect={(r) => setPicked(`Value: ${r.measure}`)}
+          onSelectLabel={(r) => setPicked(`Open: ${r.practice}`)}
+        />
+      </Figure>
+
+      <Figure
+        id="gal-trend-grid"
+        title="Measure trends"
+        subtitle="TrendGrid: each measure on its own scale, last 6 months"
+        data={trendGridRows(D.trendSeries)}
+        columns={TREND_GRID_COLUMNS}
+        span={12}
+      >
+        <TrendGrid series={D.trendSeries} onSelect={(s, i) => setPicked(`${s.name}, point ${i + 1}`)} />
+      </Figure>
+
+      <Figure
+        id="gal-annotated-lines"
+        title="Offer acceptance by quarter"
+        subtitle="Annotated: the note comes from the finding that cites the chart"
+        data={D.acceptanceByQuarter}
+        columns={[
+          { key: 'quarterEnd', label: 'Quarter end', format: 'date' },
+          { key: 'rate', label: 'Acceptance', format: 'pct' },
+        ]}
+        span={6}
+      >
+        <Lines
+          data={D.acceptanceByQuarter}
+          x="quarterEnd"
+          y="rate"
+          format="pct"
+          xTicks="quarter"
+          notes={[{ at: '2026-09-30', text: 'Fell to 68%, mostly Bengaluru' }]}
+          onSelect={(d) => setPicked(`Quarter ${d.quarterEnd}`)}
+        />
+      </Figure>
+
+      <Figure
+        id="gal-annotated-columns"
+        title="Hires per month, annotated"
+        subtitle="A note on the column a finding cites"
+        data={D.hiresTotal}
+        columns={[
+          { key: 'month', label: 'Month' },
+          { key: 'hires', label: 'Hires', format: 'int' },
+        ]}
+        span={6}
+      >
+        <Columns
+          data={D.hiresTotal}
+          x="month"
+          y="hires"
+          xType="month"
+          notes={[{ at: D.hiresTotal[D.hiresTotal.length - 1].month, text: 'Most in a year' }]}
+          onSelect={(d) => setPicked(`Hires ${d.month}`)}
+        />
+      </Figure>
+
+      <Figure
         id="gal-meters"
         title="Training completion"
         subtitle="Required courses completed on time, target 95%"
@@ -735,8 +844,8 @@ function Charts() {
         <ul className="grid gap-3">
           {D.training.map((m) => (
             <li key={m.course} className="grid grid-cols-[1fr_auto] items-center gap-x-3 gap-y-1">
-              <span className="text-[13px] text-ink-2">{m.course}</span>
-              <span className="text-[13px] font-medium">{Math.round(m.rate * 100)}%</span>
+              <span className="text-small text-ink-2">{m.course}</span>
+              <span className="text-small font-medium">{Math.round(m.rate * 100)}%</span>
               <div className="col-span-2">
                 <Meter
                   value={m.rate}
@@ -763,7 +872,7 @@ export function Gallery() {
             <header className="mb-6 flex flex-wrap items-end justify-between gap-4">
               <div>
                 <div className="eyebrow">Census · development</div>
-                <h1 className="cut-head text-[28px] font-semibold">Chart kit</h1>
+                <h1 className="cut-head text-page-title font-semibold">Chart kit</h1>
               </div>
               <Toolbar />
             </header>

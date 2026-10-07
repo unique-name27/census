@@ -91,7 +91,7 @@ export function Cycle({ m }: { m: CompModel }) {
             value="spendPct"
             format="pct2"
             ref={{ value: s.meritBudget, label: `Budget ${pct2(s.meritBudget)}` }}
-            tone={spendTone(m.rules.overBudget.flag)}
+            glyphTone={spendTone(m.rules.overBudget.flag)}
             secondary={spendGap}
             onSelect={(d) => drill(spendDrill(m, d, 'priced'))}
           />

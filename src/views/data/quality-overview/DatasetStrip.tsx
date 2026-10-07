@@ -24,7 +24,7 @@ export function QualityDatasetStrip({ datasets }: { datasets: readonly DatasetKe
 }
 
 const CHIP =
-  'inline-flex h-6 items-center gap-1.5 rounded-[3px] px-1.5 text-[12px] whitespace-nowrap hover:bg-hover active:bg-press'
+  'inline-flex h-6 items-center gap-1.5 rounded-chip px-1.5 text-meta whitespace-nowrap hover:bg-hover active:bg-press'
 
 function Strip({ datasets }: { datasets: readonly DatasetKey[] }) {
   const { quality } = useAnalytics()
@@ -66,7 +66,7 @@ function Strip({ datasets }: { datasets: readonly DatasetKey[] }) {
       <button
         type="button"
         onClick={() => openDataQuality()}
-        className="ml-1 rounded-[2px] text-[12px] font-medium text-link underline-offset-2 hover:underline"
+        className="ml-1 rounded-mark text-meta font-medium text-link underline-offset-2 hover:underline"
       >
         Open data quality
       </button>

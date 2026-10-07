@@ -218,7 +218,10 @@ export const TALENT_FIGURE_IDS = [
   'talent-average-rating-by-cycle',
   'talent-high-share-by-level',
   'talent-exit-by-rating',
+  'talent-rating-change',
+  'talent-rating-by-manager',
   // Potential & succession
+  'talent-succession-exposure',
   'talent-critical-roles',
   'talent-bench-strength',
   'talent-high-potentials-by-level',
@@ -232,6 +235,7 @@ export const TALENT_FIGURE_IDS = [
   'talent-promotion-overdue',
   'talent-regretted-high-performers',
   // Learning
+  'talent-overdue-trend',
   'talent-training-on-time-by-course',
   'talent-completions-by-month',
   'talent-overdue-by-course',
@@ -302,6 +306,12 @@ export function buildLineage({
       'talent-average-rating-by-cycle': uses(RATED, ORG.businessUnit),
       'talent-high-share-by-level': uses(RATED, ORG.level),
       'talent-exit-by-rating': uses(EXITS, RATED),
+      // The two annual cycles are the latest that assess potential (or are named annual).
+      'talent-rating-change': uses(RATED, ['reviews.potential']),
+      // Grouped by the reviewer's business unit on the roster.
+      'talent-rating-by-manager': uses(RATED, ['reviews.reviewerId'], ORG.businessUnit),
+      // Without a risk of loss in the plans every role is "Not rated" (no field read).
+      'talent-succession-exposure': uses(READY, has.successionRisk ? ['succession.incumbentRiskOfLoss'] : []),
       'talent-critical-roles': uses(READY, riskOfLoss, risk),
       'talent-bench-strength': uses(READY, ORG.businessUnit),
       'talent-high-potentials-by-level': uses(POTENTIAL, ORG.level, ACTIVE),
@@ -313,6 +323,8 @@ export function buildLineage({
       'talent-key-talent-at-risk': keyTalent,
       'talent-promotion-overdue': uses(promotionOverdue, risk),
       'talent-regretted-high-performers': uses(REGRETTED, RATING_AT),
+      // Overdue on each month end: due before it, not completed by it, employee active that day.
+      'talent-overdue-trend': uses(REQUIRED_DUE, ['learning.course']),
       'talent-training-on-time-by-course': uses(REQUIRED_DUE, ['learning.course', 'learning.category']),
       'talent-completions-by-month': ['learning.completedDate', 'learning.required'],
       'talent-overdue-by-course': uses(REQUIRED_DUE, ['learning.course'], ORG.department, ORG.location),

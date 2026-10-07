@@ -4,11 +4,17 @@
  * (slide per figure) from exactly what is on screen.
  */
 import { createContext, type ReactNode, use, useCallback, useMemo, useRef } from 'react'
-import type { RegisteredFigure } from './types'
+import type { FigureFacts, RegisteredFigure } from './types'
 
 interface Registry {
   register: (fig: RegisteredFigure) => () => void
   list: () => RegisteredFigure[]
+  /**
+   * What every figure on screen declares, with or without rows (the Developer page's figure scan
+   * and contract checks). Never exported.
+   */
+  track: (facts: FigureFacts) => () => void
+  tracked: () => FigureFacts[]
 }
 
 const Ctx = createContext<Registry | null>(null)
@@ -22,7 +28,15 @@ export function FigureRegistryProvider({ children }: { children: ReactNode }) {
     }
   }, [])
   const list = useCallback(() => [...figs.current.values()].sort((a, b) => a.order - b.order), [])
-  const value = useMemo(() => ({ register, list }), [register, list])
+  const facts = useRef(new Map<string, FigureFacts>())
+  const track = useCallback((f: FigureFacts) => {
+    facts.current.set(f.id, f)
+    return () => {
+      if (facts.current.get(f.id) === f) facts.current.delete(f.id)
+    }
+  }, [])
+  const tracked = useCallback(() => [...facts.current.values()].sort((a, b) => a.order - b.order), [])
+  const value = useMemo(() => ({ register, list, track, tracked }), [register, list, track, tracked])
   return <Ctx value={value}>{children}</Ctx>
 }
 

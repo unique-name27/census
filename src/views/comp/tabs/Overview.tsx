@@ -17,6 +17,7 @@ import { COMPA_STEP, type CompModel } from '../engine/model'
 import type { CompaGroupRow } from '../engine/ranges'
 import { lowCompaAt } from '../engine/rules'
 import { emptyIf, MISSING, note } from '../shared'
+import { PayAndRetention } from './PayAndRetention'
 
 /** Interior bin edges on the step grid; the domain supplies the outer two. */
 export function edges(domain: [number, number] | null, step: number): number[] {
@@ -73,7 +74,7 @@ export function Overview({ m }: { m: CompModel }) {
         format="ratio"
         sort="asc"
         ref={companyRef(m)}
-        tone={tone}
+        glyphTone={tone}
         secondary={nText}
         onSelect={compaBar(m)}
       />
@@ -84,7 +85,13 @@ export function Overview({ m }: { m: CompModel }) {
     <div>
       <Grid>
         <KpiStrip kpis={m.kpis} />
-        <Readout findings={m.findings} span={4} emptyText="Nothing stands out in this scope." />
+        {/* Phones: the figures beside the readout come first, then the readout. */}
+        <Readout
+          findings={m.findings}
+          span={4}
+          className="max-md:order-1"
+          emptyText="Nothing stands out in this scope."
+        />
         {/* The readout runs long; the lead figure and the two that explain it stack beside it
             instead of one chart stretching to the readout's height. */}
         <div className={cx(spanClass(8), 'grid content-start gap-4')}>
@@ -145,6 +152,8 @@ export function Overview({ m }: { m: CompModel }) {
         </div>
       </Grid>
 
+      <PayAndRetention m={m} />
+
       <Section
         title="Where pay sits"
         dek={`Median compa-ratio by level and department, as of ${asOf}. Orange bars with a square marker sit at a median of ${fmt(low, 'ratio')} or lower.`}
@@ -171,7 +180,7 @@ export function Overview({ m }: { m: CompModel }) {
             format="ratio"
             sort="none"
             ref={companyRef(m)}
-            tone={tone}
+            glyphTone={tone}
             secondary={nText}
             onSelect={compaBar(m)}
           />
@@ -196,7 +205,7 @@ export function Overview({ m }: { m: CompModel }) {
             format="ratio"
             sort="asc"
             ref={companyRef(m)}
-            tone={tone}
+            glyphTone={tone}
             secondary={nText}
             rowHeight={26}
             onSelect={compaBar(m)}

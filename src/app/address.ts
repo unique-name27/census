@@ -13,6 +13,7 @@
  * Forward or a saved view show them here without saving them, so other open tabs never follow.
  */
 import { useEffect, useLayoutEffect, useRef } from 'react'
+import { noteLeaderReplaced } from '@/access/connect'
 import { currentScope, routePath } from '@/components/navigation'
 import { toast } from '@/components/toast'
 import {
@@ -30,7 +31,7 @@ import {
 import type { AnalyticsContext } from '@/data/context'
 import { normalizeFilters, sameFilters } from '@/data/scope'
 import {
-  HOME_VIEW,
+  homeView,
   lastFilters,
   parseHash,
   type Route,
@@ -157,7 +158,8 @@ function followAddress(vocab: ScopeVocabulary): void {
   const read = readScope(splitHash(location.hash).query)
   // An entry Census wrote is complete: no scope there means the defaults. A bare "#hrbp" typed or
   // clicked keeps the scope on screen.
-  const exact = read.present || isHistoryMark(history.state)
+  const marked = isHistoryMark(history.state)
+  const exact = read.present || marked
   let leftOut: LeftOut[] = []
   let period: PeriodProblem | null = null
   addressWriter.endBurst()
@@ -169,6 +171,9 @@ function followAddress(vocab: ScopeVocabulary): void {
         leftOut = checked.leftOut
         period = checked.period
         putScope(checked.scope)
+        // A link typed or pasted into this tab gets the same notice as one opened on load when
+        // Manager mode replaces its leader; Back and Forward (entries Census wrote) stay silent.
+        if (!marked) noteLeaderReplaced(checked.scope.filters)
         // The saved view this entry was in (none for an entry from before this page load).
         const entry = currentEntry()
         useSavedViews.getState().setApplied(entry == null ? null : (appliedAt.get(entry) ?? null))
@@ -216,13 +221,16 @@ export function loadAddress(ctx: AnalyticsContext): void {
         const named = parseHash(location.hash)
         useCensus
           .getState()
-          .navigate(named?.view ?? HOME_VIEW, named?.tab ?? '', { history: 'replace', scroll: false })
+          .navigate(named?.view ?? homeView(), named?.tab ?? '', { history: 'replace', scroll: false })
       }
     } else if (init.scope) {
       const checked = checkScope(init.scope, vocab)
       leftOut = checked.leftOut
       period = checked.period
       putScope(checked.scope, true)
+      // Manager mode keeps the manager's org: a link's or startup view's leader outside it is
+      // replaced (and said so).
+      noteLeaderReplaced(checked.scope.filters, init.source === 'startup' ? 'view' : 'link')
       if (init.source === 'startup') {
         useSavedViews.getState().setApplied(init.viewId ?? null)
         const name = useSavedViews.getState().views.find((v) => v.id === init.viewId)?.name

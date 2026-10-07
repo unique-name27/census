@@ -8,13 +8,16 @@
  * withheld, whatever an engine wrote into its text.
  */
 import type { BetaTool } from '@anthropic-ai/sdk/resources/beta/messages/messages'
+import type { AccessContext } from '@/access/context'
+import { errorMessage, logDevError } from '@/app/devlog'
 import { DATASET_KEYS, DATASETS } from '@/data/schema'
+import { recordSince } from '@/lib/timing'
 import { ACTION_OWNER_ROLES } from '@/views/types'
 import { QUERY_DATASETS, queryDataset } from './allowlist'
 import { ReleaseAudit } from './audit'
 import type { TokenMap } from './privacy'
 import type { RefRegistry } from './refs'
-import { chatContext, EXCLUDE_ARGS, PERIODS, scopePhrase } from './scope'
+import { askOffReason, chatContext, EXCLUDE_ARGS, PERIODS, scopePhrase } from './scope'
 import { openItems } from './tools/actions'
 import { getContext } from './tools/context'
 import { findMetrics } from './tools/metrics'
@@ -85,9 +88,13 @@ const FILTERS_SCHEMA = {
   additionalProperties: false,
 } as const
 
-const queryFieldHelp = QUERY_DATASETS.map((d) => `${d.key}: ${d.fields.map((f) => f.name).join(', ')}`).join(
-  '\n',
-)
+const fieldHelp = (datasets: typeof QUERY_DATASETS) =>
+  datasets.map((d) => `${d.key}: ${d.fields.map((f) => f.name).join(', ')}`).join('\n')
+const queryFieldHelp = fieldHelp(QUERY_DATASETS)
+
+/** query_records' description, over the datasets a mode lets Ask read. */
+const queryDescription = (help: string) =>
+  `Aggregates over the rows of one dataset in scope: count, distinct people, share, and sum, mean, median, min or max of a number field. Group by up to 2 fields (dates by month, quarter or year); at most 50 rows, each with a ref to its records. Rows are not limited to the period unless a where clause uses op in_period on a date. People come back as person tokens. Groups smaller than the anonymity minimum show counts with their other numbers hidden. Fields named org.* are the org of the person the row is about. Fields per dataset:\n${help}`
 
 /** Tool definitions as the Messages API takes them; the last one carries the cache breakpoint. */
 export const TOOL_DEFINITIONS: BetaTool[] = [
@@ -154,7 +161,7 @@ export const TOOL_DEFINITIONS: BetaTool[] = [
   },
   {
     name: 'query_records',
-    description: `Aggregates over the rows of one dataset in scope: count, distinct people, share, and sum, mean, median, min or max of a number field. Group by up to 2 fields (dates by month, quarter or year); at most 50 rows, each with a ref to its records. Rows are not limited to the period unless a where clause uses op in_period on a date. People come back as person tokens. Groups smaller than the anonymity minimum show counts with their other numbers hidden. Fields named org.* are the org of the person the row is about. Fields per dataset:\n${queryFieldHelp}`,
+    description: queryDescription(queryFieldHelp),
     input_schema: {
       type: 'object',
       properties: {
@@ -245,6 +252,61 @@ export const TOOL_DEFINITIONS: BetaTool[] = [
     cache_control: { type: 'ephemeral' },
   },
 ]
+
+/* ───────────── per mode (docs/ROLES.md, 4.7) ───────────── */
+
+type ModeAccess = Pick<AccessContext, 'mode' | 'can'>
+
+let managerTools: BetaTool[] | null = null
+
+/**
+ * The tool definitions sent to Claude in a mode. HR and Developer mode send every tool. Manager
+ * mode leaves out `explain_quality`, and the view and dataset enums and descriptions list only
+ * what Manager mode shows. The last tool keeps the cache breakpoint.
+ */
+export function toolDefinitionsFor(access: ModeAccess | null | undefined): BetaTool[] {
+  if (access?.mode !== 'manager') return TOOL_DEFINITIONS
+  if (managerTools) return managerTools
+  const views = VIEW_KEYS_WITH_DATA.filter((v) => access.can(`view:${v}`))
+  const datasets = QUERY_DATASETS.filter((d) => access.can(`dataset:${d.key}`))
+  const withEnum = (schema: BetaTool['input_schema'], key: string, values: readonly string[]) => {
+    const props = schema.properties as Record<string, Record<string, unknown>> | undefined
+    if (!props?.[key]) return schema
+    return { ...schema, properties: { ...props, [key]: { ...props[key], enum: values } } }
+  }
+  const out = TOOL_DEFINITIONS.filter((t) => access.can(`ask:${t.name}`)).map((t): BetaTool => {
+    const { cache_control: _cache, ...rest } = t
+    switch (t.name) {
+      case 'view_summary':
+        return { ...rest, input_schema: withEnum(t.input_schema, 'view', views) }
+      case 'compare_groups':
+        return {
+          ...rest,
+          input_schema: withEnum(
+            t.input_schema,
+            'view',
+            views.filter((v) => v !== 'scorecard' && v !== 'org'),
+          ),
+        }
+      case 'query_records':
+        return {
+          ...rest,
+          description: queryDescription(fieldHelp(datasets)),
+          input_schema: withEnum(
+            t.input_schema,
+            'dataset',
+            datasets.map((d) => d.key),
+          ),
+        }
+      default:
+        return rest
+    }
+  })
+  const last = out[out.length - 1]
+  if (last) out[out.length - 1] = { ...last, cache_control: { type: 'ephemeral' } }
+  managerTools = out
+  return out
+}
 
 /* ───────────── progress lines ───────────── */
 
@@ -344,6 +406,17 @@ export function runTool(
     audit: conv.audit ?? new ReleaseAudit(),
   }
   let out: ToolOutput
+  // The mode's policy first: a tool it hides returns a plain error, never a number.
+  const access = env.ctx.access
+  const off = access?.lock ? askOffReason(env.ctx) : null
+  if (off) return { content: JSON.stringify({ error: off }), isError: true, label, ms: clock() - t }
+  if (access && isToolName(name) && !access.can(`ask:${name}`))
+    return {
+      content: JSON.stringify({ error: `${name} is not available in Manager mode.` }),
+      isError: true,
+      label,
+      ms: clock() - t,
+    }
   try {
     switch (name) {
       case 'get_context':
@@ -372,9 +445,11 @@ export function runTool(
     }
   } catch (err) {
     console.error(`Ask Census: ${name} could not be computed`, err)
+    logDevError({ where: 'ask tool', view: null, tab: name, message: errorMessage(err) })
     out = { ok: false, error: `${name} could not be computed for this scope. Try another scope or tool.` }
   }
   const body = out.ok ? out.value : { error: out.error }
   const content = JSON.stringify(conv.tokens.scanDeep(body))
+  recordSince(`census:ask:${name}`, t)
   return { content, isError: !out.ok, label, ms: clock() - t }
 }

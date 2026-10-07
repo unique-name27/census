@@ -3,6 +3,8 @@
  * `summary(ctx)` (the same engine the screen and the People scorecard use), judged against the
  * targets in force and gated on the data standard exactly as the scorecard does it.
  */
+
+import { findingsInMode, kpisInMode } from '@/access/numbers'
 import { kpiDeltaText, unitOf } from '@/components/kpiModel'
 import { gateFor, hiddenFindingsText } from '@/components/tier/tierModel'
 import type { Finding, Kpi } from '@/components/types'
@@ -79,7 +81,11 @@ export function kpiOut(rt: ToolRuntime, ctx: AnalyticsContext, view: ViewDef, k:
     // A hidden number's note can carry the number itself, so it goes only with a shown value.
     note: noNote ? null : (k.note ?? null),
     ref: shown ? rt.refs.add(k.drill, label) : null,
-    change_ref: shown && k.deltaDrill ? rt.refs.add(k.deltaDrill, `${label}, comparison`) : null,
+    // A company comparison opens no records in Manager mode (the company's are not listed).
+    change_ref:
+      shown && k.deltaDrill && !(ctx.access?.lock && /company/i.test(k.deltaLabel ?? ''))
+        ? rt.refs.add(k.deltaDrill, `${label}, comparison`)
+        : null,
     note_ref: !noNote && k.noteDrill ? rt.refs.add(k.noteDrill, `${label}, note`) : null,
     opens: k.link ? viewLink(k.link.view, k.link.tab) : viewLink(view.key, k.tab ?? view.tabs[0]?.key),
   }
@@ -203,6 +209,12 @@ function findView(rt: ToolRuntime, key: unknown): ViewDef | string {
   if (typeof key !== 'string' || !key) return `view is required. Views: ${viewKeysText(rt)}.`
   const v = dataViews(rt).find((x) => x.key === key)
   if (v) return v
+  // A view the mode hides is refused in plain words (Manager mode: docs/ROLES.md, 3.9).
+  const hidden = rt.env.views.find((x) => x.key === key)
+  if (hidden && rt.base.access?.mode === 'manager')
+    return key === 'scorecard'
+      ? 'The scorecard is not shown in Manager mode.'
+      : `${hidden.label} is not shown in Manager mode, so Ask does not answer about it. Say so, and do not estimate it.`
   if (key === 'ai') return 'AI in HR reads no data, so it has no key figures.'
   return `Unknown view "${key}". Views: ${viewKeysText(rt)}.`
 }
@@ -235,10 +247,11 @@ export function viewSummary(rt: ToolRuntime, raw: unknown): ToolOutput {
     })
   }
   const summary = view.summary(ctx)
+  // What the mode hides on screen is dropped here too.
   return ok({
     ...head,
-    key_figures: summary.kpis.map((k) => kpiOut(rt, ctx, view, k)),
-    ...findingsOut(rt, ctx, view, summary.findings),
+    key_figures: kpisInMode(ctx.access, summary.kpis).map((k) => kpiOut(rt, ctx, view, k)),
+    ...findingsOut(rt, ctx, view, findingsInMode(ctx.access, summary.findings)),
   })
 }
 
@@ -300,7 +313,7 @@ export function compareGroups(rt: ToolRuntime, raw: unknown): ToolOutput {
   const baseCtx = s.ctx
   const overall = view.summary(baseCtx)
   const want = typeof input.kpi === 'string' ? input.kpi : ''
-  const kpi = overall.kpis.find((k) => k.id === want || k.metricId === want)
+  const kpi = kpisInMode(baseCtx.access, overall.kpis).find((k) => k.id === want || k.metricId === want)
   if (!kpi)
     return fail(
       `No key figure "${want}" in ${view.label}. Key figures: ${overall.kpis.map((k) => `${k.id} (${k.label})`).join(', ')}.`,
@@ -319,6 +332,12 @@ export function compareGroups(rt: ToolRuntime, raw: unknown): ToolOutput {
         const id = rt.tokens.employeeIdOf(t)
         if (!id || !baseCtx.org.byId.has(id))
           return fail(`"${t}" is not a leader token. Use leader tokens from get_context.`)
+        // Manager mode compares leaders inside the org only.
+        const lock = rt.base.access?.lock
+        if (lock && !lock.orgIds.has(id))
+          return fail(
+            `In Manager mode a leader filter must be someone in ${rt.tokens.forEmployee(lock.managerId)}'s org.`,
+          )
         const problem = leaderProblem(rt.base, id, t)
         if (problem) return fail(problem)
         ids.push(id)

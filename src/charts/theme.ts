@@ -23,6 +23,8 @@ export interface ChartTheme {
   /** Diverging ramp, negative to positive: [neg3, neg2, neg1, mid, pos1, pos2, pos3]. */
   div: string[]
   status: { good: string; warning: string; serious: string; critical: string }
+  /** Tier medal colors for SVG glyphs (always paired with the word). */
+  tier: { gold: string; silver: string; bronze: string }
   goodText: string
   badText: string
   ink: string
@@ -33,6 +35,8 @@ export interface ChartTheme {
   rule: string
   sheet: string
   sheet2: string
+  /** The third sheet tone: tracks and wells inside a sheet (bullet tracks). */
+  sheet3: string
   page: string
   font: string
   dark: boolean
@@ -97,6 +101,7 @@ export function readChartTheme(): ChartTheme {
       serious: v('--serious'),
       critical: v('--critical'),
     },
+    tier: { gold: v('--tier-gold'), silver: v('--tier-silver'), bronze: v('--tier-bronze') },
     goodText: v('--good-text'),
     badText: v('--bad-text'),
     ink: v('--ink'),
@@ -107,6 +112,7 @@ export function readChartTheme(): ChartTheme {
     rule: v('--rule'),
     sheet: v('--sheet'),
     sheet2: v('--sheet-2'),
+    sheet3: v('--sheet-3'),
     page: v('--page'),
     font: v('--font-sans'),
     dark: cs.colorScheme.includes('dark'),

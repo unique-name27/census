@@ -10,6 +10,7 @@ import { Sparkline } from '@/charts/Sparkline'
 import { IconArrowDown, IconArrowUp, IconLock } from '@/components/icons'
 import { type DeltaTone, deltaDirection, deltaTone, kpiDeltaText } from '@/components/kpiModel'
 import { goTo } from '@/components/navigation'
+import { TABLE_HEAD } from '@/components/styles'
 import { TierBadge } from '@/components/tier/TierBadge'
 import { cx, StatusPill } from '@/components/ui'
 import { Drill } from '@/drill/Drill'
@@ -26,7 +27,7 @@ const TONE_TEXT: Record<DeltaTone, string> = {
 }
 
 const LINKISH =
-  'rounded-[2px] text-left underline-offset-2 decoration-rule-strong hover:underline hover:decoration-ink'
+  'rounded-mark text-left underline-offset-2 decoration-rule-strong hover:underline hover:decoration-ink'
 
 const open = (d: Destination) => () => goTo(d.view, d.tab)
 
@@ -41,7 +42,7 @@ function Status({ row }: { row: ScoreRow }) {
   const severity = STATUS_SEVERITY[row.status]
   if (severity) return <StatusPill severity={severity} label={STATUS_WORD[row.status]} />
   return (
-    <span className="text-[12px] text-muted">
+    <span className="text-meta text-muted">
       {row.status === 'none' ? (
         STATUS_WORD.none
       ) : (
@@ -76,7 +77,7 @@ function Change({ row }: { row: ScoreRow }) {
           text
         )}
       </span>
-      {k.deltaLabel && <div className="mt-0.5 text-[11px] whitespace-nowrap text-muted">{k.deltaLabel}</div>}
+      {k.deltaLabel && <div className="mt-0.5 text-label whitespace-nowrap text-muted">{k.deltaLabel}</div>}
     </div>
   )
 }
@@ -96,14 +97,14 @@ function Note({ row }: { row: ScoreRow }) {
   const k = row.kpi
   if (row.hiddenReason)
     return (
-      <div className="mt-0.5 flex items-start gap-1 text-[12px] leading-snug text-muted">
+      <div className="mt-0.5 flex items-start gap-1 text-meta leading-snug text-muted">
         {k.suppressed && row.shown && <IconLock className="mt-px size-3 shrink-0" />}
         {row.hiddenReason}
       </div>
     )
   if (!k.note) return null
   return (
-    <div className="mt-0.5 text-[12px] leading-snug text-muted">
+    <div className="mt-0.5 text-meta leading-snug text-muted">
       {k.noteDrill ? (
         <Drill
           spec={k.noteDrill}
@@ -123,14 +124,19 @@ function MeasureRow({ row }: { row: ScoreRow }) {
   const k = row.kpi
   return (
     <tr className="border-t border-rule align-top">
-      <th scope="row" className="sticky left-0 z-[1] bg-sheet py-2.5 pr-4 pl-3 text-left font-normal">
+      {/* A readable measure column (the table scrolls sideways on phones) so a name such as
+          "I-9 Section 2 within 3 business days" takes two or three lines, not six. */}
+      <th
+        scope="row"
+        className="sticky left-0 z-[1] min-w-44 bg-sheet py-2.5 pr-4 pl-3 text-left font-normal"
+      >
         <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
           <button
             type="button"
             onClick={open(row.opens)}
             title={`Open ${row.opens.label}`}
             aria-label={`${k.label}. Open ${row.opens.label}`}
-            className={cx(LINKISH, 'text-[13px] text-ink')}
+            className={cx(LINKISH, 'text-left text-small text-ink')}
           >
             {k.label}
           </button>
@@ -138,10 +144,10 @@ function MeasureRow({ row }: { row: ScoreRow }) {
         </div>
         <Note row={row} />
       </th>
-      <td className="px-3 py-2.5 text-right text-[14px] font-semibold whitespace-nowrap tnum">
+      <td className="px-3 py-2.5 text-right text-body font-semibold whitespace-nowrap tnum">
         <Value row={row} />
       </td>
-      <td className="px-3 py-2.5 text-[12px] whitespace-nowrap text-ink-2">
+      <td className="px-3 py-2.5 text-meta whitespace-nowrap text-ink-2">
         {row.metricId ? (
           <a
             href={metricHref(row.metricId)}
@@ -163,14 +169,14 @@ function MeasureRow({ row }: { row: ScoreRow }) {
       <td className="px-3 py-2.5">
         <Status row={row} />
       </td>
-      <td className="px-3 py-2.5 text-right text-[12px]">
+      <td className="px-3 py-2.5 text-right text-meta">
         <Change row={row} />
       </td>
       <td className="px-3 py-2.5">
         {!row.hiddenReason && k.spark && k.spark.length > 1 ? (
           <Sparkline values={k.spark} width={64} height={20} label={`${k.label}, recent trend`} />
         ) : (
-          <span className="text-[12px] text-muted">{DASH}</span>
+          <span className="text-meta text-muted">{DASH}</span>
         )}
       </td>
       <td className="py-2.5 pr-3 pl-2">
@@ -203,17 +209,17 @@ function PracticeRows({ practice }: { practice: Practice }) {
               type="button"
               onClick={open(practice.opens)}
               aria-label={`${practice.label}. Open ${practice.opens.label}`}
-              className={cx(LINKISH, 'cut-head text-[15px] font-semibold text-ink')}
+              className={cx(LINKISH, 'cut-head text-title font-semibold text-ink')}
             >
               {practice.label}
             </button>
             {practice.judged > 0 && (
-              <span className="text-[12px] text-muted">
+              <span className="text-meta text-muted">
                 {practice.met} of {practice.judged} met
               </span>
             )}
           </div>
-          {practice.empty && <p className="mt-0.5 text-[12px] leading-snug text-muted">{practice.empty}</p>}
+          {practice.empty && <p className="mt-0.5 text-meta leading-snug text-muted">{practice.empty}</p>}
         </th>
       </tr>
       {practice.rows.map((r) => (
@@ -223,12 +229,14 @@ function PracticeRows({ practice }: { practice: Practice }) {
   )
 }
 
-const HEAD = 'eyebrow px-3 pb-2 text-left font-normal'
+const HEAD = cx(TABLE_HEAD, 'px-3 pb-2 text-left')
 
 export function ScoreTable({ practices, caption }: { practices: readonly Practice[]; caption: string }) {
   return (
-    <div className="-mx-4 overflow-x-auto">
-      <table className="w-full min-w-[720px] border-collapse text-[13px]">
+    // Relative, so screen-reader-only words in the cells scroll with the table instead of
+    // widening the page on phones.
+    <div className="relative -mx-4 overflow-x-auto lg:-mx-5">
+      <table className="w-full min-w-[720px] border-collapse text-small">
         <caption className="sr-only">{caption}</caption>
         <thead>
           <tr>

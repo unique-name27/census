@@ -47,7 +47,7 @@ function Progress({ turn, conversation }: { turn: Turn; conversation: Conversati
   const line = statusLine(turn, person)
   const done = turn.steps.filter((s) => s.done)
   return (
-    <ul className="flex flex-col gap-1 text-[13px]">
+    <ul className="flex flex-col gap-1 text-small">
       {done.map((s) => (
         <li key={s.id} className="flex items-start gap-2 text-muted">
           <IconCheck className="mt-0.5 size-3.5 shrink-0" />
@@ -69,7 +69,7 @@ function ErrorNote({ turn, env, busy }: { turn: Turn; env: () => ToolEnv; busy: 
   if (!e) return null
   if (e.kind === 'stopped')
     return (
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-muted">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-small text-muted">
         <span>
           {turn.text ? 'Stopped. The answer above is incomplete.' : 'Stopped before Claude answered.'}
         </span>
@@ -79,18 +79,16 @@ function ErrorNote({ turn, env, busy }: { turn: Turn; env: () => ToolEnv; busy: 
       </div>
     )
   return (
-    <div className="flex items-start gap-2.5 rounded-sheet bg-sheet px-3.5 py-3">
+    <div className="flex items-start gap-2.5 border-y border-rule py-3">
       <SeverityIcon
         severity={e.kind === 'declined' || e.kind === 'too_long' ? 'warning' : 'critical'}
         className="mt-0.5 size-4 shrink-0"
       />
       <div className="min-w-0 flex-1">
-        <p className="text-[13px] font-semibold text-ink">{e.title}</p>
-        <p className="mt-0.5 text-[13px] leading-snug text-ink-2">{e.detail}</p>
+        <p className="text-small font-semibold text-ink">{e.title}</p>
+        <p className="mt-0.5 text-small leading-snug text-ink-2">{e.detail}</p>
         {errorFacts(e) && (
-          <p className="mt-1.5 text-[12px] leading-snug break-words text-muted select-text">
-            {errorFacts(e)}
-          </p>
+          <p className="mt-1.5 text-meta leading-snug break-words text-muted select-text">{errorFacts(e)}</p>
         )}
         {e.action && (
           <div className="mt-2">
@@ -162,7 +160,7 @@ export function TurnView({
     >
       <h3
         id={`ask-q-${turn.id}`}
-        className="cut-head text-[17px] leading-snug font-semibold whitespace-pre-wrap break-words text-ink"
+        className="cut-head text-title leading-snug font-semibold whitespace-pre-wrap break-words text-ink"
       >
         {turn.question}
       </h3>
@@ -179,12 +177,12 @@ export function TurnView({
         />
       )}
       {turn.truncated && turn.status === 'done' && (
-        <p className="text-[12px] text-muted">
+        <p className="text-meta text-muted">
           The answer stopped at its length limit. Ask for a shorter answer, or split the question in two.
         </p>
       )}
       {turn.roundLimited && turn.status === 'done' && (
-        <p className="text-[12px] text-muted">
+        <p className="text-meta text-muted">
           Census allows {MAX_TOOL_ROUNDS} rounds of calculations per question, so this answer uses what Claude
           had by then.
         </p>

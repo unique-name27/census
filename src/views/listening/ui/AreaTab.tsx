@@ -24,7 +24,7 @@ export function AreaFrame({
   const findings = m.findings.filter((f) => f.tab === tab)
   return (
     <>
-      <p className="max-w-[78ch] text-[13px] text-ink-2">{dek}</p>
+      <p className="max-w-[78ch] text-small text-ink-2">{dek}</p>
       {findings.length > 0 && (
         <Grid className="mt-4">
           <Readout id={`readout-${tab}`} findings={findings} span={12} />
@@ -49,7 +49,7 @@ export function WithSurvey({
   if (!sm)
     return (
       <section className="mt-10 first:mt-0" aria-label={survey}>
-        <h2 className="cut-head mb-3 text-[20px] leading-tight font-semibold">{survey}</h2>
+        <h2 className="cut-head mb-3 text-section leading-tight font-semibold">{survey}</h2>
         <Grid>
           <NoAnswers survey={survey} />
         </Grid>

@@ -28,9 +28,12 @@ import {
   coverageDrills,
   employeesDrill,
   groupScope,
+  lateTasksDrill,
   monthPeriod,
   monthSub,
   planDrill,
+  planMonthDrill,
+  planMonthLinesDrill,
   readinessDrill,
   reqsDrill,
   startEmployees,
@@ -42,13 +45,14 @@ import {
 } from '../engine/drills'
 import {
   type CheckInItem,
+  type LateCell,
   type NewHireTx,
   PULSE_SURVEY,
   type PulseFacts,
   type RateGroup,
 } from '../engine/first90'
 import { ACCEPT_TO_START, FORECAST, NEW_HIRE_TX, OPEN_REQS, RENEGE, UPCOMING } from '../engine/lineage'
-import type { CoverageRow, PlanLineView, PlanModel } from '../engine/plan'
+import type { CoverageRow, PlanLineView, PlanModel, UnitCut, UnitMonthCell } from '../engine/plan'
 import { regionOf, regionSites, type Start } from '../engine/starts'
 import type { CalendarRow, DaysRow, RenegeRow } from '../engine/upcoming'
 
@@ -387,3 +391,47 @@ export function pulseRegionDrill(
     (r) => r.region,
   )
 }
+
+/* ───────────── new figures ───────────── */
+
+/**
+ * Late day-one tasks by task and region (or site): a cell's late tasks, with the region's sites as
+ * the filter named as the region ("Filter to Asia Pacific"), or the site itself. Hidden cells and
+ * the "Unknown" place open nothing or carry no filter.
+ */
+export function lateCellDrill(
+  b: OnboardingBase,
+  employees: readonly Employee[],
+  by: 'region' | 'site',
+  uses: Uses,
+): Build<LateCell> {
+  return byGroup(
+    'location',
+    (c: LateCell) =>
+      by === 'region' ? (named(c.place) ? regionSites(employees, c.place) : null) : named(c.place),
+    (c) => (c.items.length ? () => lateTasksDrill(b, c, { uses }) : null),
+    (c) => (by === 'region' ? c.place : null),
+  )
+}
+
+/**
+ * Starts against plan by unit and month: the people who started in the cell's unit that month
+ * (or, when nobody started, its plan lines), with the unit as the filter. No period: the plan year
+ * does not follow the period picker.
+ */
+export const planMonthCellDrill = (
+  b: OnboardingBase,
+  p: PlanModel,
+  cut: UnitCut,
+  uses: { actual: Uses; plan: Uses },
+): Build<UnitMonthCell> =>
+  inGroup(
+    cut,
+    (c: UnitMonthCell) => c.unit,
+  )((c) =>
+    c.actual
+      ? () => planMonthDrill(b, c, { uses: uses.actual })
+      : c.planned
+        ? () => planMonthLinesDrill(b, p, c, { uses: uses.plan })
+        : null,
+  )

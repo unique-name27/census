@@ -9,10 +9,10 @@ export const sectionId = (s: SettingsSection) => `settings-${s}`
 
 /** Text inputs in the sheet: hairline box, focus ring inside, red hairline when invalid. */
 export const INPUT =
-  'h-8 min-w-0 rounded-control bg-sheet px-2.5 text-[13px] text-ink shadow-[inset_0_0_0_1px_var(--rule-strong)] outline-none focus-visible:shadow-[inset_0_0_0_2px_var(--focus)] aria-[invalid=true]:shadow-[inset_0_0_0_1px_var(--critical)]'
+  'h-8 min-w-0 rounded-control bg-sheet px-2.5 text-small text-ink shadow-[inset_0_0_0_1px_var(--rule-strong)] outline-none focus-visible:shadow-[inset_0_0_0_2px_var(--focus)] aria-[invalid=true]:shadow-[inset_0_0_0_1px_var(--critical)]'
 
 export const LINK =
-  'inline-flex items-center gap-1 rounded-[2px] text-[13px] font-medium text-link underline-offset-2 hover:underline'
+  'inline-flex items-center gap-1 rounded-mark text-small font-medium text-link underline-offset-2 hover:underline'
 
 export function SettingsBlock({
   section,
@@ -33,11 +33,11 @@ export function SettingsBlock({
       <h2
         id={`${id}-title`}
         tabIndex={-1}
-        className="cut-head rounded-[2px] text-[17px] leading-tight font-semibold outline-none focus-visible:outline-2 focus-visible:outline-focus"
+        className="cut-head rounded-mark text-title leading-tight font-semibold outline-none focus-visible:outline-2 focus-visible:outline-focus"
       >
         {SECTION_LABEL[section]}
       </h2>
-      {intro && <p className="mt-1 max-w-[60ch] text-[13px] leading-snug text-ink-2">{intro}</p>}
+      {intro && <p className="mt-1 max-w-[60ch] text-small leading-snug text-ink-2">{intro}</p>}
       <div className="mt-4 flex flex-col gap-5">{children}</div>
     </section>
   )
@@ -65,14 +65,14 @@ export function Field({
     <div className={cx('flex flex-col gap-1.5', className)}>
       <div>
         {htmlFor ? (
-          <label htmlFor={htmlFor} className="text-[13px] font-semibold text-ink">
+          <label htmlFor={htmlFor} className="text-small font-semibold text-ink">
             {label}
           </label>
         ) : (
-          <span className="text-[13px] font-semibold text-ink">{label}</span>
+          <span className="text-small font-semibold text-ink">{label}</span>
         )}
         {hint && (
-          <p id={hintId} className="mt-0.5 text-[12px] leading-snug text-muted">
+          <p id={hintId} className="mt-0.5 text-meta leading-snug text-muted">
             {hint}
           </p>
         )}

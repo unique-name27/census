@@ -46,6 +46,8 @@ function freshParam(key: DatasetKey): ParamDef {
 }
 
 const OWNER = 'People analytics'
+/** The rules judge the version of each dataset loaded now. */
+const LOADED = 'The version of each dataset loaded now, as of its load.'
 
 export const QUALITY_METRICS: readonly MetricDef[] = [
   {
@@ -56,6 +58,7 @@ export const QUALITY_METRICS: readonly MetricDef[] = [
       'A field is silver or better only when it is filled for at least this share of the rows it applies to. Below it, the field is bronze, and so is every number that uses it.',
     formula: 'filled rows ÷ rows the field applies to',
     population: 'Rows the field applies to; for example, termination type applies to leavers only.',
+    window: LOADED,
     unit: 'pct',
     goodDirection: null,
     uses: [],
@@ -82,6 +85,9 @@ export const QUALITY_METRICS: readonly MetricDef[] = [
     definition:
       'The most problems silver allows: values not recognized or defaulted in a field, rows with an import error in a dataset, and rows whose references to other data do not resolve.',
     formula: 'problem rows ÷ rows checked',
+    population:
+      'For a field, the rows it applies to; for a dataset, every row loaded, each counted once however many problems it has.',
+    window: LOADED,
     unit: 'pct',
     goodDirection: null,
     uses: [],
@@ -108,6 +114,8 @@ export const QUALITY_METRICS: readonly MetricDef[] = [
     definition:
       'How far a certified dataset may differ from a control total, such as headcount per the HRIS report, and still reconcile. A total that states its own tolerance keeps it.',
     formula: '|actual − expected| ≤ tolerance × |expected|',
+    population: 'Certified datasets with a control total.',
+    window: LOADED,
     unit: 'pct2',
     goodDirection: null,
     uses: [],
@@ -134,6 +142,8 @@ export const QUALITY_METRICS: readonly MetricDef[] = [
     definition:
       'Gold needs current data: the latest event in the rows, such as a hire, an application or a case, dated within a set number of days of the as-of date. Compensation has no event dates, so the date its pay extract was taken is used.',
     formula: 'as-of date − latest event date ≤ limit',
+    population: 'The rows of each loaded dataset that carry an event date (Compensation: the extract date).',
+    window: 'The as-of date, against the latest event in the version loaded.',
     unit: 'days',
     goodDirection: null,
     uses: [],

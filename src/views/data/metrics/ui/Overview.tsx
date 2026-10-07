@@ -27,11 +27,11 @@ export function Overview({
   return (
     <div className="flex flex-col gap-4">
       <section aria-labelledby="data-metrics-about" className="rounded-sheet bg-sheet px-4 py-3.5">
-        <h2 id="data-metrics-about" className="cut-head text-[17px] leading-tight font-semibold">
+        <h2 id="data-metrics-about" className="cut-head text-title leading-tight font-semibold">
           Every metric Census shows, in one place
         </h2>
-        <p className="mt-1 text-[13px] text-ink-2">{summaryText(summary)}</p>
-        <ul className="mt-3 flex list-disc flex-col gap-1 pl-4 text-[13px] text-ink-2 marker:text-muted">
+        <p className="mt-1 text-small text-ink-2">{summaryText(summary)}</p>
+        <ul className="mt-3 flex list-disc flex-col gap-1 pl-4 text-small text-ink-2 marker:text-muted">
           <li>
             <span className="text-ink">Wording:</span> the definition, formula, population and owner. Your
             text replaces the default wherever the metric appears.
@@ -50,7 +50,7 @@ export function Overview({
             amounts stay opt-in and protected fields stay out.
           </li>
         </ul>
-        <p className="mt-3 text-[12px] text-muted">
+        <p className="mt-3 text-meta text-muted">
           Changes apply to every view at once, are kept in this browser, travel with the settings file and are
           stamped on exports. Pick a metric to see its data and edit it.
         </p>
@@ -59,15 +59,15 @@ export function Overview({
             <p className="eyebrow">Changed from defaults</p>
             <ul className="mt-1.5 flex flex-col gap-1">
               {changed.map((r) => (
-                <li key={r.id} className="flex flex-wrap items-center gap-2 text-[13px]">
+                <li key={r.id} className="flex flex-wrap items-center gap-2 text-small">
                   <button
                     type="button"
                     onClick={() => onOpen(r.id)}
-                    className="rounded-[2px] text-left font-medium text-link underline-offset-2 hover:underline"
+                    className="rounded-mark text-left font-medium text-link underline-offset-2 hover:underline"
                   >
                     {r.name}
                   </button>
-                  <span className="text-[12px] text-muted">{r.changedText}</span>
+                  <span className="text-meta text-muted">{r.changedText}</span>
                   <ChangedMark />
                 </li>
               ))}

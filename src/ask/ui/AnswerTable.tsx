@@ -123,7 +123,7 @@ export function AnswerTable({ block, index }: { block: Extract<Block, { type: 't
           ]}
         />
       </div>
-      <div className="rounded-sheet bg-sheet">
+      <div>
         <DataTable
           columns={columns}
           rows={model.rows}

@@ -17,6 +17,7 @@ import { ACCEPTED, ACTUAL, FORECAST, OPEN_REQS, PLAN, PLAN_REQ, UPCOMING, union 
 import { COVERAGE_LABEL, type CoverageRow, cumulative, isUncovered, type PlanLineView } from '../engine/plan'
 import { M } from '../metrics'
 import { coverageRowDrills, quarterRoleDrill } from './drill'
+import { PlanGrid } from './PlanGrid'
 import { asOfNote, defs, drillIf, NeedData, NO_PLAN, PLAN_SEVERITY, useOnboarding } from './shared'
 
 type Cut = 'unit' | 'department'
@@ -319,6 +320,13 @@ export function PlanTab() {
           </Grid>
         </div>
       </Grid>
+
+      <Section
+        title="Month by month"
+        dek="Where, and in which months, starts fell behind or ran ahead of the plan."
+      >
+        <PlanGrid p={p} />
+      </Section>
 
       <Section
         title="Coverage"

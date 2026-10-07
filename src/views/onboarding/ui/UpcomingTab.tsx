@@ -11,8 +11,16 @@ import { fmt, plural } from '@/lib/format'
 import { dayOneTasksDrill, startsDrill, tasksDrill } from '../engine/drills'
 import { ACCEPT_TO_START, RENEGE, TASK_OWNER, TASKS, UPCOMING, union } from '../engine/lineage'
 import type { Start } from '../engine/starts'
-import type { DaysRow, OwnerReadinessRow, RenegeRow, TaskReadinessRow, UpcomingRow } from '../engine/upcoming'
+import {
+  blockingWords,
+  type DaysRow,
+  type OwnerReadinessRow,
+  type RenegeRow,
+  type TaskReadinessRow,
+  type UpcomingRow,
+} from '../engine/upcoming'
 import { M } from '../metrics'
+import { Countdown } from './Countdown'
 import { acceptToStartDrill, calendarCellDrill, renegeDrill } from './drill'
 import {
   asOfNote,
@@ -92,9 +100,7 @@ export function UpcomingTab() {
     daysToGo: r.readiness.daysToGo,
     readiness: r.readiness.total ? `${r.readiness.done} of ${r.readiness.total} done` : null,
     status: r.readiness.status === 'No tasks' ? null : r.readiness.status,
-    blocking: r.readiness.blocking
-      ? `${r.readiness.blocking.name}${r.readiness.blocking.due ? `, due ${formatDate(r.readiness.blocking.due)}` : ''}`
-      : null,
+    blocking: blockingWords(r.readiness, b.masked),
     r,
   }))
   type StartRow = (typeof rows)[number]
@@ -250,7 +256,8 @@ export function UpcomingTab() {
     <>
       <Grid>
         <KpiStrip kpis={m.kpis.upcoming} />
-        <Readout findings={findings} span={4} className="md:col-span-12 lg:sticky lg:top-4" />
+        {/* Phones: the figures beside the readout come first, then the readout. */}
+        <Readout findings={findings} span={4} className="md:col-span-12 lg:sticky lg:top-4 max-md:order-1" />
         <div className={cx(spanClass(8), 'min-w-0')}>
           <Grid>
             <Figure
@@ -266,7 +273,6 @@ export function UpcomingTab() {
                 b.asOf,
                 plural(starts.length, 'upcoming start'),
                 u.beyondCalendar ? `${fmt(u.beyondCalendar, 'int')} later, not shown` : null,
-                'click a bar to see the people',
               )}
               span={12}
               empty={starts.length ? null : 'Nobody starts after the as-of date.'}
@@ -323,12 +329,14 @@ export function UpcomingTab() {
 
       <Section
         title="Ready for day one"
-        dek={`For starts in the next ${fmt(s.readinessHorizonDays, 'days')}: the share of each day-one task done so far, and which team holds the open ones.`}
+        align="start"
+        dek={`For starts in the next ${fmt(s.readinessHorizonDays, 'days')}: who starts when and which team holds their open item, the share of each day-one task done so far, and which team holds the open ones.`}
       >
         {!b.hasTasks ? (
           <NeedData {...NO_TASKS} dataset="onboardingTasks" />
         ) : (
           <>
+            <Countdown />
             <Figure
               id="onboarding-readiness-by-task"
               uses={taskUses}
@@ -349,7 +357,7 @@ export function UpcomingTab() {
                 sort="none"
                 domain={[0, 1]}
                 secondary={(d) => `${fmt(d.done, 'int')} of ${fmt(d.starts, 'int')}`}
-                tone={(d) => (d.pastDue ? 'warning' : 'default')}
+                glyphTone={(d) => (d.pastDue ? 'warning' : 'default')}
                 onSelect={(d) => drill(openTasksDrill(d.items, `${d.task}, open`))}
               />
             </Figure>
@@ -373,7 +381,7 @@ export function UpcomingTab() {
                 domain={[0, 1]}
                 sort="none"
                 secondary={(d) => `${fmt(d.open, 'int')} open`}
-                tone={(d) => (d.pastDue ? 'warning' : 'default')}
+                glyphTone={(d) => (d.pastDue ? 'warning' : 'default')}
                 onSelect={(d) => drill(openTasksDrill(d.items, `Open tasks, ${d.owner}`))}
               />
             </Figure>
@@ -443,7 +451,7 @@ export function UpcomingTab() {
                 ? { value: r.company.rate, label: `company ${fmt(r.company.rate, 'pct')}` }
                 : undefined
             }
-            tone={(d) => (target && d.rate != null && d.rate >= target.value ? 'warning' : 'default')}
+            glyphTone={(d) => (target && d.rate != null && d.rate >= target.value ? 'warning' : 'default')}
             nullNote={hiddenNote(s.minGroup)}
             onSelect={(d) => drill(acceptedDrill(d))}
           />

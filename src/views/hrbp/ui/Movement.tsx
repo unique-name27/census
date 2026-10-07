@@ -12,6 +12,7 @@ import { FIGURE } from '../engine/lineage'
 import { type DeptMoveRow, SINCE_BANDS } from '../engine/movement'
 import { ANONYMITY_ID, ID } from './defs'
 import { drillWhen } from './drill'
+import { ManagerChanges } from './Trends'
 
 export function Movement({ m }: { m: HrbpModel }) {
   const ctx = useAnalytics()
@@ -175,48 +176,51 @@ export function Movement({ m }: { m: HrbpModel }) {
             onSelectSegment={(d) => moveDrill([d])}
           />
         </Figure>
-        <Figure
-          id="hrbp-time-since-promotion"
-          metric={ID.sincePromotion}
-          uses={p.uses(FIGURE.timeSincePromotion)}
-          title="Time since last promotion"
-          subtitle={`Employees on ${asOf} by years since their last promotion`}
-          data={mv.sincePromotion}
-          columns={[
-            { key: 'band', label: 'Since last promotion', format: 'text' },
-            {
-              key: 'people',
-              label: 'Employees',
-              format: 'int',
-              drill: (r) => drillWhen(r.records.length > 0, () => sinceSpec(p, r)),
-            },
-            {
-              key: 'share',
-              label: 'Share',
-              format: 'pct',
-              drill: (r) => drillWhen(r.records.length > 0, () => sinceSpec(p, r)),
-            },
-          ]}
-          definitions={p.defs(ID.sincePromotion)}
-          note={`${active.toLocaleString('en-US')} employees · as of ${asOf}`}
-          span={5}
-          empty={active ? null : 'No active employees in this scope.'}
-        >
-          <Columns
+        {/* Two short charts stacked, so this column ends level with the moves beside it. */}
+        <div className="col-span-full flex min-w-0 flex-col gap-4 lg:col-span-5">
+          <Figure
+            id="hrbp-time-since-promotion"
+            metric={ID.sincePromotion}
+            uses={p.uses(FIGURE.timeSincePromotion)}
+            title="Time since last promotion"
+            subtitle={`Employees on ${asOf} by years since their last promotion`}
             data={mv.sincePromotion}
-            x="band"
-            y="people"
-            xOrder={[...SINCE_BANDS]}
-            height={240}
-            onSelect={(d) => drill(() => sinceSpec(p, d))}
-          />
-        </Figure>
+            columns={[
+              { key: 'band', label: 'Since last promotion', format: 'text' },
+              {
+                key: 'people',
+                label: 'Employees',
+                format: 'int',
+                drill: (r) => drillWhen(r.records.length > 0, () => sinceSpec(p, r)),
+              },
+              {
+                key: 'share',
+                label: 'Share',
+                format: 'pct',
+                drill: (r) => drillWhen(r.records.length > 0, () => sinceSpec(p, r)),
+              },
+            ]}
+            definitions={p.defs(ID.sincePromotion)}
+            note={`${active.toLocaleString('en-US')} employees · as of ${asOf}`}
+            empty={active ? null : 'No active employees in this scope.'}
+          >
+            <Columns
+              data={mv.sincePromotion}
+              x="band"
+              y="people"
+              xOrder={[...SINCE_BANDS]}
+              height={240}
+              onSelect={(d) => drill(() => sinceSpec(p, d))}
+            />
+          </Figure>
+          <ManagerChanges m={m} />
+        </div>
         <Figure
           id="hrbp-internal-moves"
           metric={ID.mobility}
           uses={p.uses(FIGURE.internalMoves)}
           title="Internal moves"
-          subtitle={`Promotions, transfers, lateral moves and demotions, ${window}, newest first. Select a row to open the person.`}
+          subtitle={`Promotions, transfers, lateral moves and demotions, ${window}, newest first.`}
           data={mv.moves}
           columns={[
             { key: 'date', label: 'Effective', format: 'date' },

@@ -3,6 +3,7 @@
  * privacy checks every tool result must pass. Not imported by the app.
  */
 import { expect } from 'vitest'
+import type { AccessInput } from '@/access/context'
 import { type AnalyticsContext, buildContext } from '@/data/context'
 import type { DataStandard } from '@/data/quality/tier'
 import type { DatasetVersion } from '@/data/quality/types'
@@ -44,6 +45,8 @@ export function sampleCtx(
     data?: Datasets
     versions?: Partial<Record<DatasetKey, DatasetVersion | null>>
     mappings?: readonly ReferenceMapping[]
+    /** A mode (Manager mode with its manager); HR when not given. */
+    access?: AccessInput
   } = {},
 ): AnalyticsContext {
   const data = o.data ?? sampleData()
@@ -58,6 +61,7 @@ export function sampleCtx(
     ...(o.metrics ? { metrics: o.metrics } : {}),
     ...(o.versions ? { versions: o.versions } : {}),
     ...(o.mappings ? { mappings: o.mappings } : {}),
+    ...(o.access ? { access: o.access } : {}),
   })
 }
 

@@ -1,12 +1,13 @@
 /**
  * Small custom Plot marks the kit shares: pixel-placed text labels (two-tone value + muted
- * secondary, status glyphs, halos), reference rules with labels, and the pointer-driven hover
- * band. Text fills are set as inline styles so they survive the house stylesheet and exports.
+ * secondary, status glyphs, halos), reference rules with labels, the pointer-driven hover band,
+ * and annotations (`noteMark`, placement in `./notes`). Text fills are set as inline styles so they survive the house stylesheet and exports.
  */
 import * as Plot from '@observablehq/plot'
 import type { ChartTheme } from '../theme'
 import { HOVER_CLASS } from './attrs'
-import { textWidth } from './measure'
+import { maxTextWidth, textWidth, wrapText } from './measure'
+import { type Box, NOTE_LINE, placeNotes } from './notes'
 
 const SVG_NS = 'http://www.w3.org/2000/svg'
 
@@ -20,6 +21,9 @@ export function svgEl<K extends keyof SVGElementTagNameMap>(
   attrs: Attrs = {},
 ): SVGElementTagNameMap[K] {
   const e = doc.createElementNS(SVG_NS, tag)
+  // Plot puts text-anchor="middle" on its root svg, so custom text would inherit it and centre
+  // on its x. Kit labels are placed by their left edge; anchor them there unless told otherwise.
+  if (tag === 'text' && attrs['text-anchor'] == null) e.setAttribute('text-anchor', 'start')
   for (const [k, v] of Object.entries(attrs)) if (v != null) e.setAttribute(k, String(v))
   return e
 }
@@ -85,6 +89,47 @@ export interface PixelLabel {
   title?: string
 }
 
+/** Line pitch of a wrapped category label, for 12px text. */
+const WRAP_LEADING = 13
+
+/**
+ * Category labels beside a band axis: each on one line when it fits `maxWidth`, else broken onto
+ * two lines in rows of 26px or more, so "Export control & trade compliance" reads whole where one
+ * line would cut it to "Export control & trade com…". Returns each label's lines and the widest
+ * line, for the margin.
+ */
+export function bandLabelLines(
+  labels: readonly string[],
+  maxWidth: number,
+  pitch: number,
+  size = 12,
+): { lines: string[][]; width: number } {
+  const lines = labels.map((l) => wrapText(l, maxWidth, size, 400, pitch >= 26 ? 2 : 1))
+  return { lines, width: maxTextWidth(lines.flat(), size) }
+}
+
+/**
+ * One category label's lines as pixel labels, end-anchored at x and centered on y; the full text
+ * rides along as a title when the lines shorten it.
+ */
+export function bandLabel(
+  label: string,
+  lines: readonly string[],
+  x: number,
+  y: number,
+  color: string,
+  size = 12,
+): PixelLabel[] {
+  const cut = lines.join(' ') !== label
+  return lines.map((text, i) => ({
+    x,
+    y: y + (i - (lines.length - 1) / 2) * WRAP_LEADING,
+    anchor: 'end' as const,
+    parts: [{ text, color, size }],
+    title: cut ? label : undefined,
+  }))
+}
+
 /** A mark that draws labels at pixel positions computed from the plot's scales and dimensions. */
 export function labelsMark(
   layout: (scales: Plot.ScaleFunctions, dims: Plot.Dimensions) => PixelLabel[],
@@ -110,8 +155,11 @@ export function labelsMark(
         t.style.paintOrder = 'stroke'
       }
       l.parts.forEach((p, i) => {
-        const span = svgEl(doc, 'tspan', { dx: i > 0 ? (p.gap ?? 5) : undefined })
-        span.textContent = p.text
+        // A part after the first starts with a space, so copied text and assistive tech read
+        // "29 21 overdue" as two words; the gap is narrowed by the space's width to look the same.
+        const space = i > 0 ? textWidth(' ', p.size ?? 11, p.weight ?? 400) : 0
+        const span = svgEl(doc, 'tspan', { dx: i > 0 ? Math.max(0, (p.gap ?? 5) - space) : undefined })
+        span.textContent = i > 0 ? ` ${p.text}` : p.text
         span.style.fill = p.color
         span.style.fontSize = `${p.size ?? 11}px`
         if (p.weight) span.style.fontWeight = String(p.weight)
@@ -252,4 +300,65 @@ export function hoverBand<D>(
   return axis === 'y'
     ? Plot.tickY(data, Plot.pointerY({ y: (d: D) => value(d), maxRadius, render }))
     : Plot.tickX(data, Plot.pointerX({ x: (d: D) => value(d), maxRadius, render }))
+}
+
+/**
+ * Annotations (docs/DESIGN-REFRESH.md 2.7): `resolve` turns the chart's notes into the pixels they
+ * point at, with the boxes of the marks and labels they must stay clear of; `placeNotes` finds
+ * free space near the datum (or drops a note; charts add `NOTE_HEADROOM` above the plot so a note
+ * on the highest datum has room), and each placed note is drawn as a 1px ink-2
+ * leader to an 11px ink-2 label on a sheet-colored halo. Push it after the marks and labels.
+ *
+ *   noteMark(t, (scales, dims) => ({
+ *     anchors: notes.map((n) => ({ x: scalePos(scales, 'x', n.at), y: scalePos(scales, 'y', n.value), text: n.text })),
+ *     obstacles: lineBoxes(points),
+ *   }))
+ */
+export function noteMark(
+  t: ChartTheme,
+  resolve: (
+    scales: Plot.ScaleFunctions,
+    dims: Plot.Dimensions,
+  ) => { anchors: { x: number; y: number; text: string }[]; obstacles?: Box[] },
+): Plot.RenderFunction {
+  return (_index, scales, _values, dims, context) => {
+    const doc = context.document
+    const g = svgEl(doc, 'g', { 'aria-label': 'annotations' })
+    const { anchors, obstacles = [] } = resolve(scales, dims)
+    if (!anchors.length) return g
+    const area = {
+      x: dims.marginLeft,
+      y: 0,
+      w: dims.width - dims.marginLeft - dims.marginRight,
+      h: dims.height - dims.marginBottom,
+    }
+    const placed = placeNotes(
+      anchors.map((a) => ({ ...a, width: textWidth(a.text, 11, 500) })),
+      area,
+      obstacles,
+      (line) => textWidth(line, 11, 500),
+    )
+    for (const n of placed) {
+      const leader = svgEl(doc, 'path', { d: `M${n.from.x},${n.from.y}L${n.to.x},${n.to.y}` })
+      leader.style.stroke = t.ink2
+      leader.style.strokeWidth = '1px'
+      leader.style.fill = 'none'
+      g.append(leader)
+      const text = svgEl(doc, 'text', { x: n.label.x, y: n.label.y, dy: '0.32em', 'text-anchor': 'start' })
+      n.lines.forEach((line, i) => {
+        const span = svgEl(doc, 'tspan', i ? { x: n.label.x, dy: NOTE_LINE } : {})
+        span.textContent = line
+        text.append(span)
+      })
+      text.style.fill = t.ink2
+      text.style.fontSize = '11px'
+      text.style.fontWeight = '500'
+      text.style.stroke = t.sheet
+      text.style.strokeWidth = '3px'
+      text.style.strokeLinejoin = 'round'
+      text.style.paintOrder = 'stroke'
+      g.append(text)
+    }
+    return g
+  }
 }

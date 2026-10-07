@@ -5,6 +5,7 @@
  * in a toast. The export library loads on first use.
  */
 import { useState } from 'react'
+import { managerExportLine } from '@/access/copy'
 import { useFigureRegistry } from '@/charts/registry'
 import { IconCopy, IconDownload, IconSlides, IconTable } from '@/components/icons'
 import { toast, updateToast } from '@/components/toast'
@@ -41,6 +42,8 @@ export function ExportMenu({ view, tab }: { view: ViewDef; tab: string }) {
       sampleCompany: SAMPLE_COMPANY,
       standard: ctx.standard,
       readsData: view.datasets.length > 0,
+      // A Manager mode export says whose org it shows (docs/ROLES.md, 3.11).
+      ...(ctx.access.lock?.managerName && { modeLine: managerExportLine(ctx.access.lock.managerName) }),
     })
 
   const runTab = async (kind: ExportKind) => {
@@ -87,6 +90,11 @@ export function ExportMenu({ view, tab }: { view: ViewDef; tab: string }) {
         failed,
         value: images,
       } = await renderWholeView(view, {
+        // The off-screen tabs render in the same mode, with the same tabs and figures.
+        access:
+          ctx.access.mode === 'manager'
+            ? { mode: 'manager', managerId: ctx.access.lock?.managerId }
+            : { mode: ctx.access.mode },
         onProgress: ({ index, total, tab: t }) => {
           const p = layoutProgress(view.label, t, index, total)
           updateToast(id, p.title, { description: p.description })

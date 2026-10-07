@@ -9,7 +9,17 @@ import { type Format, fmt } from '@/lib/format'
 import { HOVER_CLASS, labelsMark, scalePos } from '../core/marks'
 import { textWidth } from '../core/measure'
 import type { TipContent } from '../core/tooltip'
-import { axisX, axisY, baseline, gridY, housePlot, type PlotBuildContext, PlotChart } from '../plot'
+import {
+  axisX,
+  axisY,
+  baseline,
+  gridY,
+  housePlot,
+  type PlotBuildContext,
+  PlotChart,
+  type PlotElement,
+  plotPos,
+} from '../plot'
 import { clearOfRules } from './hit'
 import { type HistogramBin, histogramBins } from './prepare'
 import { numericAxis } from './scale'
@@ -32,6 +42,8 @@ export interface HistogramProps<T extends object> extends ChartBaseProps<Histogr
   /** What one count is, for the tooltip: "people", "reqs". */
   unit?: string
   height?: number
+  /** A bin's name in the tooltip and keyboard line, e.g. "4 d after" for a one-day bin (default "4 to 5"). */
+  binLabel?: (x0: number, x1: number) => string
 }
 
 export function Histogram<T extends object>({
@@ -45,6 +57,7 @@ export function Histogram<T extends object>({
   bandLabel,
   refs = [],
   unit = 'people',
+  binLabel,
   height = 220,
   onSelect,
   ariaLabel,
@@ -187,15 +200,32 @@ export function Histogram<T extends object>({
   }
 
   const tip = (b: HistogramBin<T>): TipContent => ({
-    title: `${fmt(b.x0, format)} to ${fmt(b.x1, format)}`,
+    title: binLabel ? binLabel(b.x0, b.x1) : `${fmt(b.x0, format)} to ${fmt(b.x1, format)}`,
     rows: [
       { value: fmt(b.n, 'int'), label: unit },
       { value: fmt(b.share, 'pct'), label: `of ${fmt(total, 'int')}` },
     ],
   })
 
+  // Keyboard: bins left to right; the outline wraps the bin.
+  const keyPoints = (plot: PlotElement) =>
+    bins.map((b) => {
+      const xa = plotPos(plot, 'x', b.x0)
+      const xb = plotPos(plot, 'x', b.x1)
+      const y0 = plotPos(plot, 'y', 0)
+      const y1 = plotPos(plot, 'y', b.n)
+      return {
+        datum: b,
+        x: (xa + xb) / 2,
+        y: (y0 + y1) / 2,
+        w: Math.max(4, xb - xa - 2),
+        h: Math.max(4, y0 - y1),
+      }
+    })
+
   return (
     <PlotChart<HistogramBin<T>>
+      keyPoints={keyPoints}
       build={build}
       height={height}
       tip={tip}

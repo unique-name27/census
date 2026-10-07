@@ -53,7 +53,7 @@ describe('Talent on the sample company', () => {
 
   it('measures required training for employees only and grays a change across different courses', () => {
     const k = m.kpis.find((x) => x.id === 'talent-training-on-time')!
-    expect(m.learning.current).toEqual({ rate: 6884 / 7487, due: 7487, onTime: 6884 })
+    expect(m.learning.current).toMatchObject({ rate: 6884 / 7487, due: 7487, onTime: 6884 })
     expect(m.learning.mixDiffers).toBe(true)
     expect(k.deltaMaterial).toBe(false)
     expect(k.deltaLabel).toBe('vs prior period, different courses')

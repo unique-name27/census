@@ -1,5 +1,7 @@
 /**
- * Census UI primitives on Base UI. Small, quiet controls: hairline borders, ink text, 4px radius.
+ * Census UI primitives on Base UI. Small, quiet controls: hairline borders, ink text, 4px radius
+ * (rounded-control); tags, pills, menu items and segment thumbs take the 3px chip radius
+ * (rounded-chip). Ghost icon buttons rest in muted ink so the chrome stays behind the data.
  * Floating layers (menus, popovers, tooltips) are the only things with a shadow.
  */
 import { Menu as BMenu } from '@base-ui/react/menu'
@@ -34,7 +36,10 @@ const BTN_VARIANT: Record<ButtonVariant, string> = {
   ghost:
     'text-ink-2 hover:bg-hover hover:text-ink active:bg-press data-[popup-open]:bg-hover data-[popup-open]:text-ink',
 }
-const BTN_SIZE = { sm: 'h-7 px-2.5 text-[13px]', md: 'h-8 px-3 text-[13px]' }
+const BTN_SIZE = { sm: 'h-7 px-2.5 text-small', md: 'h-8 px-3 text-small' }
+/** Icon buttons are chrome around the data: a ghost one rests in muted ink and lifts to ink on hover. */
+const ICON_GHOST =
+  'text-muted hover:bg-hover hover:text-ink active:bg-press data-[popup-open]:bg-hover data-[popup-open]:text-ink'
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
   { variant = 'secondary', size = 'md', icon, caret, className, children, type = 'button', ...rest },
@@ -64,7 +69,12 @@ export const IconButton = forwardRef<HTMLButtonElement, ButtonProps & { label: s
       type={type}
       aria-label={label}
       title={label}
-      className={cx(BTN_BASE, BTN_VARIANT[variant], size === 'sm' ? 'size-7' : 'size-8', className)}
+      className={cx(
+        BTN_BASE,
+        variant === 'ghost' ? ICON_GHOST : BTN_VARIANT[variant],
+        size === 'sm' ? 'size-7' : 'size-8',
+        className,
+      )}
       {...rest}
     >
       {children}
@@ -114,11 +124,11 @@ export function Menu({
                   key={i}
                   disabled={it.disabled}
                   onClick={it.onSelect}
-                  className="mx-1 flex cursor-default items-center gap-2.5 rounded-[3px] px-2 py-1.5 text-[13px] outline-none select-none data-[highlighted]:bg-hover data-[disabled]:opacity-45"
+                  className="mx-1 flex cursor-default items-center gap-2.5 rounded-chip px-2 py-1.5 text-small outline-none select-none data-[highlighted]:bg-hover data-[disabled]:opacity-45"
                 >
                   <span className="flex w-4 shrink-0 justify-center text-ink-2">{it.icon}</span>
                   <span className="flex-1">{it.label}</span>
-                  {it.hint && <span className="text-[11px] text-muted">{it.hint}</span>}
+                  {it.hint && <span className="text-label text-muted">{it.hint}</span>}
                 </BMenu.Item>
               )
             })}
@@ -156,11 +166,11 @@ export function Popover({
       <BPopover.Portal>
         <BPopover.Positioner sideOffset={6} side={side} align={align} className="z-50 outline-none">
           <BPopover.Popup
-            className={cx(POPUP, 'p-3 text-[13px]')}
+            className={cx(POPUP, 'p-3 text-small')}
             style={{ width, maxWidth: 'calc(100vw - 32px)' }}
           >
             {title && (
-              <BPopover.Title className="cut-head mb-1.5 text-[14px] font-semibold">{title}</BPopover.Title>
+              <BPopover.Title className="cut-head mb-1.5 text-body font-semibold">{title}</BPopover.Title>
             )}
             {children}
           </BPopover.Popup>
@@ -191,7 +201,7 @@ export function Tip({
       <BTooltip.Trigger render={children} />
       <BTooltip.Portal>
         <BTooltip.Positioner sideOffset={6} side={side} className="z-50">
-          <BTooltip.Popup className={cx(POPUP, 'max-w-72 px-2.5 py-1.5 text-[12px] leading-snug')}>
+          <BTooltip.Popup className={cx(POPUP, 'max-w-72 px-2.5 py-1.5 text-meta leading-snug')}>
             {content}
           </BTooltip.Popup>
         </BTooltip.Positioner>
@@ -229,8 +239,8 @@ export function Segmented<T extends string>({
           key={o.value}
           value={o.value}
           className={cx(
-            'inline-flex items-center gap-1.5 rounded-[3px] px-2.5 font-medium text-ink-2 transition-colors select-none hover:text-ink data-[pressed]:bg-sheet data-[pressed]:text-ink data-[pressed]:shadow-[0_0_0_1px_var(--rule-strong)]',
-            size === 'sm' ? 'h-6 text-[12px]' : 'h-7 text-[13px]',
+            'inline-flex items-center gap-1.5 rounded-chip px-2.5 font-medium text-ink-2 transition-colors select-none hover:text-ink data-[pressed]:bg-sheet data-[pressed]:text-ink data-[pressed]:shadow-[0_0_0_1px_var(--rule-strong)]',
+            size === 'sm' ? 'h-6 text-meta' : 'h-7 text-small',
           )}
         >
           {o.icon}
@@ -254,7 +264,7 @@ export function Switch({
 }) {
   return (
     // biome-ignore lint/a11y/noLabelWithoutControl: Base UI renders the switch as a button inside the label
-    <label className="inline-flex cursor-pointer items-center gap-2 text-[13px] text-ink-2 select-none">
+    <label className="inline-flex cursor-pointer items-center gap-2 text-small text-ink-2 select-none">
       <BSwitch.Root
         checked={checked}
         onCheckedChange={(v) => onChange(v)}
@@ -294,7 +304,7 @@ export function StatusPill({
   return (
     <span
       className={cx(
-        'inline-flex h-5 shrink-0 items-center gap-1 rounded-[3px] pr-1.5 pl-1 text-[11px] font-semibold tracking-[0.02em] text-ink',
+        'inline-flex h-5 shrink-0 items-center gap-1 rounded-chip pr-1.5 pl-1 text-label font-semibold tracking-[0.02em] text-ink',
         quiet ? 'bg-transparent' : s.wash,
       )}
     >
@@ -321,7 +331,7 @@ export function Tag({
   return (
     <span
       className={cx(
-        'inline-flex h-5 items-center rounded-[3px] px-1.5 text-[11px] font-medium whitespace-nowrap',
+        'inline-flex h-5 items-center rounded-chip px-1.5 text-label font-medium whitespace-nowrap',
         tone === 'neutral' && 'bg-sheet-3 text-ink-2',
         tone === 'ink' && 'bg-ink text-on-ink',
         tone === 'outline' && 'text-ink-2 shadow-[inset_0_0_0_1px_var(--rule-strong)]',

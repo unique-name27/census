@@ -14,6 +14,8 @@ export interface DiagnosticDataset {
 }
 
 export interface DiagnosticInput {
+  /** "Mode: Manager (manager set, name left out)": the mode, never the manager (docs/ROLES.md, 3.8). */
+  modeLine?: string
   viewLabel: string
   tabLabel: string | null
   /** The route as the address bar shows it, without any record IDs: "#hrbp.attrition". */
@@ -70,6 +72,7 @@ export function diagnosticText(d: DiagnosticInput): string {
     'Census problem report',
     `Created ${d.at}. No names, employee IDs, file names or values from the data are included.`,
     '',
+    d.modeLine ?? null,
     `Page: ${d.viewLabel}${d.tabLabel ? `, ${d.tabLabel}` : ''} (${d.address})`,
     `Period: ${d.period.label} (${d.period.preset})`,
     `Filters: ${filters.length ? filters.join('; ') : 'none'}`,

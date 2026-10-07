@@ -8,6 +8,7 @@ import type { FieldRef } from '@/data/quality/fieldRef'
 import type {
   Candidate,
   Employee,
+  HiringPlanLine,
   HrTransaction,
   LearningRecord,
   OnboardingTask,
@@ -19,12 +20,13 @@ import { groupFilter, periodFilter } from '@/drill/filter'
 import { PERSON_KEY } from '@/drill/records'
 import { asOfLine, windowLine } from '@/drill/subtitle'
 import { type DrillFilter, type DrillSpec, drillSpec } from '@/drill/types'
-import { formatDate, monthEnd } from '@/lib/dates'
+import { formatMonth, monthEnd } from '@/lib/dates'
 import { fmt, plural } from '@/lib/format'
 import { type Breakdown, groupRows, type SurveyAggregate } from '@/lib/surveys'
 import type { OnboardingBase } from './base'
 import { COVERAGE_LABEL, type CoverageRow, type PlanLineView, type PlanModel } from './plan'
 import { daysLateOf, type Readiness, readinessOf, type Start, type TaskView } from './starts'
+import { blockingWords, CONTINGENCY_TASKS } from './upcoming'
 
 type Uses = readonly FieldRef[] | undefined
 
@@ -84,9 +86,6 @@ export function monthPeriod(month: string, w: { start: string; end: string }): D
 
 const C = (key: string, label: string, extra: Partial<Column> = {}): Column => ({ key, label, ...extra })
 
-const blockingText = (r: Readiness): string | null =>
-  r.blocking ? `${r.blocking.name}${r.blocking.due ? `, due ${formatDate(r.blocking.due)}` : ''}` : null
-
 const START_COLUMNS: Column[] = [
   C('employeeId', 'Pre-hire ID'),
   C('location', 'Location'),
@@ -118,7 +117,7 @@ export function startsDrill(
       daysToGo: r.daysToGo,
       readiness: r.total ? `${r.done} of ${r.total} done` : null,
       readinessStatus: r.status === 'No tasks' ? null : r.status,
-      blocking: blockingText(r),
+      blocking: blockingWords(r, b.masked),
     }
   }
   const subtitle = o.subtitle ?? asOfSub(b)
@@ -169,35 +168,69 @@ export function startsDrill(
   })
 }
 
-/** Onboarding tasks with their effective due date and state (the checklist fills blank due dates). */
+/** The tasks that clear an offer's contingencies; Manager mode words them as the team holding them. */
+const CONTINGENCY = new Set(CONTINGENCY_TASKS)
+
+/**
+ * A task's state where contingencies are masked: an open background check or screening reads
+ * "With People ops", a closed one "Handled by People ops" (whether it cleared, or was not needed,
+ * is never shown: "Not needed" would say whether the new hire needs export-control screening).
+ */
+const maskedState = (v: TaskView): string =>
+  CONTINGENCY.has(v.name) ? (v.open ? `With ${v.owner}` : `Handled by ${v.owner}`) : v.state
+
+/** The line a masked drill adds, once, when it lists a contingency task. */
+export const MASKED_NOTE =
+  'Background checks and export-control screening show the team that handles them, not where they stand or when they cleared.'
+
+/**
+ * Onboarding tasks with their effective due date and state (the checklist fills blank due dates).
+ * In Manager mode (`b.masked`) a background check or export-control screening reads as the team
+ * that handles it, with no completed date or days late, and the note says so.
+ */
 export function tasksDrill(
   b: OnboardingBase,
   tasks: readonly TaskView[],
   title: string,
-  o: { subtitle?: string; note?: string; uses?: Uses } = {},
+  o: {
+    subtitle?: string
+    note?: string
+    uses?: Uses
+    /** The state as the panel words it, when it differs. */
+    stateText?: (v: TaskView) => string
+    /** Mask contingency tasks (default: Manager mode, `b.masked`). */
+    masked?: boolean
+    /** Extra columns after the standard ones, with their values per task. */
+    extra?: { columns: Column[]; values: (v: TaskView) => Record<string, unknown> }
+  } = {},
 ): DrillSpec<'onboardingTasks'> | null {
   if (!tasks.length) return null
   const byTask = new Map(tasks.map((t) => [t.task, t]))
+  const masked = o.masked ?? b.masked
+  const hides = (v: TaskView) => masked && CONTINGENCY.has(v.name)
+  const note = masked && tasks.some(hides) ? [o.note, MASKED_NOTE].filter(Boolean).join(' ') : o.note
   return drillSpec({
     kind: 'onboardingTasks',
     title,
     subtitle: o.subtitle ?? asOfSub(b),
     rows: tasks.map((t) => t.task),
     extra: {
-      columns: [],
+      columns: o.extra?.columns ?? [],
       values: (t: OnboardingTask) => {
         const v = byTask.get(t)!
         // Days late from the effective due date (the checklist fills blank ones); blank while
-        // a task is open and not yet due.
+        // a task is open and not yet due. A masked contingency shows neither when nor how late.
         return {
           dueDate: v.due,
-          state: v.state,
+          state: o.stateText ? o.stateText(v) : masked ? maskedState(v) : v.state,
           owner: v.owner,
-          daysLate: daysLateOf(t, v.due, v.state, b.asOf),
+          daysLate: hides(v) ? null : daysLateOf(t, v.due, v.state, b.asOf),
+          ...(hides(v) ? { completedDate: null } : {}),
+          ...o.extra?.values(v),
         }
       },
     },
-    note: o.note,
+    note,
     uses: o.uses,
   })
 }
@@ -473,4 +506,100 @@ export function surveyDrill(
     note: `Grouped results only. Groups under ${b.settings.surveyMin} respondents show counts without scores.`,
     uses: o.uses,
   })
+}
+
+/* ───────────── new figures: countdown, late tasks, task timing, plan by month ───────────── */
+
+/**
+ * One start's day-one tasks (a cell or row of the countdown). With `masked` (Manager mode) a
+ * background check or export-control screening reads "With People ops" while open and "Handled by
+ * People ops" once closed, never Blocked, Done or Not needed, so a contingency outcome is not shown.
+ */
+export function countdownDrill(
+  b: OnboardingBase,
+  r: Readiness,
+  name: string,
+  o: { masked?: boolean; uses?: Uses } = {},
+): DrillSpec<'onboardingTasks'> | null {
+  return tasksDrill(b, r.tasks, `Day-one tasks, ${name}`, {
+    note: `${r.done} of ${r.total} done.`,
+    uses: o.uses,
+    masked: o.masked ?? b.masked,
+  })
+}
+
+/** The late tasks of one cell of "Late day-one tasks by task and region" (none when hidden). */
+export function lateTasksDrill(
+  b: OnboardingBase,
+  cell: { task: string; place: string; n: number; late: number | null; items: readonly { task: TaskView }[] },
+  o: { uses?: Uses } = {},
+): DrillSpec<'onboardingTasks'> | null {
+  if (!cell.items.length) return null
+  return tasksDrill(
+    b,
+    cell.items.map((x) => x.task),
+    `${cell.task}, late, ${cell.place}`,
+    {
+      subtitle: windowSub(b),
+      note: `${plural(cell.late ?? 0, 'start')} of ${fmt(cell.n, 'int')} had this task done after its due date, or still open past it.`,
+      uses: o.uses,
+    },
+  )
+}
+
+/** The tasks in one bin of "When day-one tasks were finished", with their days from the start. */
+export function timingBinDrill(
+  b: OnboardingBase,
+  task: string,
+  items: readonly { item: { task: TaskView; start: Start }; days: number }[],
+  x0: number,
+  x1: number,
+  o: { uses?: Uses } = {},
+): DrillSpec<'onboardingTasks'> | null {
+  if (!items.length) return null
+  const days = new Map(items.map((x) => [x.item.task, x.days]))
+  const when = (d: number) => (d < 0 ? `${-d} d before` : d === 0 ? 'the first day' : `${d} d after`)
+  return tasksDrill(
+    b,
+    items.map((x) => x.item.task),
+    `${task}, finished ${x1 - x0 <= 1 ? when(x0) : `${when(x0)} to ${when(x1 - 1)}`}`,
+    {
+      subtitle: windowSub(b),
+      uses: o.uses,
+      extra: {
+        columns: [C('daysFromStart', 'Days from start', { format: 'int' })],
+        values: (v) => ({ daysFromStart: days.get(v) ?? null }),
+      },
+    },
+  )
+}
+
+/** The people who started in one unit and month of the plan grid, with the plan in the note. */
+export function planMonthDrill(
+  b: OnboardingBase,
+  cell: { unit: string; month: string; planned: number; actual: number; people: readonly Employee[] },
+  o: { uses?: Uses } = {},
+): DrillSpec<'employees'> | null {
+  const month = formatMonth(`${cell.month}-01`)
+  return employeesDrill(b, cell.people, `Starts in ${month}, ${cell.unit}`, {
+    subtitle: monthSub(b, cell.month),
+    note: `${fmt(cell.actual, 'int')} started of ${plural(cell.planned, 'planned start')}.`,
+    uses: o.uses,
+  })
+}
+
+/** The plan lines of one unit and month of the plan grid. */
+export function planMonthLinesDrill(
+  b: OnboardingBase,
+  p: PlanModel,
+  cell: { unit: string; month: string; lines: readonly HiringPlanLine[] },
+  o: { uses?: Uses } = {},
+): DrillSpec<'hiringPlan'> | null {
+  const lines = new Set(cell.lines)
+  return planDrill(
+    b,
+    p.views.filter((v) => lines.has(v.line)),
+    `Planned starts in ${formatMonth(`${cell.month}-01`)}, ${cell.unit}`,
+    { uses: o.uses },
+  )
 }

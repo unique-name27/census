@@ -12,6 +12,7 @@ import { USES } from '../engine/lineage'
 import { asOfNote, daysText } from '../engine/wording'
 import { M } from '../metrics'
 import { ATLAS_CITATION } from '../reference/calendar'
+import { CalendarHeatmapFigure } from './charts'
 import { deadlineDrill, jurisdictionDrill } from './drill'
 import { COUNSEL_NOTE, defs, useAtlasHref } from './shared'
 
@@ -160,6 +161,12 @@ export function DeadlinesTab({ m, ctx }: { m: ComplianceView; ctx: AnalyticsCont
   const peopleDrill = (r: JurisdictionTableRow) => jurisdictionPeople(r.r)
   return (
     <>
+      <Section
+        title="The year ahead"
+        dek="Which months are heavy with statutory filings, payments and notices, and in which jurisdictions, so payroll and people operations can plan."
+      >
+        <CalendarHeatmapFigure m={m} ctx={ctx} />
+      </Section>
       <Section
         title="Statutory deadlines"
         dek={`Filing, payment, notice and planning dates from the Hire-to-Retire Atlas for the next ${daysText(m.settings.deadlineDays)}, for the jurisdictions where people in this scope work. US federal entries apply to every US site. The look-ahead is a setting of the metric.`}

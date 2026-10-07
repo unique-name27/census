@@ -329,15 +329,15 @@ export function SandboxTab() {
 
   const side = drag ? (
     <div className="px-4 py-3">
-      <h3 className="cut-head text-[15px] font-semibold">Proposed move</h3>
-      <p className="mt-0.5 mb-3 text-[12px] text-muted">
+      <h3 className="cut-head text-title font-semibold">Proposed move</h3>
+      <p className="mt-0.5 mb-3 text-meta text-muted">
         {mode === 'team' ? 'Moving with their org.' : 'Moving alone; their reports stay behind.'} Drop on a
         card to move, anywhere else to cancel.
       </p>
       {ripple ? (
         <RipplePreview tree={tree} ripple={ripple} />
       ) : (
-        <p className="text-[13px] text-ink-2">Hover over the new manager's card.</p>
+        <p className="text-small text-ink-2">Hover over the new manager's card.</p>
       )}
     </div>
   ) : selected ? (
@@ -354,8 +354,8 @@ export function SandboxTab() {
       onMove={setMoveId}
     />
   ) : (
-    <div className="space-y-3 px-4 py-3 text-[13px] text-ink-2">
-      <h3 className="cut-head text-[15px] font-semibold text-ink">How the sandbox works</h3>
+    <div className="space-y-3 px-4 py-3 text-small text-ink-2">
+      <h3 className="cut-head text-title font-semibold text-ink">How the sandbox works</h3>
       <p>
         Drag a card onto the person who should become their manager. The panel shows who gains and loses
         reports while you drag.
@@ -417,7 +417,7 @@ export function SandboxTab() {
         >
           Export scenario
         </Button>
-        <span className="text-[13px] text-muted">
+        <span className="text-small text-muted">
           {moves.length ? (
             <>
               {plural(moves.length, 'step')} ·{' '}
@@ -446,7 +446,7 @@ export function SandboxTab() {
       </div>
 
       {result.skipped.length > 0 && (
-        <p className="rounded-control bg-warning-wash px-3 py-2 text-[13px] text-ink">
+        <p className="rounded-control bg-warning-wash px-3 py-2 text-small text-ink">
           {plural(result.skipped.length, 'step no longer applies', 'steps no longer apply')} to this data and{' '}
           {result.skipped.length === 1 ? 'was' : 'were'} left out: {result.skipped[0].reason}
         </p>
@@ -461,7 +461,7 @@ export function SandboxTab() {
           columns={personColumns(tree, scope)}
           metric={FIGURE_METRIC['org-sandbox']}
           definitions={sandboxDefinitions(ctx.metrics, rules)}
-          note={`${plural(rows.length, 'person', 'people')} shown. Drag a card onto a new manager; drag the background, or click the chart and scroll, to pan. Click a count on a card to list those people.`}
+          note={`${plural(rows.length, 'person', 'people')} shown. Drag a card onto a new manager; drag the background, or click the chart and scroll, to pan.`}
           tableToggle={false}
           uses={sandboxUses({ ...lineage, colorBy })}
           actions={<TableToggle showTable={showTable} onChange={setShowTable} />}
@@ -494,7 +494,7 @@ export function SandboxTab() {
                 />
                 <ColorLegend scheme={scheme} className="ml-auto" />
               </div>
-              {heldBack.length > 0 && <p className="mt-2 text-[12px] text-muted">{heldBack.join(' ')}</p>}
+              {heldBack.length > 0 && <p className="mt-2 text-meta text-muted">{heldBack.join(' ')}</p>}
               <div className="mt-3 flex flex-col gap-3 lg:flex-row">
                 <Canvas
                   tree={tree}

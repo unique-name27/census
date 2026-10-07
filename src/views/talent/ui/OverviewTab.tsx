@@ -1,3 +1,4 @@
+import { S, useCan } from '@/access'
 import { Figure, HBars, useChartTheme } from '@/charts'
 import { Grid, KpiStrip, Readout, Section } from '@/components'
 import { useAnalytics } from '@/data/context'
@@ -24,6 +25,8 @@ export function OverviewTab({ m }: { m: TalentModel }) {
   const left = perf.ratedLeft
   const s = m.settings
   const hi = highRatingText(s.highRating)
+  // Manager mode hides the key talent list, so its section (and its dek about scores) goes too.
+  const keyShown = useCan(S.figure('talent-key-talent-top'))
 
   return (
     <>
@@ -33,6 +36,8 @@ export function OverviewTab({ m }: { m: TalentModel }) {
           id="talent-readout"
           findings={m.findings}
           span={4}
+          // Phones: the 9-box first, then the readout.
+          className="max-md:order-1"
           emptyText="Nothing unusual in this scope as of the latest data."
         />
         <NineBoxFigure m={m} span={8} />
@@ -103,36 +108,38 @@ export function OverviewTab({ m }: { m: TalentModel }) {
         </Figure>
       </Section>
 
-      <Section
-        title="Key talent at risk"
-        dek={`People rated ${hi} whose flight-risk score is in the high band (the top ${fmt(m.risk.highShare, 'pct0')} of scores company-wide), highest scores first. The Retention risk tab explains the score and lists everyone.`}
-      >
-        <Figure
-          id="talent-key-talent-top"
-          uses={m.uses['talent-key-talent-top']}
-          metric={FIGURE_METRIC['talent-key-talent-top']}
-          title="Key talent at risk, top 10"
-          subtitle={`Rated ${highRangeText(s.highRating)} and in the high flight-risk band, scored as of ${asOf}`}
-          data={top10}
-          columns={riskPersonColumns(top10, { full: false })}
-          definitions={defsFor(
-            ctx.metrics,
-            [M.keyTalent, M.flightRisk, M.riskBands],
-            [mainReasonTerm(s)],
-            [M.highPerformers, M.riskDrivers],
-          )}
-          note={`${plural(m.retention.keyTalent.length, 'person', 'people')} in total · points learned from the last two years of exits`}
-          tableOnly
-          table={{ maxRows: 10, onRowClick: (r) => openPerson(r.employeeId) }}
-          empty={
-            !m.has.reviews
-              ? `Upload Reviews to see who is rated ${hi}.`
-              : top10.length
-                ? null
-                : `Nobody rated ${hi} is in the high flight-risk band in this scope.`
-          }
-        />
-      </Section>
+      {keyShown && (
+        <Section
+          title="Key talent at risk"
+          dek={`People rated ${hi} whose flight-risk score is in the high band (the top ${fmt(m.risk.highShare, 'pct0')} of scores company-wide), highest scores first. The Retention risk tab explains the score and lists everyone.`}
+        >
+          <Figure
+            id="talent-key-talent-top"
+            uses={m.uses['talent-key-talent-top']}
+            metric={FIGURE_METRIC['talent-key-talent-top']}
+            title="Key talent at risk, top 10"
+            subtitle={`Rated ${highRangeText(s.highRating)} and in the high flight-risk band, scored as of ${asOf}`}
+            data={top10}
+            columns={riskPersonColumns(top10, { full: false })}
+            definitions={defsFor(
+              ctx.metrics,
+              [M.keyTalent, M.flightRisk, M.riskBands],
+              [mainReasonTerm(s)],
+              [M.highPerformers, M.riskDrivers],
+            )}
+            note={`${plural(m.retention.keyTalent.length, 'person', 'people')} in total · points learned from the last two years of exits`}
+            tableOnly
+            table={{ maxRows: 10, onRowClick: (r) => openPerson(r.employeeId) }}
+            empty={
+              !m.has.reviews
+                ? `Upload Reviews to see who is rated ${hi}.`
+                : top10.length
+                  ? null
+                  : `Nobody rated ${hi} is in the high flight-risk band in this scope.`
+            }
+          />
+        </Section>
+      )}
     </>
   )
 }

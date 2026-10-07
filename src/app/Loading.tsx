@@ -1,12 +1,16 @@
 /**
- * First frame while the datasets load: the real band and folder tabs with placeholder numbers, and
- * blank sheets where the KPI strip, readout and lead figure will land, so nothing jumps.
+ * First frame while the datasets load: the real band and folder tabs (numbers not yet known, so
+ * left blank), and the home page's sheets at their final size with their titles: the hero beside
+ * the key figures, then the lead sheet beside the findings (`Pending`, docs/DESIGN-REFRESH.md
+ * 2.11). One quiet status line, no skeleton blocks, so nothing flashes or jumps.
  */
+import { Pending } from '@/components/Pending'
 import { cx } from '@/components/ui'
 import { VIEWS } from '@/views/registry'
 import { Mark } from './Mark'
 
-const BLOCK = 'rounded-[3px] bg-sheet-3'
+/** The tabs a first visit shows (My team is Manager mode's own home, not a tab elsewhere). */
+const TABS = VIEWS.filter((v) => v.key !== 'team')
 
 export function LoadingShell() {
   return (
@@ -21,19 +25,19 @@ export function LoadingShell() {
             aria-hidden="true"
             className="-mx-(--gutter) flex items-end gap-1.5 overflow-hidden px-(--gutter) pt-1"
           >
-            {VIEWS.map((v, i) => (
+            {TABS.map((v, i) => (
               <div
                 key={v.key}
                 className={cx(
-                  'flex w-[184px] shrink-0 flex-col rounded-t-[6px] px-3.5 pt-2.5 pb-3',
+                  'flex w-[184px] shrink-0 flex-col rounded-t-sheet px-3.5 pt-2.5 pb-3',
                   i === 0 ? 'on-desk bg-page' : 'mt-1 bg-tab-idle',
                 )}
               >
-                <span className="cut-tab truncate text-[13px] leading-tight font-semibold text-ink-2">
+                <span className="cut-tab truncate text-small leading-tight font-semibold text-ink-2">
                   {v.label}
                 </span>
-                <span className={cx(BLOCK, 'mt-2 h-[21px] w-16')} />
-                <span className={cx(BLOCK, 'mt-1 h-3 w-24')} />
+                <span className="mt-2 block h-5" />
+                <span className="mt-1 block h-4" />
               </div>
             ))}
           </div>
@@ -41,13 +45,17 @@ export function LoadingShell() {
       </header>
       <main className="flex-1">
         <div className="mx-auto max-w-[1440px] px-(--gutter) pb-16">
-          <p role="status" className="pt-6 text-[13px] text-ink-2">
-            Preparing the data. Nothing leaves this browser.
-          </p>
-          <div aria-hidden="true" className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-12">
-            <div className="h-[116px] rounded-sheet bg-sheet md:col-span-12" />
-            <div className="h-72 rounded-sheet bg-sheet md:col-span-12 lg:col-span-4" />
-            <div className="h-72 rounded-sheet bg-sheet md:col-span-12 lg:col-span-8" />
+          <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-12 max-md:*:col-span-full">
+            <Pending
+              message="Preparing the data. Nothing leaves this browser."
+              frames={[
+                // The Scorecard's first sheets at their final 1440 sizes (see ScorecardPage).
+                { title: 'Targets met', span: 4, height: 223 },
+                { title: 'Key figures', span: 8, height: 223 },
+                { title: 'Measures against target', span: 8, height: 973 },
+                { title: 'Top findings across Census', span: 4, height: 827 },
+              ]}
+            />
           </div>
         </div>
       </main>

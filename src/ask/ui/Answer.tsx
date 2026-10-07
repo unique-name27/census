@@ -6,6 +6,7 @@
  * person token shows the name, and an employee's name opens their card.
  */
 import { type MouseEvent, type ReactNode, use } from 'react'
+import { routeShown } from '@/access/policy'
 import {
   type Block,
   type Conversation,
@@ -30,11 +31,11 @@ import { type ExportScope, leadOf, refLabel, routeExists } from './model'
 import { leaveAsk } from './store'
 
 export const LINK_CLASS =
-  'rounded-[2px] font-medium text-link underline decoration-1 underline-offset-2 hover:decoration-2'
+  'rounded-mark font-medium text-link underline decoration-1 underline-offset-2 hover:decoration-2'
 
 /** A name that opens the person card: reads as text, with a quiet underline like a drillable number. */
 const PERSON_CLASS =
-  'cursor-pointer rounded-[2px] text-inherit underline decoration-rule-strong decoration-1 underline-offset-[3px] hover:decoration-ink'
+  'cursor-pointer rounded-mark text-inherit underline decoration-rule-strong decoration-1 underline-offset-[3px] hover:decoration-ink'
 
 const VIEW_TABS: ReadonlyMap<string, readonly string[]> = new Map(
   VIEWS.map((v) => [v.key, v.tabs.map((t) => t.key)]),
@@ -67,7 +68,7 @@ function MetricLink({ metric, children }: { metric: string; children: ReactNode 
       }
     >
       <p className="text-ink-2">{def.definition}</p>
-      {def.formula && <p className="mt-1.5 text-[12px] text-muted">{def.formula}</p>}
+      {def.formula && <p className="mt-1.5 text-meta text-muted">{def.formula}</p>}
       <div className="mt-2 border-t border-rule pt-2">
         <a
           href={metricHref(metric)}
@@ -77,7 +78,7 @@ function MetricLink({ metric, children }: { metric: string; children: ReactNode 
             leaveAsk()
             openMetricDefinition(metric)
           }}
-          className="inline-flex items-center gap-1 rounded-[2px] text-[12px] font-medium text-link underline-offset-2 hover:underline"
+          className="inline-flex items-center gap-1 rounded-mark text-meta font-medium text-link underline-offset-2 hover:underline"
         >
           Open in Metric definitions
         </a>
@@ -137,7 +138,7 @@ function InlineNode({ node: n }: { node: Inline }) {
       )
     case 'code':
       return (
-        <code className="rounded-[3px] bg-sheet-2 px-1 py-px font-mono text-[12px]">
+        <code className="rounded-chip bg-sheet-2 px-1 py-px font-mono text-meta">
           {codeText(n.text, (t) => conversation.person(t))}
         </code>
       )
@@ -182,7 +183,7 @@ function InlineNode({ node: n }: { node: Inline }) {
   }
 }
 
-const HEADING_SIZE = { 1: 'text-[17px]', 2: 'text-[16px]', 3: 'text-[15px]' } as const
+const HEADING_SIZE = { 1: 'text-title', 2: 'text-title', 3: 'text-title' } as const
 
 /** Inline nodes under the bold label they open with, so their record links can name it. */
 function Led({ nodes }: { nodes: readonly Inline[] }) {
@@ -199,7 +200,7 @@ function BlockView({ block: b, index }: { block: Block; index: number }) {
   switch (b.type) {
     case 'paragraph':
       return (
-        <p className="text-[14px] leading-[1.6] text-ink">
+        <p className="text-body leading-[1.6] text-ink">
           <Led nodes={b.children} />
         </p>
       )
@@ -215,7 +216,7 @@ function BlockView({ block: b, index }: { block: Block; index: number }) {
         <List
           start={b.ordered && b.start !== 1 ? b.start : undefined}
           className={cx(
-            'flex flex-col gap-1 pl-5 text-[14px] leading-[1.55] text-ink marker:text-muted',
+            'flex flex-col gap-1 pl-5 text-body leading-[1.55] text-ink marker:text-muted',
             b.ordered ? 'list-decimal' : 'list-disc',
           )}
         >
@@ -231,7 +232,7 @@ function BlockView({ block: b, index }: { block: Block; index: number }) {
       return <AnswerTable block={b} index={index} />
     case 'code':
       return (
-        <pre className="overflow-x-auto rounded-control bg-sheet-2 p-3 font-mono text-[12px] leading-relaxed text-ink">
+        <pre className="overflow-x-auto rounded-control bg-sheet-2 p-3 font-mono text-meta leading-relaxed text-ink">
           {codeText(b.text, (t) => conversation.person(t))}
         </pre>
       )
@@ -256,11 +257,13 @@ export function Answer({
   /** The scope its exported tables are stamped with. */
   exportScope?: () => ExportScope | null
 }) {
-  const { metrics } = useAnalytics()
+  const { metrics, access } = useAnalytics()
+  // A link to a page the mode hides reads as plain text; so does every metric link where the
+  // dictionary (in the Data room) is not shown (docs/ROLES.md, 3.9).
   const blocks = parseAnswer(text, {
     isRef: (r) => conversation.hasRef(r),
-    isView,
-    isMetric: (m) => !!metrics.def(m),
+    isView: (v, t) => isView(v, t) && routeShown(access.mode, v, t ?? ''),
+    isMetric: (m) => !!metrics.def(m) && access.can('page:data') && access.can(`metric:${m}`),
   })
   // Tables are numbered in the answer for their export titles.
   const tableNo: number[] = []

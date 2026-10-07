@@ -20,8 +20,9 @@ import type {
 import type { Conversation } from './conversation'
 import { type AskError, CUT_OFF, classifyError, DECLINED, EMPTY_QUESTION, errorLog, STOPPED } from './errors'
 import { type ModelId, modelById } from './models'
-import { ROUND_LIMIT_NOTE, SYSTEM_BLOCKS } from './prompt'
-import { runTool, TOOL_DEFINITIONS, toolLabel } from './tools'
+import { ROUND_LIMIT_NOTE, SYSTEM_BLOCKS, systemBlocksFor } from './prompt'
+import { askOffReason } from './scope'
+import { runTool, TOOL_DEFINITIONS, toolDefinitionsFor, toolLabel } from './tools'
 import { NO_USAGE, type ToolCallRecord, type ToolEnv, type Usage } from './types'
 
 /** The request body (the Messages API's streaming params, beta surface). */
@@ -163,13 +164,15 @@ export function buildRequest(
   model: ModelId | undefined,
   messages: BetaMessageParam[],
   final: boolean,
+  /** The mode's system blocks and tools (Manager mode: docs/ROLES.md, 4.7); every tool by default. */
+  mode?: { system: AskRequest['system']; tools: AskRequest['tools'] },
 ): AskRequest {
   const info = modelById(model)
   return {
     model: info.id,
     max_tokens: MAX_TOKENS,
-    system: SYSTEM_BLOCKS,
-    tools: TOOL_DEFINITIONS,
+    system: mode?.system ?? SYSTEM_BLOCKS,
+    tools: mode?.tools ?? TOOL_DEFINITIONS,
     messages,
     // Caches the conversation so far; the system prompt and tools carry their own breakpoints.
     cache_control: { type: 'ephemeral' },
@@ -204,8 +207,31 @@ export async function ask(o: AskOptions): Promise<AskResult> {
       error: EMPTY_QUESTION,
       model: modelById(o.model).id,
     }
+  // Manager mode needs an org of the anonymity minimum, so no answer is about one person.
+  const off = askOffReason(o.env.ctx)
+  if (off)
+    return {
+      status: 'error',
+      text: '',
+      sent: '',
+      calls: [],
+      usage: { ...NO_USAGE },
+      rounds: 0,
+      roundLimited: false,
+      truncated: false,
+      stopReason: null,
+      error: { kind: 'bad_request', title: off, detail: 'Nothing was sent.', action: null },
+      model: modelById(o.model).id,
+    }
   const sent = conv.tokenize(o.question.trim(), o.env.ctx)
   emit({ type: 'question', sent })
+  // The mode's system blocks and tool definitions: the Manager line names the manager by token.
+  const access = o.env.ctx.access
+  conv.tokens.index(o.env.ctx)
+  const mode = {
+    system: systemBlocksFor(access?.lock ? conv.tokens.forEmployee(access.lock.managerId) : null),
+    tools: toolDefinitionsFor(access),
+  }
   const turn: BetaMessageParam[] = [{ role: 'user', content: sent }]
   const calls: ToolCallRecord[] = []
   let usage: Usage = { ...NO_USAGE }
@@ -258,7 +284,7 @@ export async function ask(o: AskOptions): Promise<AskResult> {
       const final = rounds >= maxRounds
       requests++
       emit({ type: 'request', round: requests })
-      const stream = o.client.stream(buildRequest(o.model, [...conv.history, ...turn], final), {
+      const stream = o.client.stream(buildRequest(o.model, [...conv.history, ...turn], final, mode), {
         signal: o.signal,
       })
       live = null

@@ -15,10 +15,11 @@ import { view as org } from '../org'
 import { view as recruiting } from '../recruiting'
 import { view as services } from '../services'
 import { view as talent } from '../talent'
+import { view as team } from '../team'
 import type { ViewDef } from '../types'
 
 const BY_KEY = new Map(
-  [recruiting, onboarding, hrbp, org, services, talent, comp, compliance, listening, ai].map((v) => [
+  [team, recruiting, onboarding, hrbp, org, services, talent, comp, compliance, listening, ai].map((v) => [
     v.key,
     v,
   ]),

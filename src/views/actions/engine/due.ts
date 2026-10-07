@@ -42,3 +42,64 @@ export function dueText(due: ISODate | null | undefined, asOf: ISODate): string 
   if (d < 0) return `${-d} d overdue`
   return d === 0 ? 'Due today' : `Due in ${d} d`
 }
+
+/**
+ * Finer due-date bands for the due timeline, stalest first: weeks overdue, the weeks ahead, then
+ * later and no due date. Days count from the as-of date (negative is overdue).
+ */
+export type DueBand =
+  | 'over8w'
+  | 'over4w'
+  | 'over2w'
+  | 'over1w'
+  | 'overDays'
+  | 'next7'
+  | 'next14'
+  | 'next28'
+  | 'later'
+  | 'none'
+
+export const DUE_BANDS: readonly DueBand[] = [
+  'over8w',
+  'over4w',
+  'over2w',
+  'over1w',
+  'overDays',
+  'next7',
+  'next14',
+  'next28',
+  'later',
+  'none',
+]
+
+export const DUE_BAND_LABEL: Readonly<Record<DueBand, string>> = {
+  over8w: '8+ wk overdue',
+  over4w: '4 to 8 wk overdue',
+  over2w: '2 to 4 wk overdue',
+  over1w: '1 to 2 wk overdue',
+  overDays: '1 to 6 d overdue',
+  next7: 'Due in 0 to 6 d',
+  next14: 'Due in 7 to 13 d',
+  next28: 'Due in 2 to 4 wk',
+  later: 'Due in 4+ wk',
+  none: 'No due date',
+}
+
+/** The band a due date falls in, against the as-of date. */
+export function dueBand(due: ISODate | null | undefined, asOf: ISODate): DueBand {
+  const d = daysToDue(due, asOf)
+  if (d == null) return 'none'
+  if (d < 0) {
+    const late = -d
+    return late >= 56
+      ? 'over8w'
+      : late >= 28
+        ? 'over4w'
+        : late >= 14
+          ? 'over2w'
+          : late >= 7
+            ? 'over1w'
+            : 'overDays'
+  }
+  return d <= 6 ? 'next7' : d <= 13 ? 'next14' : d <= 27 ? 'next28' : 'later'
+}

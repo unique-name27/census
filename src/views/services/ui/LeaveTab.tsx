@@ -52,6 +52,7 @@ import { FIGURE_METRIC } from '../metrics'
 import { type AtlasColumn, AtlasTable } from './AtlasTable'
 import { leaveUnitSegment, onLeaveUnitDrill } from './drill'
 import { asOfNote, count, NeedData, NO_TX, period, rateTone } from './shared'
+import { OnLeaveTrendFigure } from './trends'
 
 const STATUS_SEVERITY: Record<ReturnStatus, Severity> = {
   Ready: 'good',
@@ -59,12 +60,16 @@ const STATUS_SEVERITY: Record<ReturnStatus, Severity> = {
   'Not entered': 'critical',
 }
 
-/** True while the tab is laid out off screen for a whole-view export (null before it knows). */
+/**
+ * True while the tab is laid out off screen for a whole-view export (null before it knows). The
+ * Developer page's figure scan exports nothing, so the tab renders for it and is checked.
+ */
 function useOffscreen(): [RefObject<HTMLDivElement | null>, boolean | null] {
   const ref = useRef<HTMLDivElement>(null)
   const [off, setOff] = useState<boolean | null>(null)
   useLayoutEffect(() => {
-    setOff(!!ref.current?.closest('[data-census-offscreen]'))
+    const host = ref.current?.closest<HTMLElement>('[data-census-offscreen]')
+    setOff(!!host && host.dataset.censusPurpose !== 'scan')
   }, [])
   return [ref, off]
 }
@@ -83,7 +88,7 @@ export function LeaveTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext }
   if (offscreen === false) body = <LeaveBody m={m} ctx={ctx} survey={survey} />
   if (offscreen === true)
     body = (
-      <p className="text-[13px] text-muted">
+      <p className="text-small text-muted">
         Leave & return is for HR and is left out of whole-view exports. Export it from its own tab.
       </p>
     )
@@ -121,6 +126,7 @@ function LeaveBody({
           <SurveyFigure m={withSurveyUses(m, survey)} ctx={ctx} survey={survey} />
         </div>
         <div className={cx(spanClass(8), 'flex flex-col gap-4')}>
+          <OnLeaveTrendFigure m={m} ctx={ctx} />
           <OnLeaveFigure m={m} ctx={ctx} />
           <ReturnsFigure m={m} ctx={ctx} />
         </div>
@@ -141,7 +147,7 @@ function LeaveBody({
         <RetentionFigure m={m} ctx={ctx} />
         <ExitsFigure m={m} ctx={ctx} />
       </Section>
-      <p className="mt-6 max-w-[80ch] text-[12px] text-muted">
+      <p className="mt-6 max-w-[80ch] text-meta text-muted">
         This tab is for HR. Leave reasons show only in grouped numbers, and whole-view exports leave the tab
         out; use Export, This tab, to share it.
       </p>
@@ -551,7 +557,7 @@ function ReturnsFigure({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext }) 
           <Drill spec={one(r)} label={`Show the return from leave for ${r.name}`} className="text-left">
             {r.name}
           </Drill>
-          <div className="mt-0.5 text-[12px] text-muted">{r.businessUnit ?? 'Unknown business unit'}</div>
+          <div className="mt-0.5 text-meta text-muted">{r.businessUnit ?? 'Unknown business unit'}</div>
         </>
       ),
     },
@@ -575,7 +581,7 @@ function ReturnsFigure({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext }) 
       label: 'Return transaction',
       render: (r) =>
         r.returnTx ? (
-          <span className="font-mono text-[12px] text-ink-2">{r.returnTx}</span>
+          <span className="font-mono text-meta text-ink-2">{r.returnTx}</span>
         ) : (
           <span className="text-muted">—</span>
         ),
@@ -619,7 +625,7 @@ function ReturnsFigure({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext }) 
         caption={returnsLabel(cfg.aheadDays)}
       />
       {allDrill && (
-        <p className="mt-2 text-[12px] text-muted">
+        <p className="mt-2 text-meta text-muted">
           <Drill spec={allDrill}>Open all {count(l.upcoming.length, 'return')}</Drill> with days on leave so
           far.
         </p>
@@ -682,10 +688,10 @@ function SurveyFigure({
       {survey && (
         <div className="flex h-full flex-col gap-3">
           <div>
-            <div className="cut-head text-[40px] leading-none font-semibold text-ink">
+            <div className="cut-head text-display leading-none font-semibold text-ink">
               <Drill spec={survey.drill}>{fmt(survey.value, survey.format)}</Drill>
             </div>
-            <div className="mt-1.5 text-[13px] text-ink-2">{survey.label}</div>
+            <div className="mt-1.5 text-small text-ink-2">{survey.label}</div>
           </div>
           <div>
             <Button size="sm" onClick={() => goTo('listening', 'services')}>

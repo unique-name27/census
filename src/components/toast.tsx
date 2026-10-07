@@ -77,11 +77,11 @@ function ToastList() {
       <Toast.Content className="flex items-start gap-2.5 py-2.5 pr-1.5 pl-3">
         <ToneIcon tone={t.type} />
         <div className="min-w-0 flex-1 py-px">
-          <Toast.Title className="text-[13px] leading-snug font-medium" />
-          <Toast.Description className="mt-0.5 text-[12px] leading-snug text-ink-2 empty:hidden" />
+          <Toast.Title className="text-small leading-snug font-medium" />
+          <Toast.Description className="mt-0.5 text-meta leading-snug text-ink-2 empty:hidden" />
         </div>
         {t.actionProps && (
-          <Toast.Action className="h-6 shrink-0 rounded-control px-2 text-[12px] font-semibold text-link hover:bg-hover" />
+          <Toast.Action className="h-6 shrink-0 rounded-control px-2 text-meta font-semibold text-link hover:bg-hover" />
         )}
         <Toast.Close
           aria-label="Dismiss"

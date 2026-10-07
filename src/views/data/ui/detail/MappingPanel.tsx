@@ -5,6 +5,7 @@
  */
 import { useId, useState } from 'react'
 import { IconCheck, IconDownload, IconGood, IconPencil, IconWarning } from '@/components/icons'
+import { TABLE_HEAD } from '@/components/styles'
 import { toast } from '@/components/toast'
 import { Button, cx, Tip } from '@/components/ui'
 import { useAnalytics } from '@/data/context'
@@ -32,7 +33,7 @@ import { roomMeta } from '../meta'
 import { useBusy } from '../useBusy'
 
 export const INPUT =
-  'h-8 min-w-0 rounded-control bg-sheet px-2 text-[13px] text-ink shadow-[inset_0_0_0_1px_var(--rule-strong)] outline-none placeholder:text-muted focus-visible:shadow-[inset_0_0_0_2px_var(--focus)]'
+  'h-8 min-w-0 rounded-control bg-sheet px-2 text-small text-ink shadow-[inset_0_0_0_1px_var(--rule-strong)] outline-none placeholder:text-muted focus-visible:shadow-[inset_0_0_0_2px_var(--focus)]'
 
 const CONFIDENCE_DOT: Record<string, string> = { high: 'bg-good', medium: 'bg-warning', low: 'bg-serious' }
 
@@ -47,10 +48,10 @@ function Confidence({ r }: { r: LineageRow }) {
 }
 
 function LineageTable({ rows, label }: { rows: readonly LineageRow[]; label: string }) {
-  const th = 'eyebrow py-1.5 pr-3 font-semibold'
+  const th = `${TABLE_HEAD} py-1.5 pr-3`
   return (
     <div className="scroll-x">
-      <table className="w-full border-collapse text-[13px] sm:min-w-[640px]">
+      <table className="w-full border-collapse text-small sm:min-w-[640px]">
         <caption className="sr-only">Column mapping for {label}</caption>
         <thead>
           <tr className="border-b border-rule text-left">
@@ -66,7 +67,7 @@ function LineageTable({ rows, label }: { rows: readonly LineageRow[]; label: str
             <th scope="col" className={`${th} hidden sm:table-cell`}>
               Match
             </th>
-            <th scope="col" className="eyebrow py-1.5 font-semibold">
+            <th scope="col" className={`${TABLE_HEAD} py-1.5`}>
               Reviewed
             </th>
           </tr>
@@ -77,14 +78,14 @@ function LineageTable({ rows, label }: { rows: readonly LineageRow[]; label: str
               <td className="py-1.5 pr-3 align-top">
                 {r.label}
                 {r.requirement !== 'optional' && (
-                  <span className="block text-[11px] text-muted">
+                  <span className="block text-label text-muted">
                     {r.requirement === 'required' ? 'Required' : 'Recommended'}
                   </span>
                 )}
               </td>
               <td className="py-1.5 pr-3 align-top">
                 {r.header ? (
-                  <span className="font-mono text-[12px] break-all">{r.header}</span>
+                  <span className="font-mono text-meta break-all">{r.header}</span>
                 ) : (
                   <span
                     className={
@@ -96,7 +97,7 @@ function LineageTable({ rows, label }: { rows: readonly LineageRow[]; label: str
                 )}
                 {/* The conversion sits under the column on narrow screens. */}
                 {r.conversions.length > 0 && (
-                  <span className="block text-[11px] text-ink-2 md:hidden">{r.conversions.join('. ')}</span>
+                  <span className="block text-label text-ink-2 md:hidden">{r.conversions.join('. ')}</span>
                 )}
               </td>
               <td className="hidden py-1.5 pr-3 align-top text-ink-2 md:table-cell">
@@ -152,7 +153,7 @@ function ConfirmForm({ row, onDone }: { row: ManifestRow; onDone: () => void }) 
       }}
     >
       <label htmlFor={id} className="block min-w-0 flex-1 basis-[200px]">
-        <span className="block text-[12px] font-medium text-ink-2">Your name</span>
+        <span className="block text-meta font-medium text-ink-2">Your name</span>
         <input
           id={id}
           value={name}
@@ -188,11 +189,11 @@ function SavedChoices({ row }: { row: ManifestRow }) {
   return (
     <div>
       <h4 className="eyebrow">Saved column choices</h4>
-      <p className="mt-1.5 text-[13px] text-ink-2">
+      <p className="mt-1.5 text-small text-ink-2">
         Files with the same columns as {row.source.label} are mapped the same way next time, without asking.
       </p>
       {forgotten === row.profileFingerprint ? (
-        <p className="mt-1 text-[13px] text-muted">
+        <p className="mt-1 text-small text-muted">
           Forgotten. The next upload asks about every column again.
         </p>
       ) : (
@@ -258,7 +259,7 @@ export function MappingPanel({
       <div className="min-w-0 lg:col-span-8">
         <div className="flex flex-wrap items-start gap-x-4 gap-y-3">
           <div className="min-w-0 flex-1 basis-[300px]">
-            <p className="flex items-center gap-2 text-[14px]">
+            <p className="flex items-center gap-2 text-body">
               {confirmed ? (
                 <IconGood className="size-3.5 shrink-0 text-good" />
               ) : (
@@ -266,13 +267,13 @@ export function MappingPanel({
               )}
               <span className="font-semibold">Mapping: {mappingStatusText(version, refYear)}</span>
             </p>
-            <p className="mt-1 text-[13px] text-ink-2">
+            <p className="mt-1 text-small text-ink-2">
               {known
                 ? `${fmt(summary.fromFile, 'int')} of ${fmt(summary.fields, 'int')} fields read from ${version.fileName ?? 'the file'}.${summary.lowUnreviewed ? ` ${fmt(summary.lowUnreviewed, 'int')} low-confidence ${summary.lowUnreviewed === 1 ? 'match needs' : 'matches need'} a look.` : ''}${summary.missingNeeded ? ` ${fmt(summary.missingNeeded, 'int')} required or recommended ${summary.missingNeeded === 1 ? 'field has' : 'fields have'} no column.` : ''}`
                 : 'The generated sample was not read from a file, so it has no column mapping. Confirming records that you reviewed it as it is.'}
             </p>
             {!confirmed && (
-              <p className="mt-1 text-[12px] text-muted">
+              <p className="mt-1 text-meta text-muted">
                 Confirming is a local record in this browser, not a sign-in. Silver also needs the checks in
                 the Quality panel to pass.
               </p>
@@ -314,7 +315,7 @@ export function MappingPanel({
           </div>
         </div>
         {confirming && <ConfirmForm row={row} onDone={() => setConfirming(false)} />}
-        {remapWhy && !rawLoading && <p className="mt-2 text-[12px] text-muted">{remapWhy}</p>}
+        {remapWhy && !rawLoading && <p className="mt-2 text-meta text-muted">{remapWhy}</p>}
         {known && (
           <div className="mt-4">
             <LineageTable rows={rows} label={row.label} />
@@ -325,7 +326,7 @@ export function MappingPanel({
         {defaults.length > 0 && (
           <div>
             <h4 className="eyebrow">How blanks are filled on upload</h4>
-            <ul className="mt-1.5 space-y-1 text-[13px] text-ink-2">
+            <ul className="mt-1.5 space-y-1 text-small text-ink-2">
               {defaults.map((d) => (
                 <li key={d} className="relative pl-3.5">
                   <span

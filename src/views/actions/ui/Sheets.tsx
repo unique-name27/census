@@ -159,7 +159,7 @@ function SubjectLink({ a }: { a: OpenAction }) {
         type="button"
         onClick={() => openPerson(id)}
         title={`Open ${label}`}
-        className="cursor-pointer rounded-[2px] underline decoration-rule-strong decoration-dotted decoration-1 underline-offset-[3px] hover:decoration-ink hover:decoration-solid"
+        className="cursor-pointer rounded-mark underline decoration-rule-strong decoration-dotted decoration-1 underline-offset-[3px] hover:decoration-ink hover:decoration-solid"
       >
         {label}
       </button>
@@ -179,7 +179,7 @@ function FromLink({ a }: { a: OpenAction }) {
         e.preventDefault()
         goTo(view, tab)
       }}
-      className="rounded-[2px] text-ink-2 underline decoration-rule-strong underline-offset-2 hover:text-ink hover:decoration-ink"
+      className="rounded-mark text-ink-2 underline decoration-rule-strong underline-offset-2 hover:text-ink hover:decoration-ink"
     >
       {a.from}
     </a>
@@ -200,8 +200,8 @@ function ItemRow({ a, mode, status }: { a: OpenAction; mode: ListMode; status: I
         <StatusPill severity={a.item.severity} quiet label={SEVERITY_WORD[a.item.severity]} />
       </div>
       <div className="min-w-0">
-        <p className="text-[13px] leading-snug text-ink">{a.item.what}</p>
-        <p className="mt-0.5 text-[12px] leading-snug text-ink-2">
+        <p className="text-small leading-snug text-ink">{a.item.what}</p>
+        <p className="mt-0.5 text-meta leading-snug text-ink-2">
           <SubjectLink a={a} />{' '}
           <span className="whitespace-nowrap">
             <span aria-hidden="true" className="pr-1.5 pl-0.5 text-muted">
@@ -210,14 +210,11 @@ function ItemRow({ a, mode, status }: { a: OpenAction; mode: ListMode; status: I
             <FromLink a={a} />
           </span>
         </p>
-        {a.item.note && <p className="mt-1 text-[12px] leading-snug text-muted">{a.item.note}</p>}
+        {a.item.note && <p className="mt-1 text-meta leading-snug text-muted">{a.item.note}</p>}
       </div>
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 sm:flex-col sm:items-end">
         <span
-          className={cx(
-            'text-[12px] whitespace-nowrap',
-            overdue ? 'font-medium text-bad-text' : 'text-ink-2',
-          )}
+          className={cx('text-meta whitespace-nowrap', overdue ? 'font-medium text-bad-text' : 'text-ink-2')}
         >
           {mode === 'open' ? dueText(a.item.due, asOf) : statusText(status)}
         </span>
@@ -318,7 +315,7 @@ function CopyNoteButton({ block }: { block: OwnerBlock }) {
           value={fallback ?? ''}
           onFocus={(e) => e.currentTarget.select()}
           aria-label={`Note for ${block.name}`}
-          className="h-[320px] w-full resize-none rounded-control bg-sheet-2 p-3 font-[inherit] text-[13px] leading-snug text-ink outline-none"
+          className="h-[320px] w-full resize-none rounded-control bg-sheet-2 p-3 font-[inherit] text-small leading-snug text-ink outline-none"
         />
       </Dialog>
     </>
@@ -361,9 +358,9 @@ function OwnerRow({
               open && 'rotate-90',
             )}
           />
-          <span className="min-w-0 truncate text-[13px] font-semibold text-ink">{block.name}</span>
+          <span className="min-w-0 truncate text-small font-semibold text-ink">{block.name}</span>
         </button>
-        <span className="flex shrink-0 items-center gap-1.5 text-[12px] text-ink-2">
+        <span className="flex shrink-0 items-center gap-1.5 text-meta text-ink-2">
           {block.critical > 0 && (
             <>
               <StatusPill severity="critical" quiet label={`${fmt(block.critical, 'int')} critical`} />
@@ -463,8 +460,8 @@ export function OwnerSheet({
         ) : undefined
       }
     >
-      <div className="-mx-4 -mt-1 -mb-4">
-        <p className="px-4 pb-2 text-[12px] text-ink-2">
+      <div className="-mx-4 -mt-1 -mb-5 lg:-mx-5">
+        <p className="px-4 pb-2 text-meta text-ink-2">
           <Drill
             spec={() => itemsDrill(ctx, `${group.label}: ${verb} items`, group.items, { status: statusOf })}
             label={`Show the ${plural(group.items.length, 'item')} for ${group.label}`}

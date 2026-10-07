@@ -177,7 +177,8 @@ export function buildKpis(x: {
       goodDirection: 'up',
       deltaMaterial: !learning.mixDiffers && rateMaterial(cur.rate, prior.rate, cur.due, prior.due),
       spark: learning.trend.some((v) => v != null) ? learning.trend : undefined,
-      suppressed: small(cur.due),
+      // Hidden under the minimum of assignments or of people (22 assignments of 4 people).
+      suppressed: small(cur.due) || (cur.due > 0 && small(cur.people)),
       note: base.has.learning
         ? learning.hasDueDates
           ? // The tile shows the target and whether it is met (the metric's own target).
@@ -190,7 +191,9 @@ export function buildKpis(x: {
       deltaDrill: cur.rate != null && prior.rate != null ? drill.onTimePrior() : null,
       // "1,200 assignments due": all of them, with how each turned out.
       noteDrill:
-        base.has.learning && learning.hasDueDates && !small(cur.due) ? drill.onTime(null, 'due') : null,
+        base.has.learning && learning.hasDueDates && !small(cur.due) && !small(cur.people)
+          ? drill.onTime(null, 'due')
+          : null,
       uses: uses['talent-training-on-time'],
     },
     {

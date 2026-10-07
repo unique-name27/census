@@ -33,6 +33,7 @@ import {
 import { FIGURE, REASON } from '../engine/lineage'
 import { ANONYMITY_ID, ID } from './defs'
 import { attritionGroupDrill, drillWhen } from './drill'
+import { CohortRetention } from './Trends'
 
 type Dim = 'department' | 'location'
 type Measure = 'voluntary' | 'all'
@@ -96,8 +97,8 @@ export function Attrition({ m }: { m: HrbpModel }) {
         title="When and how people left"
         dek={
           annualize
-            ? 'Exits by quarter, split by type and annualized so quarters compare with the 12-month rate.'
-            : 'Exits by quarter, split by type. Rates are not annualized: each is the quarter’s exits ÷ its average headcount.'
+            ? 'Exits by quarter, split by type and annualized so quarters compare with the 12-month rate, then how long each year’s hires stay and how long leavers had been here.'
+            : 'Exits by quarter, split by type. Rates are not annualized: each is the quarter’s exits ÷ its average headcount. Then how long each year’s hires stay and how long leavers had been here.'
         }
       >
         <Figure
@@ -203,6 +204,45 @@ export function Attrition({ m }: { m: HrbpModel }) {
             onSelect={(d) => drill(() => regrettedDrill(d))}
           />
         </Figure>
+        <CohortRetention m={m} />
+        <Figure
+          id="hrbp-exits-tenure"
+          metric={ID.exits}
+          uses={p.uses(FIGURE.exitsByTenure)}
+          title="Exits by tenure at exit"
+          subtitle={`Employee exits by years of service when they left, ${window}`}
+          data={a.byTenure}
+          columns={[
+            { key: 'group', label: 'Tenure at exit', format: 'text' },
+            { key: 'type', label: 'Exit type', format: 'text' },
+            { key: 'exits', label: 'Exits', format: 'int', drill: typedCell('tenure') },
+          ]}
+          definitions={[
+            ...p.defs(ID.exits),
+            { term: 'Tenure at exit', text: 'Years from hire date to termination date.' },
+          ]}
+          note={`${exitsInWindow} exits · as of ${asOf}`}
+          span={5}
+          empty={!left ? noLeavers : exitsInWindow ? null : 'No exits in this period.'}
+        >
+          <Columns
+            data={a.byTenure}
+            x="group"
+            y="exits"
+            series="type"
+            stack
+            seriesOrder={EXIT_TYPES}
+            xOrder={[...TENURE_BANDS]}
+            height={220}
+            onSelect={(d) =>
+              typedDrill(
+                'tenure',
+                a.byTenure.filter((r) => r.group === d.group),
+              )
+            }
+            onSelectSegment={(d) => typedDrill('tenure', [d])}
+          />
+        </Figure>
       </Section>
 
       <Section
@@ -284,7 +324,7 @@ export function Attrition({ m }: { m: HrbpModel }) {
               : []),
             ...p.defs(ID.voluntaryAbove, ANONYMITY_ID),
           ]}
-          note={`Line at the company rate, ${fmt(companyRef, 'pct')} · select a bar to see its leavers`}
+          note={`Line at the company rate, ${fmt(companyRef, 'pct')}`}
           span={7}
           actions={
             // Capped width so the two toggles wrap under each other on a phone instead of widening the page.
@@ -333,7 +373,7 @@ export function Attrition({ m }: { m: HrbpModel }) {
                 ? { value: companyRef, label: `Company ${fmt(companyRef, 'pct')}` }
                 : undefined
             }
-            tone={(d) => {
+            glyphTone={(d) => {
               const v = d[rateKey]
               return v != null &&
                 companyRef != null &&
@@ -360,46 +400,8 @@ export function Attrition({ m }: { m: HrbpModel }) {
 
       <Section
         title="Who left"
-        dek={`Exits ${window} by tenure, level and last performance rating, and the regretted leavers by name.`}
+        dek={`Exits ${window} by level and last performance rating, and the regretted leavers by name.`}
       >
-        <Figure
-          id="hrbp-exits-tenure"
-          metric={ID.exits}
-          uses={p.uses(FIGURE.exitsByTenure)}
-          title="Exits by tenure at exit"
-          subtitle={`Employee exits by years of service when they left, ${window}`}
-          data={a.byTenure}
-          columns={[
-            { key: 'group', label: 'Tenure at exit', format: 'text' },
-            { key: 'type', label: 'Exit type', format: 'text' },
-            { key: 'exits', label: 'Exits', format: 'int', drill: typedCell('tenure') },
-          ]}
-          definitions={[
-            ...p.defs(ID.exits),
-            { term: 'Tenure at exit', text: 'Years from hire date to termination date.' },
-          ]}
-          note={`${exitsInWindow} exits · as of ${asOf}`}
-          span={4}
-          empty={!left ? noLeavers : exitsInWindow ? null : 'No exits in this period.'}
-        >
-          <Columns
-            data={a.byTenure}
-            x="group"
-            y="exits"
-            series="type"
-            stack
-            seriesOrder={EXIT_TYPES}
-            xOrder={[...TENURE_BANDS]}
-            height={220}
-            onSelect={(d) =>
-              typedDrill(
-                'tenure',
-                a.byTenure.filter((r) => r.group === d.group),
-              )
-            }
-            onSelectSegment={(d) => typedDrill('tenure', [d])}
-          />
-        </Figure>
         <Figure
           id="hrbp-attrition-level"
           metric={ID.attrition}
@@ -428,7 +430,7 @@ export function Attrition({ m }: { m: HrbpModel }) {
             ...p.defs(ANONYMITY_ID),
           ]}
           note={`Groups under ${minGroup} hidden · as of ${asOf}`}
-          span={4}
+          span={6}
           empty={
             !left
               ? noLeavers
@@ -467,7 +469,7 @@ export function Attrition({ m }: { m: HrbpModel }) {
             },
           ]}
           note={`${exitsInWindow} exits · as of ${asOf}`}
-          span={4}
+          span={6}
           empty={
             !left
               ? noLeavers
@@ -501,7 +503,7 @@ export function Attrition({ m }: { m: HrbpModel }) {
           metric={ID.regretted}
           uses={p.uses(FIGURE.regrettedLeavers(withReason, p.set.regretted))}
           title="Regretted leavers"
-          subtitle={`${anyRegretted ? 'Exits' : 'Voluntary exits'} marked regrettable, ${window}, newest first. Select a row to open the person.`}
+          subtitle={`${anyRegretted ? 'Exits' : 'Voluntary exits'} marked regrettable, ${window}, newest first.`}
           data={a.regrettedLeavers}
           columns={[
             { key: 'employeeId', label: 'ID', format: 'text' },

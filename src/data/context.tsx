@@ -14,7 +14,12 @@
  * Every dataset key is always present in `data` and `all` (an empty list when nothing is
  * loaded), including datasets added after rows were saved in this browser.
  */
-import { createContext, type ReactNode, use, useMemo } from 'react'
+import { createContext, type ReactNode, use, useDeferredValue, useMemo } from 'react'
+import { type AccessContext, type AccessInput, accessFor, HR_INPUT } from '@/access/context'
+import { NO_MANAGER_PICKED } from '@/access/copy'
+import { clampFilters, heldLock } from '@/access/lock'
+import { useMode } from '@/access/store'
+import { timed } from '@/lib/timing'
 import { defaultMetrics, metricsApi } from '@/metrics/api'
 import { qualityRulesOf } from '@/metrics/quality'
 import type { MetricsApi } from '@/metrics/types'
@@ -82,6 +87,13 @@ export interface AnalyticsContext {
   reference: ReferenceSummary
   /** The metric dictionary: wording, targets and the calculation settings engines read. */
   metrics: MetricsApi
+  /**
+   * The mode (docs/ROLES.md, 6.4): HR, Manager or Developer, the manager's org in Manager mode
+   * (`lock`), and `decide` bound to the mode. Ask it, never the mode store, so an off-screen render
+   * with its own mode gets its own answers. In Manager mode `filters` and `data` are always inside
+   * the lock, `isCompany` is false and pay, immigration details and engagement surveys are off.
+   */
+  access: AccessContext
 }
 
 export interface Features {
@@ -180,13 +192,25 @@ export function buildContext(args: {
   quality?: QualityIndex
   /** The metric dictionary; every metric at its defaults when not given. */
   metrics?: MetricsApi
+  /** The mode and, in Manager mode, the manager; HR when not given (every existing test). */
+  access?: AccessInput
 }): AnalyticsContext {
-  const { sources, filters, asOfOverride, showPay } = args
+  const { sources, asOfOverride } = args
   const metrics = args.metrics ?? defaultMetrics()
   const applied = args.applied ?? referenceLayer(withAllDatasets(args.data), args.mappings ?? NO_MAPPINGS)
   const all = applied.datasets
   const isSample = Object.values(sources).every((s) => s.kind === 'sample')
   const asOf = contextAsOf({ data: args.data, sources, asOfOverride, today: args.today })
+  const org = buildOrgIndex(all.employees)
+  // Manager mode: the manager's org is a lock every scope stays inside (defensive: the store's
+  // filter guard already clamps). Without a usable manager the lock holds nobody.
+  const accessIn = args.access ?? HR_INPUT
+  const manager = accessIn.mode === 'manager'
+  const held = manager ? heldLock(org, asOf, accessIn.managerId) : null
+  const unset = !!held?.unset
+  const lock = held?.lock ?? null
+  const filters = lock ? clampFilters(args.filters, lock) : args.filters
+  const showPay = manager ? false : args.showPay
   const { current, prior } = periodWindows(filters.period, asOf, {
     start: filters.customStart,
     end: filters.customEnd,
@@ -196,13 +220,12 @@ export function buildContext(args: {
     versions = versionsFallback.get(args.data) ?? {}
     versionsFallback.set(args.data, versions)
   }
-  const org = buildOrgIndex(all.employees)
   return {
     asOf,
     window: current,
     prior,
     filters,
-    scopeLabel: scopeLabel(filters, org),
+    scopeLabel: unset ? NO_MANAGER_PICKED : scopeLabel(filters, org),
     isCompany: !hasOrgFilter(filters),
     data: scopeDatasets(all, filters, org),
     all,
@@ -210,18 +233,27 @@ export function buildContext(args: {
     sources,
     isSample,
     showPay,
-    showImmigration: args.showImmigration ?? false,
-    features: args.features ?? NO_FEATURES,
+    showImmigration: manager ? false : (args.showImmigration ?? false),
+    features: manager ? NO_FEATURES : (args.features ?? NO_FEATURES),
     quality: args.quality ?? qualityFor(applied, versions, asOf, qualityRulesOf(metrics)),
     standard: args.standard ?? DEFAULT_STANDARD,
     reference: summaryOf(applied),
     metrics,
+    access: accessFor(accessIn.mode, lock, metrics, unset),
   }
 }
 
 const Ctx = createContext<AnalyticsContext | null>(null)
+const PendingCtx = createContext(false)
 
-export function AnalyticsProvider({ children }: { children: ReactNode }) {
+export function AnalyticsProvider({
+  children,
+  access: override,
+}: {
+  children: ReactNode
+  /** A mode for this tree only (an off-screen render: the Manager figure scan, a whole-view export). */
+  access?: AccessInput
+}) {
   const data = useCensus((s) => s.data)
   const sources = useCensus((s) => s.sources)
   const filters = useCensus((s) => s.filters)
@@ -233,6 +265,10 @@ export function AnalyticsProvider({ children }: { children: ReactNode }) {
   const mappings = useCensus((s) => s.reference.mappings)
   const standard = useCensus((s) => s.dataStandard)
   const metricsState = useCensus((s) => s.metrics)
+  const liveMode = useMode((s) => s.mode)
+  const liveManager = useMode((s) => s.managerId)
+  const mode = override?.mode ?? liveMode
+  const managerId = override ? (override.managerId ?? null) : liveManager
   // Layers that don't depend on filters, so a filter change only rescopes.
   const applied = useMemo(() => referenceLayer(withAllDatasets(data), mappings), [data, mappings])
   const features = useMemo<Features>(() => ({ engagementSurveys }), [engagementSurveys])
@@ -244,25 +280,28 @@ export function AnalyticsProvider({ children }: { children: ReactNode }) {
   const savedLists = useLists((s) => s.state)
   const vocab = validationVocab(savedLists, sources)
   const quality = useMemo(
-    () => qualityFor(applied, versions, asOf, rules, vocab),
+    () => timed('census:quality', () => qualityFor(applied, versions, asOf, rules, vocab)),
     [applied, versions, asOf, rules, vocab],
   )
   const value = useMemo(
     () =>
-      buildContext({
-        data,
-        sources,
-        filters,
-        asOfOverride,
-        showPay,
-        showImmigration,
-        features,
-        versions,
-        applied,
-        standard,
-        quality,
-        metrics,
-      }),
+      timed('census:context', () =>
+        buildContext({
+          data,
+          sources,
+          filters,
+          asOfOverride,
+          showPay,
+          showImmigration,
+          features,
+          versions,
+          applied,
+          standard,
+          quality,
+          metrics,
+          access: mode === 'manager' ? { mode, managerId } : { mode },
+        }),
+      ),
     [
       data,
       sources,
@@ -276,9 +315,32 @@ export function AnalyticsProvider({ children }: { children: ReactNode }) {
       standard,
       quality,
       metrics,
+      mode,
+      managerId,
     ],
   )
-  return <Ctx value={value}>{children}</Ctx>
+  // A filter, mode or data change recomputes every engine. The new context is built in the
+  // background (useDeferredValue) while the page keeps the previous one; `useAnalyticsPending()`
+  // is true meanwhile, so Figure and KpiStrip hold their old render at 60% opacity, no jump.
+  const deferred = useDeferredValue(value)
+  return (
+    <Ctx value={deferred}>
+      <PendingCtx value={deferred !== value}>{children}</PendingCtx>
+    </Ctx>
+  )
+}
+
+/**
+ * True while a newer analytics context is being computed in the background and the page still
+ * shows the previous one (docs/DESIGN-REFRESH.md 2.11). Outside a provider it is false.
+ */
+export function useAnalyticsPending(): boolean {
+  return use(PendingCtx)
+}
+
+/** The analytics context, or null outside a provider (shared pieces that also render alone). */
+export function useAnalyticsIfAny(): AnalyticsContext | null {
+  return use(Ctx)
 }
 
 export function useAnalytics(): AnalyticsContext {

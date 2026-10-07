@@ -177,9 +177,26 @@ export const endedIn = (facts: readonly LeaveFact[], w: Pick<Window, 'start' | '
 /** A group large enough to show: at least `min` people. */
 export const showable = (rows: readonly Personal[], min = MIN_GROUP): boolean => peopleIn(rows) >= min
 
-/** A count that is itself a group of people: null under the anonymity minimum. */
+/**
+ * A count of people (a person with two overlapping leaves counts once): null under the anonymity
+ * minimum.
+ */
 export function groupCount(rows: readonly Personal[], min = MIN_GROUP): number | null {
-  return rows.length && showable(rows, min) ? rows.length : rows.length ? null : 0
+  const n = peopleIn(rows)
+  return n === 0 ? 0 : n >= min ? n : null
+}
+
+/**
+ * One leave per person (their latest start), for lists whose count is people: overlapping leaves
+ * in a messy file would otherwise list a person twice.
+ */
+export function onePerPerson(facts: readonly LeaveFact[]): LeaveFact[] {
+  const latest = new Map<string, LeaveFact>()
+  for (const f of facts) {
+    const had = latest.get(f.person)
+    if (!had || f.start > had.start) latest.set(f.person, f)
+  }
+  return facts.filter((f) => latest.get(f.person) === f)
 }
 
 /* ───────────── length ───────────── */

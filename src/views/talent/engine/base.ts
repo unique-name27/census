@@ -89,6 +89,14 @@ export interface TalentBase {
   byId: Map<string, Employee>
   /** Company-wide review index (cycles come from every review). */
   reviews: ReviewIndex
+  /**
+   * Company-wide reviews as the engine reads them: in Manager mode the manager's own potential and
+   * proposed (pre-calibration) ratings are left out (`ownTalentWithheld`). Everywhere else these
+   * are `ctx.all.reviews` itself.
+   */
+  allReviews: readonly Review[]
+  /** Manager mode: the manager, whose own potential, proposed ratings and succession stay with HR. */
+  selfId: string | null
   /** Company-wide job history per employee, oldest first. */
   jobs: Map<string, JobChange[]>
   latest: Cycle | null
@@ -99,11 +107,26 @@ export interface TalentBase {
   settings: TalentSettings
 }
 
+/**
+ * Reviews with one person's potential and proposed rating left out (their final ratings stay).
+ * Manager mode reads the manager's own reviews this way (docs/ROLES.md, 4.5): many companies do
+ * not show people their own potential or calibration history.
+ */
+export function ownTalentWithheld(reviews: readonly Review[], selfId: string): readonly Review[] {
+  return reviews.map((r) =>
+    r.employeeId === selfId && (r.potential != null || r.preCalibrationRating != null)
+      ? { ...r, potential: null, preCalibrationRating: null }
+      : r,
+  )
+}
+
 export function buildBase(ctx: AnalyticsContext): TalentBase {
   const { asOf } = ctx
   const scoped = ctx.data.employees
   const active = scoped.filter((e) => isEmployee(e) && isActiveAt(e, asOf))
-  const reviews = buildReviewIndex(ctx.all.reviews)
+  const selfId = ctx.access.lock?.managerId ?? null
+  const allReviews = selfId ? ownTalentWithheld(ctx.all.reviews, selfId) : ctx.all.reviews
+  const reviews = buildReviewIndex(allReviews)
   const jobs = new Map<string, JobChange[]>()
   for (const j of ctx.all.jobChanges) {
     const arr = jobs.get(j.employeeId)
@@ -113,7 +136,7 @@ export function buildBase(ctx: AnalyticsContext): TalentBase {
   for (const arr of jobs.values()) arr.sort((a, b) => (a.effectiveDate < b.effectiveDate ? -1 : 1))
   const exits = ctx.all.employees.filter((e) => e.terminationDate)
   const potentialCycles = new Map<string, ISODate>()
-  for (const r of ctx.all.reviews) {
+  for (const r of allReviews) {
     if (r.potential && r.cycleDate <= asOf) {
       const prev = potentialCycles.get(r.cycle)
       if (!prev || prev < r.cycleDate) potentialCycles.set(r.cycle, r.cycleDate)
@@ -132,6 +155,8 @@ export function buildBase(ctx: AnalyticsContext): TalentBase {
     scopeIds: new Set(scoped.map((e) => e.employeeId)),
     byId: ctx.org.byId,
     reviews,
+    allReviews,
+    selfId,
     jobs,
     latest: latestCycle(reviews, asOf),
     latestAnnual,

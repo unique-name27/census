@@ -183,3 +183,66 @@ export function waitingDots(actives: readonly ActiveItem[]): WaitDot[] {
     item: x,
   }))
 }
+
+/* ───────── interview decisions waiting, by hiring manager ───────── */
+
+/** The bucket for candidates whose req names no hiring manager. */
+export const NO_HIRING_MANAGER = 'No hiring manager named'
+
+export interface DecisionRow {
+  hiringManager: string
+  /** The hiring manager's employee ID when the req carries it. */
+  hiringManagerId: string | null
+  /** Candidates whose interview happened with no stage move since. */
+  candidates: number
+  /** Of these, past the decision overdue point (red). */
+  overdue: number
+  /** Of these, past the decision wait (amber). */
+  watch: number
+  /** Days since the interview, for the longest wait. */
+  oldest: number
+  /** The candidates behind the row (for the drill panel; not exported). */
+  items: ActiveItem[]
+}
+
+/**
+ * Active candidates waiting on an interview decision (state "awaiting-feedback"), by the hiring
+ * manager on their req, the most waiting first. Decisions are the hiring manager's to make, so the
+ * bars name the hiring manager even when the queue falls back to the recruiter.
+ */
+export function decisionsByHiringManager(actives: readonly ActiveItem[]): DecisionRow[] {
+  const by = new Map<string, DecisionRow>()
+  for (const x of actives) {
+    if (x.state !== 'awaiting-feedback') continue
+    const name = x.app.hiringManager?.trim() || NO_HIRING_MANAGER
+    const id = x.app.hiringManagerId ?? null
+    const key = id ?? `name:${name}`
+    let row = by.get(key)
+    if (!row) {
+      row = {
+        hiringManager: name,
+        hiringManagerId: id,
+        candidates: 0,
+        overdue: 0,
+        watch: 0,
+        oldest: 0,
+        items: [],
+      }
+      by.set(key, row)
+    }
+    row.candidates++
+    if (x.tier === 'red') row.overdue++
+    else if (x.tier === 'amber') row.watch++
+    row.oldest = Math.max(row.oldest, x.days)
+    row.items.push(x)
+  }
+  const rows = [...by.values()]
+  for (const r of rows) r.items.sort((a, b) => b.days - a.days || a.app.name.localeCompare(b.app.name))
+  return rows.sort(
+    (a, b) =>
+      b.candidates - a.candidates ||
+      b.overdue - a.overdue ||
+      b.oldest - a.oldest ||
+      a.hiringManager.localeCompare(b.hiringManager),
+  )
+}

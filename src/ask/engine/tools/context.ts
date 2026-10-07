@@ -11,14 +11,19 @@ import { isActiveAt, isEmployee } from '@/data/scope'
 import { minGroupOf } from '@/metrics/privacy'
 import { DATA_TABS } from '@/views/data/links'
 import { ownScopeProblem, PERIODS, scopeOut } from '../scope'
-import { liveViews, ok, type ToolOutput, type ToolRuntime } from './shared'
+import { liveViews, lockOf, ok, type ToolOutput, type ToolRuntime } from './shared'
 
 /** How many leaders get_context lists (largest orgs first). */
 export const LEADERS_LISTED = 60
 
 export function getContext(rt: ToolRuntime): ToolOutput {
   const ctx = rt.base
-  const active = ctx.all.employees.filter((e) => isEmployee(e) && isActiveAt(e, ctx.asOf))
+  // Manager mode (docs/ROLES.md, 3.9): vocabularies, leaders and datasets come from the org.
+  const lock = lockOf(rt)
+  const inOrg = (id: string) => !lock || lock.orgIds.has(id)
+  const active = ctx.all.employees.filter(
+    (e) => isEmployee(e) && isActiveAt(e, ctx.asOf) && inOrg(e.employeeId),
+  )
   const counts = (dim: 'businessUnit' | 'department' | 'location' | 'level') => {
     const m = new Map<string, number>()
     for (const e of active) {
@@ -36,7 +41,10 @@ export function getContext(rt: ToolRuntime): ToolOutput {
     else departments.set(e.department, { business_unit: e.businessUnit, headcount: 1 })
   }
   // Leaders a scope can be cut to: the app's leader filter, without orgs under the anonymity minimum.
-  const leaders = leaderOptions(ctx.org, ctx.asOf).filter((l) => l.size >= minGroupOf(ctx.metrics))
+  const leaders = leaderOptions(ctx.org, ctx.asOf).filter(
+    (l) => l.size >= minGroupOf(ctx.metrics) && inOrg(l.id),
+  )
+  const access = ctx.access
   // The user's scope can break the exclusion rule tool filters follow; then tools need filters.
   const own = ownScopeProblem(ctx, rt.tokens)
   return ok({
@@ -47,7 +55,13 @@ export function getContext(rt: ToolRuntime): ToolOutput {
     data_standard: { standard: ctx.standard, means: STANDARD_DESCRIPTION[ctx.standard] },
     sample_data: ctx.isSample,
     anonymity_minimum: minGroupOf(ctx.metrics),
-    datasets: DATASETS.map((d) => {
+    ...(lock
+      ? {
+          mode: 'manager',
+          mode_note: `Census is in Manager mode for ${rt.tokens.forEmployee(lock.managerId)}'s org. Every scope stays inside it; company numbers are comparisons only.`,
+        }
+      : {}),
+    datasets: DATASETS.filter((d) => !access || access.can(`dataset:${d.key}`)).map((d) => {
       const rows = ctx.all[d.key].length
       return {
         dataset: d.key,
@@ -71,11 +85,15 @@ export function getContext(rt: ToolRuntime): ToolOutput {
       has_key_figures: typeof v.summary === 'function' || v.key === 'scorecard',
     })),
     pages: [
-      {
-        view: 'data',
-        label: 'Data room',
-        tabs: DATA_TABS.map((t) => ({ tab: t.route, label: t.label })),
-      },
+      ...(!access || access.can('page:data')
+        ? [
+            {
+              view: 'data',
+              label: 'Data room',
+              tabs: DATA_TABS.map((t) => ({ tab: t.route, label: t.label })),
+            },
+          ]
+        : []),
       { view: 'actions', label: 'Action center', tabs: [] },
     ],
     vocabularies: {

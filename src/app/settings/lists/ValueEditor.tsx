@@ -26,7 +26,7 @@ import { changeNote, undoFromToast } from './actions'
 import { intText, rowsText, statusText } from './listModel'
 
 const BLOCK = 'flex flex-col gap-1.5 border-t border-rule pt-3'
-const LABEL = 'text-[12px] font-semibold text-ink'
+const LABEL = 'text-meta font-semibold text-ink'
 
 export function ValueEditor({
   list,
@@ -167,7 +167,7 @@ export function ValueEditor({
 
   const err = (part: string) =>
     error?.part === part ? (
-      <p role="alert" className="text-[12px] text-bad-text">
+      <p role="alert" className="text-meta text-bad-text">
         {error.text}
       </p>
     ) : null
@@ -183,11 +183,11 @@ export function ValueEditor({
             id={`${ids}-head`}
             ref={headRef}
             tabIndex={-1}
-            className="cut-head truncate rounded-[2px] text-[15px] font-semibold text-ink outline-none focus-visible:outline-2 focus-visible:outline-focus"
+            className="cut-head truncate rounded-mark text-title font-semibold text-ink outline-none focus-visible:outline-2 focus-visible:outline-focus"
           >
             {value.value}
           </h4>
-          <p className="text-[12px] text-ink-2">
+          <p className="text-meta text-ink-2">
             {statusText(value)}
             {fixedAttrs.map((a) =>
               value.attrs?.[a.key] != null ? (
@@ -207,7 +207,7 @@ export function ValueEditor({
       <div className="flex flex-col gap-1">
         <span className={LABEL}>Used in</span>
         {byRef.length ? (
-          <ul className="flex flex-col gap-0.5 text-[13px] text-ink-2">
+          <ul className="flex flex-col gap-0.5 text-small text-ink-2">
             {byRef.map(([ref, idx]) => (
               <li key={ref} className="flex items-baseline justify-between gap-3">
                 <span className="min-w-0 truncate">{fieldLabel(ref)}</span>
@@ -222,7 +222,7 @@ export function ValueEditor({
             ))}
           </ul>
         ) : (
-          <p className="text-[13px] text-ink-2">No rows in the data use it.</p>
+          <p className="text-small text-ink-2">No rows in the data use it.</p>
         )}
       </div>
 
@@ -251,7 +251,7 @@ export function ValueEditor({
             </Button>
           </div>
           {rows > 0 && mappable && (
-            <label className="flex items-start gap-2 text-[12px] text-ink-2">
+            <label className="flex items-start gap-2 text-meta text-ink-2">
               <input
                 type="checkbox"
                 checked={renameData}
@@ -293,7 +293,7 @@ export function ValueEditor({
             parent &&
             parent !== (value.parent ?? '') &&
             (def.id === 'department' || def.id === 'jobFamily') && (
-              <label className="flex items-start gap-2 text-[12px] text-ink-2">
+              <label className="flex items-start gap-2 text-meta text-ink-2">
                 <input
                   type="checkbox"
                   checked={moveData}
@@ -313,7 +313,7 @@ export function ValueEditor({
       {editable.length > 0 && (
         <div className={BLOCK}>
           <span className={LABEL}>Details</span>
-          <p className="text-[12px] text-ink-2">
+          <p className="text-meta text-ink-2">
             For reference: details travel with the list and its workbook, and no number in Census reads them.
           </p>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
@@ -342,7 +342,7 @@ export function ValueEditor({
         <span className={LABEL}>{value.retired ? 'Retired' : 'Retire'}</span>
         {value.retired ? (
           <>
-            <p className="text-[12px] text-ink-2">
+            <p className="text-meta text-ink-2">
               Older rows that use it are still recognized. Restore it to offer it in template dropdowns again.
             </p>
             <div>
@@ -356,7 +356,7 @@ export function ValueEditor({
           </>
         ) : (
           <>
-            <p className="text-[12px] text-ink-2">
+            <p className="text-meta text-ink-2">
               A retired value stays recognized in older rows but leaves the template dropdowns.
               {rows ? ` ${intText(rows)} ${rows === 1 ? 'row uses' : 'rows use'} it now.` : ''}
             </p>
@@ -400,7 +400,7 @@ export function ValueEditor({
       {value.added && rows === 0 && (
         <div className={BLOCK}>
           <span className={LABEL}>Delete</span>
-          <p className="text-[12px] text-ink-2">You added it and no row uses it, so it can be deleted.</p>
+          <p className="text-meta text-ink-2">You added it and no row uses it, so it can be deleted.</p>
           <div>
             <Button
               size="sm"

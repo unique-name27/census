@@ -17,6 +17,7 @@ import { cutsFor, type DriverRow, type HeatCell, type SurveyModel } from '../eng
 import { CUT_LABEL, type CutKey } from '../engine/prepare'
 import { STATUS_WORD } from '../engine/settings'
 import { M } from '../metrics'
+import { DriverTrendFigure } from './charts'
 import { heatCellDrill } from './drill'
 import { count, defs, noteOf, periodWords, statusTone } from './shared'
 
@@ -244,6 +245,7 @@ export function SurveyBlock({
           onSelect={(d) => (d.delta == null ? undefined : drill(() => changeOpen(d)))}
         />
       </Figure>
+      <DriverTrendFigure ctx={ctx} m={m} sm={sm} />
       <Figure
         id={`listening-${key}-heat`}
         uses={m.uses.heat(sm.survey, cut)}

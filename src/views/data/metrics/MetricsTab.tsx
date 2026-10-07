@@ -106,7 +106,7 @@ export function MetricsTab() {
 
   return (
     <div>
-      <p className="max-w-[80ch] text-[13px] text-ink-2">
+      <p className="max-w-[80ch] text-small text-ink-2">
         The definition, formula, settings and target of every metric Census shows. Change one and every view
         recalculates with it. Changes are logged with who made them and when, and can be undone.
       </p>
@@ -139,7 +139,7 @@ export function MetricsTab() {
             <Overview api={api} rows={rows} by={name} onOpen={open} />
           )}
           {route.metric && !def && (
-            <p className="mt-3 text-[13px] text-ink-2" role="status">
+            <p className="mt-3 text-small text-ink-2" role="status">
               No metric has the ID <span className="font-mono">{route.metric}</span>. It may have been
               renamed.
             </p>

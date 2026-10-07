@@ -7,12 +7,16 @@
  * stays in one place, Metric definitions in the Data room; every metric links there.
  */
 import { type MouseEvent, useId, useMemo, useState } from 'react'
+import { routeShown } from '@/access/policy'
 import { IconChevronRight, IconCopy, IconDownload, IconSearch } from '@/components/icons'
+import { useRouteShown } from '@/components/RouteLink'
 import { MedalGlyph } from '@/components/tier/TierBadge'
 import { toast } from '@/components/toast'
 import { Button, cx, Menu } from '@/components/ui'
 import { useAnalytics } from '@/data/context'
 import { SAMPLE_COMPANY } from '@/data/sample'
+import type { RouteView } from '@/data/store'
+import { articleForMetric } from '@/help/learnMore'
 import { writeClipboard } from '@/lib/export/clipboard'
 import { METRIC_VIEW_LABEL } from '@/metrics/registry'
 import { metricHref, openMetricDefinition } from '@/views/data/metrics/open'
@@ -50,7 +54,7 @@ function FilterToggle({
       aria-pressed={pressed}
       onClick={() => onChange(!pressed)}
       className={cx(
-        'inline-flex h-7 items-center rounded-control px-2.5 text-[12px] font-medium transition-colors',
+        'inline-flex h-7 items-center rounded-control px-2.5 text-meta font-medium transition-colors',
         pressed
           ? 'bg-ink text-on-ink hover:bg-ink-2'
           : 'text-ink-2 shadow-[inset_0_0_0_1px_var(--rule-strong)] hover:bg-hover hover:text-ink',
@@ -81,11 +85,12 @@ async function copyFormula(row: FormulaRow) {
 }
 
 function Details({ row, id }: { row: FormulaRow; id: string }) {
+  const dataRoom = useRouteShown('data')
   const term = 'text-muted sm:pt-px'
   const desc = 'mb-1.5 min-w-0 text-ink sm:mb-0'
   return (
     <div id={id} className="pb-3 pl-7.5 pr-2">
-      <dl className="grid grid-cols-1 gap-x-3 text-[12px] leading-snug sm:grid-cols-[8.5rem_minmax(0,1fr)] sm:gap-y-1.5">
+      <dl className="grid grid-cols-1 gap-x-3 text-meta leading-snug sm:grid-cols-[8.5rem_minmax(0,1fr)] sm:gap-y-1.5">
         <dt className={term}>ID</dt>
         <dd className={cx(desc, 'font-mono break-all')}>{row.id}</dd>
         <dt className={term}>Unit</dt>
@@ -144,18 +149,21 @@ function Details({ row, id }: { row: FormulaRow; id: string }) {
         >
           Copy formula
         </Button>
-        <a
-          href={metricHref(row.id)}
-          className={LINK}
-          onClick={(e: MouseEvent<HTMLAnchorElement>) => {
-            if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return
-            e.preventDefault()
-            openMetricDefinition(row.id)
-          }}
-        >
-          Open in Metric definitions
-          <IconChevronRight aria-hidden="true" className="size-3.5" />
-        </a>
+        {/* The dictionary is in the Data room, which Manager mode does not show. */}
+        {dataRoom && (
+          <a
+            href={metricHref(row.id)}
+            className={LINK}
+            onClick={(e: MouseEvent<HTMLAnchorElement>) => {
+              if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return
+              e.preventDefault()
+              openMetricDefinition(row.id)
+            }}
+          >
+            Open in Metric definitions
+            <IconChevronRight aria-hidden="true" className="size-3.5" />
+          </a>
+        )}
       </div>
     </div>
   )
@@ -163,7 +171,7 @@ function Details({ row, id }: { row: FormulaRow; id: string }) {
 
 function Item({ row, open, onToggle }: { row: FormulaRow; open: boolean; onToggle: () => void }) {
   const id = useId()
-  const line = cx('block text-[12px] leading-snug text-muted', !open && 'truncate')
+  const line = cx('block text-meta leading-snug text-muted', !open && 'truncate')
   return (
     <li className="border-t border-rule first:border-t-0">
       <button
@@ -176,14 +184,14 @@ function Item({ row, open, onToggle }: { row: FormulaRow; open: boolean; onToggl
         <Chevron open={open} />
         <span className="flex min-w-0 flex-1 flex-col gap-0.5">
           <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-            <span className="text-[13px] leading-snug font-semibold text-ink">{row.name}</span>
+            <span className="text-small leading-snug font-semibold text-ink">{row.name}</span>
             {row.changed && (
-              <span className="inline-flex h-4 items-center rounded-[3px] bg-warning-wash px-1 text-[11px] font-semibold text-ink">
+              <span className="inline-flex h-4 items-center rounded-chip bg-warning-wash px-1 text-label font-semibold text-ink">
                 Changed from default
               </span>
             )}
           </span>
-          <span className={cx('block text-[13px] leading-snug', row.formula ? 'text-ink-2' : 'text-muted')}>
+          <span className={cx('block text-small leading-snug', row.formula ? 'text-ink-2' : 'text-muted')}>
             {row.formula ?? 'No formula recorded'}
           </span>
           {row.population && (
@@ -222,7 +230,7 @@ function SectionList({
   const id = useId()
   const shown = filtered || open
   const count = (
-    <span className="tnum text-[12px] font-normal text-muted">
+    <span className="tnum text-meta font-normal text-muted">
       {section.count}
       <span className="sr-only"> {section.count === 1 ? 'metric' : 'metrics'}</span>
     </span>
@@ -232,7 +240,7 @@ function SectionList({
       <h3>
         {filtered ? (
           <span className="flex items-baseline gap-2 px-2 pt-3 pb-1">
-            <span className="cut-head text-[15px] font-semibold text-ink">{section.label}</span>
+            <span className="cut-head text-title font-semibold text-ink">{section.label}</span>
             {count}
           </span>
         ) : (
@@ -244,7 +252,7 @@ function SectionList({
             className="flex w-full items-center gap-2 rounded-control px-2 py-2 text-left transition-colors hover:bg-hover"
           >
             <Chevron open={open} />
-            <span className="cut-head flex-1 text-[15px] font-semibold text-ink">{section.label}</span>
+            <span className="cut-head flex-1 text-title font-semibold text-ink">{section.label}</span>
             {count}
           </button>
         )}
@@ -277,7 +285,22 @@ const toggled = <T,>(set: ReadonlySet<T>, v: T): ReadonlySet<T> => {
 
 export function FormulasSection() {
   const ctx = useAnalytics()
-  const rows = useMemo(() => formulaRows(ctx.metrics, ctx.quality), [ctx.metrics, ctx.quality])
+  // The metrics the mode shows (Manager mode: those of its views, after the hide lists); the
+  // download holds the same rows.
+  const { access } = ctx
+  const rows = useMemo(() => {
+    const viewShown = (v: string) => routeShown(access.mode, v as RouteView)
+    return formulaRows(ctx.metrics, ctx.quality).flatMap((r) => {
+      if (!access.can(`metric:${r.id}`)) return []
+      // A privacy rule goes with its article (Manager mode hides the pay, immigration and survey rules).
+      const article = r.id.startsWith('privacy.') ? articleForMetric(r.id) : null
+      if (article && !access.can(`help:article:${article}`)) return []
+      // A metric listed first on a view the mode hides is listed under the first view it shows.
+      if (r.section === 'rules' || viewShown(r.section)) return [r]
+      const home = r.views.find(viewShown)
+      return home ? [{ ...r, section: home }] : [r]
+    })
+  }, [ctx.metrics, ctx.quality, access])
   const [filters, setFilters] = useState<FormulaFilters>(NO_FORMULA_FILTERS)
   const [openSections, setOpenSections] = useState<ReadonlySet<FormulaSection>>(() => new Set())
   const [openRows, setOpenRows] = useState<ReadonlySet<string>>(() => new Set())
@@ -285,7 +308,9 @@ export function FormulasSection() {
   const shown = filterRows(rows, filters)
   const sections = groupFormulaRows(shown)
   const filtered = isFiltered(filters)
-  const views = viewOptions(rows)
+  const views = viewOptions(rows).filter((v) => routeShown(access.mode, v as RouteView))
+  // The dictionary is edited in the Data room, which Manager mode does not show.
+  const canEdit = access.can('page:data')
   const count = countText(shown.length, rows.length)
 
   const meta = () =>
@@ -323,7 +348,7 @@ export function FormulasSection() {
   return (
     <SettingsBlock
       section="formulas"
-      intro="How Census calculates each number, from the metric definitions in force, so it follows every change. Change a formula, target or setting in Metric definitions in the Data room."
+      intro={`How Census calculates each number, from the metric definitions in force, so it follows every change.${canEdit ? ' Change a formula, target or setting in Metric definitions in the Data room.' : ''}`}
     >
       <div className="flex flex-col gap-2">
         <label className="relative flex items-center">
@@ -367,7 +392,7 @@ export function FormulasSection() {
           )}
         </div>
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="text-[12px] text-muted" aria-live="polite">
+          <p className="text-meta text-muted" aria-live="polite">
             {count}
           </p>
           <Menu
@@ -388,7 +413,7 @@ export function FormulasSection() {
       </div>
       <div className="-mx-2 -mt-2">
         {sections.length === 0 ? (
-          <p className="px-2 py-4 text-[13px] text-ink-2">
+          <p className="px-2 py-4 text-small text-ink-2">
             No metric matches these filters.{' '}
             <button type="button" className={LINK} onClick={() => setFilters(NO_FORMULA_FILTERS)}>
               Clear the filters

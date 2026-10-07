@@ -17,6 +17,7 @@ import { type Column, type Definition, Figure, Lines } from '@/charts'
 import { IconDownload, IconWarning } from '@/components/icons'
 import { goTo } from '@/components/navigation'
 import { Section } from '@/components/Section'
+import { TABLE_HEAD } from '@/components/styles'
 import { TierBadge } from '@/components/tier/TierBadge'
 import { tierCounts, tierCountsText } from '@/components/tier/tierModel'
 import { Button, cx, Segmented } from '@/components/ui'
@@ -38,7 +39,14 @@ import { roomMeta } from '../ui/meta'
 import { useBusy } from '../ui/useBusy'
 import { fieldProblemSpec, type ProblemKind, rowsSpec } from './drills'
 import { fixRows, withDrillRows } from './engine/checks'
-import { belowGoldText, type Fix, type ImpactMetric, metricImpact, metricTierCounts } from './engine/impact'
+import {
+  belowGoldText,
+  type Fix,
+  type ImpactMetric,
+  metricImpact,
+  metricTierCounts,
+  type UnjudgedEntry,
+} from './engine/impact'
 import {
   CHECK_COLUMNS,
   checkExportRows,
@@ -67,6 +75,7 @@ import {
 } from './engine/summary'
 import { FieldMatrix, type MatrixRow } from './FieldMatrix'
 import { datasetOfQualityRoute, qualityRoute, useQualityFocus } from './lens'
+import { type MetricPick, MetricsByViewFigure, unjudgedNote } from './MetricsByView'
 import { useDrillQuality } from './useDrillQuality'
 
 type Row = Record<string, unknown>
@@ -83,7 +92,7 @@ const fallbackOf = (m: ImpactMetric): readonly DatasetKey[] =>
 const rowId = (key: DatasetKey) => `data-quality-${key}`
 
 const LINK =
-  'rounded-[2px] text-left font-medium text-link underline-offset-2 hover:underline focus-visible:underline'
+  'rounded-mark text-left font-medium text-link underline-offset-2 hover:underline focus-visible:underline'
 
 const TIER_DEFINITION: Definition = {
   term: 'Tier',
@@ -102,6 +111,7 @@ export function QualityTab() {
   const drillQ = useDrillQuality()
   const { isBusy, run } = useBusy()
   const [fixId, setFixId] = useState<string | null>(null)
+  const [pick, setPick] = useState<MetricPick | null>(null)
 
   const sources = useMemo(() => {
     const out = {} as Record<DatasetKey, SourceInfo>
@@ -188,18 +198,18 @@ export function QualityTab() {
     <div>
       <div className="flex flex-wrap items-start gap-x-6 gap-y-3">
         <div className="min-w-0 flex-1 basis-[420px]">
-          <p className="max-w-[78ch] text-[13px] text-ink-2">
+          <p className="max-w-[78ch] text-small text-ink-2">
             The data under every number on the dashboard: where each dataset and field stands, which metrics
             each one holds back, and the single fixes that would lift the most. Every count opens the rows
             behind it.
           </p>
-          <p className="mt-1.5 text-[13px] text-ink">
+          <p className="mt-1.5 text-small text-ink">
             {tierCountsText(counts)}. {plural(short.length, 'field')} of {fmt(cells.length, 'int')} short of
             silver on {short.length === 1 ? 'its' : 'their'} own.{' '}
             {impact.metrics.length > 0 && belowGoldText(belowGold, impact.metrics.length)}
           </p>
           {focus && (
-            <p className="mt-1.5 text-[13px] text-ink-2">
+            <p className="mt-1.5 text-small text-ink-2">
               Showing {datasetDef(focus).label}: its row is marked, and the checks and metrics narrow to it.{' '}
               <button type="button" className={LINK} onClick={() => goTo('data', qualityRoute())}>
                 Show every dataset
@@ -210,6 +220,17 @@ export function QualityTab() {
         <Button size="sm" icon={<IconDownload />} disabled={isBusy('report')} onClick={() => void download()}>
           {isBusy('report') ? 'Preparing report…' : 'Download data quality report'}
         </Button>
+      </div>
+
+      <div className="mt-6 grid grid-cols-12 gap-4">
+        <MetricsByViewFigure
+          rows={impact.metrics}
+          unjudged={impact.unjudgedList}
+          onPick={(p) => {
+            setFixId(null)
+            setPick(p)
+          }}
+        />
       </div>
 
       <Section
@@ -231,12 +252,25 @@ export function QualityTab() {
         title="Metric impact"
         dek="Every metric takes the lowest tier of the fields it reads. These are the single fixes that would raise the most metrics, each judged as if it were the only thing done."
       >
-        <FixesFigure fixes={impact.fixes} cells={cells} selected={fixId} onSelect={setFixId} {...shared} />
+        <FixesFigure
+          fixes={impact.fixes}
+          cells={cells}
+          selected={fixId}
+          onSelect={(id) => {
+            setPick(null)
+            setFixId(id)
+          }}
+          {...shared}
+        />
         <MetricsFigure
           impact={impact.metrics}
-          unjudged={impact.unjudged}
+          unjudged={impact.unjudgedList}
           fix={impact.fixes.find((f) => f.id === fixId) ?? null}
-          onClearFix={() => setFixId(null)}
+          pick={pick}
+          onClearFix={() => {
+            setFixId(null)
+            setPick(null)
+          }}
           metrics={ctx.metrics.list}
           focus={focus}
         />
@@ -276,12 +310,12 @@ function DatasetsFigure({
   const ctx = useAnalytics()
   const issueRows = (key: DatasetKey) =>
     checks.find((c) => c.key === key && c.id === 'issue-rate')?.rows ?? []
-  const th = 'eyebrow py-1.5 pr-3 text-left font-semibold'
+  const th = `${TABLE_HEAD} py-1.5 pr-3 text-left`
   return (
     <Figure
       id="data-quality-datasets"
       title="Datasets by tier"
-      subtitle="Tier, version, mapping, certification, freshness and import error rate. Click a tier to open the dataset’s panels."
+      subtitle="Tier, version, mapping, certification, freshness and import error rate."
       data={datasetExportRows(rows)}
       columns={DATASET_COLUMNS}
       definitions={[
@@ -298,7 +332,7 @@ function DatasetsFigure({
       tableToggle={false}
     >
       <div className="scroll-x">
-        <table className="w-full border-collapse text-[13px] md:min-w-[860px]">
+        <table className="w-full border-collapse text-small md:min-w-[860px]">
           <caption className="sr-only">Datasets by tier</caption>
           <thead>
             <tr className="border-b border-rule">
@@ -346,7 +380,7 @@ function DatasetsFigure({
                     >
                       {r.dataset}
                     </button>
-                    <span className="block text-[12px] text-muted">
+                    <span className="block text-meta text-muted">
                       {r.version} ·{' '}
                       {r.rows ? (
                         <Drill
@@ -362,7 +396,7 @@ function DatasetsFigure({
                       )}
                     </span>
                     {/* Below md the mapping and certification sit under the name. */}
-                    <span className="block text-[12px] text-ink-2 md:hidden">
+                    <span className="block text-meta text-ink-2 md:hidden">
                       {r.mapping}. {r.certification}.
                     </span>
                   </td>
@@ -491,7 +525,7 @@ function FieldsFigure({ cells, focus, sources, drillQ }: Shared & { cells: Field
     <Figure
       id="data-quality-fields"
       title="Field quality"
-      subtitle="Each row is a dataset and each square one of its fields, required fields first, shaded by fill rate. Click a square for its blank or invalid rows."
+      subtitle="Each row is a dataset and each square one of its fields, required fields first, shaded by fill rate."
       data={fieldExportRows(cells, ctx.quality.rules)}
       columns={columns}
       definitions={[
@@ -640,10 +674,10 @@ function FixesFigure({
                 isSelected && 'bg-sheet-2',
               )}
             >
-              <span className="tnum pt-px text-right text-[13px] text-muted">{i + 1}</span>
+              <span className="tnum pt-px text-right text-small text-muted">{i + 1}</span>
               <div className="min-w-0">
-                <p className="text-[13px] leading-snug text-ink">{f.sentence}</p>
-                <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px]">
+                <p className="text-small leading-snug text-ink">{f.sentence}</p>
+                <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-meta">
                   <span className="inline-flex min-w-[120px] flex-1 items-center gap-2" aria-hidden="true">
                     <span
                       className="h-1.5 rounded-full bg-s1"
@@ -712,13 +746,16 @@ function MetricsFigure({
   impact,
   unjudged,
   fix,
+  pick,
   onClearFix,
   metrics,
   focus,
 }: {
   impact: ReturnType<typeof metricImpact>['metrics']
-  unjudged: number
+  unjudged: readonly UnjudgedEntry[]
   fix: Fix | null
+  /** Narrowed from "Metrics by view and tier": one view, and a tier within it. */
+  pick: MetricPick | null
   onClearFix: () => void
   metrics: readonly ImpactMetric[]
   focus: DatasetKey | null
@@ -729,7 +766,11 @@ function MetricsFigure({
     if (!m) return false
     return m.uses.length ? m.uses.some((r) => r.startsWith(`${key}.`)) : fallbackOf(m).includes(key)
   }
-  const shown = impact.filter((r) => (lifted ? lifted.has(r.id) : focus ? reads(r.id, focus) : true))
+  const picked = (r: (typeof impact)[number]) =>
+    !pick || (r.view === pick.view && (pick.tier == null || r.tier === pick.tier))
+  const shown = impact.filter(
+    (r) => picked(r) && (lifted ? lifted.has(r.id) : focus ? reads(r.id, focus) : true),
+  )
   const counts = metricTierCounts(shown)
   const parts = (['gold', 'silver', 'bronze', 'none'] as const)
     .filter((t) => counts[t])
@@ -745,14 +786,16 @@ function MetricsFigure({
         title={
           fix
             ? 'Metrics this fix would lift'
-            : focus
-              ? `Metrics that read ${datasetDef(focus).label}`
-              : 'Metrics by tier'
+            : pick
+              ? `${pick.viewLabel} metrics${pick.tier ? `, ${TIER_LABEL[pick.tier].toLowerCase()}` : ''}`
+              : focus
+                ? `Metrics that read ${datasetDef(focus).label}`
+                : 'Metrics by tier'
         }
         subtitle={
           fix
             ? fix.sentence
-            : `${focus ? `Each metric that reads ${datasetDef(focus).label}` : 'Every registered metric'} with its tier and the field or dataset limiting it${parts.length ? `: ${parts.join(', ')}` : ''}. Click a metric for its definition.`
+            : `${pick ? `Each ${pick.viewLabel} metric${pick.tier ? ` at ${TIER_LABEL[pick.tier].toLowerCase()}` : ''}${focus ? ` that reads ${datasetDef(focus).label}` : ''}` : focus ? `Each metric that reads ${datasetDef(focus).label}` : 'Every registered metric'} with its tier and the field or dataset limiting it${parts.length ? `: ${parts.join(', ')}` : ''}.`
         }
         data={rows}
         columns={columns}
@@ -763,13 +806,9 @@ function MetricsFigure({
           },
           TIER_DEFINITION,
         ]}
-        note={
-          unjudged
-            ? `${plural(unjudged, 'entry', 'entries')} of the dictionary (privacy rules, data quality rules and calculation settings) read no data and ${unjudged === 1 ? 'is' : 'are'} not listed`
-            : undefined
-        }
+        note={unjudgedNote(unjudged, 'listed') ?? undefined}
         actions={
-          fix ? (
+          fix || pick ? (
             <Button size="sm" variant="ghost" onClick={onClearFix}>
               Show every metric
             </Button>

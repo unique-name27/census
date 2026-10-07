@@ -10,6 +10,9 @@
  * Contexts are cached per live context and scope, so the views' own per-context caches are reused
  * across tool calls (and the live context itself is used whenever nothing differs from it).
  */
+
+import { askOrgTooSmall } from '@/access/copy'
+import { clampFilters } from '@/access/lock'
 import { leaderOptions } from '@/app/filterOptions'
 import type { AnalyticsContext } from '@/data/context'
 import { activeEmployees, smallExcludedValues } from '@/data/exclusion'
@@ -92,7 +95,9 @@ const filterKey = (f: Filters): string =>
   ])
 
 /** The context for other filters, built from `base` (cached; `base` itself when the filters are its own). */
-export function contextFor(base: AnalyticsContext, filters: Filters): AnalyticsContext {
+export function contextFor(base: AnalyticsContext, asked: Filters): AnalyticsContext {
+  // Manager mode: every scope stays inside the manager's org (defensive; resolveFilters clamps).
+  const filters = base.access?.lock ? clampFilters(asked, base.access.lock) : asked
   const key = filterKey(filters)
   if (key === filterKey(base.filters)) return base
   let byKey = scoped.get(base)
@@ -157,10 +162,26 @@ const DIMS = [
  * can correct itself.
  */
 export function resolveFilters(base: AnalyticsContext, input: unknown, tokens: TokenMap): FilterResult {
+  const r = resolveAsked(base, input, tokens)
+  const lock = base.access?.lock
+  // Manager mode (docs/ROLES.md, 4.7): the result goes through the same clamp as every other scope.
+  return r.ok && lock ? { ok: true, filters: clampFilters(r.filters, lock) } : r
+}
+
+/** Why Ask is off for this context, or null (Manager mode needs an org of the anonymity minimum). */
+export function askOffReason(ctx: Pick<AnalyticsContext, 'access' | 'metrics'>): string | null {
+  const lock = ctx.access?.lock
+  if (!lock) return null
+  const min = minGroupOf(ctx.metrics)
+  return lock.size < min ? askOrgTooSmall(min) : null
+}
+
+function resolveAsked(base: AnalyticsContext, input: unknown, tokens: TokenMap): FilterResult {
   if (input == null) {
     const own = ownScopeProblem(base, tokens)
     return own ? { ok: false, error: own } : { ok: true, filters: base.filters }
   }
+  const lock = base.access?.lock ?? null
   if (typeof input !== 'object' || Array.isArray(input))
     return { ok: false, error: 'filters must be an object.' }
   const f = input as Record<string, unknown>
@@ -197,6 +218,11 @@ export function resolveFilters(base: AnalyticsContext, input: unknown, tokens: T
           ok: false,
           error: `exclude names ${a}, but no ${a} is given. Give the values to leave out in ${a} as well.`,
         }
+      if (a === 'leader' && lock)
+        return {
+          ok: false,
+          error: `In Manager mode the scope is ${tokens.forEmployee(lock.managerId)}'s org, so a leader cannot be left out. Narrow to a leader inside it instead.`,
+        }
       modes[EXCLUDE_DIM[a as ExcludeArg]] = 'exclude'
     }
   }
@@ -204,7 +230,8 @@ export function resolveFilters(base: AnalyticsContext, input: unknown, tokens: T
     period: base.filters.period,
     customStart: base.filters.customStart,
     customEnd: base.filters.customEnd,
-    leaderId: null,
+    // Manager mode: no leader means the manager's org, never the whole company.
+    leaderId: lock ? lock.managerId : null,
     businessUnit: [],
     department: [],
     location: [],
@@ -219,6 +246,11 @@ export function resolveFilters(base: AnalyticsContext, input: unknown, tokens: T
       return {
         ok: false,
         error: `leader "${f.leader}" is not a person token for someone on the roster. Use a leader token from get_context.`,
+      }
+    if (lock && !lock.orgIds.has(id))
+      return {
+        ok: false,
+        error: `In Manager mode a leader filter must be someone in ${tokens.forEmployee(lock.managerId)}'s org.`,
       }
     const problem = leaderProblem(base, id, f.leader)
     if (problem) return { ok: false, error: problem }

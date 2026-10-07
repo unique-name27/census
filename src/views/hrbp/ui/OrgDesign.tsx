@@ -84,7 +84,7 @@ export function OrgDesign({ m }: { m: HrbpModel }) {
             x="bucket"
             y="managers"
             xOrder={[...SPAN_BUCKETS]}
-            tone={(d) => (d.outlier ? 'warning' : 'default')}
+            glyphTone={(d) => (d.outlier ? 'warning' : 'default')}
             onSelect={(d) => drill(() => spanBucketSpec(p, d))}
           />
         </Figure>
@@ -117,7 +117,7 @@ export function OrgDesign({ m }: { m: HrbpModel }) {
 
       <Section
         title="Managers"
-        dek="Every manager in scope with team size, total org, tenure and regretted exits. Select a row to focus on that manager's org."
+        dek="Every manager in scope with team size, total org, tenure and regretted exits."
       >
         <Figure
           id="hrbp-managers"

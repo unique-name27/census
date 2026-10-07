@@ -2,12 +2,16 @@
  * The head of a view: name, the scope / window / as-of line with where the data came from (left
  * out for a view that reads no datasets), the view's own controls, the "Show data quality" switch,
  * Export, and underline sub-tabs. With the switch on, a strip under the tabs names the datasets
- * the view reads with their tiers. Under the scope line, "About this view" opens the view's help
- * article.
+ * the view reads with their tiers. "About this view" (the view's help article) and the AI agents
+ * link ride at the end of the scope line as quiet links, so the header is two lines of text
+ * before the sub-tabs (docs/DESIGN-REFRESH.md 3.4). On phones the view's own controls and the
+ * quality switch fold into one "More" button; Export, the primary action, stays out.
  */
 import { type KeyboardEvent, useEffect, useRef } from 'react'
+import { IconPin } from '@/components/icons'
 import { goTo } from '@/components/navigation'
-import { cx, Tag, Tip } from '@/components/ui'
+import { Button, cx, Popover, Tag, Tip } from '@/components/ui'
+import { useNarrow } from '@/components/useNarrow'
 import { useAnalytics } from '@/data/context'
 import { AboutViewLink } from '@/help/ui/AboutViewLink'
 import { formatDate } from '@/lib/dates'
@@ -40,7 +44,7 @@ function Provenance({ view }: { view: ViewDef }) {
         </ul>
       }
     >
-      <button type="button" aria-label={`${note.text}. Data sources for this view`} className="rounded-[3px]">
+      <button type="button" aria-label={`${note.text}. Data sources for this view`} className="rounded-chip">
         <Tag tone={note.allSample ? 'neutral' : 'outline'}>{note.text}</Tag>
       </button>
     </Tip>
@@ -52,7 +56,7 @@ function AgentsLink({ view }: { view: ViewDef }) {
   const link = useAgentLink(view.key)
   if (!link) return null
   return (
-    <span className="text-[12px] leading-snug">
+    <span className="text-meta leading-snug">
       <a
         href={agentsHash(link.areas)}
         aria-label={link.label}
@@ -62,7 +66,7 @@ function AgentsLink({ view }: { view: ViewDef }) {
           e.preventDefault()
           openAgents(link.areas)
         }}
-        className="rounded-[2px] text-ink-2 underline decoration-rule-strong underline-offset-2 hover:text-ink hover:decoration-ink"
+        className="rounded-mark text-ink-2 underline decoration-rule-strong underline-offset-2 hover:text-ink hover:decoration-ink"
       >
         {link.text}
       </a>
@@ -116,7 +120,7 @@ function SubTabs({ view, active }: { view: ViewDef; active: string }) {
             onClick={() => goTo(view.key, t.key)}
             onKeyDown={onKeyDown(i)}
             className={cx(
-              'relative h-10 shrink-0 text-[13px] whitespace-nowrap transition-colors focus-visible:-outline-offset-2',
+              'relative h-10 shrink-0 text-small whitespace-nowrap transition-colors focus-visible:-outline-offset-2',
               selected
                 ? 'font-semibold text-ink after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:bg-ink'
                 : 'font-medium text-ink-2 hover:text-ink',
@@ -132,15 +136,40 @@ function SubTabs({ view, active }: { view: ViewDef; active: string }) {
 
 export function ViewHeader({ view, tab }: { view: ViewDef; tab: string }) {
   const ctx = useAnalytics()
-  const Actions = view.HeaderActions
+  // The mode decides the view's own controls, the quality lens and the AI agents link (docs/ROLES.md, 3.1).
+  const { access } = ctx
+  const Actions = access.can(`header:${view.key}`) ? view.HeaderActions : undefined
+  const lens = view.datasets.length > 0 && access.can('filter:lens')
+  const narrow = useNarrow()
+  const links = (
+    <>
+      <AboutViewLink view={view.key} tab={tab} />
+      {access.can('header:agents') && <AgentsLink view={view} />}
+    </>
+  )
+  // The view's own controls and the quality switch: inline on wider screens, behind "More" on phones.
+  const extra = (Actions || lens) && (
+    <>
+      {Actions && <Actions />}
+      {/* The quality lens: tier, limiting field and rows left out on every number. */}
+      {lens && (
+        <span data-tour="quality-lens" className="inline-flex">
+          <QualityLensSwitch />
+        </span>
+      )}
+    </>
+  )
   return (
     <div className="pt-5">
       <div className="flex flex-wrap items-start gap-x-6 gap-y-3">
         <div className="min-w-0 flex-1 basis-[420px]">
-          <h1 className="cut-head text-[28px] leading-[1.1] font-[650] tracking-[-0.01em]">{view.label}</h1>
+          <h1 className="cut-head text-page-title leading-[1.1] font-[650] tracking-[-0.01em]">
+            {view.label}
+          </h1>
           {/* A view that reads no datasets (AI in HR) has no scope, window, as-of date or data source. */}
           {view.datasets.length > 0 && (
-            <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[13px] text-ink-2">
+            <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-small text-ink-2">
+              {access.lock && <IconPin className="size-3.5 shrink-0 text-muted" />}
               <span>{ctx.scopeLabel}</span>
               <span aria-hidden="true" className="text-muted">
                 ·
@@ -153,22 +182,32 @@ export function ViewHeader({ view, tab }: { view: ViewDef; tab: string }) {
               <span className="ml-1.5">
                 <Provenance view={view} />
               </span>
+              {/* Quiet trailing links: this view's help article, and the AI agents for its area. */}
+              <span className="ml-3 inline-flex flex-wrap items-center gap-x-4 gap-y-0.5">{links}</span>
             </div>
           )}
-          {/* Quiet links: this view's help article, and the AI agents for its area. */}
-          <p className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-0.5">
-            <AboutViewLink view={view.key} tab={tab} />
-            <AgentsLink view={view} />
-          </p>
+          {view.datasets.length === 0 && (
+            <p className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-0.5">{links}</p>
+          )}
         </div>
         <div data-tour="view-controls" className="flex max-w-full min-w-0 flex-wrap items-center gap-2">
-          {Actions && <Actions />}
-          {/* The quality lens: tier, limiting field and rows left out on every number. */}
-          {view.datasets.length > 0 && (
-            <span data-tour="quality-lens" className="inline-flex">
-              <QualityLensSwitch />
-            </span>
-          )}
+          {extra &&
+            (narrow ? (
+              <Popover
+                title="More"
+                align="start"
+                width={300}
+                trigger={
+                  <Button variant="secondary" caret aria-label={`More for ${view.label}`}>
+                    More
+                  </Button>
+                }
+              >
+                <div className="flex flex-col items-start gap-3">{extra}</div>
+              </Popover>
+            ) : (
+              extra
+            ))}
           <ExportMenu view={view} tab={tab} />
         </div>
       </div>
@@ -176,7 +215,7 @@ export function ViewHeader({ view, tab }: { view: ViewDef; tab: string }) {
         {view.tabs.length > 1 && <SubTabs view={view} active={tab} />}
       </div>
       {/* While the lens is on: the datasets this view reads, with their tiers. */}
-      <QualityDatasetStrip datasets={view.datasets} />
+      {lens && <QualityDatasetStrip datasets={view.datasets} />}
     </div>
   )
 }

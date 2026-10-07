@@ -56,6 +56,7 @@ const DEPENDS_ON: Readonly<Record<string, readonly string[]>> = {
   [M.regrettedHigh]: [M.highPerformers],
   [M.keyTalent]: [M.highPerformers, M.riskBands, M.flightRisk],
   [M.exitByRating]: [M.highPerformers],
+  [M.byReviewer]: [M.highPerformers],
   [M.nineBox]: [M.highPerformers, M.flightRisk],
   [M.riskBands]: [M.flightRisk],
   [M.flightRisk]: [M.highPerformers, ...PEOPLE_STATS_RATES],
@@ -213,6 +214,33 @@ export const metrics: MetricDef[] = defineMetrics('talent', [
     ],
   },
   {
+    id: M.ratingChange,
+    name: 'Rating change',
+    definition:
+      'People rated in both of the last two annual cycles, by their rating in the earlier cycle and in the later one. The diagonal kept their rating; above it rose, below it fell. A share of a row is hidden when fewer than the anonymity minimum (5 by default) held that earlier rating.',
+    formula: 'people counted by (rating in the earlier annual cycle, rating in the later annual cycle)',
+    population: 'Everyone in scope rated in both annual cycles, current and former.',
+    window:
+      'The two latest annual cycles (named annual, or that assess potential) on or before the as-of date',
+    unit: 'int',
+    goodDirection: null,
+    uses: L.figure['talent-rating-change'],
+    owner: OWNER,
+  },
+  {
+    id: M.byReviewer,
+    name: 'Share rated high by reviewer',
+    definition:
+      'For each reviewer who rated at least the anonymity minimum (5 by default) in the latest cycle, the share of the people they rated who were rated 4 or 5 (the high performer rating, by default). Reviewers who rated fewer are left out. A reviewer stands out when their share is further from the guideline than chance explains for the number they rated (more than two standard errors). Used to choose where calibration starts.',
+    formula: 'people rated 4-5 by the reviewer ÷ people the reviewer rated',
+    population: 'Everyone in scope rated in the latest cycle with a reviewer ID, current and former.',
+    window: CYCLE,
+    unit: 'pct',
+    goodDirection: null,
+    uses: L.figure['talent-rating-by-manager'],
+    owner: OWNER,
+  },
+  {
     id: M.calibrationShift,
     name: 'Calibration shift',
     definition:
@@ -275,6 +303,19 @@ export const metrics: MetricDef[] = defineMetrics('talent', [
     unit: 'int',
     goodDirection: null,
     uses: L.figure['talent-succession-coverage'],
+    owner: OWNER,
+  },
+  {
+    id: M.exposure,
+    name: 'Succession exposure',
+    definition:
+      'Critical and key roles by the incumbent’s risk of loss recorded in the succession plan and the readiness of the best successor still employed. Roles with a high risk of loss and no successor are the most exposed.',
+    formula: 'roles counted by risk of loss (high, medium, low, not rated) × best successor readiness',
+    population: 'Roles in the succession plans whose incumbent is in scope.',
+    window: AS_OF,
+    unit: 'int',
+    goodDirection: null,
+    uses: L.figure['talent-succession-exposure'],
     owner: OWNER,
   },
   {
@@ -446,6 +487,19 @@ export const metrics: MetricDef[] = defineMetrics('talent', [
     unit: 'pct',
     goodDirection: 'down',
     uses: L.figure['talent-overdue-assignments'],
+    owner: LEARNING_OWNER,
+  },
+  {
+    id: M.overdueAtMonthEnd,
+    name: 'Overdue required training at month end',
+    definition:
+      'Required assignments due before a month end and not completed by it, for employees active that day, counted at each of the last 12 month ends. The last point is the as-of date, where it equals the assignments overdue today. Contractors and interns are not counted.',
+    formula: 'required assignments with due date < month end and no completion on or before it',
+    population: 'Employees active at each month end.',
+    window: 'The last 12 month ends to the as-of date',
+    unit: 'int',
+    goodDirection: 'down',
+    uses: L.figure['talent-overdue-trend'],
     owner: LEARNING_OWNER,
   },
   {

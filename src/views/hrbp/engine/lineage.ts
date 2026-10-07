@@ -223,10 +223,15 @@ export const FIGURE = {
       withPromotions ? ifPresent(PROMOTION_RATE) : NONE,
     ),
   headcountTrend: PAST_HEADCOUNT,
+  /** Attrition over the trailing 12 months at each month end, voluntary or regretted. */
+  attritionTrailing: (kind: 'voluntary' | 'regretted', rule: RegrettedRule = 'voluntaryFlagged') =>
+    kind === 'voluntary' ? VOLUNTARY : regrettedLineage(rule),
   hiresExits: all(HIRES, EXITS),
   bridge: all(PAST_HEADCOUNT, need('employees.employeeId')),
 
   /* workforce */
+  /** Headcount at past month ends by the scorecard's groups (a leader's direct reports' orgs, units …). */
+  headcountByOrg: (dim: ScoreDim) => all(PAST_HEADCOUNT, SCORE_GROUP[dim]),
   byDepartment: all(HEADCOUNT, DEPARTMENT),
   byLocation: all(HEADCOUNT, LOCATION),
   byLevel: all(HEADCOUNT, LEVEL),
@@ -245,6 +250,8 @@ export const FIGURE = {
   attritionByGroup: (dim: 'department' | 'location') =>
     all(ATTRITION, dim === 'department' ? DEPARTMENT_AT : LOCATION, ifPresent(EXIT_TYPE)),
   exitsByTenure: all(EXITS, TENURE, ifPresent(EXIT_TYPE)),
+  /** Hire cohorts still employed at checkpoints after the hire date. */
+  cohortRetention: PAST_HEADCOUNT,
   attritionByLevel: all(ATTRITION, LEVEL_AT, ifPresent(EXIT_TYPE)),
   exitsByRating: all(EXITS, LAST_RATING, ifPresent(EXIT_TYPE)),
   /** The reason column shows only when exit reasons meet the data standard. */
@@ -261,6 +268,9 @@ export const FIGURE = {
   promotionsByLevel: all(PROMOTION_RATE, LEVEL_AT, optional('jobChanges.fromLevel')),
   movesByDepartment: all(MOVES, DEPARTMENT, optional('jobChanges.toDepartment')),
   timeSincePromotion: all(HEADCOUNT, MOVES),
+  /** Today's employees with a manager change (or a transfer to a new manager) in the last 12 months. */
+  managerChanges: (dim: ScoreDim) =>
+    all(HEADCOUNT, SCORE_GROUP[dim], MOVES, optional('jobChanges.fromManagerId', 'jobChanges.toManagerId')),
   internalMoves: all(
     MOVES,
     ifPresent(NAME),

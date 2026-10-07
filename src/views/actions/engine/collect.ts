@@ -14,6 +14,8 @@
  *
  * Pure: no React. Results are cached per context.
  */
+import { itemsShown } from '@/access/items'
+import { errorMessage, logDevError } from '@/app/devlog'
 import { gateFor, subjectOf } from '@/components/tier/tierModel'
 import type { AnalyticsContext } from '@/data/context'
 import type { FieldRef } from '@/data/quality/fieldRef'
@@ -21,6 +23,7 @@ import type { Tier } from '@/data/quality/tier'
 import { CASE_CATEGORIES, type DatasetKey, ONBOARDING_OWNERS, type ViewKey } from '@/data/schema'
 import { focusLeader, hasOrgFilter, scopeDatasets, scopeLabel, subtreeIds } from '@/data/scope'
 import { headcountAt } from '@/lib/people'
+import { timed } from '@/lib/timing'
 import { minGroupOf } from '@/metrics/privacy'
 import { ownerLookup } from '@/views/hrbp/engine/owners'
 import { ACTION_OWNER_LABEL, ACTION_OWNER_ROLES, type ActionItem, type ActionOwnerRole } from '@/views/types'
@@ -153,12 +156,14 @@ function runViews(ctx: AnalyticsContext, views: readonly ViewSource[]): Run {
   const items: ActionItem[] = []
   const errors: CollectError[] = []
   for (const v of views) {
-    if (!v.actions) continue
+    const actions = v.actions
+    if (!actions) continue
     try {
-      items.push(...v.actions(ctx))
+      items.push(...timed(`census:actions:${v.key}`, () => actions(ctx)))
     } catch (err) {
       console.error(`Action center: items from ${v.label} could not be computed`, err)
       errors.push({ view: v.key, label: v.label, message: err instanceof Error ? err.message : String(err) })
+      logDevError({ where: 'actions', view: v.key, tab: null, message: errorMessage(err) })
     }
   }
   return { items, errors }
@@ -227,6 +232,9 @@ export function collectUncached(ctx: AnalyticsContext, views: readonly ViewSourc
     for (const e of wide.errors) if (!errors.some((x) => x.view === e.view)) errors.push(e)
   }
 
+  // The mode lists only the items of the views and records it shows (Manager mode, docs/ROLES.md 3.4).
+  const listed = ctx.access ? itemsShown(ctx.access, raw) : raw
+
   // A small scope never shows that one of its people has an employee relations case.
   const tooSmall = !ctx.isCompany && headcountAt(ctx.data.employees, ctx.asOf) < minGroupOf(ctx.metrics)
 
@@ -234,7 +242,7 @@ export function collectUncached(ctx: AnalyticsContext, views: readonly ViewSourc
   const items: OpenAction[] = []
   const hidden = new Map<string, HiddenReason>()
   let hiddenCount = 0
-  for (const i of raw) {
+  for (const i of listed) {
     if (seen.has(i.id)) continue
     seen.add(i.id)
     if (tooSmall && isPrivateItem(i)) continue

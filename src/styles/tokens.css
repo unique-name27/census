@@ -19,7 +19,7 @@
   --stretch-tab: 88%;
 
   /* surfaces */
-  --page: #eceef1;
+  --page: #e8eaee;
   --sheet: #fbfbfc;
   --sheet-2: #f3f4f6;
   --sheet-3: #e7e9ed;
@@ -27,7 +27,7 @@
   --band: #1b1f26;
   --band-ink: #f1f3f5;
   --band-ink-2: #b9c0ca;
-  --band-muted: #8a919d;
+  --band-muted: #989fab; /* 4.5:1 or more on the band, idle tabs (hovered too) and band chips */
   --band-rule: #3a404a;
   --band-chip: #2c313a;
   --tab-idle: #262b33;
@@ -37,7 +37,7 @@
   /* ink */
   --ink: #12151a;
   --ink-2: #475060;
-  --muted: #737b8a;
+  --muted: #616a78;
   --on-ink: #fbfbfc;
 
   /* lines */
@@ -107,6 +107,10 @@
   /* geometry */
   --radius-sheet: 6px;
   --radius-control: 4px;
+  /* tags, pills, badges, chips, menu items */
+  --radius-chip: 3px;
+  /* inline focus outlines on links and drill numbers, small swatches */
+  --radius-mark: 2px;
   --gutter: clamp(16px, 2.4vw, 32px);
 
   /* floating layers only (menus, popovers, dialogs); sheets never get a shadow */
@@ -116,10 +120,10 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     color-scheme: dark;
-    --page: #0d0f12;
-    --sheet: #16191e;
-    --sheet-2: #1c2026;
-    --sheet-3: #242931;
+    --page: #0a0c0f;
+    --sheet: #181c22;
+    --sheet-2: #1f242b;
+    --sheet-3: #272d35;
     --band: #171a1f;
     --band-chip: #262a31;
     --band-rule: #2c3138;
@@ -129,11 +133,11 @@
     --ink: #f1f3f5;
     --ink-2: #b6bdc8;
     --muted: #8a919d;
-    --on-ink: #0d0f12;
-    --rule: #262a31;
-    --rule-strong: #363b44;
-    --grid: #22262c;
-    --axis: #3b414a;
+    --on-ink: #0a0c0f;
+    --rule: #2b3038;
+    --rule-strong: #3b414b;
+    --grid: #252a31;
+    --axis: #444b56;
     --focus: #6da7ec;
     --link: #86b6ef;
     --hover-wash: rgba(255, 255, 255, 0.05);
@@ -146,7 +150,7 @@
     --s6: #008300;
     --s7: #9085e9;
     --s8: #e66767;
-    --deemph: #474d57;
+    --deemph: #4a515c;
     --seq-100: #0d366b;
     --seq-200: #104281;
     --seq-250: #184f95;
@@ -181,10 +185,10 @@
 
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --page: #0d0f12;
-  --sheet: #16191e;
-  --sheet-2: #1c2026;
-  --sheet-3: #242931;
+  --page: #0a0c0f;
+  --sheet: #181c22;
+  --sheet-2: #1f242b;
+  --sheet-3: #272d35;
   --band: #171a1f;
   --band-chip: #262a31;
   --band-rule: #2c3138;
@@ -194,11 +198,11 @@
   --ink: #f1f3f5;
   --ink-2: #b6bdc8;
   --muted: #8a919d;
-  --on-ink: #0d0f12;
-  --rule: #262a31;
-  --rule-strong: #363b44;
-  --grid: #22262c;
-  --axis: #3b414a;
+  --on-ink: #0a0c0f;
+  --rule: #2b3038;
+  --rule-strong: #3b414b;
+  --grid: #252a31;
+  --axis: #444b56;
   --focus: #6da7ec;
   --link: #86b6ef;
   --hover-wash: rgba(255, 255, 255, 0.05);
@@ -211,7 +215,7 @@
   --s6: #008300;
   --s7: #9085e9;
   --s8: #e66767;
-  --deemph: #474d57;
+  --deemph: #4a515c;
   --seq-100: #0d366b;
   --seq-200: #104281;
   --seq-250: #184f95;

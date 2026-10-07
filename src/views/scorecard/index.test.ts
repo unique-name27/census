@@ -9,7 +9,7 @@ import { OTHER_VIEWS } from './views'
 describe('the scorecard view', () => {
   it('reads every other view, in folder-tab order, without importing the registry', () => {
     expect(OTHER_VIEWS).toEqual(VIEWS.filter((v) => v.key !== 'scorecard'))
-    expect(VIEWS[0]).toBe(view)
+    expect(VIEWS.find((v) => v.key === 'scorecard')).toBe(view)
   })
 
   it('heads the folder tab with targets met, counting what the standard shows', () => {

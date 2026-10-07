@@ -4,7 +4,7 @@
  */
 import { type KeyboardEvent, useEffect, useRef, useState } from 'react'
 import { rovingIndex } from '@/app/keyboard'
-import { IconDownload, IconFile, IconLock, IconReset, IconWarning } from '@/components/icons'
+import { IconDownload, IconFile, IconReset, IconWarning } from '@/components/icons'
 import { goTo } from '@/components/navigation'
 import { toast } from '@/components/toast'
 import { Button, cx } from '@/components/ui'
@@ -82,7 +82,7 @@ function ResetConfirm({ uploaded, onDone }: { uploaded: number; onDone: () => vo
     <fieldset className="mt-4 flex min-w-0 flex-wrap items-center gap-x-4 gap-y-3 rounded-sheet bg-sheet px-4 py-3">
       <legend className="sr-only">Confirm reset</legend>
       <IconWarning className="size-4 shrink-0 text-warning" />
-      <p className="min-w-0 flex-1 basis-[320px] text-[13px]">
+      <p className="min-w-0 flex-1 basis-[320px] text-small">
         <span className="font-semibold">Reset everything to the sample company?</span>{' '}
         <span className="text-ink-2">
           This removes {what.join(' and ')} from this browser. Saved column choices are kept.
@@ -136,7 +136,7 @@ function DataTabs({ active }: { active: DataTab }) {
             onClick={() => goTo('data', t.route)}
             onKeyDown={onKeyDown(i)}
             className={cx(
-              'relative h-10 shrink-0 text-[13px] whitespace-nowrap transition-colors focus-visible:-outline-offset-2',
+              'relative h-10 shrink-0 text-small whitespace-nowrap transition-colors focus-visible:-outline-offset-2',
               selected
                 ? 'font-semibold text-ink after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:bg-ink'
                 : 'font-medium text-ink-2 hover:text-ink',
@@ -160,13 +160,9 @@ export function DataRoomHeader({ summary, tab }: { summary: ManifestSummary; tab
     <div className="pt-5">
       <div className="flex flex-wrap items-start gap-x-6 gap-y-3">
         <div className="min-w-0 flex-1 basis-[420px]">
-          <h1 className="cut-head text-[28px] leading-[1.1] font-[650] tracking-[-0.01em]">Data room</h1>
-          <p className="mt-1.5 flex items-start gap-1.5 text-[13px] text-ink">
-            <IconLock className="mt-0.5 size-3.5 shrink-0 text-ink-2" />
-            Files you add stay in this browser. Census reads them on this device and never sends them
-            anywhere.
-          </p>
-          <p className="mt-1 text-[13px] text-ink-2">{summary.text}</p>
+          <h1 className="cut-head text-page-title leading-[1.1] font-[650] tracking-[-0.01em]">Data room</h1>
+          {/* The page footer says the files stay in this browser; the header does not repeat it. */}
+          <p className="mt-1.5 text-small text-ink-2">{summary.text}</p>
           <p className="mt-1">
             <AboutViewLink view="data" tab={tabRoute(tab)} label="About this page" />
           </p>

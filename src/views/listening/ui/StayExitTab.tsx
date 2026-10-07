@@ -13,6 +13,7 @@ import { groupsDrill, rowsBy } from '../engine/drills'
 import type { SurveyModel } from '../engine/measures'
 import { M } from '../metrics'
 import { AreaFrame, WithSurvey } from './AreaTab'
+import { ExitVsRecordFigure } from './charts'
 import { exitLocationDrill, stayGroupDrill } from './drill'
 import { SurveyBlock } from './SurveyBlock'
 import { count, defs, noteOf, periodWords } from './shared'
@@ -272,6 +273,7 @@ function ExitFigures({ ctx, m, sm }: { ctx: AnalyticsContext; m: ListeningModel;
         )}
         empty={locationRows.length ? null : `No location has ${sm.min} or more leavers who answered.`}
       />
+      <ExitVsRecordFigure ctx={ctx} m={m} sm={sm} />
       <Figure
         id="listening-exit-regretted"
         uses={m.uses.regretted}

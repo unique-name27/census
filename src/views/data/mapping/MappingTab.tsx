@@ -94,18 +94,18 @@ export function MappingTab() {
 
   return (
     <div className="pt-5">
-      <p className="max-w-[75ch] text-[13px] text-ink-2">
+      <p className="max-w-[75ch] text-small text-ink-2">
         How the categories in your data relate to each other, where they disagree, and the changes you have
         made. Org and job counts are active employees as of {formatDate(model.ctx.asOf)}, across the whole
         company; category lists count every row. Every count opens the people or records behind it.
       </p>
-      <p className="mt-2 max-w-[75ch] text-[13px] text-ink-2">
+      <p className="mt-2 max-w-[75ch] text-small text-ink-2">
         The approved values your data is checked against, and each department’s official business unit, are
         kept in{' '}
         <button
           type="button"
           onClick={() => openSettings('lists')}
-          className="rounded-[2px] font-medium text-link underline-offset-2 hover:underline"
+          className="rounded-mark font-medium text-link underline-offset-2 hover:underline"
         >
           Settings, Official lists
         </button>
@@ -122,8 +122,8 @@ export function MappingTab() {
             onClick={() => jump(s.id)}
             className="flex flex-col items-start gap-0.5 bg-sheet px-4 py-3 text-left transition-colors hover:bg-hover"
           >
-            <span className="cut-head text-[15px] font-semibold text-ink">{s.label}</span>
-            <span className="text-[12px] text-ink-2">{s.detail}</span>
+            <span className="cut-head text-title font-semibold text-ink">{s.label}</span>
+            <span className="text-meta text-ink-2">{s.detail}</span>
             <span className="mt-1">{pillFor(s, changes)}</span>
           </button>
         ))}

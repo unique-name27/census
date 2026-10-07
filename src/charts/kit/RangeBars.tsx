@@ -9,7 +9,7 @@ import type { LegendSpec } from '../core/legend'
 import { hoverBand, labelsMark, scalePos } from '../core/marks'
 import { maxTextWidth, truncateText } from '../core/measure'
 import type { TipContent, TipRow } from '../core/tooltip'
-import { axisX, gridX, housePlot, type PlotBuildContext, PlotChart } from '../plot'
+import { axisX, gridX, housePlot, type PlotBuildContext, PlotChart, type PlotElement, plotPos } from '../plot'
 import { seriesColor, useChartTheme } from '../theme'
 import { extent, numericAxis } from './scale'
 import { type ChartBaseProps, gateOf, type Key, numAt, textAt } from './shared'
@@ -244,8 +244,23 @@ export function RangeBars<T extends object>({
     return { title: r.label, rows: out, ...(locked ? { note: locked } : {}) }
   }
 
+  // Keyboard: rows top to bottom; the outline wraps the range.
+  const keyPoints = (plot: PlotElement) =>
+    rows.map((r) => {
+      const a = plotPos(plot, 'x', r.min ?? r.mid ?? 0)
+      const b = plotPos(plot, 'x', r.max ?? r.mid ?? 0)
+      return {
+        datum: r,
+        x: (a + b) / 2,
+        y: plotPos(plot, 'y', r.key),
+        w: Math.max(8, Math.abs(b - a)),
+        h: 12,
+      }
+    })
+
   return (
     <PlotChart<Row<T>>
+      keyPoints={keyPoints}
       build={build}
       height={height}
       legend={legend}

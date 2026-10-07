@@ -12,6 +12,8 @@ import { acceptanceDrop, recruitingFindings } from './findings'
 import { type SpeedCell, speedByMonth } from './flow'
 import { recruitingKpis } from './kpis'
 import {
+  type DecisionRow,
+  decisionsByHiringManager,
   type PipelineStage,
   pipelineToday,
   type QueueGroup,
@@ -20,15 +22,19 @@ import {
   waitingDots,
 } from './pipeline'
 import {
+  type MonthEndReqs,
   type MonthReqRow,
   medianTtf,
   type OpenByDeptRow,
   openByDepartment,
   openedFilledByMonth,
+  openReqsByMonthEnd,
   type RecruiterRow,
   recruiterLoad,
+  type TtfQuarterRow,
   type TtfRow,
   ttfBy,
+  ttfByQuarter,
 } from './reqs'
 import {
   acceptance,
@@ -62,12 +68,18 @@ export interface RecruitingModel {
   findings: Finding[]
   pipeline: PipelineStage[]
   queue: QueueGroup[]
+  /** Candidates waiting on an interview decision, by hiring manager (Pipeline). */
+  decisions: DecisionRow[]
   waiting: WaitDot[]
   speed: SpeedCell[]
   hiresByMonth: HiresMonthRow[]
   acceptanceByQuarter: QuarterAcceptance[]
   openByDepartment: OpenByDeptRow[]
+  /** Reqs open at each of the last 24 month ends, by business unit (or department). */
+  openReqsMonthEnd: MonthEndReqs
   ttfByLevel: TtfRow[]
+  /** Median time to fill by quarter, all reqs and by level band, the last 8 quarters. */
+  ttfByQuarter: TtfQuarterRow[]
   ttfByDepartment: TtfRow[]
   /** Company median time to fill (unscoped), the reference line. */
   companyTtf: number | null
@@ -127,12 +139,15 @@ export function computeRecruitingUncached(ctx: AnalyticsContext): RecruitingMode
     findings: tagFindings(recruitingFindings(b)),
     pipeline: pipelineToday(b.actives),
     queue: queueGroups(b.actives),
+    decisions: decisionsByHiringManager(b.actives),
     waiting: waitingDots(b.actives),
     speed: speedByMonth(b.apps, b.window.end, minGroup),
     hiresByMonth: hiresByMonth(b),
     acceptanceByQuarter: acceptanceByQuarter(b.apps, b.window.end, 8, minGroup),
     openByDepartment: openByDepartment(b.req.open, b.asOf),
+    openReqsMonthEnd: openReqsByMonthEnd(b.reqs, b.asOf),
     ttfByLevel: ttfBy(b.filled, (r) => r.level, LEVELS, ttfGroups),
+    ttfByQuarter: b.cov.hasFilledDate ? ttfByQuarter(b.reqs, b.window.end, ttfGroups) : [],
     ttfByDepartment: ttfBy(b.filled, (r) => r.department, undefined, ttfGroups),
     companyTtf: b.cov.hasFilledDate ? medianTtf(b.companyFilled, b.ttf) : null,
     ttf: b.cov.hasFilledDate ? medianTtf(b.filled, b.ttf) : null,

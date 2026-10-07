@@ -3,6 +3,9 @@
  * settings. Only labels, counts and settings: never a name, an ID, a file name or a value from
  * the data. Pure, so a test can run it on the sample with a leader filter set.
  */
+
+import { reportModeLine } from '@/access/copy'
+import { S } from '@/access/surfaces'
 import type { AnalyticsContext } from '@/data/context'
 import { STANDARD_LABEL } from '@/data/quality/tier'
 import { DATASET_KEYS, datasetDef, type ViewKey } from '@/data/schema'
@@ -53,6 +56,7 @@ export function pageLabels(view: string, tab: string): { view: string; tab: stri
     return { view: 'Data room', tab: DATA_TABS.find((d) => d.key === t)?.label ?? null }
   }
   if (view === 'actions') return { view: 'Action center', tab: null }
+  if (view === 'dev') return { view: 'Developer', tab: null }
   const v = viewByKey.get(view as ViewKey)
   if (!v) return { view, tab: null }
   const t = v.tabs.find((x) => x.key === tab) ?? v.tabs[0]
@@ -73,6 +77,10 @@ export function diagnosticInput(
     inScope = null
   }
   return {
+    // The mode, never the manager: a name would put a person in the report.
+    ...(ctx.access
+      ? { modeLine: reportModeLine(ctx.access.mode, !!ctx.access.lock && !ctx.access.unset) }
+      : {}),
     viewLabel: page.view,
     tabLabel: page.tab,
     address: safeAddress(env.hash),
@@ -88,7 +96,8 @@ export function diagnosticInput(
     standard: STANDARD_LABEL[s.dataStandard] ?? s.dataStandard,
     asOf: ctx.asOf,
     asOfSource: s.asOfOverride ? 'set by you' : ctx.isSample ? 'sample' : 'data',
-    datasets: DATASET_KEYS.map((k) => {
+    // Only the datasets this mode reads (Manager mode: the eight in MANAGER_DATASETS).
+    datasets: DATASET_KEYS.filter((k) => !ctx.access || ctx.access.can(S.dataset(k))).map((k) => {
       const tier = ctx.quality.datasetTier(k)
       return {
         label: datasetDef(k).label,

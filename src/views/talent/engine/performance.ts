@@ -189,7 +189,7 @@ const shareOf =
     n >= min ? k / n : null
 
 function ratedIn(base: TalentBase, cycle: string): Review[] {
-  return base.ctx.all.reviews.filter((r) => r.cycle === cycle && base.scopeIds.has(r.employeeId))
+  return base.allReviews.filter((r) => r.cycle === cycle && base.scopeIds.has(r.employeeId))
 }
 
 /** Share rated 4-5 per group, with the rated reviews behind each group. */

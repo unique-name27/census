@@ -14,8 +14,23 @@
  * the standard the body becomes a note naming what holds it back and how to raise it; "Preview
  * anyway" shows it on screen under a bronze band, and every export carries the reason instead of
  * the data. A held-back figure shows no note either: notes usually carry its numbers.
+ *
+ * Look (docs/DESIGN-REFRESH.md 2.3, 2.4, 2.10, 2.11): insets of 16px, 20px from 1024px; title
+ * `text-title`, subtitle `text-small`; header controls rest in muted ink so the data leads. An
+ * empty figure keeps the height its chart would have had (`emptyHeight`, default 220) and shows a
+ * muted icon and the message on the sheet itself (no box inside the sheet), plus `emptyAction`
+ * when there is something to do. While a newer analytics context is being computed, the body
+ * holds its previous render at 60% opacity. `variant="compact"` keeps the title and the export
+ * menu only, for small summary figures (the drill panel's Summary).
+ *
+ *   <Figure id="rec-ttf" title="Time to fill by department" data={rows} columns={cols}
+ *           empty={rows.length ? null : 'No filled reqs in this period.'}
+ *           emptyAction={<Button size="sm" onClick={openDataRoom}>Open the Data room</Button>}>
+ *     <BarList data={rows} label="department" value="days" format="days" />
+ *   </Figure>
  */
 import { type ReactNode, useEffect, useId, useRef, useState } from 'react'
+import { useCurrentView } from '@/components/currentView'
 import {
   IconChart,
   IconCopy,
@@ -29,7 +44,7 @@ import { TierBadge } from '@/components/tier/TierBadge'
 import { heldBack } from '@/components/tier/tierModel'
 import { useTierGate } from '@/components/tier/useTierGate'
 import { cx, IconButton, Menu, type MenuItem, Popover } from '@/components/ui'
-import { useAnalytics } from '@/data/context'
+import { useAnalytics, useAnalyticsPending } from '@/data/context'
 import type { FieldRef } from '@/data/quality/fieldRef'
 import { LearnMoreLink } from '@/help/ui/LearnMore'
 import { copyTable } from '@/lib/export/clipboard'
@@ -82,6 +97,12 @@ export interface FigureProps<T extends object> {
   actions?: ReactNode
   /** A message replaces the chart when set (e.g. "No filled reqs in this period."). */
   empty?: string | null | false
+  /** One control under the empty message when there is something to do ("Open the Data room"). */
+  emptyAction?: ReactNode
+  /** Height in px an empty body keeps, the chart's own height, so a row of figures stays even (default 220). */
+  emptyHeight?: number
+  /** "compact": title and export menu only (no subtitle, tier, toggle or definitions), tighter insets. */
+  variant?: 'default' | 'compact'
   detail?: FigureDetail
   /** Render `data` as a table instead of a chart. */
   tableOnly?: boolean
@@ -129,6 +150,9 @@ export function Figure<T extends object>({
   span = 12,
   actions,
   empty,
+  emptyAction,
+  emptyHeight = 220,
+  variant = 'default',
   detail,
   tableOnly = false,
   image = true,
@@ -140,7 +164,15 @@ export function Figure<T extends object>({
   className,
   children,
 }: FigureProps<T>) {
-  const { showPay, quality, metrics } = useAnalytics()
+  const { showPay, quality, metrics, access } = useAnalytics()
+  // The mode decides first (docs/ROLES.md, 6.5): a figure on a hidden tab, on the Manager hide
+  // list or showing a hidden metric renders nothing, registers nothing and exports nothing.
+  const here = useCurrentView()
+  const modeHides =
+    !access.can(`figure:${id}`, here ? { view: here.key, tab: here.tab } : undefined) ||
+    (!!metricId && !access.can(`metric:${metricId}`))
+  const pending = useAnalyticsPending()
+  const compact = variant === 'compact'
   const meta = useExportMeta()
   const registry = useFigureRegistry()
   const [order] = useState(nextFigureOrder)
@@ -174,7 +206,7 @@ export function Figure<T extends object>({
 
   // Figures with nothing to show stay out of view exports; a held-back figure exports its reason.
   useEffect(() => {
-    if (!registry || !rows.length) return
+    if (!registry || !rows.length || modeHides) return
     return registry.register({
       id,
       title,
@@ -187,9 +219,42 @@ export function Figure<T extends object>({
       tier,
       withheld,
     })
-  }, [registry, id, title, subtitle, outNote, cols, rows, order, image, tier, withheld])
+  }, [registry, id, title, subtitle, outNote, cols, rows, order, image, tier, withheld, modeHides])
+  // What the figure declares, rows or not, for the Developer page's figure scan and contract
+  // checks (never exported). A figure the mode hides declares nothing.
+  useEffect(() => {
+    if (!registry?.track || modeHides) return
+    return registry.track({
+      id,
+      title,
+      ...(metricId ? { metric: metricId } : {}),
+      ...(uses ? { uses } : {}),
+      gated,
+      rows: data.length,
+      tier,
+      withheld,
+      image: image && !tableOnly,
+      kind: 'figure',
+      order,
+    })
+  }, [
+    registry,
+    id,
+    title,
+    metricId,
+    uses,
+    gated,
+    data.length,
+    tier,
+    withheld,
+    image,
+    tableOnly,
+    order,
+    modeHides,
+  ])
 
   useEffect(() => () => window.clearTimeout(timer.current), [])
+  if (modeHides) return null
 
   const flash = (s: Status) => {
     setStatus(s)
@@ -318,14 +383,20 @@ export function Figure<T extends object>({
     <figure
       aria-labelledby={titleId}
       data-tour={`figure-${id}`}
+      data-metric={metric ?? undefined}
       className={cx('m-0 flex flex-col rounded-sheet bg-sheet', spanClass(span), className)}
     >
-      <div className="flex flex-wrap items-start gap-x-3 gap-y-2 px-4 pt-3.5">
-        <figcaption className="min-w-0 flex-1 basis-56">
-          <h3 id={titleId} className="cut-head text-[15px] leading-snug font-semibold text-ink">
+      <div
+        className={cx('flex flex-wrap items-start gap-x-3 gap-y-2 px-4', compact ? 'pt-3' : 'pt-4 lg:px-5')}
+      >
+        <figcaption className={cx('min-w-0 flex-1', compact ? 'basis-32' : 'basis-56')}>
+          <h3
+            id={titleId}
+            className={cx('cut-head font-semibold text-ink', compact ? 'text-body' : 'text-title')}
+          >
             {title}
           </h3>
-          {subtitle && <p className="mt-0.5 text-[13px] leading-snug text-ink-2">{subtitle}</p>}
+          {subtitle && !compact && <p className="mt-0.5 text-small text-ink-2">{subtitle}</p>}
         </figcaption>
         <div
           data-figure-actions
@@ -335,14 +406,14 @@ export function Figure<T extends object>({
           <span
             role="status"
             className={cx(
-              'text-[12px]',
+              'text-meta',
               status?.tone === 'error' ? 'text-bad-text' : 'text-muted',
               !status && 'sr-only',
             )}
           >
             {status?.text}
           </span>
-          {gate && (
+          {gate && !compact && (
             <TierBadge
               compact
               tier={gate.tier}
@@ -357,7 +428,7 @@ export function Figure<T extends object>({
               {actions}
             </div>
           )}
-          {hasChart && tableToggle && (
+          {hasChart && tableToggle && !compact && (
             <IconButton
               label={showTable ? 'Show chart' : 'Show table'}
               aria-pressed={showTable}
@@ -368,7 +439,7 @@ export function Figure<T extends object>({
               {showTable ? <IconChart /> : <IconTable />}
             </IconButton>
           )}
-          {datasheet.length > 0 && (
+          {datasheet.length > 0 && !compact && (
             <Popover
               title="Definitions"
               align="end"
@@ -408,7 +479,14 @@ export function Figure<T extends object>({
         </div>
       </div>
 
-      <div className="min-w-0 flex-1 px-4 pt-3 pb-4">
+      <div
+        aria-busy={pending || undefined}
+        className={cx(
+          'min-w-0 flex-1 px-4',
+          compact ? 'pt-2 pb-3' : 'pt-3 pb-5 lg:px-5',
+          pending && 'opacity-60 transition-opacity',
+        )}
+      >
         {held && gate && !previewing ? (
           <HeldBackState
             held={held}
@@ -434,8 +512,16 @@ export function Figure<T extends object>({
             )}
             <PreviewFrame active={previewing}>
               {isEmpty ? (
-                <div className="flex min-h-28 items-center rounded-control bg-sheet-2 px-4 py-5 text-[13px] text-ink-2">
-                  {empty}
+                // On the sheet itself, at the chart's height: no box in the sheet, no ragged row.
+                <div
+                  className="flex items-start gap-2 pt-1"
+                  style={{ minHeight: compact ? undefined : emptyHeight }}
+                >
+                  <IconChart className="mt-0.5 size-4 shrink-0 text-muted" />
+                  <div className="min-w-0 max-w-[60ch]">
+                    <p className="text-small text-ink-2">{empty}</p>
+                    {emptyAction && <div className="mt-3 flex flex-wrap gap-2">{emptyAction}</div>}
+                  </div>
                 </div>
               ) : tableOnly ? (
                 tableView
@@ -458,7 +544,9 @@ export function Figure<T extends object>({
         )}
       </div>
 
-      {note && showsBody && <p className="-mt-1 px-4 pb-3.5 text-[12px] leading-snug text-muted">{note}</p>}
+      {note && showsBody && !compact && (
+        <p className="-mt-2 px-4 pb-4 text-meta text-muted lg:px-5">{note}</p>
+      )}
       {/* The quality lens (view header switch): tier, field limiting it, rows used and left out. */}
       {gated && (
         <QualityLensLine
@@ -468,7 +556,7 @@ export function Figure<T extends object>({
           variant="figure"
           showTier
           showChanged={false}
-          className="mx-4 mb-3.5 border-t border-rule pt-2"
+          className="mx-4 mb-4 border-t border-rule pt-2 lg:mx-5"
         />
       )}
     </figure>
@@ -491,7 +579,7 @@ function chartSvg(body: HTMLElement | null): SVGSVGElement | null {
 /** Datasheet-style definitions: term, plain definition, muted formula. */
 function Definitions({ items }: { items: readonly Definition[] }) {
   return (
-    <table className="w-full border-separate border-spacing-0 text-[12px] leading-snug">
+    <table className="w-full border-separate border-spacing-0 text-meta leading-snug">
       <thead className="sr-only">
         <tr>
           <th scope="col">Term</th>
@@ -509,7 +597,7 @@ function Definitions({ items }: { items: readonly Definition[] }) {
             </th>
             <td className="border-t border-rule py-2 text-ink-2">
               {d.text}
-              {d.formula && <div className="mt-1 font-mono text-[11px] text-muted">{d.formula}</div>}
+              {d.formula && <div className="mt-1 font-mono text-label text-muted">{d.formula}</div>}
               {metricIdOf(d) && (
                 <div className="mt-1">
                   <EditDefinitionLink metricId={metricIdOf(d) as string} />

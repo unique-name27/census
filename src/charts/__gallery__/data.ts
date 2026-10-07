@@ -243,4 +243,84 @@ export const legendShapes = [
   { shape: 'line' as const, label: 'Lines and ticks' },
   { shape: 'dot' as const, label: 'Points' },
   { shape: 'diamond' as const, label: 'Diamond markers' },
+  { shape: 'medal' as const, label: 'Tier-coded marks' },
+]
+
+/* ───────── Refresh additions: bullets, status split, trend grid, annotations ───────── */
+
+export const measures = [
+  {
+    practice: 'Recruiting',
+    measure: 'Median time to fill',
+    value: 52,
+    target: 45,
+    format: 'days' as const,
+    status: 'missed' as const,
+  },
+  {
+    practice: 'Recruiting',
+    measure: 'Offer acceptance',
+    value: 0.781,
+    target: 0.85,
+    format: 'pct' as const,
+    status: 'missed' as const,
+  },
+  {
+    practice: 'Recruiting',
+    measure: 'Hires vs plan',
+    value: 0.93,
+    target: 0.9,
+    format: 'pct' as const,
+    status: 'met' as const,
+  },
+  {
+    practice: 'Onboarding',
+    measure: 'Day-one readiness',
+    value: 0.91,
+    target: 0.95,
+    format: 'pct' as const,
+    status: 'watch' as const,
+  },
+  {
+    practice: 'People stats',
+    measure: 'Voluntary attrition',
+    value: 0.094,
+    target: 0.1,
+    format: 'pct' as const,
+    status: 'met' as const,
+  },
+  {
+    practice: 'People stats',
+    measure: 'Regretted attrition',
+    value: 0.041,
+    target: null,
+    format: 'pct' as const,
+    status: 'none' as const,
+  },
+  {
+    practice: 'HR ops',
+    measure: 'Cases resolved within SLA',
+    value: 0.88,
+    target: 0.9,
+    format: 'pct' as const,
+    status: 'watch' as const,
+  },
+]
+
+export const statusCounts = { met: 4, watch: 7, missed: 10, none: 3 }
+
+export const trendSeries = measures.slice(0, 6).map((m, k) => ({
+  id: `gal.${k}`,
+  name: m.measure,
+  values: MONTHS.slice(-6).map((_, i) => (m.value ?? 0) * (0.9 + 0.04 * i + 0.03 * Math.sin(i + k))),
+  periods: MONTHS.slice(-6),
+  target: m.target,
+  format: m.format,
+}))
+
+export const acceptanceByQuarter = [
+  { quarterEnd: '2025-12-31', rate: 0.84 },
+  { quarterEnd: '2026-03-31', rate: 0.82 },
+  { quarterEnd: '2026-06-30', rate: 0.8 },
+  { quarterEnd: '2026-09-30', rate: 0.68 },
 ]

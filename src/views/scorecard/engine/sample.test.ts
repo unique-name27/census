@@ -72,6 +72,10 @@ describe('the scorecard on the sample', () => {
     expect(top).toHaveLength(9)
     expect(top[0].finding.id).toBe('scorecard:missed-targets')
     expect(m.own?.title).toMatch(/^\d+ of \d+ measures miss their target/)
+    // It opens the records of the measure its detail names, the furthest from its target.
+    const furthest = m.rows.find((r) => m.own?.detail?.includes(`${r.kpi.label} in ${r.practice}`))
+    expect(furthest?.kpi.drill).toBeDefined()
+    expect(m.own?.drill).toBe(furthest?.kpi.drill)
     // Eight critical findings follow, one from each practice.
     const rest = top.slice(1)
     expect(rest.every((s) => s.finding.severity === 'critical')).toBe(true)

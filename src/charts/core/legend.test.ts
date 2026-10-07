@@ -15,4 +15,14 @@ describe('legend swatches for image exports', () => {
   it('draws a 10px diamond', () => {
     expect(swatchSvg('diamond', 10, 20)).toEqual({ tag: 'path', attrs: { d: 'M15,15L20,20L15,25L10,20Z' } })
   })
+
+  it('draws a medal as one filled path inside its 10px box', () => {
+    const m = swatchSvg('medal', 10, 20)
+    expect(m.tag).toBe('path')
+    const nums =
+      String(m.attrs.d)
+        .match(/-?\d+(\.\d+)?/g)
+        ?.map(Number) ?? []
+    expect(nums.length).toBeGreaterThan(10)
+  })
 })

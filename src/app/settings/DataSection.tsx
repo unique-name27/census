@@ -16,9 +16,9 @@ function StandardChoice() {
   const setStandard = useCensus((s) => s.setDataStandard)
   const name = useId()
   return (
-    <fieldset className="flex min-w-0 flex-col gap-1.5">
-      <legend className="text-[13px] font-semibold text-ink">Data standard</legend>
-      <p className="-mt-1 mb-1 text-[12px] leading-snug text-muted">
+    <fieldset className="flex min-w-0 flex-col">
+      <legend className="text-small font-semibold text-ink">Data standard</legend>
+      <p className="mt-0.5 mb-2 text-meta leading-snug text-muted">
         The lowest tier a number needs to be shown in any view. {tierCountsText(tierCounts(ctx.quality))}.
       </p>
       {DATA_STANDARDS.map((s) => {
@@ -28,9 +28,10 @@ function StandardChoice() {
           <label
             key={s}
             htmlFor={id}
+            // Rows divided by hairlines (no boxes inside the sheet); the chosen one takes the second tone.
             className={cx(
-              'flex cursor-pointer items-start gap-2.5 rounded-control px-3 py-2.5 shadow-[inset_0_0_0_1px_var(--rule)] hover:bg-hover has-[:focus-visible]:shadow-[inset_0_0_0_2px_var(--focus)]',
-              on && 'bg-sheet-2 shadow-[inset_0_0_0_1px_var(--rule-strong)]',
+              'flex cursor-pointer items-start gap-2.5 border-t border-rule px-2 py-2.5 last:border-b hover:bg-hover has-[:focus-visible]:outline-2 has-[:focus-visible]:-outline-offset-2 has-[:focus-visible]:outline-focus',
+              on && 'bg-sheet-2',
             )}
           >
             <input
@@ -43,11 +44,11 @@ function StandardChoice() {
               className="mt-0.5 size-3.5 shrink-0 accent-(--ink)"
             />
             <span className="min-w-0">
-              <span className="flex items-center gap-1.5 text-[13px] font-semibold text-ink">
+              <span className="flex items-center gap-1.5 text-small font-semibold text-ink">
                 <MedalGlyph tier={s} />
                 {STANDARD_LABEL[s]}
               </span>
-              <span className="mt-0.5 block text-[12px] leading-snug text-ink-2">{STANDARD_HINT[s]}</span>
+              <span className="mt-0.5 block text-meta leading-snug text-ink-2">{STANDARD_HINT[s]}</span>
             </span>
           </label>
         )
@@ -119,7 +120,7 @@ function ReportingDate() {
         {ctx.isSample ? 'Use the default date' : 'Use the latest date'}
       </Button>
       {future && (
-        <p id={`${inputId}-error`} className="w-full text-[12px] text-bad-text">
+        <p id={`${inputId}-error`} className="w-full text-meta text-bad-text">
           Pick a date on or before today, {formatDate(today)}.
         </p>
       )}

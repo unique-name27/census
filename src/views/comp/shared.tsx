@@ -82,7 +82,7 @@ export function PayNotice({ m }: { m: CompModel }) {
   return (
     <p
       role="note"
-      className="mb-4 flex gap-2 rounded-sheet bg-sheet px-4 py-2.5 text-[13px] leading-snug text-ink-2"
+      className="mb-4 flex gap-2 rounded-sheet bg-sheet px-4 py-2.5 text-small leading-snug text-ink-2"
     >
       <IconInfo className="mt-px size-4 shrink-0 text-muted" />
       <span>

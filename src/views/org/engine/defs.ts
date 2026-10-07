@@ -26,6 +26,10 @@ export const FLAG_METRIC: Record<FlagKind, OrgMetricId> = {
 export const FIGURE_METRIC = {
   'org-chart': ORG_METRIC.reportingLines,
   'org-flags': ORG_METRIC.flagged,
+  'org-shape-layers': ORG_METRIC.layers,
+  'org-span-by-layer': ORG_METRIC.directReports,
+  'org-team-sizes': ORG_METRIC.totalOrg,
+  'org-tenure-mix': ORG_METRIC.tenureMix,
   'org-sandbox': ORG_METRIC.reportingLines,
   'org-sandbox-spans': ORG_METRIC.spanChanges,
   'org-sandbox-moves': ORG_METRIC.moves,
@@ -80,6 +84,28 @@ export function sandboxDefinitions(m: DefReader, rules: OrgRules): Definition[] 
     defRow(m, ORG_METRIC.totalOrg),
     ...FLAG_KINDS.filter((k) => STRUCTURAL.has(k)).map((k) => flagRow(m, k, rules)),
   ])
+}
+
+/** The Team shape figures' datasheets: their own metric first, then what they count with. */
+export function teamShapeDefinitions(
+  m: DefReader,
+  rules: OrgRules,
+): Record<'layers' | 'spans' | 'teams' | 'tenure', Definition[]> {
+  return {
+    layers: rows([
+      defRow(m, ORG_METRIC.layers),
+      defRow(m, ORG_METRIC.managers),
+      defRow(m, ORG_METRIC.people),
+    ]),
+    spans: rows([
+      defRow(m, ORG_METRIC.directReports),
+      flagRow(m, 'wide-span', rules),
+      flagRow(m, 'narrow-span', rules),
+      defRow(m, ORG_METRIC.medianSpan),
+    ]),
+    teams: rows([defRow(m, ORG_METRIC.totalOrg), defRow(m, ORG_METRIC.openRoles)]),
+    tenure: rows([defRow(m, ORG_METRIC.tenureMix), defRow(m, ORG_METRIC.teamTenure)]),
+  }
 }
 
 /** The span changes table's datasheet. */

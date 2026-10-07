@@ -282,7 +282,7 @@ function MatrixLegend() {
   const color = sequentialScale(t, MATRIX_FLOOR, 1)
   const stops = [0.5, 0.625, 0.75, 0.875, 1]
   return (
-    <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 text-[12px] text-ink-2">
+    <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 text-meta text-ink-2">
       <span className="inline-flex items-center gap-1.5">
         <span className="tnum text-muted">{`≤${fmt(MATRIX_FLOOR, 'pct0')}`}</span>
         <span className="inline-flex" aria-hidden="true">

@@ -5,6 +5,7 @@
  */
 import { type ReactNode, useEffect, useRef } from 'react'
 import { openDatasetQuality } from '@/app/datasetFocus'
+import { useRouteShown } from '@/components/RouteLink'
 import { MedalGlyph } from '@/components/tier/TierBadge'
 import type { HeldBack } from '@/components/tier/tierModel'
 import { cx } from '@/components/ui'
@@ -12,7 +13,7 @@ import { type DataStandard, STANDARD_LABEL, TIER_LABEL, type Tier } from '@/data
 import { datasetDef } from '@/data/schema'
 
 const LINK =
-  'inline-flex items-center rounded-[2px] text-[12px] font-medium text-link underline-offset-2 hover:underline'
+  'inline-flex items-center rounded-mark text-meta font-medium text-link underline-offset-2 hover:underline'
 
 /** Focus the element on mount when asked (after the reader toggled the preview). */
 function useFocusOnMount<E extends HTMLElement>(focus: boolean | undefined) {
@@ -37,16 +38,19 @@ export function HeldBackState({
   focusPreview?: boolean
 }) {
   const previewRef = useFocusOnMount<HTMLButtonElement>(focusPreview)
+  // The dataset opens in the Data room, which Manager mode does not show.
+  const dataRoom = useRouteShown('data')
   return (
-    <div className="flex min-h-28 flex-col justify-center gap-1 rounded-control bg-sheet-2 px-4 py-4 text-[13px]">
+    // Plain text on the sheet (no box inside the sheet), at the standard chart height.
+    <div className="flex min-h-55 flex-col gap-1 pt-1 text-small">
       <p className="flex items-center gap-1.5 font-semibold text-ink">
         <MedalGlyph tier={tier} />
         {held.title}
       </p>
-      <p className="max-w-[72ch] leading-snug text-ink-2">{held.body}</p>
-      {held.raise && <p className="max-w-[72ch] leading-snug text-ink-2">{held.raise}</p>}
+      <p className="max-w-[72ch] text-ink-2">{held.body}</p>
+      {held.raise && <p className="max-w-[72ch] text-ink-2">{held.raise}</p>}
       <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1">
-        {held.dataset && (
+        {held.dataset && dataRoom && (
           <button type="button" className={LINK} onClick={() => openDatasetQuality(held.dataset!)}>
             Open {datasetDef(held.dataset).label} in the Data room
           </button>
@@ -76,7 +80,7 @@ export function PreviewBar({
 }) {
   const hideRef = useFocusOnMount<HTMLButtonElement>(focusHide)
   return (
-    <div className="mb-2 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-control bg-tier-bronze-wash px-3 py-1.5 text-[12px] leading-snug">
+    <div className="mb-2 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-control bg-tier-bronze-wash px-3 py-1.5 text-meta leading-snug">
       <MedalGlyph tier="bronze" />
       <span className="font-semibold text-ink">Preview</span>
       <span className="min-w-0 flex-1 text-ink-2">
@@ -107,7 +111,7 @@ export function PreviewFrame({
       <div
         aria-hidden="true"
         data-preview-band
-        className="pointer-events-none absolute inset-x-0 top-1/2 -translate-y-1/2 border-y-2 border-tier-bronze bg-[color-mix(in_srgb,var(--tier-bronze)_16%,var(--sheet))]/90 py-1 text-center text-[11px] font-semibold tracking-[0.08em] text-tier-bronze uppercase"
+        className="pointer-events-none absolute inset-x-0 top-1/2 -translate-y-1/2 border-y-2 border-tier-bronze bg-[color-mix(in_srgb,var(--tier-bronze)_16%,var(--sheet))]/90 py-1 text-center text-label font-semibold tracking-[0.08em] text-tier-bronze uppercase"
       >
         Preview · below the data standard
       </div>

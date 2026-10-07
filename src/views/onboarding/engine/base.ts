@@ -42,6 +42,12 @@ export interface OnboardingBase {
   hasCandidates: boolean
   hasPlan: boolean
   hasSurveys: boolean
+  /**
+   * Manager mode: a background check or export-control screening reads as the team holding it,
+   * never where it stands, in every table and record of the page; I-9 tasks (a Compliance
+   * measure) are left out of readiness by task.
+   */
+  masked: boolean
 }
 
 const reqIndexes = new WeakMap<readonly Requisition[], Map<string, Requisition>>()
@@ -91,6 +97,7 @@ export function onboardingBase(ctx: AnalyticsContext): OnboardingBase {
     hasCandidates: ctx.all.candidates.length > 0,
     hasPlan: ctx.all.hiringPlan.length > 0,
     hasSurveys: ctx.all.surveyResponses.length > 0,
+    masked: ctx.access.mode === 'manager',
   }
   cache.set(ctx, base)
   return base

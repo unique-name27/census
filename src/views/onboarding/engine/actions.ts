@@ -99,6 +99,7 @@ function startItems(b: OnboardingBase, u: UpcomingModel): ActionItem[] {
       const dueText = t.due ? ` It ${t.pastDue ? 'was' : 'is'} due on ${formatDate(t.due)}.` : ''
       out.push({
         id: `onboarding:task:${start.key}:${t.name}`,
+        kind: 'Day-one task',
         ...ownerOf(t, start),
         due: t.due,
         severity,
@@ -127,6 +128,7 @@ function probationItems(b: OnboardingBase, f: First90Model): ActionItem[] {
     const overdue = x.state === 'Overdue'
     return {
       id: `onboarding:probation:${x.person.key}`,
+      kind: 'Probation decision',
       ownerRole: 'manager' as const,
       ownerId: mgr,
       ownerName: (mgr && b.byId.get(mgr)?.name) || 'Manager',
@@ -162,6 +164,7 @@ function i9Items(b: OnboardingBase, u: UpcomingModel, ctxStarted: readonly Start
     const late = deadline < b.asOf
     out.push({
       id: `onboarding:i9:${p.key}`,
+      kind: 'I-9 Section 2',
       ownerRole: 'hr-ops',
       ownerId: null,
       ownerName: 'People operations',

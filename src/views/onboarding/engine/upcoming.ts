@@ -4,7 +4,7 @@
  */
 import type { AnalyticsContext } from '@/data/context'
 import { type Candidate, type ISODate, onboardingTaskByName } from '@/data/schema'
-import { addBusinessDays, addDays, daysBetween, ms } from '@/lib/dates'
+import { addBusinessDays, addDays, daysBetween, formatDate, ms } from '@/lib/dates'
 import { inWindow } from '@/lib/people'
 import { median } from '@/lib/stats'
 import type { OnboardingBase } from './base'
@@ -21,6 +21,21 @@ import {
 
 /** The tasks that clear the contingencies of an offer (Atlas ON-01 weekly exception). */
 export const CONTINGENCY_TASKS: readonly string[] = ['Background check cleared', 'Export-control screening']
+
+/** Form I-9 tasks: a Compliance measure, which Manager mode leaves out of readiness by task. */
+export const isI9Task = (name: string): boolean => name.startsWith('I-9 ')
+
+/**
+ * The blocking item in words: "Background check cleared, due 16 Oct 2026". With `masked`
+ * (Manager mode) a contingency task reads as the team holding it ("With People ops"), as the
+ * countdown words it.
+ */
+export function blockingWords(r: Pick<Readiness, 'blocking'>, masked: boolean): string | null {
+  const t = r.blocking
+  if (!t) return null
+  if (masked && CONTINGENCY_TASKS.includes(t.name)) return `With ${t.owner}`
+  return `${t.name}${t.due ? `, due ${formatDate(t.due)}` : ''}`
+}
 
 export interface UpcomingRow {
   start: Start
@@ -272,6 +287,7 @@ export function computeUpcoming(b: OnboardingBase, ctx: AnalyticsContext): Upcom
     return i < 0 ? 99 : i
   }
   const byTask = [...taskRows.values()]
+    .filter((r) => !(b.masked && isI9Task(r.task)))
     .map((r) => ({ ...r, share: share(r.done, r.starts) }))
     .sort((a, b2) => order(a.task) - order(b2.task) || a.task.localeCompare(b2.task))
   const byOwner = [...ownerRows.values()]
@@ -296,4 +312,130 @@ export function computeUpcoming(b: OnboardingBase, ctx: AnalyticsContext): Upcom
     byTask,
     byOwner,
   }
+}
+
+/* ───────────── countdown to day one ───────────── */
+
+/** The row of a start with no day-one task open (every one done or not needed, or none at all). */
+export const NOTHING_OPEN = 'Nothing open'
+
+export interface CountdownRow {
+  /** Employee ID, or the application ID for an accepted offer with no pre-hire yet. */
+  key: string
+  name: string
+  startDate: ISODate
+  daysToGo: number
+  /** The team holding the blocking item (its owner), or "Nothing open". */
+  owner: string
+  /**
+   * The blocking item in words. In Manager mode a background check or export-control screening
+   * reads "With People ops" or "With Trade compliance", so a contingency outcome is never shown.
+   */
+  blocking: string | null
+  status: Readiness['status']
+  /** The tooltip title: "Ana Ruiz, Not ready". */
+  label: string
+  /** The start and their readiness (for the drill panel; not exported). */
+  row: UpcomingRow
+}
+
+/**
+ * Upcoming starts within `days` of the as-of date, each placed on the owner of the open day-one
+ * task due first (the blocking item), soonest start first. `masked` words a contingency task as
+ * the team holding it (Manager mode).
+ */
+export function countdownRows(rows: readonly UpcomingRow[], days: number, masked = false): CountdownRow[] {
+  return rows
+    .filter((r) => r.readiness.daysToGo <= days)
+    .map((r) => {
+      const blocking = r.readiness.blocking
+      const status = r.readiness.status
+      return {
+        key: r.start.key,
+        name: r.start.name,
+        startDate: r.start.startDate,
+        daysToGo: r.readiness.daysToGo,
+        owner: blocking?.owner ?? NOTHING_OPEN,
+        blocking: blocking
+          ? masked && CONTINGENCY_TASKS.includes(blocking.name)
+            ? `With ${blocking.owner}`
+            : blocking.name
+          : null,
+        status,
+        label: status === 'No tasks' ? `${r.start.name}, no day-one tasks` : `${r.start.name}, ${status}`,
+        row: r,
+      }
+    })
+    .sort((a, b) => a.daysToGo - b.daysToGo || a.name.localeCompare(b.name))
+}
+
+/** One cell of the countdown grid: the starts of one week whose blocking item one team holds. */
+export interface CountdownCell {
+  owner: string
+  /** Monday of the start week. */
+  week: ISODate
+  /** "5 Oct", the column label. */
+  weekLabel: string
+  starts: number
+  /** Not ready and behind starts in the cell (the ones a team is holding up). */
+  atRisk: number
+  /** "2 not ready · 9 on track": the readiness of the starts in the cell. */
+  readiness: string
+  rows: CountdownRow[]
+}
+
+const READINESS_ORDER: readonly Readiness['status'][] = [
+  'Not ready',
+  'Behind',
+  'On track',
+  'Ready',
+  'No tasks',
+]
+
+/** "2 not ready · 1 behind · 9 on track": counts by readiness, worst first. */
+export function readinessWords(rows: readonly Pick<CountdownRow, 'status'>[]): string {
+  return READINESS_ORDER.flatMap((st) => {
+    const n = rows.filter((r) => r.status === st).length
+    return n ? [`${n} ${st === 'No tasks' ? 'with no day-one tasks' : st.toLowerCase()}`] : []
+  }).join(' · ')
+}
+
+/**
+ * The countdown as a grid: the team holding each start's blocking item (rows, in `owners` order,
+ * only teams holding one, then "Nothing open") by start week, every week from the first start's
+ * to `days` ahead of the as-of date, with the number of starts in each cell. A cell nobody falls in counts 0, so every
+ * week keeps its place and every team its row. Starts on the same Monday land in one cell and
+ * are counted, never drawn on top of each other.
+ */
+export function countdownGrid(
+  rows: readonly CountdownRow[],
+  asOf: ISODate,
+  days: number,
+  owners: readonly string[],
+): CountdownCell[] {
+  if (!rows.length) return []
+  // From the first start's week to the look-ahead's last week, with no week left out between.
+  const starts = rows.map((r) => weekOf(r.startDate)).sort()
+  const first = starts[0]
+  const end = weekOf(addDays(asOf, Math.max(1, days)))
+  const last = starts[starts.length - 1] > end ? starts[starts.length - 1] : end
+  const weeks: ISODate[] = []
+  for (let w = first; w <= last; w = addDays(w, 7)) weeks.push(w)
+  const held = new Set(rows.map((r) => r.owner))
+  const order = [...owners.filter((o) => held.has(o)), ...[...held].filter((o) => !owners.includes(o)).sort()]
+  const label = (w: ISODate) => formatDate(w).replace(/ \d{4}$/, '')
+  return order.flatMap((owner) =>
+    weeks.map((week) => {
+      const inCell = rows.filter((r) => r.owner === owner && weekOf(r.startDate) === week)
+      return {
+        owner,
+        week,
+        weekLabel: label(week),
+        starts: inCell.length,
+        atRisk: inCell.filter((r) => r.status === 'Not ready' || r.status === 'Behind').length,
+        readiness: readinessWords(inCell),
+        rows: inCell,
+      }
+    }),
+  )
 }

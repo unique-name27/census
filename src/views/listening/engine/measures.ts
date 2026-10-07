@@ -162,8 +162,11 @@ export function invitedOf(ctx: AnalyticsContext, survey: SurveyType, w: Window):
 }
 
 /**
- * The records behind a response rate's denominator: the people (or reqs, cases, returns) the
- * survey was sent after in the window. Who answered is never listed.
+ * The records behind a response rate's denominator: the people the survey was sent to in the
+ * window, one row per person, so the list is exactly the invited count. Candidates are listed by
+ * application (the candidate survey counts applications); hiring managers, requesters and
+ * returners are listed as employees with how many filled reqs, resolved cases or returns sent
+ * them the survey. Who answered is never listed.
  */
 export function invitedDrill(
   ctx: AnalyticsContext,
@@ -175,13 +178,40 @@ export function invitedDrill(
   if (!keys) return null
   const end = w.end < ctx.asOf ? w.end : ctx.asOf
   const win = { start: w.start, end }
-  const title = `Invited to the ${survey.toLowerCase()}`
+  // "Invited to the exit survey", "Invited to the HR service survey", "Invited to the return to work survey".
+  const name = survey.replace(/^[A-Z](?=[a-z])/, (c) => c.toLowerCase())
+  const title = `Invited to the ${name}${/survey$/i.test(name) ? '' : ' survey'}`
   const subtitle = `${w.label} · ${ctx.scopeLabel}`
-  const note = 'Everyone the survey was sent after in the period. Who answered is never listed.'
-  // The invited count is people; these lists are records, one or more per person.
-  const per = (people: string, records: number, one: string, many: string) =>
-    `${plural(keys.size, people)} invited, across ${plural(records, one, many)}.`
+  const never = 'Who answered is never listed.'
+  const note = `Everyone the survey was sent to in the period. ${never}`
   const d = ctx.data
+  /** The invited people as employees, with how many records sent each of them the survey. */
+  const people = (
+    triggers: { employeeId: string }[],
+    column: { key: string; label: string },
+    what: readonly [string, string],
+    more = '',
+  ): DrillSpec => {
+    const per = new Map<string, number>()
+    for (const t of triggers) per.set(t.employeeId, (per.get(t.employeeId) ?? 0) + 1)
+    const rows = d.employees.filter((e) => keys.has(e.employeeId))
+    const missing = keys.size - rows.length
+    return drillSpec({
+      kind: 'employees',
+      title,
+      subtitle,
+      note: `${plural(keys.size, 'person', 'people')} invited after ${plural(triggers.length, what[0], what[1])} in the period.${
+        missing ? ` ${plural(missing, 'person', 'people')} not on the roster in this scope.` : ''
+      } ${never}${more}`,
+      noun: ['person invited', 'people invited'],
+      uses,
+      rows,
+      extra: {
+        columns: [{ key: column.key, label: column.label, format: 'int' }],
+        values: (e: { employeeId: string }) => ({ [column.key]: per.get(e.employeeId) ?? null }),
+      },
+    })
+  }
   switch (survey) {
     case 'Candidate experience':
       return drillSpec({
@@ -192,46 +222,36 @@ export function invitedDrill(
         uses,
         rows: d.candidates.filter((c) => inside(candidateTrigger(c), win)),
       })
-    case 'Hiring manager satisfaction': {
-      const rows = d.requisitions.filter(
-        (r) => r.status === 'Filled' && !!r.hiringManagerId && inside(r.filledDate, win),
+    case 'Hiring manager satisfaction':
+      return people(
+        d.requisitions
+          .filter((r) => r.status === 'Filled' && !!r.hiringManagerId && inside(r.filledDate, win))
+          .map((r) => ({ employeeId: r.hiringManagerId as string })),
+        { key: 'filledReqs', label: 'Filled reqs' },
+        ['filled req', 'filled reqs'],
       )
-      return drillSpec({
-        kind: 'requisitions',
-        title: 'Filled reqs whose hiring manager was invited',
-        subtitle,
-        note: `${per('hiring manager', rows.length, 'filled req', 'filled reqs')} ${note}`,
-        uses,
-        rows,
-      })
-    }
-    case 'HR service survey': {
-      const rows = d.cases.filter(
-        (c) =>
-          !!c.requesterId && c.category !== 'Employee relations' && inside(c.resolvedAt?.slice(0, 10), win),
+    case 'HR service survey':
+      return people(
+        d.cases
+          .filter(
+            (c) =>
+              !!c.requesterId &&
+              c.category !== 'Employee relations' &&
+              inside(c.resolvedAt?.slice(0, 10), win),
+          )
+          .map((c) => ({ employeeId: c.requesterId as string })),
+        { key: 'resolvedCases', label: 'Resolved cases' },
+        ['resolved case', 'resolved cases'],
+        ' Employee relations cases are never surveyed.',
       )
-      return drillSpec({
-        kind: 'cases',
-        title: 'Resolved cases whose requester was invited',
-        subtitle,
-        note: `${per('requester', rows.length, 'resolved case', 'resolved cases')} ${note} Employee relations cases are never surveyed.`,
-        uses,
-        rows,
-      })
-    }
-    case 'Return to work': {
-      const rows = d.transactions.filter(
-        (t) => t.type === 'Return from leave' && inside(t.effectiveDate, win),
+    case 'Return to work':
+      return people(
+        d.transactions
+          .filter((t) => t.type === 'Return from leave' && inside(t.effectiveDate, win))
+          .map((t) => ({ employeeId: t.employeeId })),
+        { key: 'returns', label: 'Returns from leave' },
+        ['return from leave', 'returns from leave'],
       )
-      return drillSpec({
-        kind: 'transactions',
-        title: 'Returns from leave invited',
-        subtitle,
-        note: `${per('returner', rows.length, 'return from leave', 'returns from leave')} ${note}`,
-        uses,
-        rows,
-      })
-    }
     default:
       return drillSpec({
         kind: 'employees',

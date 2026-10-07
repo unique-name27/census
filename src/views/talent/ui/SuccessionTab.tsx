@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { BarList, Columns, Figure, HBars, useChartTheme } from '@/charts'
-import { Section, Segmented, type Severity } from '@/components'
+import { Button, Section, Segmented, type Severity } from '@/components'
 import { useAnalytics } from '@/data/context'
 import { READINESS } from '@/data/schema'
 import { drill, openPerson } from '@/drill'
@@ -9,8 +9,9 @@ import { fmt, plural } from '@/lib/format'
 import type { TalentModel } from '../engine'
 import { FIGURE_METRIC, TALENT_METRIC as M } from '../engine/settings'
 import type { BenchScope, HipoGroupRow, RoleRow } from '../engine/succession'
+import { type ExposurePick, exposureLabel, SuccessionExposure } from './ChartFigures'
 import { readinessColors } from './colors'
-import { benchColumns, hipoColumns, ROLE_DETAIL_COLUMNS, roleColumns } from './columns'
+import { benchColumns, hipoColumns, roleColumns, roleDetailColumns } from './columns'
 import { defsFor, TERM } from './defs'
 
 function roleTone(r: RoleRow): Severity | null {
@@ -36,6 +37,16 @@ export function SuccessionTab({ m }: { m: TalentModel }) {
   const succ = m.succession
   const minGroup = m.settings.minGroup
   const [scope, setScope] = useState<BenchScope>('All')
+  // A cell picked on the exposure chart narrows the roles table to it.
+  const [pick, setPick] = useState<ExposurePick | null>(null)
+  const pickedRoles = pick
+    ? succ.roles.filter(
+        (r) =>
+          r.coverage === pick.readiness &&
+          (r.riskOfLoss ?? 'Not rated') === pick.risk &&
+          (pick.scope === 'All' || r.criticality === 'Critical'),
+      )
+    : succ.roles
   const noPlans = !m.has.succession
     ? 'Upload Succession to see this.'
     : succ.roles.length
@@ -60,41 +71,10 @@ export function SuccessionTab({ m }: { m: TalentModel }) {
   return (
     <>
       <Section
-        title="Critical and key roles"
-        dek="Every planned role, its incumbent and how ready the bench is. Critical roles come first, and roles with nobody ready now are marked."
+        title="Where succession is exposed"
+        dek="Which planned roles would be hard to fill if the person in them left, and how deep each business unit's bench is."
       >
-        <Figure
-          id="talent-critical-roles"
-          uses={m.uses['talent-critical-roles']}
-          metric={FIGURE_METRIC['talent-critical-roles']}
-          title="Critical and key roles"
-          subtitle={`Roles in the succession plan with successors still employed, as of ${asOf}`}
-          data={succ.roles}
-          columns={roleColumns(m.drill)}
-          definitions={defsFor(
-            ctx.metrics,
-            [M.roleStatus, M.criticalCoverage],
-            [TERM.riskOfLoss],
-            [M.riskBands],
-          )}
-          note={`${plural(succ.roles.length, 'role')} · ${succ.criticalCovered} of ${succ.critical} critical roles covered${departed}`}
-          tableOnly
-          table={{
-            maxRows: 15,
-            rowTone: roleTone,
-            search: 'Search roles or people',
-            // A role opens its incumbent; the successor counts open the bench.
-            onRowClick: (r) => ctx.org.byId.has(r.incumbentId) && openPerson(r.incumbentId),
-          }}
-          detail={{ label: 'Roles and successors', columns: ROLE_DETAIL_COLUMNS, rows: () => succ.roles }}
-          empty={noPlans}
-        />
-      </Section>
-
-      <Section
-        title="Bench strength"
-        dek="How many successors each business unit has named, and how soon they will be ready to step in. Switch between all roles, critical roles and key roles."
-      >
+        <SuccessionExposure m={m} onPick={setPick} />
         <Figure
           id="talent-bench-strength"
           uses={m.uses['talent-bench-strength']}
@@ -105,7 +85,7 @@ export function SuccessionTab({ m }: { m: TalentModel }) {
           columns={benchColumns(m.drill, scope)}
           definitions={defsFor(ctx.metrics, [M.bench, M.roleStatus])}
           note={`${plural(named, 'successor')} named for ${plural(roles, 'role')}, ${fmt(readyNow)} ready now · ${plural(noSuccessor, 'role has', 'roles have')} nobody named · as of ${asOf}`}
-          span={12}
+          span={5}
           actions={
             <Segmented<BenchScope>
               label="Roles counted"
@@ -135,6 +115,53 @@ export function SuccessionTab({ m }: { m: TalentModel }) {
             ariaLabel="Named successors by readiness and business unit"
           />
         </Figure>
+      </Section>
+
+      <Section
+        title="Critical and key roles"
+        dek="Every planned role, its incumbent and how ready the bench is. Critical roles come first, and roles with nobody ready now are marked."
+      >
+        <Figure
+          id="talent-critical-roles"
+          uses={m.uses['talent-critical-roles']}
+          metric={FIGURE_METRIC['talent-critical-roles']}
+          title="Critical and key roles"
+          subtitle={`Roles in the succession plan with successors still employed, as of ${asOf}`}
+          data={pickedRoles}
+          columns={roleColumns(m.drill, m.riskShown)}
+          definitions={defsFor(
+            ctx.metrics,
+            [M.roleStatus, M.criticalCoverage],
+            [m.riskShown ? TERM.riskOfLoss : TERM.riskOfLossPlan],
+            m.riskShown ? [M.riskBands] : [],
+          )}
+          note={`${
+            pick
+              ? `${plural(pickedRoles.length, 'role')} shown: ${exposureLabel(pick).toLowerCase()}${pick.scope === 'Critical' ? ', critical roles' : ''} · `
+              : ''
+          }${plural(succ.roles.length, 'role')} · ${succ.criticalCovered} of ${succ.critical} critical roles covered${departed}`}
+          actions={
+            pick ? (
+              <Button size="sm" variant="ghost" onClick={() => setPick(null)}>
+                Show all roles
+              </Button>
+            ) : undefined
+          }
+          tableOnly
+          table={{
+            maxRows: 15,
+            rowTone: roleTone,
+            search: 'Search roles or people',
+            // A role opens its incumbent; the successor counts open the bench.
+            onRowClick: (r) => ctx.org.byId.has(r.incumbentId) && openPerson(r.incumbentId),
+          }}
+          detail={{
+            label: 'Roles and successors',
+            columns: roleDetailColumns(m.riskShown),
+            rows: () => succ.roles,
+          }}
+          empty={noPlans}
+        />
       </Section>
 
       <Section

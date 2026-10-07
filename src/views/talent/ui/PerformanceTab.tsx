@@ -8,6 +8,7 @@ import type { TalentModel } from '../engine'
 import { otherLabel } from '../engine/base'
 import { type HighShareRow, RATING_ORDER } from '../engine/performance'
 import { FIGURE_METRIC, highRangeText, highRatingText, TALENT_METRIC as M } from '../engine/settings'
+import { RatingByReviewer, RatingChange } from './ChartFigures'
 import { CycleLines } from './CycleLines'
 import {
   calibrationColumns,
@@ -208,11 +209,12 @@ export function PerformanceTab({ m }: { m: TalentModel }) {
             ariaLabel="Average rating by cycle and business unit"
           />
         </Figure>
+        <RatingByReviewer m={m} />
       </Section>
 
       <Section
         title="Ratings, levels and exits"
-        dek="Whether high ratings cluster at some levels, and how often people at each rating left in the year after they were rated."
+        dek="Whether high ratings cluster at some levels, how often people at each rating left in the year after they were rated, and how sticky ratings are from one annual cycle to the next."
       >
         <Figure
           id="talent-high-share-by-level"
@@ -224,7 +226,7 @@ export function PerformanceTab({ m }: { m: TalentModel }) {
           columns={highShareColumns('Level', m.drill, 'level', range)}
           definitions={defsFor(ctx.metrics, [M.highPerformers, M.ratingDistribution, M.inflationRule])}
           note={`${ratedNote} · levels under ${s.minGroup} rated are folded into Other`}
-          span={6}
+          span={4}
           empty={
             noReviews ?? (perf.byLevel.length ? null : 'Nobody in this scope is rated in the latest cycle.')
           }
@@ -260,7 +262,7 @@ export function PerformanceTab({ m }: { m: TalentModel }) {
               ? `Uses the latest cycle with a full year of follow-up · ratings held by fewer than ${s.minGroup} people are hidden, counts included`
               : undefined
           }
-          span={6}
+          span={4}
           empty={
             noReviews ??
             (!exitCycle
@@ -287,6 +289,7 @@ export function PerformanceTab({ m }: { m: TalentModel }) {
             ariaLabel="Exit rate within 12 months by rating"
           />
         </Figure>
+        <RatingChange m={m} />
       </Section>
     </>
   )

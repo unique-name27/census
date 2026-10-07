@@ -172,6 +172,7 @@ export const DEFAULT_SETTINGS: Settings = {
 }
 
 export type SettingsSection =
+  | 'mode'
   | 'display'
   | 'data'
   | 'formulas'
@@ -182,6 +183,7 @@ export type SettingsSection =
   | 'tools'
   | 'device'
 export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
+  'mode',
   'display',
   'data',
   'formulas',
@@ -193,6 +195,7 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
   'device',
 ]
 export const SECTION_LABEL: Record<SettingsSection, string> = {
+  mode: 'Mode',
   display: 'Display',
   data: 'Data',
   formulas: 'Formulas',

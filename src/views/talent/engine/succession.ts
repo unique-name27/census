@@ -125,9 +125,40 @@ export interface SuccessionResult {
 
 const STATUS_RANK: Record<RoleStatus, number> = { 'No successor': 0, Thin: 1, Covered: 2 }
 
+/**
+ * The successors' names. In Manager mode (docs/ROLES.md, 4.5) a successor outside the manager's
+ * org shows by readiness only, never by name: "Ann Lee, 1 outside your org, ready now".
+ */
+function successorNames(
+  base: TalentBase,
+  bench: readonly { id: string; readiness: Readiness | null }[],
+): string {
+  const lock = base.ctx.access?.lock
+  if (!lock) return bench.map((b) => nameOf(base, b.id)).join(', ')
+  const inside = bench.filter((b) => lock.orgIds.has(b.id)).map((b) => nameOf(base, b.id))
+  const outside = new Map<string, number>()
+  for (const b of bench)
+    if (!lock.orgIds.has(b.id)) {
+      const k = b.readiness ? READINESS_SHORT[b.readiness] : 'not assessed'
+      outside.set(k, (outside.get(k) ?? 0) + 1)
+    }
+  const groups = [...outside].map(([k, n]) => `${n} outside your org, ${k}`)
+  return [...inside, ...groups].join(', ')
+}
+
+/**
+ * The plans the scope shows. Manager mode leaves out the plan for the manager's own role: their
+ * succession status stays with HR and their own leader (docs/ROLES.md, 4.5).
+ */
+export const plansInScope = (base: Pick<TalentBase, 'ctx'>): readonly SuccessionPlan[] => {
+  const self = base.ctx.access.lock?.managerId
+  const plans = base.ctx.data.succession
+  return self ? plans.filter((p) => p.incumbentId !== self) : plans
+}
+
 export function computeSuccession(base: TalentBase, risk: Map<string, PersonRisk>): SuccessionResult {
   const { asOf } = base
-  const plans = base.ctx.data.succession
+  const plans = plansInScope(base)
   const byRole = new Map<string, SuccessionPlan[]>()
   for (const p of plans) {
     const arr = byRole.get(p.roleId)
@@ -191,7 +222,7 @@ export function computeSuccession(base: TalentBase, risk: Map<string, PersonRisk
       ready1to2,
       ready3plus,
       readiness: parts.join(', ') || 'None named',
-      successorNames: bench.map((b) => nameOf(base, b.id)).join(', '),
+      successorNames: successorNames(base, bench),
       status: readyNow ? 'Covered' : bench.length ? 'Thin' : 'No successor',
       coverage,
       updatedDate:
@@ -362,7 +393,7 @@ export function criticalCoverage(base: Pick<TalentBase, 'ctx' | 'byId' | 'asOf'>
   critical: number
 } {
   const roles = new Map<string, boolean>()
-  for (const p of base.ctx.data.succession) {
+  for (const p of plansInScope(base)) {
     if (p.criticality !== 'Critical') continue
     const ready =
       p.readiness === 'Ready now' &&

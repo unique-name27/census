@@ -40,6 +40,19 @@ export const SYSTEM_BLOCKS: BetaTextBlockParam[] = [
   { type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } },
 ]
 
+/**
+ * The block Manager mode adds after the system prompt (docs/ROLES.md, 4.7). The manager is a
+ * person token, like everyone else Claude sees.
+ */
+export const managerPromptLine = (managerToken: string): string =>
+  `Census is in Manager mode for ${managerToken}'s org. Every number is for that org; company numbers are comparisons only. Compensation, surveys, HR ops, compliance, AI in HR and the Data room are not available in this mode: say so when asked, and do not estimate them.`
+
+/** The system blocks for a request: the cached prompt, plus the Manager mode block when it applies. */
+export function systemBlocksFor(managerToken: string | null | undefined): BetaTextBlockParam[] {
+  if (!managerToken) return SYSTEM_BLOCKS
+  return [...SYSTEM_BLOCKS, { type: 'text', text: managerPromptLine(managerToken) }]
+}
+
 /** Added to the request after the last allowed tool round. */
 export const ROUND_LIMIT_NOTE =
   'That was the last tool round allowed for this question. Answer now with what you have, and say what you could not check.'

@@ -14,7 +14,8 @@ import { computeCached } from '../engine'
 import { servicesActions } from '../engine/actions'
 import type { LeaveFact } from '../engine/leave'
 import { sampleContext } from '../engine/testkit'
-import { finalPayCells, leaveUnitSegment, onLeaveUnitDrill, retroCells } from './drill'
+import { typeQuarterDrill } from '../engine/trendDrills'
+import { finalPayCells, leaveUnitSegment, onLeaveUnitDrill, retroCells, unitCasesDrill } from './drill'
 
 const ctx = sampleContext()
 const model = (c: AnalyticsContext) => computeCached(c)
@@ -154,6 +155,9 @@ describe('HR ops: no drill sets a filter the view does not group by', () => {
     const retro = retroCells(s)
     for (const r of m.retro) sources.push(retro.retro(r), retro.changes(r))
     for (const r of unitBars(ctx)) sources.push(onLeaveUnitDrill(s)(r))
+    // The design-refresh figures: a quarter cell carries its period, a unit's cases its unit.
+    for (const c of m.txQuarters) sources.push(typeQuarterDrill(s, c))
+    for (const r of m.per100.rows) sources.push(unitCasesDrill(s)(r))
     const vocab = vocabularyOf(ctx)
     let filtered = 0
     for (const src of sources) {

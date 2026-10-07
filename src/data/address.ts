@@ -66,8 +66,14 @@ let lens: LensSource = { get: () => false, set: () => undefined }
 export function connectLens(source: LensSource): void {
   lens = source
 }
-export const lensOn = (): boolean => lens.get()
-export const setLensOn = (on: boolean): void => lens.set(on)
+/** True while the mode keeps the lens off (Manager mode): links and saved views cannot turn it on. */
+let lensHeldOff: () => boolean = () => false
+/** The modes register this (docs/ROLES.md, 4.8). */
+export function setLensGuard(fn: (() => boolean) | null): void {
+  lensHeldOff = fn ?? (() => false)
+}
+export const lensOn = (): boolean => !lensHeldOff() && lens.get()
+export const setLensOn = (on: boolean): void => lens.set(on && !lensHeldOff())
 
 /* ───────── history entries ───────── */
 

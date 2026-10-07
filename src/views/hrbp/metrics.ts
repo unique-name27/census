@@ -57,6 +57,8 @@ export const ID = {
   regretted: 'hrbp.attrition.regretted',
   firstYear: 'hrbp.attrition.firstYear',
   exitReasons: 'hrbp.attrition.exitReasons',
+  trailing12: 'hrbp.attrition.trailing12',
+  cohortRetention: 'hrbp.attrition.cohortRetention',
   /* movement */
   promotions: 'hrbp.movement.promotions',
   promotionRate: 'hrbp.movement.promotionRate',
@@ -64,6 +66,7 @@ export const ID = {
   mobility: 'hrbp.movement.mobility',
   demotions: 'hrbp.movement.demotions',
   sincePromotion: 'hrbp.movement.timeSincePromotion',
+  managerChange: 'hrbp.movement.managerChange',
   /* workforce */
   tenure: 'hrbp.workforce.tenure',
   contingent: 'hrbp.workforce.contingent',
@@ -173,6 +176,9 @@ export const INHERITS: Readonly<Partial<Record<HrbpMetricId, readonly string[]>>
   [ID.regretted]: [ID.headcount, ID.attrition],
   [ID.firstYear]: [ID.headcount],
   [ID.exitReasons]: [ID.headcount],
+  [ID.trailing12]: [ID.headcount, ID.attrition, ID.regretted],
+  [ID.cohortRetention]: [ID.headcount],
+  [ID.managerChange]: [ID.headcount],
   [ID.promotionRate]: [ID.headcount],
   [ID.mobility]: [ID.headcount],
   [ID.growth]: [ID.headcount],
@@ -414,6 +420,32 @@ export const metrics: MetricDef[] = withSources(
       ],
     },
     {
+      id: ID.trailing12,
+      name: 'Attrition, rolling 12 months',
+      definition:
+        'At each month end, the exits of one kind (voluntary, or regretted) in the 12 months to that date divided by the average headcount of those months. It moves one month at a time, so it is smoother than quarterly rates. Under an org filter the company line is drawn beside it. A point whose average headcount is under the anonymity minimum (5 by default) is hidden.',
+      formula: 'exits in the 12 months to the month end ÷ mean of the 13 month-end headcounts',
+      population: RATES,
+      window: 'The last 24 month ends to the as-of date, each with its own 12 months, whatever the period',
+      unit: 'pct',
+      goodDirection: 'down',
+      uses: uses(all(VOLUNTARY, REGRETTED)),
+      owner: OWNER,
+    },
+    {
+      id: ID.cohortRetention,
+      name: 'Still here, by hire cohort',
+      definition:
+        'Of the employees hired in each of the last three 12-month periods, the share still employed 3, 6, 12, 18 and 24 months after their own hire date. Only hires whose checkpoint has passed by the as-of date count, so the latest cohort stops early instead of being guessed. A cohort, or a checkpoint, with fewer hires than the anonymity minimum (5 by default) is hidden.',
+      formula: 'hires still employed n months after their hire date ÷ hires whose n months have passed',
+      population: EMPLOYEES,
+      window: 'Hires in the 36 months to the as-of date, in three 12-month cohorts',
+      unit: 'pct',
+      goodDirection: 'up',
+      uses: uses(FIGURE.cohortRetention),
+      owner: OWNER,
+    },
+    {
       id: ID.exitReasons,
       name: 'Exit reasons',
       definition:
@@ -489,6 +521,19 @@ export const metrics: MetricDef[] = withSources(
       unit: 'int',
       goodDirection: null,
       uses: uses(MOVES),
+      owner: OWNER,
+    },
+    {
+      id: ID.managerChange,
+      name: 'New manager in the last 12 months',
+      definition:
+        'The share of employees today who had at least one change of manager in the last 12 months: a manager change in Job changes, or a transfer to a different manager. The change recorded when a new manager joined after their report, on the manager’s hire date, is left out. Groups under the anonymity minimum (5 by default) fold into Other.',
+      formula: 'employees today with a manager change in the last 12 months ÷ employees today',
+      population: EMPLOYEES,
+      window: LAST_12,
+      unit: 'pct',
+      goodDirection: 'down',
+      uses: uses(FIGURE.managerChanges('businessUnit')),
       owner: OWNER,
     },
     {

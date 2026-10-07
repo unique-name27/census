@@ -3,6 +3,7 @@
  * reqs take to fill by department, monthly volume, and recruiter load. Every number opens the
  * requisitions or candidates behind it.
  */
+import { S, useCan } from '@/access'
 import { BarList, type Column, Columns, Figure, Histogram } from '@/charts'
 import { Section } from '@/components'
 import { drill } from '@/drill'
@@ -41,6 +42,7 @@ import {
 } from './common'
 import { ttfDrill } from './drill'
 import { useRecruiting } from './hooks'
+import { ReqAgeScatter, TtfByQuarter } from './RequisitionCharts'
 
 /** Open req age bins: equal 15-day steps so bar heights compare. */
 const AGE_STEP = 15
@@ -48,6 +50,10 @@ const AGE_STEP = 15
 export function RequisitionsTab() {
   const m = useRecruiting()
   const b = m.base
+  // Manager mode hides the quarterly trend (recruiting performance is TA's), so Time to fill by
+  // department takes the whole row there.
+  const quarterShown = useCan(S.figure('recruiting-time-to-fill-quarter'))
+  const loadShown = useCan(S.figure('recruiting-recruiter-load'))
   if (!b.apps.length && !b.reqs.length) return <NoRecruitingData />
   const { minGroup, slowFill, recruiterFlagFactor, joinMinShare } = b.settings
   const flagFactor = timesText(recruiterFlagFactor)
@@ -176,8 +182,9 @@ export function RequisitionsTab() {
 
       <Section
         title="Age and volume"
-        dek="How long today’s open reqs have been open, and how many reqs opened and filled each month."
+        dek="Which open reqs are old with almost nobody past the screen, how long today’s open reqs have been open, and how many reqs opened and filled each month."
       >
+        <ReqAgeScatter m={m} span={7} />
         <Figure
           id="recruiting-open-req-age"
           uses={FIGURE_USES['recruiting-open-req-age']}
@@ -236,7 +243,7 @@ export function RequisitionsTab() {
               { key: 'reqs', label: 'Reqs', format: 'int', drill: (r) => monthDrill(r, r.series) },
             ] satisfies Column<MonthReqRow>[]
           }
-          span={7}
+          span={12}
           empty={b.reqs.length ? null : NEED_REQS}
           definitions={[defOf(b, RM.openedFilled)]}
           note={asOfNote(b.asOf)}
@@ -257,9 +264,16 @@ export function RequisitionsTab() {
       </Section>
 
       <Section
-        title="Time to fill and recruiter load"
-        dek={`How long reqs filled ${windowText(b.window)} took by department, and how the open work spreads across recruiters.`}
+        title={loadShown ? 'Time to fill and recruiter load' : 'Time to fill'}
+        dek={
+          loadShown
+            ? `Whether time to fill is getting shorter, how long reqs filled ${windowText(b.window)} took by department, and how the open work spreads across recruiters.`
+            : quarterShown
+              ? `Whether time to fill is getting shorter, and how long reqs filled ${windowText(b.window)} took by department.`
+              : `How long reqs filled ${windowText(b.window)} took by department.`
+        }
       >
+        <TtfByQuarter m={m} span={7} />
         <Figure
           id="recruiting-time-to-fill-department"
           uses={FIGURE_USES['recruiting-time-to-fill-department']}
@@ -274,7 +288,7 @@ export function RequisitionsTab() {
               { key: 'reqs', label: 'Reqs filled', format: 'int', drill: deptDrill },
             ] satisfies Column<TtfRow>[]
           }
-          span={5}
+          span={quarterShown ? 5 : 12}
           className={TABLET_FULL}
           empty={
             !b.reqs.length
@@ -352,7 +366,7 @@ export function RequisitionsTab() {
             ] satisfies Column<RecruiterRow>[]
           }
           tableOnly
-          span={7}
+          span={12}
           table={{ rowTone: (r: RecruiterRow) => (r.flagged ? 'warning' : null), maxRows: 12 }}
           empty={
             b.reqs.length || b.apps.length

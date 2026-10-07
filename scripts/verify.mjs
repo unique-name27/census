@@ -10,8 +10,8 @@ const steps = [
   ['Type-check', 'npx tsc --noEmit -p .'],
   ['Lint', 'npx biome check src'],
   ['Unit tests', 'npx vitest run'],
-  ['App build', 'npx vite build'],
-  ['One-file build', 'npx vite build --mode single'],
+  ['App build', 'npm run build'],
+  ['One-file build', 'node --max-semi-space-size=64 node_modules/vite/bin/vite.js build --mode single'],
 ]
 
 const results = steps.map(([name, cmd]) => {

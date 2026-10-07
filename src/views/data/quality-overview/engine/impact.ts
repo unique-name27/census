@@ -97,9 +97,20 @@ export interface Impact {
   fixes: Fix[]
   /**
    * Entries that read no data (privacy and data quality rules, calculation settings such as the
-   * materiality floor), left out of both lists.
+   * materiality floor, and metrics of no dataset such as the AI in HR catalog), left out of both
+   * lists.
    */
   unjudged: number
+  /** Those entries: whether each is a rule or setting, and its home view. */
+  unjudgedList: UnjudgedEntry[]
+}
+
+/** A dictionary entry left out of the metric lists, for saying what was left out. */
+export interface UnjudgedEntry {
+  id: string
+  view: MetricView
+  /** A privacy or quality rule, or a calculation setting (otherwise a metric with no dataset). */
+  rule: boolean
 }
 
 /** What a fix changes, for working out tiers as if it were done. */
@@ -361,18 +372,19 @@ export function metricImpact(args: {
 }): Impact {
   const { quality: q, fallbackOf } = args
   const judged: { m: ImpactMetric; fallback: readonly DatasetKey[]; tier: Tier }[] = []
-  let unjudged = 0
+  const unjudgedList: UnjudgedEntry[] = []
   for (const m of args.metrics) {
     // A rule or a setting reads no data: it has no tier, whatever its home view reads.
     if (readsNoData(m)) {
-      unjudged++
+      unjudgedList.push({ id: m.id, view: m.views[0] ?? 'data', rule: true })
       continue
     }
     const fallback = fallbackOf(m)
     const tier = metricTierIn(q, m, fallback, NONE)
-    if (tier == null) unjudged++
+    if (tier == null) unjudgedList.push({ id: m.id, view: m.views[0] ?? 'data', rule: false })
     else judged.push({ m, fallback, tier })
   }
+  const unjudged = unjudgedList.length
 
   const fixes: Fix[] = []
   /** For a metric no single fix lifts: a dataset step together with the fields it also needs. */
@@ -481,7 +493,7 @@ export function metricImpact(args: {
   })
   rows.sort((a, b) => tierRank(a.row.tier) - tierRank(b.row.tier) || a.order - b.order)
 
-  return { metrics: rows.map((r) => r.row), fixes, unjudged }
+  return { metrics: rows.map((r) => r.row), fixes, unjudged, unjudgedList }
 }
 
 const lowerFirst = (s: string) => s.charAt(0).toLowerCase() + s.slice(1)

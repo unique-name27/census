@@ -4,6 +4,8 @@
  * it, and "edited" once something changes; Update saves the change, Save as new keeps both.
  */
 import { useEffect, useRef, useState } from 'react'
+import { MODE_LABEL, type Mode } from '@/access/modes'
+import { routeDecision } from '@/access/policy'
 import { Dialog } from '@/components/Dialog'
 import { IconArrowDown, IconArrowUp, IconCheck, IconCopy, IconPencil } from '@/components/icons'
 import { currentScope } from '@/components/navigation'
@@ -28,7 +30,7 @@ import { viewByKey } from '@/views/registry'
 import { applySavedView, copyViewLink } from './viewActions'
 
 const INPUT =
-  'h-8 w-full min-w-0 rounded-control bg-sheet px-2 text-[13px] text-ink shadow-[inset_0_0_0_1px_var(--rule-strong)] outline-none focus-visible:shadow-[inset_0_0_0_2px_var(--focus)]'
+  'h-8 w-full min-w-0 rounded-control bg-sheet px-2 text-small text-ink shadow-[inset_0_0_0_1px_var(--rule-strong)] outline-none focus-visible:shadow-[inset_0_0_0_2px_var(--focus)]'
 
 /** "Silicon Engineering · Last 6 months · Production". */
 function scopeSummary(
@@ -46,15 +48,26 @@ function scopeSummary(
   return parts.join(' · ')
 }
 
-/** "People stats, Attrition", the page a view opens on. */
-function pageName(page: { view: string; tab: string } | null): string | null {
-  if (!page) return null
+/** "People stats, Attrition": a page by its route. */
+function routeName(page: { view: string; tab: string }): string | null {
   if (page.view === 'data') return 'Data room'
   if (page.view === 'actions') return 'Action center'
   const v = viewByKey.get(page.view as never)
   if (!v) return null
   const tab = v.tabs.find((t) => t.key === page.tab)?.label
   return tab && v.tabs.length > 1 ? `${v.label}, ${tab}` : v.label
+}
+
+/**
+ * The page a view opens on in this mode: "People stats, Attrition", or where the mode sends a page
+ * it hides ("My team in Manager mode"), never the hidden page's own name.
+ */
+function pageName(page: { view: string; tab: string } | null, mode: Mode): string | null {
+  if (!page) return null
+  const d = routeDecision(mode, { view: page.view as RouteView, tab: page.tab })
+  if (!d.redirected) return routeName(page)
+  const to = routeName({ view: d.route.view, tab: d.route.tab })
+  return to ? `${to} in ${MODE_LABEL[mode]} mode` : null
 }
 
 /** The live scope and the saved view it matches (or was applied last and is now edited). */
@@ -85,7 +98,7 @@ export function ViewsMenu() {
       items.push({
         label: v.name,
         icon: active.view?.id === v.id && !active.edited ? <IconCheck strokeWidth={2.25} /> : undefined,
-        hint: pageName(v.page) ?? undefined,
+        hint: pageName(v.page, ctx.access.mode) ?? undefined,
         onSelect: () => applySavedView(v, ctx),
       })
     items.push({ separator: true })
@@ -156,7 +169,8 @@ function SaveViewDialog({ onClose }: { onClose: () => void }) {
   }, [])
   const scope = currentScope()
   const problem = full ? VIEWS_FULL : nameProblem({ views: listed }, name)
-  const here = pageName(route)
+  // The page on screen, which this mode shows.
+  const here = routeName(route)
   const save = () => {
     setTried(true)
     if (problem) return
@@ -193,7 +207,7 @@ function SaveViewDialog({ onClose }: { onClose: () => void }) {
           save()
         }}
       >
-        <label className="text-[12px] text-ink-2">
+        <label className="text-meta text-ink-2">
           Name
           <input
             ref={nameRef}
@@ -206,10 +220,10 @@ function SaveViewDialog({ onClose }: { onClose: () => void }) {
             aria-describedby="save-view-problem"
           />
         </label>
-        <p id="save-view-problem" role="status" className="-mt-1.5 min-h-4 text-[12px] text-bad-text">
+        <p id="save-view-problem" role="status" className="-mt-1.5 min-h-4 text-meta text-bad-text">
           {tried || full ? problem : ''}
         </p>
-        <label className="flex items-start gap-2 text-[13px] text-ink">
+        <label className="flex items-start gap-2 text-small text-ink">
           <input
             type="checkbox"
             checked={onPage}
@@ -218,7 +232,7 @@ function SaveViewDialog({ onClose }: { onClose: () => void }) {
           />
           <span>
             Open on this page
-            {here && <span className="block text-[12px] text-muted">{here}</span>}
+            {here && <span className="block text-meta text-muted">{here}</span>}
           </span>
         </label>
       </form>
@@ -277,9 +291,7 @@ function ManageViewsDialog({ onClose }: { onClose: () => void }) {
           ))}
         </ul>
       ) : (
-        <p className="py-4 text-[13px] text-muted">
-          No saved views. Use Save current view in the Views menu.
-        </p>
+        <p className="py-4 text-small text-muted">No saved views. Use Save current view in the Views menu.</p>
       )}
     </Dialog>
   )
@@ -314,7 +326,7 @@ function ViewRow({
     if (editing) draftRef.current?.focus()
   }, [editing])
   const problem = nameProblem(state, draft, view.id)
-  const page = pageName(view.page)
+  const page = pageName(view.page, ctx.access.mode)
   const commit = () => {
     if (problem) return
     rename(view.id, draft)
@@ -387,16 +399,16 @@ function ViewRow({
             >
               Cancel
             </Button>
-            {problem && <span className="w-full text-[12px] text-bad-text">{problem}</span>}
+            {problem && <span className="w-full text-meta text-bad-text">{problem}</span>}
           </form>
         ) : (
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <span className="text-[14px] font-medium text-ink">{view.name}</span>
+            <span className="text-body font-medium text-ink">{view.name}</span>
             {startup && <Tag>Opens Census</Tag>}
             {view.example && <Tag tone="outline">Example</Tag>}
           </div>
         )}
-        <p className="mt-0.5 text-[12px] text-muted">
+        <p className="mt-0.5 text-meta text-muted">
           {scopeSummary(view, ctx)}
           {page ? ` · opens ${page}` : ''}
         </p>

@@ -5,6 +5,7 @@
 import { useMemo } from 'react'
 import type { Definition, Tone } from '@/charts'
 import { Button, EmptyState, goTo, IconDatabase, IconDownload, type Severity, type Span } from '@/components'
+import { useRouteShown } from '@/components/RouteLink'
 import { useAnalytics } from '@/data/context'
 import type { DatasetKey } from '@/data/schema'
 import { formatDate } from '@/lib/dates'
@@ -82,6 +83,7 @@ export function NeedData({
   dataset?: DatasetKey
   span?: Span
 }) {
+  const dataRoom = useRouteShown('data')
   return (
     <EmptyState
       span={span}
@@ -95,9 +97,11 @@ export function NeedData({
               Download the template
             </Button>
           )}
-          <Button size="sm" variant="ghost" onClick={() => goTo('data')}>
-            Open the Data room
-          </Button>
+          {dataRoom && (
+            <Button size="sm" variant="ghost" onClick={() => goTo('data')}>
+              Open the Data room
+            </Button>
+          )}
         </>
       }
     />

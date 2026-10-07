@@ -69,9 +69,12 @@ describe('the catalog', () => {
     const anon = CATALOG.byId.get(ANONYMITY.metricId)!
     expect(anon.locked).toBe(true)
     expect(anon.params[0]).toMatchObject({ default: MIN_GROUP, locked: 'raiseOnly' })
-    expect(metricsOfView('data').map((d) => d.id)).toEqual(
-      Object.values(QUALITY_RULES).map((r) => r.metricId),
-    )
+    // The Data room's own metrics (data.*) sit beside the quality rules.
+    expect(
+      metricsOfView('data')
+        .filter((d) => d.id.startsWith('quality.'))
+        .map((d) => d.id),
+    ).toEqual(Object.values(QUALITY_RULES).map((r) => r.metricId))
   })
 
   it("adds a required setting the view's own entry leaves out, keeping the view's wording", () => {

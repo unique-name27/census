@@ -5,6 +5,7 @@ import { req } from '@/data/quality/test-fixtures'
 import { defaultMetrics } from '@/metrics/api'
 import { cand } from '@/views/recruiting/engine/fixtures'
 import { VIEWS } from '@/views/registry'
+import { unjudgedNote } from '../MetricsByView'
 import {
   belowGoldText,
   distinctRows,
@@ -360,6 +361,16 @@ describe('over the registered catalog', () => {
       'hrbp.rules.materialChange',
     ])
       expect(listed.has(id), id).toBe(false)
+    // What is left out is named: the rules and settings, and the AI in HR catalog metrics (no
+    // dataset), so "Metrics by view and tier" can say why AI in HR has no bar.
+    expect(out.unjudgedList).toHaveLength(out.unjudged)
+    expect(out.unjudgedList.find((u) => u.id === 'privacy.anonymity')?.rule).toBe(true)
+    const ai = out.unjudgedList.filter((u) => u.view === 'ai')
+    expect(ai.length).toBeGreaterThan(0)
+    expect(ai.every((u) => !u.rule)).toBe(true)
+    const note = unjudgedNote(out.unjudgedList, 'shown') ?? ''
+    expect(note).toMatch(new RegExp(`^${out.unjudged} dictionary entries read no data and are not shown: `))
+    expect(note).toContain(`${ai.length} AI in HR metrics`)
     for (const f of out.fixes)
       expect(f.lifts.some((l) => l.metricId.startsWith('privacy.') || l.metricId.includes('.rules.'))).toBe(
         false,

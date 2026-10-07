@@ -102,23 +102,28 @@ export function RootTrail({
   tree,
   rootId,
   globalRootId,
+  floorId,
   onFocus,
   onWiden,
 }: {
   tree: OrgTree
   rootId: string
   globalRootId: string
+  /** Manager mode: the trail starts at the manager, with nobody above (docs/ROLES.md, 4.5). */
+  floorId?: string
   onFocus: (id: string | null) => void
   onWiden: (id: string | null) => void
 }) {
-  if (rootId === tree.rootId) return null
-  const chain = chainTo(tree, rootId)
+  if (rootId === tree.rootId || rootId === floorId) return null
+  const full = chainTo(tree, rootId)
+  const from = floorId ? full.indexOf(floorId) : -1
+  const chain = from >= 0 ? full.slice(from) : full
   const aboveGlobal = new Set(chainTo(tree, globalRootId).slice(0, -1))
-  const top = tree.rootId === COMPANY_ROOT ? [{ id: COMPANY_ROOT, name: 'Whole company' }] : []
+  const top = tree.rootId === COMPANY_ROOT && from < 0 ? [{ id: COMPANY_ROOT, name: 'Whole company' }] : []
   const steps = [...top, ...chain.map((id) => ({ id, name: tree.people.get(id)?.name ?? id }))]
   return (
     <nav aria-label="Chart root" className="min-w-0">
-      <ol className="flex flex-wrap items-center gap-x-1 gap-y-0.5 text-[12px]">
+      <ol className="flex flex-wrap items-center gap-x-1 gap-y-0.5 text-meta">
         {steps.map((s, i) => {
           const last = i === steps.length - 1
           const widen = s.id === COMPANY_ROOT || aboveGlobal.has(s.id)

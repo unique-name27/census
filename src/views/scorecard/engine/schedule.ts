@@ -5,6 +5,7 @@
  * context: the page, the folder-tab headline and the monthly report share one computation. A
  * summary that throws is logged and its practice reads "Could not be computed".
  */
+import { errorMessage, logDevError } from '@/app/devlog'
 import type { AnalyticsContext } from '@/data/context'
 import type { ViewDef } from '../../types'
 import { buildScorecard, type PracticeInput, type ScorecardModel } from './model'
@@ -22,6 +23,7 @@ export function runSummary(view: ViewDef, ctx: AnalyticsContext, now: () => numb
     return { view, summary, ms: now() - t }
   } catch (error) {
     console.error(`People scorecard: the ${view.label} summary could not be computed`, error)
+    logDevError({ where: 'summary', view: view.key, tab: null, message: errorMessage(error) })
     return { view, summary: null, error, ms: now() - t }
   }
 }

@@ -5,6 +5,7 @@
  */
 import { useEffect } from 'react'
 import { goTo, routeHash } from '@/components/navigation'
+import { useRouteShown } from '@/components/RouteLink'
 import { useCensus } from '@/data/store'
 import { type AgentArea, type AgentLink, agentLinkFor, agentsTab, areasOfTab } from './catalog'
 import { useAiAgents } from './state'
@@ -17,7 +18,9 @@ export const agentsHash = (areas: readonly AgentArea[]): string => routeHash('ai
 /** The header link for a view, live with the catalog; null when there is nothing to link to. */
 export function useAgentLink(view: string): AgentLink | null {
   const agents = useAiAgents((s) => s.agents)
-  return agentLinkFor(view, agents)
+  // No link where the mode hides AI in HR (Manager mode).
+  const shown = useRouteShown('ai')
+  return shown ? agentLinkFor(view, agents) : null
 }
 
 /** Open the AI in HR tab showing only these areas (other filters cleared). */

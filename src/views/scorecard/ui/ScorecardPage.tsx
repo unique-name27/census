@@ -1,11 +1,13 @@
 /**
- * The People scorecard (docs/VIEWS.md, Scorecard): each practice's key measures against target
- * (lead, 8 of 12 columns) and the most serious findings across Census (4 of 12). Both come from the views'
- * own summaries, computed in idle time after the first paint; until then each sheet says so in
- * one quiet line.
+ * The People scorecard, HR mode's home (docs/VIEWS.md, Scorecard; chart-led per
+ * docs/DESIGN-REFRESH.md 4.1 and docs/ROLES.md 2.1): targets met and the key figures, every
+ * measure against its target beside the top findings across Census, how the workforce is moving,
+ * where the pressure is, then the full People scorecard table as the record. Everything comes from
+ * the views' own summaries and models, computed in idle time after the first paint; until then the
+ * sheets show at their final size with one quiet line.
  */
 import { Figure } from '@/charts'
-import { Grid, goTo, Readout, spanClass } from '@/components'
+import { Grid, goTo, Pending, type PendingFrame, Readout, Section } from '@/components'
 import type { FindingSource } from '@/components/Readout'
 import type { Finding } from '@/components/types'
 import { Button, cx, Popover } from '@/components/ui'
@@ -18,17 +20,16 @@ import { metricHref, openMetricDefinition, openMetricDefinitions } from '@/views
 import type { ScorecardModel, SourcedFinding } from '../engine/model'
 import { scorecardTable, standingLine } from '../engine/report'
 import { M } from '../metrics'
+import { KeyFigures, Measures, Standing } from './Band'
 import { ScoreTable } from './ScoreTable'
+import { MovingSection, PressureSection } from './Sections'
 import { useScorecard } from './useScorecard'
+import { useScorecardItems } from './useScorecardItems'
 
 const LOADING = "Reading each practice's measures and findings."
 
-/**
- * The scorecard and the findings sit side by side from 1280px (8 and 4 columns); below that the
- * table needs the full width for its seven columns, and the findings follow under it.
- */
-const LEAD = 'xl:col-span-8'
-const SIDE = 'xl:col-span-4'
+/** The findings sit beside the measures from 1024px (8 and 4 columns), under them below that. */
+const SIDE = 'lg:col-span-4'
 
 /** Each measure's target in force, with a link to edit it in Metric definitions. */
 function TargetsPopover({ model }: { model: ScorecardModel }) {
@@ -43,7 +44,7 @@ function TargetsPopover({ model }: { model: ScorecardModel }) {
         </Button>
       }
     >
-      <p className="text-[12px] leading-snug text-ink-2">
+      <p className="text-meta leading-snug text-ink-2">
         Targets are kept in Metric definitions, so every view judges a measure against the same target. Pick a
         measure to change its target there.
       </p>
@@ -59,7 +60,7 @@ function TargetsPopover({ model }: { model: ScorecardModel }) {
                   e.preventDefault()
                   openMetricDefinition(r.metricId as string)
                 }}
-                className="flex items-baseline gap-3 px-1 py-1.5 text-[12px] hover:bg-hover"
+                className="flex items-baseline gap-3 px-1 py-1.5 text-meta hover:bg-hover"
               >
                 <span className="min-w-0 flex-1">
                   <span className="text-ink">{r.kpi.label}</span>
@@ -74,7 +75,7 @@ function TargetsPopover({ model }: { model: ScorecardModel }) {
         <button
           type="button"
           onClick={() => openMetricDefinitions()}
-          className="text-[12px] font-medium text-link underline-offset-2 hover:underline"
+          className="text-meta font-medium text-link underline-offset-2 hover:underline"
         >
           Open Metric definitions
         </button>
@@ -93,7 +94,6 @@ function ScoreFigure({ model, updating }: { model: ScorecardModel; updating: boo
     `${plural(counted.measures, 'measure')} from ${plural(model.practices.length, 'practice')}`,
     counted.noTarget ? `${counted.noTarget} without a target` : '',
     `as of ${formatDate(ctx.asOf)}`,
-    'click a value to see the records',
   ].filter(Boolean)
   return (
     <Figure
@@ -111,7 +111,7 @@ function ScoreFigure({ model, updating }: { model: ScorecardModel; updating: boo
       tableToggle={false}
       actions={<TargetsPopover model={model} />}
       empty={model.practices.length ? null : 'No practice has measures to show yet.'}
-      className={cx(LEAD, updating && 'opacity-60 transition-opacity')}
+      className={cx(updating && 'opacity-60 transition-opacity')}
     >
       <div aria-busy={updating || undefined}>
         <ScoreTable practices={model.practices} caption="People scorecard" />
@@ -133,47 +133,62 @@ function sources(list: readonly SourcedFinding[]): (f: Finding) => FindingSource
   }
 }
 
-function Waiting({ title, wide }: { title: string; wide: boolean }) {
-  return (
-    <section
-      aria-label={title}
-      aria-busy
-      className={cx(spanClass(12), wide ? LEAD : SIDE, 'self-start rounded-sheet bg-sheet')}
-    >
-      <header className="border-b border-rule px-4 pt-3.5 pb-3">
-        <h2 className="cut-head text-[15px] leading-snug font-semibold">{title}</h2>
-      </header>
-      <p className="px-4 py-4 text-[13px] text-muted" role="status">
-        {LOADING}
-      </p>
-    </section>
-  )
-}
+/**
+ * The home page's first sheets while the Scorecard is worked out, at their final size: the hero
+ * and key figures (260px), the measures (about 28px a measure plus the header and note) and the
+ * findings readout (five compact findings).
+ */
+const HOME_FRAMES: PendingFrame[] = [
+  { title: 'Targets met', span: 4, height: 223 },
+  { title: 'Key figures', span: 8, height: 223 },
+  { title: 'Measures against target', span: 8, height: 973 },
+  { title: 'Top findings across Census', span: 4, height: 827 },
+]
 
 export function ScorecardPage() {
   const { model, updating } = useScorecard()
+  const items = useScorecardItems()
   if (!model)
     return (
       <Grid>
         <WelcomeCard />
-        <Waiting title="People scorecard" wide />
-        <Waiting title="Top findings across Census" wide={false} />
+        <Pending
+          message={LOADING}
+          // Body heights of the final sheets at 1440 (each sheet adds its ~37px title), so
+          // nothing on the first screen moves when the numbers land.
+          frames={HOME_FRAMES}
+        />
       </Grid>
     )
   const listed = [...model.findings.top, ...model.findings.hidden]
+  const fade = updating && 'opacity-60 transition-opacity'
   return (
-    <Grid>
-      <WelcomeCard />
-      <ScoreFigure model={model} updating={updating} />
-      <Readout
-        id="scorecard-findings"
-        title="Top findings across Census"
-        findings={listed.map((s) => s.finding)}
-        sourceOf={sources(listed)}
-        emptyText="No critical or watch findings in any practice."
-        span={12}
-        className={cx(SIDE, 'xl:sticky xl:top-4', updating && 'opacity-60 transition-opacity')}
-      />
-    </Grid>
+    <>
+      <Grid>
+        <WelcomeCard />
+        <Standing model={model} className={cx(fade)} />
+        <KeyFigures items={items} />
+        <Measures model={model} className={cx(fade)} />
+        <Readout
+          id="scorecard-findings"
+          title="Top findings across Census"
+          findings={listed.map((s) => s.finding)}
+          sourceOf={sources(listed)}
+          emptyText="No critical or watch findings in any practice."
+          span={12}
+          limit={5}
+          variant="compact"
+          className={cx(SIDE, 'lg:sticky lg:top-4', fade)}
+        />
+      </Grid>
+      <MovingSection />
+      <PressureSection items={items} />
+      <Section
+        title="People scorecard"
+        dek="Every measure with its value, target, status, change, trend and tier: the record behind the charts above, and what the monthly report exports."
+      >
+        <ScoreFigure model={model} updating={updating} />
+      </Section>
+    </>
   )
 }

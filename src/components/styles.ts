@@ -6,8 +6,14 @@ export const POPUP_SURFACE =
 
 /** Borderless search field at the top of a picker, with room for a leading search icon. */
 export const SEARCH_INPUT =
-  'h-9 w-full border-0 border-b border-rule bg-transparent pr-3 pl-8 text-[13px] text-ink outline-none placeholder:text-muted'
+  'h-9 w-full border-0 border-b border-rule bg-transparent pr-3 pl-8 text-small text-ink outline-none placeholder:text-muted'
+
+/**
+ * A table header cell's type, the same in every table (docs/DESIGN-REFRESH.md 2.8): sentence case,
+ * 12px, medium, ink-2. Not the uppercase eyebrow, which is for section eyebrows only.
+ */
+export const TABLE_HEAD = 'text-meta font-medium text-ink-2'
 
 /** A list row inside a picker. */
 export const PICKER_ITEM =
-  'mx-1 flex cursor-default items-center gap-2.5 rounded-[3px] px-2 py-1.5 text-[13px] outline-none select-none data-[highlighted]:bg-hover'
+  'mx-1 flex cursor-default items-center gap-2.5 rounded-chip px-2 py-1.5 text-small outline-none select-none data-[highlighted]:bg-hover'

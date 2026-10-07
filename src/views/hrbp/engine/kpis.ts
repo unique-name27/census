@@ -250,7 +250,7 @@ export function computeKpis(p: Prep, movement: MovementModel): KpiModel {
                   ),
                 },
               ),
-      // "57 exits over an average headcount of 304": the 57 exits.
+      // "57 voluntary exits": the 57 exits. How they make the rate is in the popover (`formula`).
       noteDrill: drill,
       id,
       metricId,
@@ -271,7 +271,11 @@ export function computeKpis(p: Prep, movement: MovementModel): KpiModel {
             : r.own.avgHeadcount <= 0
               ? NO_HEADCOUNT
               : missing
-          : `${count(r.own.events, noun[0], noun[1])} over an average headcount of ${avgText(r.own.avgHeadcount)}${annualized}`,
+          : count(r.own.events, noun[0], noun[1]),
+      formula:
+        value == null
+          ? undefined
+          : `${count(r.own.events, noun[0], noun[1])} over an average headcount of ${avgText(r.own.avgHeadcount)}${annualized}.`,
       suppressed,
       tab: 'attrition',
       definition: p.text(metricId),
@@ -490,8 +494,12 @@ export function computeKpis(p: Prep, movement: MovementModel): KpiModel {
       deltaMaterial: p.material(promoDelta, promoRef),
       spark: movement.byQuarter.map((q) => q.rate),
       note: p.has.jobChanges
-        ? `${count(promo.promotions, 'promotion', 'promotions')} over an average headcount of ${avgText(promo.avgHeadcount)}`
+        ? count(promo.promotions, 'promotion', 'promotions')
         : 'Upload Job changes to see this',
+      formula:
+        p.has.jobChanges && !promoSuppressed && promo.rate != null
+          ? `${count(promo.promotions, 'promotion', 'promotions')} over an average headcount of ${avgText(promo.avgHeadcount)}.`
+          : undefined,
       suppressed: promoSuppressed,
       tab: 'movement',
       definition: p.text(ID.promotionRate),

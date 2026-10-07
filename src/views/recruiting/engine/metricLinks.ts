@@ -22,17 +22,21 @@ export const FIGURE_METRICS = {
   'recruiting-offer-acceptance-quarter': RM.offerAcceptance,
   'recruiting-open-reqs-department': RM.openReqs,
   'recruiting-time-to-fill-level': RM.timeToFill,
+  'recruiting-open-reqs-month-end': RM.openReqs,
   // Pipeline
   'recruiting-candidate-flow': RM.candidateFlow,
   'recruiting-action-queue': RM.lackingNextStep,
+  'recruiting-decisions-by-hiring-manager': RM.awaitingDecision,
   'recruiting-stage-conversion': RM.passRate,
   'recruiting-waiting-time': RM.daysWaiting,
   'recruiting-speed-heatmap': RM.stepDaysByMonth,
   // Requisitions
   'recruiting-open-requisitions': RM.emptyFunnel,
   'recruiting-open-req-age': RM.reqAge,
+  'recruiting-req-age-vs-pipeline': RM.emptyFunnel,
   'recruiting-reqs-opened-filled': RM.openedFilled,
   'recruiting-time-to-fill-department': RM.timeToFill,
+  'recruiting-time-to-fill-quarter': RM.timeToFill,
   'recruiting-recruiter-load': RM.recruiterLoad,
   // Sources & offers
   'recruiting-source-effectiveness': RM.sourceHireRate,
@@ -51,6 +55,7 @@ export const FIGURE_ALSO_METRICS = {
   'recruiting-stage-conversion': [RM.daysToNextStage],
   'recruiting-time-to-fill-department': [RM.slowFill],
   'recruiting-open-reqs-department': [RM.reqAge],
+  'recruiting-req-age-vs-pipeline': [RM.reqAge],
 } as const satisfies Partial<Record<RecruitingFigureId, readonly RecruitingMetricId[]>>
 
 /** Readout rules, by finding id. */

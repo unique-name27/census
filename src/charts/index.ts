@@ -16,19 +16,31 @@ export {
   sequentialScale,
   toneColor,
 } from './core/color'
-export { LEGEND_ATTR, type LegendShape, type LegendSpec, type LegendSwatch } from './core/legend'
+export { focusBox, isStepKey, type KeyPoint, readingOrder, stepKey } from './core/keyboard'
+export { LEGEND_ATTR, type LegendShape, type LegendSpec, type LegendSwatch, medalPath } from './core/legend'
 export {
   glyphForTone,
   glyphPath,
   HOVER_CLASS,
   hoverBand,
   labelsMark,
+  noteMark,
   type PixelLabel,
   refRule,
   scalePos,
   type TextPart,
 } from './core/marks'
 export { maxTextWidth, textWidth, truncateText, useFontsVersion } from './core/measure'
+export {
+  type Box,
+  type ChartNote,
+  lineBoxes,
+  MAX_NOTES,
+  type NoteAnchor,
+  placeNotes,
+  pointBoxes,
+  shortNote,
+} from './core/notes'
 export { placeTip, renderTip, TIP_CLASS, type TipContent, type TipRow } from './core/tooltip'
 export { DataTable, type DataTableProps, type SortState } from './DataTable'
 export {
@@ -38,7 +50,9 @@ export {
   type FigureSpan,
   type FigureTableOptions,
 } from './Figure'
-export { BarList, type BarListProps } from './kit/BarList'
+export { BAR_LIST_FOLD, BarList, type BarListProps } from './kit/BarList'
+export { BulletList, type BulletListProps, type BulletStatus } from './kit/BulletList'
+export { type BulletRow, bulletLayout, type SplitSegment, splitSegments } from './kit/bulletModel'
 export { Columns, type ColumnsProps } from './kit/Columns'
 export { DotStrip, type DotStripProps } from './kit/DotStrip'
 export { byGroup, type GroupOf, selectGroup, withFilter } from './kit/groupDrill'
@@ -51,6 +65,7 @@ export { Meter, type MeterProps } from './kit/Meter'
 export { type BarRow, type Category, type FoldRule, type HistogramBin, quarterLabel } from './kit/prepare'
 export { RangeBars, type RangeBarsProps, type RangeMarker } from './kit/RangeBars'
 export { Scatter, type ScatterProps } from './kit/Scatter'
+export { SPLIT_ORDER, SPLIT_WORD, type SplitKey, StatusSplit, type StatusSplitProps } from './kit/StatusSplit'
 export { type NumericAxis, numericAxis } from './kit/scale'
 export {
   isOtherSeries,
@@ -61,6 +76,15 @@ export {
   seriesPalette,
 } from './kit/series'
 export type { ChartBaseProps, Key, RefLine, Tone } from './kit/shared'
+export {
+  TREND_GRID_COLUMNS,
+  TrendGrid,
+  type TrendGridProps,
+  type TrendRow,
+  type TrendSeries,
+  trendGridRows,
+} from './kit/TrendGrid'
+export { periodLabel, trendGridLayout } from './kit/trendModel'
 export { Legend } from './Legend'
 export {
   axisX,
@@ -74,6 +98,8 @@ export {
   type PlotChartProps,
   type PlotElement,
   type PlotPointer,
+  plotBand,
+  plotPos,
   tickFormat,
 } from './plot'
 export { FigureRegistryProvider, nextFigureOrder, useFigureRegistry } from './registry'

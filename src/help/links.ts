@@ -6,6 +6,7 @@ import { goTo, routeHash } from '@/components/navigation'
 import type { SettingsSection } from '@/data/settings'
 import { SETTINGS_SECTIONS } from '@/data/settings'
 import { openSettings, ROUTE_VIEWS, type RouteView } from '@/data/store'
+import { isDevRouteTab } from '@/dev/tabs'
 import { metricHref, openMetricDefinition } from '@/views/data/metrics/open'
 import type { HelpLink } from './markup'
 import { closeHelp, startTour, useHelp } from './store'
@@ -36,6 +37,7 @@ export function checkLink(link: HelpLink, world: LinkWorld): string | null {
       if (!tab) return null
       if (view === 'data') return world.isDataTab(tab) ? null : `no Data room tab "${tab}"`
       if (view === 'actions') return tab === 'open' ? null : `no Action center tab "${tab}"`
+      if (view === 'dev') return isDevRouteTab(tab) ? null : `no Developer page tab "${tab}"`
       return world.viewTabs.get(view)?.includes(tab) ? null : `no tab "${tab}" in ${view}`
     }
     case 'metric':

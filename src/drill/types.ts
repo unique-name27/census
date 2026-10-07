@@ -189,6 +189,17 @@ export interface DrillSpec<K extends DrillKind = DrillKind> {
    * instead of "Filter to Bengaluru +3".
    */
   filterLabel?: string
+  /**
+   * One action that shows the counted thing where it lives, beside the records: "Show on chart"
+   * for a layer or a manager of the org chart. The panel closes, then `run` is called.
+   */
+  action?: DrillAction
+}
+
+/** A button in the records panel that takes the reader from the records to the counted thing. */
+export interface DrillAction {
+  label: string
+  run: () => void
 }
 
 /**

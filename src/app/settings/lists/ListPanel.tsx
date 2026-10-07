@@ -42,7 +42,7 @@ import {
 import { ValueEditor } from './ValueEditor'
 
 const FIRST = 6
-const H3 = 'text-[13px] font-semibold text-ink'
+const H3 = 'text-small font-semibold text-ink'
 
 export function ListStatusChip({ official }: { official: boolean }) {
   return official ? <StatusPill severity="good" label="Official" /> : <Tag tone="outline">Proposed</Tag>
@@ -109,7 +109,7 @@ function AddForm({
         Add a {def.singular.toLowerCase()}
       </span>
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-        <label className="flex min-w-0 flex-col gap-1 text-[12px] text-ink-2">
+        <label className="flex min-w-0 flex-col gap-1 text-meta text-ink-2">
           {def.singular}
           <input
             value={value}
@@ -119,7 +119,7 @@ function AddForm({
           />
         </label>
         {parentDef && (
-          <div className="flex min-w-0 flex-col gap-1 text-[12px] text-ink-2">
+          <div className="flex min-w-0 flex-col gap-1 text-meta text-ink-2">
             <span aria-hidden="true">{parentDef.singular}</span>
             <Select label={parentDef.singular} value={parent} onChange={setParent}>
               <option value="">No {parentDef.singular.toLowerCase()}</option>
@@ -143,7 +143,7 @@ function AddForm({
         ))}
       </div>
       {error && (
-        <p role="alert" className="text-[12px] text-bad-text">
+        <p role="alert" className="text-meta text-bad-text">
           {error}
         </p>
       )}
@@ -219,14 +219,14 @@ function RebuildPanel({
       <span className={H3}>Rebuild from data</span>
       {found.length ? (
         <>
-          <p className="text-[12px] text-ink-2">
+          <p className="text-meta text-ink-2">
             {plural(found.length, 'value')} in the loaded data {found.length === 1 ? 'is' : 'are'} not on the
             list. Choose the ones to add.
           </p>
           <ul className="flex max-h-64 flex-col gap-1 overflow-y-auto">
             {found.map((v) => (
               <li key={v.value}>
-                <label className="flex items-start gap-2 text-[13px] text-ink">
+                <label className="flex items-start gap-2 text-small text-ink">
                   <input
                     type="checkbox"
                     checked={picked.has(v.value)}
@@ -263,12 +263,12 @@ function RebuildPanel({
           </div>
         </>
       ) : (
-        <p className="text-[12px] text-ink-2">Every value in the loaded data is on the list.</p>
+        <p className="text-meta text-ink-2">Every value in the loaded data is on the list.</p>
       )}
       {/* A list proposed from your data is already that list: nothing to start over from. */}
       {yours && def.kind === 'org' && list.source !== 'data' && (
         <div className="flex flex-col gap-1.5 border-t border-rule pt-2.5">
-          <p className="text-[12px] text-ink-2">
+          <p className="text-meta text-ink-2">
             Or start over: replace the whole list with one built from your data. Values only the sample uses
             go.
           </p>
@@ -368,7 +368,7 @@ function OffListBlock({
         <h4 id={`${ids}-title`} className={H3}>
           In data, not on the list
         </h4>
-        <p className="mt-0.5 text-[12px] leading-snug text-ink-2">{offListNote(list, items)}</p>
+        <p className="mt-0.5 text-meta leading-snug text-ink-2">{offListNote(list, items)}</p>
       </div>
       <ul className="flex flex-col">
         {shown.map((i) => {
@@ -380,12 +380,12 @@ function OffListBlock({
                 <Drill
                   spec={drill(i)}
                   label={`Show the ${rowsText(i.rows.length)} with "${i.value}"`}
-                  className="ml-auto shrink-0 text-[13px] font-semibold text-ink tnum"
+                  className="ml-auto shrink-0 text-small font-semibold text-ink tnum"
                 >
                   {rowsText(i.rows.length)}
                 </Drill>
               </div>
-              <p className="mt-1 text-[13px] leading-snug text-ink-2">
+              <p className="mt-1 text-small leading-snug text-ink-2">
                 <span className="text-ink">“{i.value}”</span> in {i.field}
                 {i.suggestion ? `, likely ${i.suggestion}` : ''}
               </p>
@@ -522,21 +522,21 @@ export function ListPanel({
       <div className="flex flex-wrap items-start gap-x-3 gap-y-1">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <h3 id={`${ids}-title`} className="cut-head text-[16px] font-semibold text-ink">
+            <h3 id={`${ids}-title`} className="cut-head text-title font-semibold text-ink">
               {def.label}
             </h3>
             <ListStatusChip official={list.status === 'official'} />
           </div>
-          <p className="mt-0.5 max-w-[60ch] text-[12px] leading-snug text-ink-2">
+          <p className="mt-0.5 max-w-[60ch] text-meta leading-snug text-ink-2">
             {def.about} {checksText(list)}
           </p>
-          <p className="mt-0.5 max-w-[60ch] text-[12px] leading-snug text-muted">{originText(list, saved)}</p>
+          <p className="mt-0.5 max-w-[60ch] text-meta leading-snug text-muted">{originText(list, saved)}</p>
         </div>
       </div>
 
       {list.status === 'proposed' && (list.source === 'data' || list.paused === 'draft') && (
         <div className="flex flex-col gap-2 rounded-control bg-sheet-2 px-3.5 py-3">
-          <p className="text-[13px] text-ink">
+          <p className="text-small text-ink">
             {list.paused === 'draft'
               ? pauseText(list)
               : 'Census built this list from your data. Check it, then make it official to check your data against it.'}
@@ -550,7 +550,7 @@ export function ListPanel({
       )}
       {(list.paused === 'sample' || list.paused === 'yours') && (
         <div className="flex flex-col gap-2 rounded-control bg-warning-wash px-3.5 py-3">
-          <p className="text-[13px] text-ink">{pauseText(list)}</p>
+          <p className="text-small text-ink">{pauseText(list)}</p>
           <div className="flex flex-wrap gap-2">
             {list.paused === 'sample' && (
               <Button size="sm" variant="primary" onClick={() => setPanel('rebuild')}>
@@ -564,7 +564,7 @@ export function ListPanel({
         </div>
       )}
       {error && (
-        <p role="alert" className="text-[12px] text-bad-text">
+        <p role="alert" className="text-meta text-bad-text">
           {error}
         </p>
       )}
@@ -607,7 +607,7 @@ export function ListPanel({
 
       <div className="flex flex-col gap-1.5">
         <h4 className={H3}>Values</h4>
-        <p className="text-[12px] text-ink-2">{valuesNote(list.values.length)}</p>
+        <p className="text-meta text-ink-2">{valuesNote(list.values.length)}</p>
         <DataTable
           columns={columns}
           rows={rows}
@@ -632,7 +632,7 @@ export function ListPanel({
       )}
 
       {notInData.length > 0 && list.values.length > 0 && (
-        <p className="text-[12px] leading-snug text-ink-2">
+        <p className="text-meta leading-snug text-ink-2">
           <span className="font-semibold text-ink">On the list, not in the data:</span>{' '}
           {notInData
             .slice(0, 12)

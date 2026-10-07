@@ -4,6 +4,7 @@
  * Counts that lead to more records drill on their own: a manager's direct reports and org, the
  * applications to a requisition. Pure (no React); tested in records.test.ts.
  */
+import { personInLock } from '@/access/records'
 import type { Column } from '@/charts/types'
 import type { AnalyticsContext } from '@/data/context'
 import type {
@@ -29,6 +30,7 @@ import { daysBetween, formatMonth, hoursBetween } from '@/lib/dates'
 import type { Format } from '@/lib/format'
 import { tenureYears } from '@/lib/people'
 import type { SurveyGroupRow } from '@/lib/surveys'
+import { timed } from '@/lib/timing'
 import type { DrillSource } from './Drill'
 import {
   activeDirects,
@@ -58,6 +60,8 @@ export const DRILLS_KEY = '__drills'
 export type DrillContext = Pick<AnalyticsContext, 'org' | 'asOf' | 'all' | 'showPay'> & {
   /** Work authorization types show per person only while immigration details are on. */
   showImmigration?: boolean
+  /** The mode: in Manager mode a successor outside the org shows by readiness only, and rows open only the org. */
+  access?: AnalyticsContext['access']
 }
 
 export interface DrillTable {
@@ -388,7 +392,11 @@ const successionRow = (ctx: DrillContext, s: SuccessionPlan, i: number): Row => 
   incumbent: nameOf(ctx, s.incumbentId),
   criticality: s.criticality,
   incumbentRiskOfLoss: s.incumbentRiskOfLoss ?? null,
-  successor: nameOf(ctx, s.successorId) ?? 'None named',
+  // Manager mode: a successor outside the org shows by readiness only, never by name.
+  successor:
+    s.successorId && !personInLock(s.successorId, ctx.access)
+      ? `Outside the org${s.readiness ? `, ${s.readiness.toLowerCase()}` : ''}`
+      : (nameOf(ctx, s.successorId) ?? 'None named'),
   readiness: s.readiness ?? null,
   [PERSON_KEY]: s.incumbentId,
   [ROW_KEY]: `${s.roleId}-${s.successorId ?? 'none'}-${i}`,
@@ -764,6 +772,9 @@ const KINDS: { [K in DrillKind]: { columns: Column[]; row: RowFn<K>; noun: [stri
   actionOwners: { columns: ACTION_OWNER_COLUMNS, row: actionOwnerRow, noun: ['owner', 'owners'] },
 }
 
+/** Every drill kind, in the order the records panel knows them (the Developer inventory and the access matrix list them). */
+export const DRILL_KINDS = Object.keys(KINDS) as DrillKind[]
+
 export function drillNoun(kind: DrillKind, n: number): string {
   const [one, many] = KINDS[kind].noun
   return `${n.toLocaleString('en-US')} ${n === 1 ? one : many}`
@@ -813,7 +824,10 @@ const EXTRA_LINKS: { [K in DrillKind]?: readonly ExtraLink<K>[] } = {
 }
 
 /** Display table for a drill: standard columns for the kind, minus hidden ones, plus extras. */
-export function buildDrillTable(spec: DrillSpec, ctx: DrillContext): DrillTable {
+export const buildDrillTable = (spec: DrillSpec, ctx: DrillContext): DrillTable =>
+  timed(`census:drill:${spec.kind}`, () => drillTableOf(spec, ctx))
+
+function drillTableOf(spec: DrillSpec, ctx: DrillContext): DrillTable {
   const kind = KINDS[spec.kind] as { columns: Column[]; row: RowFn<DrillKind> }
   const extraCols = spec.extra?.columns ?? []
   const extraKeys = new Set(extraCols.map((c) => c.key))
@@ -852,10 +866,16 @@ export function buildDrillTable(spec: DrillSpec, ctx: DrillContext): DrillTable 
   return { columns: linked, rows }
 }
 
-/** The person a display row opens, when they are in the roster; null when the row opens nothing. */
-export function rowPerson(ctx: Pick<DrillContext, 'org'>, row: Row): string | null {
+/**
+ * The person a display row opens, when they are in the roster; null when the row opens nothing.
+ * In Manager mode only people inside the manager's org open (docs/ROLES.md, 3.12).
+ */
+export function rowPerson(
+  ctx: Pick<DrillContext, 'org'> & Pick<DrillContext, 'access'>,
+  row: Row,
+): string | null {
   const id = row[PERSON_KEY]
-  return typeof id === 'string' && id && ctx.org.byId.has(id) ? id : null
+  return typeof id === 'string' && id && ctx.org.byId.has(id) && personInLock(id, ctx.access) ? id : null
 }
 
 const ROW_OPENS: Record<DrillKind, string> = {
@@ -878,6 +898,18 @@ const ROW_OPENS: Record<DrillKind, string> = {
   leaveGroups: '',
   actionItems: 'Select a row to open the person it is about, when it names one.',
   actionOwners: 'Select a row to open the person, when the owner is one.',
+}
+
+/**
+ * What the Developer page's inventory lists about a drill kind: its standard columns, its noun and
+ * what selecting a row opens.
+ */
+export function drillKindFacts(kind: DrillKind): {
+  columns: readonly Column[]
+  noun: readonly [string, string]
+  rowOpens: string
+} {
+  return { columns: KINDS[kind].columns, noun: KINDS[kind].noun, rowOpens: ROW_OPENS[kind] }
 }
 
 /** What selecting a row does, and whether counts in the table open their own records. */

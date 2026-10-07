@@ -100,7 +100,7 @@ export function SlidesDialog({
         </>
       }
     >
-      <div className="space-y-4 text-[13px]">
+      <div className="space-y-4 text-small">
         <div>
           <div className="eyebrow mb-1.5">Leaders</div>
           <div className="flex flex-wrap items-center gap-2">
@@ -117,7 +117,7 @@ export function SlidesDialog({
             </span>
           </div>
           {valid.length > 0 && (
-            <p className="mt-2 text-[12px] leading-snug text-muted">
+            <p className="mt-2 text-meta leading-snug text-muted">
               {valid
                 .slice(0, 6)
                 .map((id) => tree.people.get(id)!.name)
@@ -138,7 +138,7 @@ export function SlidesDialog({
               { value: '2', label: 'Two levels' },
             ]}
           />
-          <p className="mt-1.5 text-[12px] text-muted">
+          <p className="mt-1.5 text-meta text-muted">
             Two levels adds each direct report's team when it still reads at slide size.
           </p>
         </div>

@@ -109,10 +109,18 @@ export {
   saveModelChoice,
 } from './models'
 export { AMOUNT_WITHHELD, TOKEN_RE, TokenMap, tokenText } from './privacy'
-export { ROUND_LIMIT_NOTE, SYSTEM_PROMPT } from './prompt'
+export { managerPromptLine, ROUND_LIMIT_NOTE, SYSTEM_PROMPT, systemBlocksFor } from './prompt'
 export { type RefEntry, RefRegistry } from './refs'
-export { chatContext, contextFor, type FilterInput, resolveFilters, scopeWords } from './scope'
-export { isToolName, runTool, TOOL_DEFINITIONS, TOOL_NAMES, type ToolRun, toolLabel } from './tools'
+export { askOffReason, chatContext, contextFor, type FilterInput, resolveFilters, scopeWords } from './scope'
+export {
+  isToolName,
+  runTool,
+  TOOL_DEFINITIONS,
+  TOOL_NAMES,
+  type ToolRun,
+  toolDefinitionsFor,
+  toolLabel,
+} from './tools'
 export {
   NO_USAGE,
   type PersonInfo,

@@ -21,10 +21,38 @@ export interface TipContent {
   rows: TipRow[]
   /** Muted footnote, e.g. "Hidden to protect anonymity (n < 5)". */
   note?: string
+  /**
+   * The sentence the keyboard's live region reads, when the rows don't read well aloud (a value
+   * with a secondary text, a count with its unit). Default: `spokenTip`.
+   */
+  spoken?: string
+}
+
+const TOTAL = 'Total'
+
+/**
+ * The tooltip as one sentence for the live region. With several rows and one of them strong
+ * (the focused series or segment), that row leads, with the total when there is one:
+ * "Overdue, Managers: 181 of 235. Due within 7 d: 48". Otherwise "Sep 2026. 1,450."
+ */
+export function spokenTip(c: TipContent): string {
+  if (c.spoken) return c.spoken
+  const lead = c.rows.length > 1 ? c.rows.find((r) => r.strong === true && r.label) : undefined
+  if (!lead) {
+    const rows = c.rows.map((r) => (r.label ? `${r.label} ${r.value}` : r.value)).join(', ')
+    return [c.title, rows].filter(Boolean).join('. ')
+  }
+  const total = c.rows.find((r) => r !== lead && r.label === TOTAL)
+  const rest = c.rows
+    .filter((r) => r !== lead && r !== total)
+    .map((r) => (r.label ? `${r.label}: ${r.value}` : r.value))
+    .join(', ')
+  const head = `${lead.label}, ${c.title ? `${c.title}: ` : ''}${lead.value}${total ? ` of ${total.value}` : ''}`
+  return [head, rest].filter(Boolean).join('. ')
 }
 
 export const TIP_CLASS =
-  'pointer-events-none absolute top-0 left-0 z-20 w-max max-w-72 rounded-control bg-sheet px-2.5 py-2 text-[12px] leading-snug text-ink shadow-(--shadow-pop)'
+  'pointer-events-none absolute top-0 left-0 z-20 w-max max-w-72 rounded-control bg-sheet px-2.5 py-2 text-meta leading-snug text-ink shadow-(--shadow-pop)'
 
 function el<K extends keyof HTMLElementTagNameMap>(
   tag: K,
@@ -42,7 +70,8 @@ function keyEl(color: string, shape: LegendShape = 'line'): HTMLElement {
   k.setAttribute('aria-hidden', 'true')
   k.style.background = color
   if (shape === 'line') Object.assign(k.style, { width: '12px', height: '2px', borderRadius: '1px' })
-  else if (shape === 'dot') Object.assign(k.style, { width: '8px', height: '8px', borderRadius: '50%' })
+  else if (shape === 'dot' || shape === 'medal')
+    Object.assign(k.style, { width: '8px', height: '8px', borderRadius: '50%' })
   else if (shape === 'diamond')
     Object.assign(k.style, { width: '7px', height: '7px', margin: '0 1px', transform: 'rotate(45deg)' })
   else Object.assign(k.style, { width: '9px', height: '9px', borderRadius: '2px' })
@@ -51,7 +80,7 @@ function keyEl(color: string, shape: LegendShape = 'line'): HTMLElement {
 
 export function renderTip(host: HTMLElement, content: TipContent): void {
   const nodes: HTMLElement[] = []
-  if (content.title) nodes.push(el('div', 'mb-1 text-[11px] font-medium text-ink-2', content.title))
+  if (content.title) nodes.push(el('div', 'mb-1 text-label font-medium text-ink-2', content.title))
   const keyed = content.rows.some((r) => r.color)
   if (content.rows.length) {
     const grid = el('div', 'grid items-center gap-x-2 gap-y-0.5')
@@ -69,7 +98,7 @@ export function renderTip(host: HTMLElement, content: TipContent): void {
     }
     nodes.push(grid)
   }
-  if (content.note) nodes.push(el('div', 'mt-1 max-w-60 text-[11px] text-muted', content.note))
+  if (content.note) nodes.push(el('div', 'mt-1 max-w-60 text-label text-muted', content.note))
   host.replaceChildren(...nodes)
 }
 

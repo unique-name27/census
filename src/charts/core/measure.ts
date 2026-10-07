@@ -59,6 +59,27 @@ export function truncateText(text: string, maxWidth: number, size = 11, weight =
   return lo > 0 ? `${text.slice(0, lo).trimEnd()}…` : '…'
 }
 
+/**
+ * `text` broken at spaces into at most `maxLines` lines that each fit `maxWidth`; the last line
+ * is shortened with an ellipsis when the rest does not fit. One line when it fits as is.
+ *
+ *   wrapText('Export control & trade compliance', 120, 12) // ['Export control & trade', 'compliance']
+ */
+export function wrapText(text: string, maxWidth: number, size = 11, weight = 400, maxLines = 2): string[] {
+  const fits = (s: string) => textWidth(s, size, weight) <= maxWidth
+  if (fits(text) || maxLines <= 1) return [truncateText(text, maxWidth, size, weight)]
+  const words = text.split(/\s+/).filter(Boolean)
+  const lines: string[] = []
+  let k = 0
+  while (k < words.length && lines.length < maxLines - 1) {
+    let line = words[k++]
+    while (k < words.length && fits(`${line} ${words[k]}`)) line = `${line} ${words[k++]}`
+    lines.push(truncateText(line, maxWidth, size, weight))
+  }
+  if (k < words.length) lines.push(truncateText(words.slice(k).join(' '), maxWidth, size, weight))
+  return lines
+}
+
 /* Font readiness: a version number that bumps whenever a web font finishes loading. */
 
 let fontsVersion = 0

@@ -56,7 +56,7 @@ export function ChangeLog({
       className={className}
     >
       {rows.length === 0 ? (
-        <p className="text-[13px] text-ink-2">
+        <p className="text-small text-ink-2">
           No changes yet. Edit the wording, the target or a setting and the change appears here with who made
           it and when.
         </p>
@@ -66,12 +66,12 @@ export function ChangeLog({
             {shown.map((c) => (
               <li key={c.id} className="flex flex-wrap items-start gap-x-3 gap-y-1 py-2.5 first:pt-0">
                 <div className="min-w-0 flex-1 basis-64">
-                  <p className="text-[13px] leading-snug text-ink">
+                  <p className="text-small leading-snug text-ink">
                     {showMetric && onOpenMetric ? (
                       <button
                         type="button"
                         onClick={() => onOpenMetric(c.metricId)}
-                        className="rounded-[2px] text-left text-link underline-offset-2 hover:underline"
+                        className="rounded-mark text-left text-link underline-offset-2 hover:underline"
                       >
                         {c.what}
                       </button>
@@ -79,11 +79,11 @@ export function ChangeLog({
                       c.what
                     )}
                   </p>
-                  <p className="mt-0.5 text-[12px] text-muted">
+                  <p className="mt-0.5 text-meta text-muted">
                     {whenText(c.at)} · by {c.by} · {c.kindText}
                   </p>
                   {c.wording && (
-                    <details className="mt-1 text-[12px] leading-snug">
+                    <details className="mt-1 text-meta leading-snug">
                       <summary className="cursor-pointer text-ink-2 hover:text-ink">Show the wording</summary>
                       <dl className="mt-1 grid grid-cols-[40px_1fr] gap-x-2 gap-y-1">
                         <dt className="text-muted">From</dt>

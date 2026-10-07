@@ -111,13 +111,14 @@ import { readScope, splitHash, type UrlScope } from './urlScope'
 export type { SampleSeed, SampleSeedEntry, SampleSeedLoader } from './quality/seed'
 export type { ThemePref } from './settings'
 
-/** A folder tab, or one of the two pages reached from the masthead: the Data room and Actions. */
-export type RouteView = ViewKey | 'data' | 'actions'
+/** A folder tab, or one of the pages reached from the masthead: the Data room, Actions and Developer. */
+export type RouteView = ViewKey | 'data' | 'actions' | 'dev'
 export interface Route {
   view: RouteView
   tab: string
 }
 export const ROUTE_VIEWS: RouteView[] = [
+  'team',
   'scorecard',
   'recruiting',
   'onboarding',
@@ -131,11 +132,45 @@ export const ROUTE_VIEWS: RouteView[] = [
   'ai',
   'data',
   'actions',
+  'dev',
 ]
-/** The page Census opens on when the address names none. */
+/** The page Census opens on when the address names none and no mode says otherwise (`homeView`). */
 export const HOME_VIEW: RouteView = 'scorecard'
 /** Pages reached from the masthead rather than a folder tab. */
-export const PAGE_VIEWS: readonly RouteView[] = ['data', 'actions']
+export const PAGE_VIEWS: readonly RouteView[] = ['data', 'actions', 'dev']
+
+/* ───────────── guards the modes register (docs/ROLES.md, 6.3) ───────────── */
+
+/** The filters to keep instead of `next` (the Manager mode lock); the same object when they are fine. */
+export type FilterGuard = (next: Filters) => Filters
+/** Where a route goes in the current mode, and what to say when it moved. */
+export interface RouteGuard {
+  check: (route: Route) => { route: Route; notice?: () => void } | null
+  /** The mode's home page. */
+  home: () => RouteView
+}
+/** The data standard to show when a link or saved view names one (Manager mode keeps the saved one). */
+export type StandardGuard = (asked: DataStandard) => DataStandard
+
+let filterGuard: FilterGuard | null = null
+let routeGuard: RouteGuard | null = null
+let standardGuard: StandardGuard | null = null
+
+/** Every filter change (the row, links, Back, saved views, Filter to, Ask) goes through this. */
+export function setFilterGuard(fn: FilterGuard | null): void {
+  filterGuard = fn
+}
+/** Every route change (`navigate`, so `goTo` and the address too) goes through this. */
+export function setRouteGuard(g: RouteGuard | null): void {
+  routeGuard = g
+}
+export function setStandardGuard(fn: StandardGuard | null): void {
+  standardGuard = fn
+}
+/** The filters as the guard keeps them (unchanged without one). */
+export const guardFilters = (f: Filters): Filters => (filterGuard ? filterGuard(f) : f)
+/** The page Census opens on: the mode's home, the Scorecard when no mode is connected (tests, the gallery). */
+export const homeView = (): RouteView => routeGuard?.home() ?? HOME_VIEW
 
 export interface SourceMeta {
   kind: 'sample' | 'upload'
@@ -392,6 +427,12 @@ function readInitialScope(): InitialScope {
 
 /** The scope this page load started with (read once, when the store is created). */
 export const initialScope: InitialScope = readInitialScope()
+/**
+ * The page this load opened on came from the address or the startup view (false: Census picked
+ * its home). A mode connected later sends an unnamed opening to its own home without a notice.
+ */
+export const initialRouteNamed: boolean =
+  !!initialScope.page || !!parseHash(typeof location === 'undefined' ? '' : location.hash)
 let initialTaken = false
 /** The opening scope, once: the shell applies it after the data loads (null after that). */
 export function takeInitialScope(): InitialScope | null {
@@ -706,20 +747,27 @@ export const useCensus = create<CensusState>((set, getState) => {
     },
 
     setFilters(patch, opts = {}) {
-      const filters = normalizeFilters({ ...getState().filters, ...patch })
+      const filters = guardFilters(normalizeFilters({ ...getState().filters, ...patch }))
       LS.set('filters', filters)
       if (opts.history) hintAddress(opts.history)
       set({ filters })
     },
     resetFilters() {
-      LS.set('filters', DEFAULT_FILTERS)
-      set({ filters: { ...DEFAULT_FILTERS, modes: {} } })
+      const filters = guardFilters({ ...DEFAULT_FILTERS, modes: {} })
+      LS.set('filters', filters)
+      set({ filters })
     },
     navigate(view, tab = '', opts = {}) {
+      // A route the mode hides opens the mode's home (or the view's first shown tab) instead, so
+      // the address never holds it and Back never returns to it.
+      const checked = routeGuard?.check({ view, tab }) ?? null
+      const route = checked?.route ?? { view, tab }
+      const moved = route.view !== view || route.tab !== tab
       // The shell writes the address (route and scope together); this says how.
       hintAddress(opts.history ?? 'replace')
-      set({ route: { view, tab } })
+      set({ route })
       if (opts.scroll !== false && typeof window !== 'undefined') window.scrollTo({ top: 0 })
+      if (moved) checked?.notice?.()
     },
     setShowPay(on) {
       set({ showPay: on })
@@ -735,7 +783,8 @@ export const useCensus = create<CensusState>((set, getState) => {
     setTextSize: (textSize) => patchSettings({ textSize }),
     setMotion: (motion) => patchSettings({ motion }),
     setDataStandard: (dataStandard) => patchSettings({ dataStandard }),
-    setScopeStandard(dataStandard) {
+    setScopeStandard(asked) {
+      const dataStandard = standardGuard ? standardGuard(asked) : asked
       if (getState().dataStandard !== dataStandard) set({ dataStandard })
     },
     setAsOfOverride: (asOfOverride) => patchSettings({ asOfOverride }),

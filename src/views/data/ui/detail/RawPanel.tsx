@@ -54,7 +54,7 @@ function unrecognizedNow(
 }
 
 function Missing({ text }: { text: string }) {
-  return <p className="max-w-[70ch] text-[13px] text-ink-2">{text}</p>
+  return <p className="max-w-[70ch] text-small text-ink-2">{text}</p>
 }
 
 function Grid({
@@ -73,7 +73,7 @@ function Grid({
   const { sheet } = raw
   return (
     <div className="scroll-x max-h-[560px] overflow-y-auto rounded-control shadow-[inset_0_0_0_1px_var(--rule)]">
-      <table className="w-max min-w-full border-collapse text-[12px]">
+      <table className="w-max min-w-full border-collapse text-meta">
         <caption className="sr-only">Raw sheet rows as uploaded</caption>
         <thead className="sticky top-0 z-10 bg-sheet-2">
           <tr className="text-left">
@@ -88,7 +88,7 @@ function Grid({
                 <span className="block truncate" title={h}>
                   {h}
                 </span>
-                <span className="block truncate text-[11px] font-normal text-muted">
+                <span className="block truncate text-label font-normal text-muted">
                   {fieldOf.get(h) ? `To ${fieldOf.get(h)}` : 'Not used'}
                 </span>
               </th>
@@ -210,7 +210,7 @@ function RawSheet({
 
   return (
     <div>
-      <p className="text-[13px]">
+      <p className="text-small">
         <span className="font-semibold">{sheetLabel || sheet.name}</span>
         <span className="text-ink-2">
           {' '}
@@ -218,14 +218,14 @@ function RawSheet({
           {fmt(sheet.headers.length, 'int')} columns · headers on row {fmt(sheet.headerRow + 1, 'int')}
         </span>
       </p>
-      <p className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px] text-ink-2">
+      <p className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-meta text-ink-2">
         {c.invalid + c.defaulted + c.skipped === 0 ? (
           'Every cell was read as it stood.'
         ) : (
           <>
             {c.invalid > 0 && (
               <span className="inline-flex items-center gap-1.5">
-                <span className="inline-flex size-4 items-center justify-center rounded-[3px] bg-critical-wash">
+                <span className="inline-flex size-4 items-center justify-center rounded-chip bg-critical-wash">
                   <IconCritical className="size-3 text-critical" />
                 </span>
                 {invalidText}
@@ -233,7 +233,7 @@ function RawSheet({
             )}
             {c.defaulted > 0 && (
               <span className="inline-flex items-center gap-1.5">
-                <span className="inline-flex size-4 items-center justify-center rounded-[3px] bg-warning-wash">
+                <span className="inline-flex size-4 items-center justify-center rounded-chip bg-warning-wash">
                   <IconInfoFilled className="size-3 text-ink-2" />
                 </span>
                 {defaultedText}
@@ -249,7 +249,7 @@ function RawSheet({
         )}
       </p>
       {cols.hidden.length > 0 && (
-        <p className="mt-1 text-[12px] text-muted">{hiddenText(cols.hidden).join(' ')}</p>
+        <p className="mt-1 text-meta text-muted">{hiddenText(cols.hidden).join(' ')}</p>
       )}
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -321,12 +321,12 @@ function RawSheet({
         {shown.total ? (
           <Grid raw={raw} headers={cols.visible} fieldOf={fieldOf} flags={flags} rows={shown.items} />
         ) : (
-          <p className="rounded-control bg-sheet-2 px-3 py-4 text-[13px] text-ink-2">
+          <p className="rounded-control bg-sheet-2 px-3 py-4 text-small text-ink-2">
             {deferred.trim() ? `No row contains “${deferred.trim()}”.` : 'No rows with notes.'}
           </p>
         )}
       </div>
-      <div className="mt-2 flex flex-wrap items-center gap-2 text-[12px] text-ink-2" aria-live="polite">
+      <div className="mt-2 flex flex-wrap items-center gap-2 text-meta text-ink-2" aria-live="polite">
         <span className="tnum">
           {shown.total
             ? `Rows ${fmt(shown.from, 'int')}–${fmt(shown.to, 'int')} of ${fmt(shown.total, 'int')}${narrowed ? ` (${fmt(sheet.rows.length, 'int')} in the sheet)` : ''}`

@@ -44,7 +44,7 @@ export function RuleList({
         const title = ROWS_TITLE[r.id]?.(ds.label) ?? `${ds.label}: ${r.label.toLowerCase()}`
         const rowsText = `${fmt(n, 'int')} ${n === 1 ? 'row' : 'rows'}`
         return (
-          <li key={r.id} className="flex gap-2 text-[13px]">
+          <li key={r.id} className="flex gap-2 text-small">
             <RuleIcon r={r} />
             <span className="min-w-0">
               <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5">

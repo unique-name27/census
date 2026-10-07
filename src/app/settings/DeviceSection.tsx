@@ -6,6 +6,7 @@ import { useEffect, useId, useRef, useState } from 'react'
 import { IconDownload, IconReset, IconUpload } from '@/components/icons'
 import { toast } from '@/components/toast'
 import { Button } from '@/components/ui'
+import { useAnalytics } from '@/data/context'
 import { settingsFileName } from '@/data/settings'
 import { clearDevice, exportSettings, importSettings } from '@/data/store'
 import { useSavedViews } from '@/data/viewsStore'
@@ -67,10 +68,10 @@ function ClearEverything() {
       aria-describedby={`${confirmId}-body`}
       className="rounded-control bg-critical-wash px-4 py-3.5"
     >
-      <p id={`${confirmId}-title`} className="text-[13px] font-semibold text-ink">
+      <p id={`${confirmId}-title`} className="text-small font-semibold text-ink">
         Clear everything Census stored in this browser?
       </p>
-      <p id={`${confirmId}-body`} className="mt-1 max-w-[60ch] text-[13px] leading-snug text-ink-2">
+      <p id={`${confirmId}-body`} className="mt-1 max-w-[60ch] text-small leading-snug text-ink-2">
         Uploaded files, mappings, certifications, metric definition changes and settings are deleted from this
         device. This can't be undone. Export your settings first if you want to keep them.
       </p>
@@ -95,6 +96,8 @@ function ClearEverything() {
 
 export function DeviceSection() {
   const fileRef = useRef<HTMLInputElement>(null)
+  // A settings file is team configuration: Manager mode keeps "Clear everything" only.
+  const files = useAnalytics().access.can('settings:device-files')
   const onExport = () => {
     downloadBlob(exportSettings(), settingsFileName(todayISO()))
     toast('Settings file downloaded', { tone: 'good', description: 'Pay amounts are never in it.' })
@@ -140,27 +143,29 @@ export function DeviceSection() {
       section="device"
       intro="Census keeps everything in this browser. Nothing is sent anywhere."
     >
-      <Field
-        label="Settings file"
-        hint="Move your settings to another browser or computer. The file holds display, data and tool link settings, your metric definitions (wording, targets and calculation settings, with their change log), the official lists you saved and your saved views; it never holds pay amounts or data."
-      >
-        <Button icon={<IconDownload />} onClick={onExport}>
-          Export settings
-        </Button>
-        <Button icon={<IconUpload />} onClick={() => fileRef.current?.click()}>
-          Import settings…
-        </Button>
-        <input
-          ref={fileRef}
-          type="file"
-          accept=".json,application/json"
-          hidden
-          onChange={(e) => {
-            void onImport(e.target.files?.[0])
-            e.target.value = ''
-          }}
-        />
-      </Field>
+      {files && (
+        <Field
+          label="Settings file"
+          hint="Move your settings to another browser or computer. The file holds display, data and tool link settings, your metric definitions (wording, targets and calculation settings, with their change log), the official lists you saved and your saved views; it never holds pay amounts or data."
+        >
+          <Button icon={<IconDownload />} onClick={onExport}>
+            Export settings
+          </Button>
+          <Button icon={<IconUpload />} onClick={() => fileRef.current?.click()}>
+            Import settings…
+          </Button>
+          <input
+            ref={fileRef}
+            type="file"
+            accept=".json,application/json"
+            hidden
+            onChange={(e) => {
+              void onImport(e.target.files?.[0])
+              e.target.value = ''
+            }}
+          />
+        </Field>
+      )}
       <ClearEverything />
     </SettingsBlock>
   )

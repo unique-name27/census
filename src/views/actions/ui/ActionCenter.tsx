@@ -9,6 +9,7 @@
  * what holds them back. Handled and snoozed items are kept in this browser and can be reopened.
  */
 import { type ReactNode, useMemo } from 'react'
+import { lockTip, WHOLE_ORG } from '@/access/copy'
 import { leaderOptions } from '@/app/filterOptions'
 import { LeaderPicker } from '@/app/LeaderPicker'
 import { BarList, Figure, HBars, useChartTheme, useExportMeta } from '@/charts'
@@ -18,6 +19,8 @@ import { IconDownload, IconSearch } from '@/components/icons'
 import { KpiStrip } from '@/components/KpiStrip'
 import { MultiSelect } from '@/components/MultiSelect'
 import { goTo } from '@/components/navigation'
+import { Pending } from '@/components/Pending'
+import { useRouteShown } from '@/components/RouteLink'
 import { Grid, Section } from '@/components/Section'
 import { belowStandardText } from '@/components/tier/tierModel'
 import { toast } from '@/components/toast'
@@ -67,6 +70,7 @@ import {
   type WaitingOn,
 } from '../engine'
 import { M } from '../metrics'
+import { ByKind, DueTimeline, TopOwners } from './Charts'
 import { drillItems, OwnerSheet, type StatusFn } from './Sheets'
 import { useActionFilters, useActionMarks, useNow } from './store'
 import { useCollected } from './useCollected'
@@ -91,7 +95,7 @@ function SeverityCounts({ open, ctx }: { open: readonly OpenAction[]; ctx: Analy
               type="button"
               onClick={() => drillItems(ctx, `${SEVERITY_WORD[s]} items`, items)}
               aria-label={`Show the ${plural(items.length, `${SEVERITY_WORD[s].toLowerCase()} item`)}`}
-              className="tnum cursor-pointer rounded-[2px] font-semibold text-ink underline decoration-rule-strong decoration-dotted underline-offset-[3px] hover:decoration-ink hover:decoration-solid"
+              className="tnum cursor-pointer rounded-mark font-semibold text-ink underline decoration-rule-strong decoration-dotted underline-offset-[3px] hover:decoration-ink hover:decoration-solid"
             >
               {fmt(items.length, 'int')}
             </button>
@@ -108,14 +112,20 @@ function MyTeamPicker() {
   const leaderId = useCensus((s) => focusLeader(s.filters))
   const modes = useCensus((s) => s.filters.modes)
   const setFilters = useCensus((s) => s.setFilters)
-  const options = useMemo(() => leaderOptions(ctx.org, ctx.asOf, 1), [ctx.org, ctx.asOf])
+  // Manager mode pins "My team" to the manager's org; narrowing to a leader inside it works.
+  const lock = ctx.access.lock
+  const options = useMemo(() => {
+    const all = leaderOptions(ctx.org, ctx.asOf, 1)
+    return lock ? all.filter((o) => lock.orgIds.has(o.id)) : all
+  }, [ctx.org, ctx.asOf, lock])
   return (
     <LeaderPicker
       label="My team"
       noun="manager"
-      clearLabel="Everyone"
+      clearLabel={lock ? WHOLE_ORG : 'Everyone'}
       emptyText="No people managers in this data."
       options={options}
+      {...(lock && { pinned: lockTip(lock.managerName), youId: lock.managerId })}
       value={leaderId}
       currentName={leaderId ? (ctx.org.byId.get(leaderId)?.name ?? leaderId) : undefined}
       onChange={(id) => setFilters({ leaderId: id, modes: withMode(modes, 'leaderId', 'include') })}
@@ -179,6 +189,7 @@ function ExportListButton({ items, status }: { items: readonly OpenAction[]; sta
 
 function Notices({ collected, stale }: { collected: Collected; stale: boolean }) {
   const ctx = useAnalytics()
+  const dataRoom = useRouteShown('data')
   const { hidden, errors, smallScope } = collected
   const lines: ReactNode[] = []
   if (stale) lines.push(<span key="stale">Updating for the new filters.</span>)
@@ -192,13 +203,15 @@ function Notices({ collected, stale }: { collected: Collected; stale: boolean })
         {plural(hidden.count, 'item')} hidden because {hidden.count === 1 ? 'its' : 'their'} data is{' '}
         {ctx.standard === 'bronze' ? 'missing' : belowStandardText(ctx.standard).toLowerCase()}: {reasons}
         {hidden.reasons.length > 3 ? ' and more' : ''}.{' '}
-        <button
-          type="button"
-          onClick={() => goTo('data')}
-          className="rounded-[2px] text-ink underline decoration-rule-strong underline-offset-2 hover:decoration-ink"
-        >
-          Open the Data room
-        </button>
+        {dataRoom && (
+          <button
+            type="button"
+            onClick={() => goTo('data')}
+            className="rounded-mark text-ink underline decoration-rule-strong underline-offset-2 hover:decoration-ink"
+          >
+            Open the Data room
+          </button>
+        )}
       </span>,
     )
   }
@@ -217,7 +230,7 @@ function Notices({ collected, stale }: { collected: Collected; stale: boolean })
     )
   if (!lines.length) return null
   return (
-    <div className="col-span-full flex flex-col gap-1 text-[12px] leading-snug text-ink-2" aria-live="polite">
+    <div className="col-span-full flex flex-col gap-1 text-meta leading-snug text-ink-2" aria-live="polite">
       {lines}
     </div>
   )
@@ -295,6 +308,32 @@ function WhereItemsWait({ open, status }: { open: readonly OpenAction[]; status:
   ]
   return (
     <>
+      <DueTimeline open={open} status={status} />
+      <TopOwners open={open} status={status} />
+      <ByKind open={open} status={status} />
+      <Figure
+        id="actions-by-view"
+        title="Where items come from"
+        subtitle="Open items by the view that raises them"
+        data={views}
+        columns={viewColumns}
+        metric={M.open}
+        uses={uses}
+        span={5}
+        note="Each item opens the tab that explains it."
+        empty={open.length ? null : 'Nothing is open in this scope.'}
+      >
+        <BarList<ViewCountRow>
+          data={views}
+          label="view"
+          value="open"
+          secondary="secondary"
+          format="int"
+          sort="none"
+          ariaLabel="Open items by source view"
+          onSelect={(d) => drill(() => viewSpec(d, 'all'))}
+        />
+      </Figure>
       <Figure
         id="actions-by-owner"
         title="Where items wait"
@@ -303,8 +342,8 @@ function WhereItemsWait({ open, status }: { open: readonly OpenAction[]; status:
         columns={ownerTableColumns(dueSoonDays, (r, b) => groupSpec(r.group, b))}
         metric={M.open}
         uses={uses}
-        span={7}
-        note={`Due within ${dueSoonDays} d counts from the as-of date. Select a bar to see its items.`}
+        span={12}
+        note={`Due within ${dueSoonDays} d counts from the as-of date.`}
         empty={open.length ? null : 'Nothing is open in this scope.'}
       >
         <HBars<OwnerDueRow>
@@ -320,29 +359,6 @@ function WhereItemsWait({ open, status }: { open: readonly OpenAction[]; status:
           ariaLabel="Open items by owner group, stacked by due date"
           onSelect={(d) => drill(() => groupSpec(d.group, 'all'))}
           onSelectSegment={(d) => drill(() => groupSpec(d.group, d.bucket))}
-        />
-      </Figure>
-      <Figure
-        id="actions-by-view"
-        title="Where items come from"
-        subtitle="Open items by the view that raises them"
-        data={views}
-        columns={viewColumns}
-        metric={M.open}
-        uses={uses}
-        span={5}
-        note="Select a bar to see its items. Each item opens the tab that explains it."
-        empty={open.length ? null : 'Nothing is open in this scope.'}
-      >
-        <BarList<ViewCountRow>
-          data={views}
-          label="view"
-          value="open"
-          secondary="secondary"
-          format="int"
-          sort="none"
-          ariaLabel="Open items by source view"
-          onSelect={(d) => drill(() => viewSpec(d, 'all'))}
         />
       </Figure>
     </>
@@ -423,7 +439,7 @@ function ListControls({
           value={filters.query}
           onChange={(e) => setFilters({ query: e.currentTarget.value })}
           placeholder="Search owner, person or req"
-          className="h-8 w-full rounded-control bg-sheet pr-2 pl-8 text-[13px] text-ink shadow-[inset_0_0_0_1px_var(--rule-strong)] outline-none placeholder:text-muted"
+          className="h-8 w-full rounded-control bg-sheet pr-2 pl-8 text-small text-ink shadow-[inset_0_0_0_1px_var(--rule-strong)] outline-none placeholder:text-muted"
         />
       </label>
       {leader && (
@@ -450,11 +466,18 @@ function ListControls({
 
 /* ───────── page ───────── */
 
+/** The first figures at their final size while every view's open items are collected. */
 function Loading() {
   return (
-    <p className="rounded-sheet bg-sheet px-4 py-3.5 text-[13px] text-ink-2" aria-live="polite">
-      Collecting open items from every view.
-    </p>
+    <Grid>
+      <Pending
+        message="Collecting open items from every view."
+        frames={[
+          { title: 'When items fall due', span: 7, height: 260 },
+          { title: 'Who has the most waiting', span: 5, height: 260 },
+        ]}
+      />
+    </Grid>
   )
 }
 
@@ -477,7 +500,8 @@ function Body({ collected, stale }: { collected: Collected; stale: boolean }) {
   const leader = collected.leader
   return (
     <>
-      <Grid className="mt-5">
+      {/* Sheets keep their own heights: the charts in a row differ by up to 150px. */}
+      <Grid className="mt-5 items-start">
         <Notices collected={collected} stale={stale} />
         <KpiStrip kpis={kpis} />
         <WhereItemsWait open={open} status={status} />
@@ -559,16 +583,16 @@ export function ActionCenter() {
             <h1
               data-actions-heading=""
               tabIndex={-1}
-              className="cut-head text-[28px] leading-[1.1] font-[650] tracking-[-0.01em] outline-none"
+              className="cut-head text-page-title leading-[1.1] font-[650] tracking-[-0.01em] outline-none"
             >
               Action center
             </h1>
-            <p className="mt-1.5 max-w-[72ch] text-[13px] text-ink-2">
+            <p className="mt-1.5 max-w-[72ch] text-small text-ink-2">
               {leader
                 ? `${leader.name}'s items and their team's, from every view, grouped by who they wait on.`
                 : 'Open items from every view, grouped by who they wait on: decisions, tasks, deadlines and follow-ups to raise in each leader review.'}
             </p>
-            <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[13px] text-ink-2">
+            <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-small text-ink-2">
               <span>{ctx.scopeLabel}</span>
               <span aria-hidden="true" className="text-muted">
                 ·

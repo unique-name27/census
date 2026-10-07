@@ -41,6 +41,7 @@ export const RM = {
   lackingNextStep: 'recruiting.pipeline.lackingNextStep',
   activeCandidates: 'recruiting.pipeline.activeCandidates',
   daysWaiting: 'recruiting.pipeline.daysWaiting',
+  awaitingDecision: 'recruiting.pipeline.awaitingDecision',
   candidateFlow: 'recruiting.flow.reached',
   passRate: 'recruiting.flow.passRate',
   daysToNextStage: 'recruiting.flow.daysToNextStage',
@@ -359,6 +360,21 @@ export const metrics: MetricDef[] = defineMetrics('recruiting', [
     unit: 'days',
     goodDirection: 'down',
     uses: NEXT_STEP,
+    owner: OWNER,
+  },
+  {
+    id: RM.awaitingDecision,
+    name: 'Interview decisions waiting',
+    definition:
+      'Active candidates whose interview happened and whose stage has not moved since, by the hiring manager on the req. The decision is the hiring manager’s to make. A wait past the decision wait is to watch, past the decision overdue point it is overdue (both settings of Candidates lacking a next step).',
+    formula: 'active candidates in the needs decision state, by the hiring manager of their req',
+    population:
+      'Applications open on the as-of date whose last interview date is on or before it, with no later stage date.',
+    window: SNAPSHOT,
+    unit: 'int',
+    goodDirection: 'down',
+    uses: uses(NEXT_STEP, APP_DIM.hiringManager, ['requisitions.hiringManagerId']),
+    dependsOn: [RM.lackingNextStep],
     owner: OWNER,
   },
 

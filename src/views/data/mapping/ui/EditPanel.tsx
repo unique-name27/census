@@ -37,7 +37,7 @@ const HINT: Record<EditKind, string> = {
 }
 
 const INPUT =
-  'h-7 w-full min-w-0 rounded-control bg-sheet px-2 text-[13px] text-ink shadow-[inset_0_0_0_1px_var(--rule-strong)] outline-none placeholder:text-muted focus-visible:shadow-[inset_0_0_0_2px_var(--focus)]'
+  'h-7 w-full min-w-0 rounded-control bg-sheet px-2 text-small text-ink shadow-[inset_0_0_0_1px_var(--rule-strong)] outline-none placeholder:text-muted focus-visible:shadow-[inset_0_0_0_2px_var(--focus)]'
 
 function Field({
   label,
@@ -53,17 +53,17 @@ function Field({
   return (
     <div className="grid gap-1">
       {id ? (
-        <label htmlFor={id} className="text-[12px] font-medium text-ink-2">
+        <label htmlFor={id} className="text-meta font-medium text-ink-2">
           {label}
         </label>
       ) : (
         // The control carries the same name as its aria-label.
-        <span aria-hidden="true" className="text-[12px] font-medium text-ink-2">
+        <span aria-hidden="true" className="text-meta font-medium text-ink-2">
           {label}
         </span>
       )}
       {children}
-      {hint && <p className="text-[12px] leading-snug text-muted">{hint}</p>}
+      {hint && <p className="text-meta leading-snug text-muted">{hint}</p>}
     </div>
   )
 }
@@ -184,7 +184,7 @@ export function EditPanel({
   )
 
   const scopeBox = cat && cat.refs.length > 1 && (
-    <label className="flex items-start gap-2 text-[13px] text-ink-2">
+    <label className="flex items-start gap-2 text-small text-ink-2">
       <input
         type="checkbox"
         className="mt-0.5 accent-[var(--ink)]"
@@ -233,8 +233,8 @@ export function EditPanel({
       id="data-map-edit-panel"
       className={cx('scroll-mt-4 rounded-sheet bg-sheet px-4 pt-3.5 pb-4', spanClass(5))}
     >
-      <h3 className="cut-head text-[15px] leading-snug font-semibold text-ink">Make a change</h3>
-      <p className="mt-0.5 text-[13px] leading-snug text-ink-2">
+      <h3 className="cut-head text-title leading-snug font-semibold text-ink">Make a change</h3>
+      <p className="mt-0.5 text-small leading-snug text-ink-2">
         Kept in this browser and applied before every number in Census. Your files are not changed.
       </p>
       <form
@@ -406,7 +406,7 @@ export function EditPanel({
           <>
             {fieldSelect}
             <fieldset className="grid gap-1">
-              <legend className="mb-1 text-[12px] font-medium text-ink-2">
+              <legend className="mb-1 text-meta font-medium text-ink-2">
                 Spellings to merge{draft.values.length ? ` (${draft.values.length} chosen)` : ''}
               </legend>
               {values.length > 10 && (
@@ -420,13 +420,13 @@ export function EditPanel({
               )}
               <ul className="max-h-48 overflow-y-auto rounded-control py-1 shadow-[inset_0_0_0_1px_var(--rule)]">
                 {shownValues.length === 0 && (
-                  <li className="px-2 py-1 text-[13px] text-muted">No values to show.</li>
+                  <li className="px-2 py-1 text-small text-muted">No values to show.</li>
                 )}
                 {shownValues.map((v) => {
                   const on = draft.values.includes(v.value)
                   return (
                     <li key={v.value}>
-                      <label className="flex cursor-pointer items-center gap-2 px-2 py-1 text-[13px] text-ink hover:bg-hover">
+                      <label className="flex cursor-pointer items-center gap-2 px-2 py-1 text-small text-ink hover:bg-hover">
                         <input
                           type="checkbox"
                           className="accent-[var(--ink)]"
@@ -439,7 +439,7 @@ export function EditPanel({
                           }}
                         />
                         <span className="min-w-0 flex-1 truncate">{v.value}</span>
-                        <span className="tnum text-[12px] text-muted">{v.count.toLocaleString('en-US')}</span>
+                        <span className="tnum text-meta text-muted">{v.count.toLocaleString('en-US')}</span>
                       </label>
                     </li>
                   )
@@ -476,7 +476,7 @@ export function EditPanel({
         <p
           role="status"
           className={cx(
-            'text-[13px] leading-snug',
+            'text-small leading-snug',
             error || (preview.error && hasInput(draft)) || preview.skipped ? 'text-bad-text' : 'text-ink-2',
           )}
         >
@@ -500,7 +500,7 @@ export function EditPanel({
           </Button>
         </div>
         <div className="grid gap-1 border-t border-rule pt-3">
-          <label htmlFor={`${ids}-name`} className="text-[12px] font-medium text-ink-2">
+          <label htmlFor={`${ids}-name`} className="text-meta font-medium text-ink-2">
             Your name, for the change list
           </label>
           <input

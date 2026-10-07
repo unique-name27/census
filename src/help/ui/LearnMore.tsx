@@ -7,6 +7,8 @@
  */
 import { Popover as BPopover } from '@base-ui/react/popover'
 import { cx } from '@/components/ui'
+import { useAnalyticsIfAny } from '@/data/context'
+import { articleShown } from '../access'
 import { articleForMetric } from '../learnMore'
 import { openHelp } from '../store'
 import { IconHelp } from './IconHelp'
@@ -19,13 +21,15 @@ export function LearnMoreLink({
   className?: string
 }) {
   const article = articleForMetric(metricId)
-  if (!article) return null
+  // Shown when its article is shown in this mode (docs/ROLES.md, 3.1).
+  const access = useAnalyticsIfAny()?.access
+  if (!article || (access && !articleShown(access, article))) return null
   return (
     <BPopover.Close
       aria-haspopup="dialog"
       onClick={() => openHelp(article)}
       className={cx(
-        'inline-flex items-center gap-1 rounded-[2px] text-[12px] font-medium text-link underline-offset-2 hover:underline',
+        'inline-flex items-center gap-1 rounded-mark text-meta font-medium text-link underline-offset-2 hover:underline',
         className,
       )}
     >

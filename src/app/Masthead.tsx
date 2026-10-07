@@ -3,24 +3,41 @@
  * details are on for this session), the as-of date, related tools, the Action center with its
  * open-item count, the Data room, Settings (theme and every other preference live in the
  * Settings sheet) and Help (articles, tours, shortcuts and "Report a problem").
+ *
+ * Phones (under 768px) keep one row beside the wordmark: Mode, Actions, Settings and a "More"
+ * menu holding Ask, Help, the Data room, the Developer page and the related tools.
  */
 import type { SVGProps } from 'react'
 
+import { HOME_LABEL } from '@/access/modes'
+import { ModeButton } from '@/access/ui/ModeButton'
 import { AskButton } from '@/ask/ui/AskButton'
-import { IconDatabase, IconEye, IconGear } from '@/components/icons'
+import { IconAsk } from '@/ask/ui/icons'
+import { openAsk } from '@/ask/ui/store'
+import {
+  IconCode,
+  IconDatabase,
+  IconExternal,
+  IconEye,
+  IconGear,
+  IconMore,
+  IconPencil,
+} from '@/components/icons'
 import { goTo } from '@/components/navigation'
-import { Button, cx, Tag } from '@/components/ui'
+import { Button, cx, Menu, type MenuItem, Tag, Tip } from '@/components/ui'
 import { useAnalytics } from '@/data/context'
 import { SAMPLE_COMPANY } from '@/data/sample'
-import { HOME_VIEW, openSettings, useCensus } from '@/data/store'
+import { homeView, openSettings, useCensus } from '@/data/store'
+import { openHelp } from '@/help/store'
 import { HelpButton } from '@/help/ui/HelpButton'
+import { IconHelp } from '@/help/ui/IconHelp'
 import { formatDate } from '@/lib/dates'
 import { fmt } from '@/lib/format'
 import { useOpenActionCount } from '@/views/actions'
 import { companyLine, uploadedCount } from './exportMeta'
 import { Mark } from './Mark'
 import { settingsTrigger } from './settings/SettingsSheet'
-import { ToolsMenu } from './ToolsMenu'
+import { ToolsMenu, useTools } from './ToolsMenu'
 
 export function Wordmark() {
   return (
@@ -38,7 +55,7 @@ export function Wordmark() {
 export function PayShownTag() {
   const setShowPay = useCensus((s) => s.setShowPay)
   return (
-    <span className="inline-flex h-5 shrink-0 items-center rounded-[3px] bg-sheet-3 text-[11px] font-medium whitespace-nowrap text-ink">
+    <span className="inline-flex h-5 shrink-0 items-center rounded-chip bg-sheet-3 text-label font-medium whitespace-nowrap text-ink">
       <span className="flex items-center gap-1 pr-1.5 pl-1">
         <IconEye className="size-3.5 shrink-0" />
         Pay amounts shown
@@ -47,7 +64,7 @@ export function PayShownTag() {
         type="button"
         onClick={() => setShowPay(false)}
         aria-label="Hide pay amounts"
-        className="h-full rounded-r-[3px] px-1.5 font-semibold shadow-[inset_1px_0_0_var(--rule-strong)] hover:bg-hover active:bg-press"
+        className="h-full rounded-r-chip px-1.5 font-semibold shadow-[inset_1px_0_0_var(--rule-strong)] hover:bg-hover active:bg-press"
       >
         Hide
       </button>
@@ -82,7 +99,7 @@ function IconActions(p: SVGProps<SVGSVGElement>) {
 export function ImmigrationShownTag() {
   const setShowImmigration = useCensus((s) => s.setShowImmigration)
   return (
-    <span className="inline-flex h-5 shrink-0 items-center rounded-[3px] bg-sheet-3 text-[11px] font-medium whitespace-nowrap text-ink">
+    <span className="inline-flex h-5 shrink-0 items-center rounded-chip bg-sheet-3 text-label font-medium whitespace-nowrap text-ink">
       <span className="flex items-center gap-1 pr-1.5 pl-1">
         <IconEye className="size-3.5 shrink-0" />
         Immigration details shown
@@ -91,7 +108,7 @@ export function ImmigrationShownTag() {
         type="button"
         onClick={() => setShowImmigration(false)}
         aria-label="Hide immigration details"
-        className="h-full rounded-r-[3px] px-1.5 font-semibold shadow-[inset_1px_0_0_var(--rule-strong)] hover:bg-hover active:bg-press"
+        className="h-full rounded-r-chip px-1.5 font-semibold shadow-[inset_1px_0_0_var(--rule-strong)] hover:bg-hover active:bg-press"
       >
         Hide
       </button>
@@ -99,76 +116,174 @@ export function ImmigrationShownTag() {
   )
 }
 
-/** The Action center button, with the number of open items when it is known. */
+/**
+ * The Action center button, with the number of open items when it is known. The count sits in a
+ * quiet chip (it never nears zero, so solid ink would read as an alarm); the critical count is in
+ * the tooltip.
+ */
 function ActionsButton() {
   const onActions = useCensus((s) => s.route.view === 'actions')
   const count = useOpenActionCount()
+  const critical = useOpenActionCount('critical')
+  const tip =
+    count == null
+      ? 'Open items from every view'
+      : `${fmt(count, 'int')} open ${count === 1 ? 'item' : 'items'}${critical ? `, ${fmt(critical, 'int')} critical` : ''}`
   return (
-    <Button
-      data-tour="masthead-actions"
-      variant={onActions ? 'secondary' : 'ghost'}
-      icon={<IconActions />}
-      aria-current={onActions ? 'page' : undefined}
-      aria-label={count == null ? 'Actions' : `Actions, ${fmt(count, 'int')} open`}
-      onClick={() => goTo('actions')}
-    >
-      <span className="hidden sm:inline">Actions</span>
-      {count != null && (
-        <span
-          className={cx(
-            'tnum min-w-5 rounded-[3px] px-1 text-center text-[12px] leading-5 font-semibold',
-            count > 0 ? 'bg-ink text-on-ink' : 'bg-sheet-3 text-ink-2',
-          )}
-        >
-          {fmt(count, 'int')}
-        </span>
-      )}
-    </Button>
+    <Tip content={tip} side="bottom">
+      <Button
+        data-tour="masthead-actions"
+        variant={onActions ? 'secondary' : 'ghost'}
+        icon={<IconActions />}
+        aria-current={onActions ? 'page' : undefined}
+        aria-label={
+          count == null
+            ? 'Actions'
+            : `Actions, ${fmt(count, 'int')} open${critical ? `, ${fmt(critical, 'int')} critical` : ''}`
+        }
+        onClick={() => goTo('actions')}
+      >
+        <span className="hidden sm:inline">Actions</span>
+        {count != null && (
+          <span className="tnum min-w-5 rounded-chip bg-sheet-3 px-1 text-center text-meta leading-5 font-semibold text-ink">
+            {fmt(count, 'int')}
+          </span>
+        )}
+      </Button>
+    </Tip>
   )
 }
+
+/**
+ * Phones only: the masthead buttons that do not fit beside the wordmark, in one menu. Each item
+ * does what its button does on wider screens; tool links open in a new tab.
+ */
+function MoreMenu({ uploaded, total }: { uploaded: number; total: number }) {
+  const { access } = useAnalytics()
+  const canEditTools = access.can('tools:edit')
+  const tools = useTools().filter((t) => access.can(`tools:${t.id}`) && !!t.url)
+  const items: MenuItem[] = [
+    { label: 'Ask Census', icon: <IconAsk />, hint: 'Alt+A', onSelect: () => openAsk() },
+    { label: 'Help', icon: <IconHelp />, hint: '?', onSelect: () => openHelp() },
+  ]
+  if (access.can('masthead:data'))
+    items.push({
+      label: 'Data room',
+      icon: <IconDatabase />,
+      hint: `${uploaded} of ${total} uploaded`,
+      onSelect: () => goTo('data'),
+    })
+  if (access.can('masthead:dev'))
+    items.push({ label: 'Developer', icon: <IconCode />, onSelect: () => goTo('dev') })
+  if (tools.length || canEditTools) {
+    items.push({ separator: true }, { heading: 'Related tools' })
+    for (const t of tools) {
+      const url = t.url
+      if (!url) continue
+      items.push({
+        label: t.label,
+        icon: <IconExternal />,
+        onSelect: () => {
+          window.open(url, '_blank', 'noopener,noreferrer')
+        },
+      })
+    }
+    if (canEditTools)
+      items.push({ label: 'Edit links', icon: <IconPencil />, onSelect: () => openSettings('tools') })
+  }
+  return (
+    <Menu
+      width={248}
+      items={items}
+      trigger={
+        <Button
+          data-tour="masthead-more"
+          variant="ghost"
+          icon={<IconMore />}
+          aria-label="More"
+          className="md:hidden"
+        />
+      }
+    />
+  )
+}
+
+/** Shown from 768px; on phones the item is in the More menu. A wrapper keeps any sheet it mounts. */
+const WIDE_ONLY = 'contents max-md:[&>button]:hidden'
 
 export function Masthead() {
   const ctx = useAnalytics()
   const onDataRoom = useCensus((s) => s.route.view === 'data')
-  const showImmigration = useCensus((s) => s.showImmigration)
+  const onDev = useCensus((s) => s.route.view === 'dev')
+  // The mode shapes the band (docs/ROLES.md, 3.1): no Data room or session tags in Manager mode,
+  // the Developer button in Developer mode only.
+  const { access } = ctx
+  const showImmigration = useCensus((s) => s.showImmigration) && access.can('masthead:pay-tags')
   const settingsOpen = useCensus((s) => s.settingsOpen.open)
   const { uploaded, total } = uploadedCount(ctx.sources)
   return (
-    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 pt-3 pb-2">
+    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 pt-3 pb-2 md:gap-x-4">
       <button
         type="button"
-        onClick={() => goTo(HOME_VIEW)}
-        aria-label="Census, go to the scorecard"
+        onClick={() => goTo(homeView())}
+        aria-label={`Census, go to ${HOME_LABEL[access.mode]}`}
         className="-ml-1 rounded-control px-1 py-0.5 hover:bg-hover"
       >
         <Wordmark />
       </button>
       <div className="order-last flex w-full min-w-0 items-center gap-2 sm:order-none sm:w-auto sm:flex-1">
         <span aria-hidden="true" className="hidden h-4 w-px bg-rule-strong sm:block" />
-        <span className="truncate text-[13px] text-ink-2">{companyLine(ctx.isSample, SAMPLE_COMPANY)}</span>
+        <span className="truncate text-small text-ink-2">{companyLine(ctx.isSample, SAMPLE_COMPANY)}</span>
         {ctx.isSample && <Tag>Sample data</Tag>}
-        {ctx.showPay && <PayShownTag />}
+        {ctx.showPay && access.can('masthead:pay-tags') && <PayShownTag />}
         {showImmigration && <ImmigrationShownTag />}
       </div>
-      {/* Wraps onto a second row when the buttons do not fit (a phone with large text), so the
-          page never scrolls sideways. */}
-      <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-1">
-        <span className="mr-2 hidden text-[12px] text-muted md:inline">As of {formatDate(ctx.asOf)}</span>
-        <ToolsMenu />
+      {/* Phones keep these on the wordmark's row (the rest are in More). Wraps onto a second row
+          only when even those do not fit (very large text), so the page never scrolls sideways. */}
+      <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-1 max-md:-mr-1">
+        <span className="mr-2 hidden text-meta text-muted md:inline">As of {formatDate(ctx.asOf)}</span>
+        <ModeButton />
+        <span className={WIDE_ONLY}>
+          <ToolsMenu />
+        </span>
         <ActionsButton />
-        <Button
-          data-tour="masthead-data"
-          variant={onDataRoom ? 'secondary' : 'ghost'}
-          icon={<IconDatabase />}
-          aria-current={onDataRoom ? 'page' : undefined}
-          aria-label={`Data room, ${uploaded} of ${total} uploaded`}
-          onClick={() => goTo('data')}
-        >
-          <span className="hidden sm:inline">Data room</span>
-          <span className={cx('hidden font-normal sm:inline', onDataRoom ? 'text-ink-2' : 'text-muted')}>
-            {uploaded} of {total} uploaded
-          </span>
-        </Button>
+        {access.can('masthead:data') && (
+          <Button
+            className="max-md:hidden"
+            data-tour="masthead-data"
+            variant={onDataRoom ? 'secondary' : 'ghost'}
+            icon={<IconDatabase />}
+            aria-current={onDataRoom ? 'page' : undefined}
+            aria-label={`Data room, ${uploaded} of ${total} uploaded`}
+            onClick={() => goTo('data')}
+          >
+            <span className="hidden sm:inline">Data room</span>
+            {/* With the Developer button too, the count waits for 1536px so the company name
+                keeps its room (the label and the Data room still say it). */}
+            <span
+              className={cx(
+                'hidden font-normal',
+                access.can('masthead:dev') ? '2xl:inline' : 'sm:inline',
+                onDataRoom ? 'text-ink-2' : 'text-muted',
+              )}
+            >
+              {uploaded} of {total} uploaded
+            </span>
+          </Button>
+        )}
+        {access.can('masthead:dev') && (
+          <Button
+            className="max-md:hidden"
+            data-tour="masthead-dev"
+            variant={onDev ? 'secondary' : 'ghost'}
+            icon={<IconCode />}
+            aria-current={onDev ? 'page' : undefined}
+            aria-label="Developer"
+            onClick={() => goTo('dev')}
+          >
+            <span className="hidden sm:inline">Developer</span>
+          </Button>
+        )}
         <Button
           ref={settingsTrigger}
           data-tour="masthead-settings"
@@ -181,8 +296,11 @@ export function Masthead() {
         >
           <span className="hidden sm:inline">Settings</span>
         </Button>
-        <AskButton />
-        <HelpButton />
+        <span className={WIDE_ONLY}>
+          <AskButton />
+          <HelpButton />
+        </span>
+        <MoreMenu uploaded={uploaded} total={total} />
       </div>
     </div>
   )

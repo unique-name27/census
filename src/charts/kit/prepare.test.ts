@@ -10,6 +10,7 @@ import {
   parseTime,
   quarterLabel,
   stackSegments,
+  tickHasYear,
   timeTicks,
 } from './prepare'
 import { extent, numericAxis } from './scale'
@@ -219,6 +220,18 @@ describe('BarList glyph tone', () => {
 describe('time ticks', () => {
   const utc = (s: string) => Date.parse(`${s}T00:00:00Z`)
   const measure = (l: string) => l.length * 6
+
+  it('gives a month tick its year wherever the year changes, so no two ticks read the same', () => {
+    // 24 months thinned to three ticks: "Oct '24, Sep, Sep" before; now every year shows.
+    const ticks = [utc('2024-10-31'), utc('2025-09-30'), utc('2026-09-30')]
+    expect(ticks.map((_, i) => tickHasYear(ticks, i))).toEqual([true, true, true])
+    const same = [utc('2026-01-31'), utc('2026-04-30'), utc('2026-07-31')]
+    expect(same.map((_, i) => tickHasYear(same, i))).toEqual([true, false, false])
+    // Thinned monthly ticks of two years label each year's first tick.
+    const months = Array.from({ length: 24 }, (_, i) => Date.UTC(2024, 9 + i, 1))
+    const labels = timeTicks(months, 'month', 300, measure).map((k) => k.label)
+    expect(new Set(labels).size).toBe(labels.length)
+  })
 
   it('labels quarters as Q3 and a two-digit year', () => {
     expect(quarterLabel(utc('2026-09-30'))).toBe("Q3 '26")

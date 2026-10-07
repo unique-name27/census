@@ -66,7 +66,7 @@ export function ListsSection({ model }: { model: MappingModel }) {
     >
       <UnlistedPanel model={model} />
       <div className="col-span-full mt-4 flex flex-wrap items-center gap-x-4 gap-y-2">
-        <h3 className="cut-head text-[15px] font-semibold text-ink">Lists by area</h3>
+        <h3 className="cut-head text-title font-semibold text-ink">Lists by area</h3>
         <span className="hidden lg:inline-flex">
           <Segmented
             label="Category group"

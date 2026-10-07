@@ -4,6 +4,7 @@
  * the tiles, the cards' "6 direct · 41 org", the table cells and the detail panel's team figures.
  */
 import { useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { notInOrg } from '@/access/copy'
 import { DataTable, Figure } from '@/charts'
 import { Button, Grid, IconSlides, KpiStrip, Switch, toast } from '@/components'
 import { useAnalytics } from '@/data/context'
@@ -51,6 +52,7 @@ import { ExportSvg } from './ExportSvg'
 import { PersonSearch } from './PersonSearch'
 import { SlidesDialog } from './SlidesDialog'
 import { useChartPrefs } from './state'
+import { TeamShape } from './TeamShape'
 import { flagColumns, personColumns, TableToggle } from './tables'
 import { useExpansion } from './useExpansion'
 import { useOrgModel } from './useOrgModel'
@@ -138,6 +140,12 @@ export function ChartTab() {
     [tree, model.dims, scopeIds, orgIds, flags],
   )
 
+  // Manager mode: search finds people inside the org only (docs/ROLES.md, 4.5).
+  const lockIds = ctx.access.lock?.orgIds
+  const searchable = useMemo(
+    () => (lockIds ? new Map([...tree.people].filter(([id]) => lockIds.has(id))) : tree.people),
+    [tree, lockIds],
+  )
   const rootName = rootId === COMPANY_ROOT ? 'Whole company' : (tree.people.get(rootId)?.name ?? '')
   const scope: DrillScope = { label: scopeLabel(tree, rootId), asOf: ctx.asOf, filtered: model.dims }
   /**
@@ -174,6 +182,11 @@ export function ChartTab() {
             ? `They start on ${formatDate(e.hireDate)}. The chart shows people active on ${formatDate(ctx.asOf)}.`
             : `The chart shows people active on ${formatDate(ctx.asOf)}.`,
       })
+      return
+    }
+    // Manager mode keeps the chart on the manager's org: someone outside it is not on it.
+    if (ctx.access.lock && !ctx.access.lock.orgIds.has(id)) {
+      toast(notInOrg(ctx.access.lock.managerName || 'the manager'))
       return
     }
     if (!isWithin(tree, id, model.rootId)) {
@@ -282,7 +295,7 @@ export function ChartTab() {
           columns={personColumns(tree, chartScope)}
           metric={FIGURE_METRIC['org-chart']}
           definitions={chartDefinitions(ctx.metrics, model.rules)}
-          note={`${plural(rows.length, 'person', 'people')} shown of ${fmt(people, 'int')} in this org.${dimNote} Drag to pan, or click the chart and scroll. Ctrl and scroll, or pinch, to zoom. Arrow keys move through the tree. Click a count on a card to list those people.`}
+          note={`${plural(rows.length, 'person', 'people')} shown of ${fmt(people, 'int')} in this org.${dimNote}`}
           tableToggle={false}
           uses={chartFields}
           actions={
@@ -308,7 +321,7 @@ export function ChartTab() {
             <div hidden={showTable}>
               <div data-tour="org-controls" className="flex flex-wrap items-center gap-x-3 gap-y-2">
                 <PersonSearch
-                  people={tree.people}
+                  people={searchable}
                   orgSize={(id) => tree.total.get(id) ?? 0}
                   onPick={jump}
                   slashKey
@@ -337,6 +350,7 @@ export function ChartTab() {
                   tree={tree}
                   rootId={rootId}
                   globalRootId={model.rootId}
+                  floorId={ctx.access.lock?.managerId}
                   onFocus={(id) => focus(id)}
                   onWiden={(id) => {
                     setFocusId(null)
@@ -345,7 +359,7 @@ export function ChartTab() {
                 />
                 <ColorLegend scheme={scheme} className="ml-auto" />
               </div>
-              {heldBack.length > 0 && <p className="mt-2 text-[12px] text-muted">{heldBack.join(' ')}</p>}
+              {heldBack.length > 0 && <p className="mt-2 text-meta text-muted">{heldBack.join(' ')}</p>}
 
               <div className="mt-3 flex flex-col gap-3 lg:flex-row">
                 <Canvas
@@ -367,7 +381,9 @@ export function ChartTab() {
                   countDrill={countDrill}
                   reqDrill={reqDrill}
                   label={`Org chart for ${rootName}`}
-                  className="h-[60vh] min-h-[360px] min-w-0 flex-1 lg:h-[min(74vh,780px)]"
+                  // As tall as the tree at its opening zoom, at least 360px and at most 70% of the window.
+                  style={{ height: `clamp(360px, ${Math.ceil(layout.height + 64)}px, 70vh)` }}
+                  className="min-w-0 flex-1"
                 />
                 {selected && (
                   <div
@@ -404,7 +420,28 @@ export function ChartTab() {
             />
           </div>
         </Figure>
+      </Grid>
 
+      <TeamShape
+        tree={tree}
+        rootId={rootId}
+        matcher={matcher}
+        reqs={reqs}
+        reqRecords={model.reqRecords}
+        rules={model.rules}
+        lineage={lineage}
+        scope={scope}
+        onShowLayer={(layer) => {
+          // Levels count the chart's root as the first; the whole company's root sits above layer 1.
+          const levels = layer + (rootId === COMPANY_ROOT ? 1 : 0)
+          expanded.setLevels(levels <= 2 ? '2' : levels <= 4 ? (String(levels) as '3' | '4') : 'all')
+          setShowTable(false)
+          chartRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        }}
+        onShowPerson={(id) => jump(id, { scroll: true })}
+      />
+
+      <Grid>
         <Figure
           id="org-flags"
           title="Flags in this org"
@@ -423,9 +460,7 @@ export function ChartTab() {
           }}
           note={
             [
-              flagTable.length
-                ? `${plural(flaggedPeople, 'person', 'people')} with a structure flag. Click a row to find the person on the chart, or a count to list the people.`
-                : null,
+              flagTable.length ? `${plural(flaggedPeople, 'person', 'people')} with a structure flag.` : null,
               gates.jobChanges.reason
                 ? `New-manager flags use hire dates: ${gates.jobChanges.reason}.`
                 : null,

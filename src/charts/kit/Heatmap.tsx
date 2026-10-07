@@ -8,10 +8,18 @@ import * as Plot from '@observablehq/plot'
 import { DASH, type Format, fmt } from '@/lib/format'
 import { divergingScale, inkOn, seqStops, sequentialScale } from '../core/color'
 import type { LegendSpec } from '../core/legend'
-import { HOVER_CLASS, labelsMark, scalePos } from '../core/marks'
+import { bandLabel, bandLabelLines, HOVER_CLASS, labelsMark, scalePos } from '../core/marks'
 import { maxTextWidth, textWidth, truncateText } from '../core/measure'
 import type { TipContent } from '../core/tooltip'
-import { axisX, housePlot, type PlotBuildContext, PlotChart } from '../plot'
+import {
+  axisX,
+  housePlot,
+  type PlotBuildContext,
+  PlotChart,
+  type PlotElement,
+  plotBand,
+  plotPos,
+} from '../plot'
 import type { ChartTheme } from '../theme'
 import { useChartTheme } from '../theme'
 import { extent } from './scale'
@@ -34,6 +42,13 @@ export interface HeatmapProps<T extends object> extends ChartBaseProps<T> {
   mid?: number
   /** Group size shown in the tooltip ("n = 42"). */
   n?: Key<T>
+  /** A second tooltip line for a cell, e.g. "8 started of 12 planned". */
+  detail?: (d: T) => string | null | undefined
+  /**
+   * The text printed in a cell when it is not the colored value, e.g. a count in a grid colored by
+   * row share. The tooltip keeps both.
+   */
+  cellText?: (d: T) => string
   rowHeight?: number
 }
 
@@ -70,6 +85,8 @@ export function Heatmap<T extends object>({
   domain,
   mid = 0,
   n,
+  detail,
+  cellText,
   rowHeight = 30,
   onSelect,
   selectable,
@@ -97,15 +114,20 @@ export function Heatmap<T extends object>({
     mid,
     domain,
   )
-  const colorFor = (t: ChartTheme) =>
-    scheme === 'diverging' ? divergingScale(t, lo, mid, hi) : sequentialScale(t, lo, hi)
+  // Cells larger than 48 x 48px stop the ramp at --seq-600, so one big cell never outweighs the page.
+  const BIG = 48
+  const capped = (cellW: number) => cellW > BIG && rowHeight > BIG
+  const colorFor = (t: ChartTheme, cellW = 0) =>
+    scheme === 'diverging'
+      ? divergingScale(t, lo, mid, hi)
+      : sequentialScale(t, lo, hi, capped(cellW) ? 600 : 700)
 
   const theme = useChartTheme()
   // A ramp with nothing on it would label made-up end values: no legend when every cell is hidden.
   const legend: LegendSpec | null = cells.some((c) => c.value != null)
     ? {
         kind: 'ramp',
-        colors: scheme === 'diverging' ? theme.div : seqStops(theme),
+        colors: scheme === 'diverging' ? theme.div : seqStops(theme, rowHeight > BIG ? 600 : 700),
         labels:
           scheme === 'diverging'
             ? [fmt(lo, format), fmt(mid, format), fmt(hi, format)]
@@ -116,10 +138,10 @@ export function Heatmap<T extends object>({
 
   const build = ({ width, theme: t }: PlotBuildContext) => {
     if (!cells.length) return null
-    const color = colorFor(t)
     const labelMax = Math.max(60, width * 0.3)
-    const yShown = ys.map((k) => truncateText(k, labelMax, 12))
-    const marginLeft = Math.ceil(maxTextWidth(yShown, 12)) + 12
+    // A row label that would be cut breaks onto two lines instead (rows of 26px or more).
+    const band = bandLabelLines(ys, labelMax, rowHeight)
+    const marginLeft = Math.ceil(band.width) + 12
     const cols = Math.max(1, xs.length)
     const xWidest = maxTextWidth(xs, 11)
     const rotate = xWidest > (width - marginLeft - 4) / cols - 6
@@ -137,6 +159,7 @@ export function Heatmap<T extends object>({
       }
     }
     const cellW = (width - marginLeft - marginRight) / cols
+    const color = colorFor(t, cellW)
     const marginTop = rotate ? Math.ceil(Math.sin(rad) * xLabelW + 18) : marginTopFlat
     const height = marginTop + ys.length * rowHeight + 2
 
@@ -159,13 +182,9 @@ export function Heatmap<T extends object>({
       ),
       labelsMark(
         (scales, dims) =>
-          ys.map((k, i) => ({
-            x: dims.marginLeft - 10,
-            y: scalePos(scales, 'y', k),
-            anchor: 'end' as const,
-            parts: [{ text: yShown[i], color: t.ink2, size: 12 }],
-            title: yShown[i] === k ? undefined : k,
-          })),
+          ys.flatMap((k, i) =>
+            bandLabel(k, band.lines[i], dims.marginLeft - 10, scalePos(scales, 'y', k), t.ink2),
+          ),
         'row labels',
       ),
     ]
@@ -174,7 +193,7 @@ export function Heatmap<T extends object>({
         labelsMark(
           (scales) =>
             cells.flatMap((c) => {
-              const text = c.value == null ? DASH : fmt(c.value, format)
+              const text = c.value == null ? DASH : (cellText?.(c.datum) ?? fmt(c.value, format))
               if (textWidth(text, 11, 500) > cellW - 8) return []
               return [
                 {
@@ -191,11 +210,14 @@ export function Heatmap<T extends object>({
         ),
       )
     }
+    // Rotated labels closer than 18px apart (12 months on a phone) label every other column; the
+    // tooltip names each one.
+    const every = rotate && cellW * Math.sin(rad) < 18 ? 2 : 1
     marks.push(
       axisX(t, {
         anchor: 'top',
         tickRotate: rotate ? -40 : 0,
-        tickFormat: (k: string) => (rotate ? truncateText(k, xLabelW, 11) : k),
+        tickFormat: (k: string) => (xs.indexOf(k) % every ? '' : rotate ? truncateText(k, xLabelW, 11) : k),
       }),
     )
     return housePlot(
@@ -215,15 +237,47 @@ export function Heatmap<T extends object>({
 
   // A hidden cell never opens; the view's gate decides the rest.
   const open = gateOf<Cell<T>>((c) => c.value != null, selectable ? (c) => selectable(c.datum) : undefined)
-  const tip = (c: Cell<T>): TipContent => ({
-    title: `${c.y} · ${c.x}`,
-    rows: [{ value: fmt(c.value, format), label: c.n != null ? `n = ${fmt(c.n, 'int')}` : undefined }],
-    note:
-      c.value == null ? HIDDEN_NOTE : onSelect && !open(c) ? (lockedNote?.(c.datum) ?? undefined) : undefined,
-  })
+  const tip = (c: Cell<T>): TipContent => {
+    const more = c.value != null ? detail?.(c.datum) : null
+    return {
+      title: `${c.y} · ${c.x}`,
+      rows: [
+        { value: fmt(c.value, format), label: c.n != null ? `n = ${fmt(c.n, 'int')}` : undefined },
+        ...(more ? [{ value: more, strong: false }] : []),
+      ],
+      // Read aloud value first: "3 Meets · 4 Exceeds. 23.4%, n = 117".
+      spoken: `${c.y} · ${c.x}. ${fmt(c.value, format)}${c.n != null ? `, n = ${fmt(c.n, 'int')}` : ''}${more ? `. ${more}` : ''}`,
+      note:
+        c.value == null
+          ? HIDDEN_NOTE
+          : onSelect && !open(c)
+            ? (lockedNote?.(c.datum) ?? undefined)
+            : undefined,
+    }
+  }
+
+  // Keyboard: row by row (Up and Down between rows), left to right within a row.
+  const keyPoints = (plot: PlotElement) => {
+    const w = plotBand(plot, 'x')
+    const h = plotBand(plot, 'y')
+    return ys.flatMap((yk) =>
+      cells
+        .filter((c) => c.y === yk)
+        .sort((a, b) => xs.indexOf(a.x) - xs.indexOf(b.x))
+        .map((c) => ({
+          datum: c,
+          x: plotPos(plot, 'x', c.x),
+          y: plotPos(plot, 'y', c.y),
+          w: w - 2,
+          h: h - 2,
+          group: yk,
+        })),
+    )
+  }
 
   return (
     <PlotChart<Cell<T>>
+      keyPoints={keyPoints}
       build={build}
       height={marginTopFlat + ys.length * rowHeight + 2}
       legend={legend}

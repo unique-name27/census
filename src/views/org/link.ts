@@ -3,12 +3,21 @@
  * org chart"): `openInOrgChart('E10599')`. The chart expands the chain, selects the person and
  * pans to them.
  */
+import { liveAccess } from '@/access/connect'
+import { notInOrg } from '@/access/copy'
 import { goTo } from '@/components/navigation'
+import { toast } from '@/components/toast'
 
 const KEY = 'census:org:jump'
 export const ORG_JUMP_EVENT = 'census:org-jump'
 
 export function openInOrgChart(employeeId: string): void {
+  // Manager mode: the chart shows the manager's org only, so someone outside it does not open.
+  const { lock } = liveAccess()
+  if (lock && !lock.orgIds.has(employeeId)) {
+    toast(notInOrg(lock.managerName || 'the manager'))
+    return
+  }
   try {
     sessionStorage.setItem(KEY, employeeId)
   } catch {

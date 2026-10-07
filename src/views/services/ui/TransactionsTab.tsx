@@ -17,6 +17,7 @@ import { isOther } from '../engine/util'
 import { FIGURE_METRIC } from '../metrics'
 import { finalPayCells, onTimeCells, retroCells } from './drill'
 import { asOfNote, count, NeedData, NO_TX, period, rateTone, titled, useProcessHref } from './shared'
+import { TxOnTimeHeatmapFigure } from './trends'
 
 const TX_DETAIL_COLUMNS = [
   { key: 'transactionId', label: 'Transaction ID' },
@@ -129,7 +130,7 @@ function FinalPayRules({ rows }: { rows: readonly FinalPayRow[] }) {
   return (
     <div className="min-w-0 lg:border-l lg:border-rule lg:pl-4">
       <h4 className="eyebrow mb-1.5">Deadline rule</h4>
-      <dl className="m-0 grid grid-cols-[minmax(6rem,auto)_1fr] gap-x-3 text-[12px] leading-snug">
+      <dl className="m-0 grid grid-cols-[minmax(6rem,auto)_1fr] gap-x-3 text-meta leading-snug">
         {named.map((r) => (
           <div key={r.jurisdiction} className="contents">
             <dt className="border-t border-rule py-1.5 font-semibold text-ink">{r.name}</dt>
@@ -220,6 +221,7 @@ export function TransactionsTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsCo
         title="Timeliness"
         dek="Whether HR transactions were processed by the deadline their Atlas process sets, and how early or late they landed."
       >
+        <TxOnTimeHeatmapFigure m={m} ctx={ctx} />
         <TypeOnTimeFigure id="services-tx-on-time-by-type" m={m} ctx={ctx} span={6} />
         <Figure
           id="services-tx-days-early-late"

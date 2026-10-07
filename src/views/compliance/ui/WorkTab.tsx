@@ -23,6 +23,7 @@ import {
 } from '../engine/wording'
 import type { ExpiryRow, MixRow } from '../engine/work'
 import { M } from '../metrics'
+import { I9DaysFigure, RunwayFigure } from './charts'
 import { i9SiteCells } from './drill'
 import { defs, NeedData, NO_RTW, STATUS_SEVERITY } from './shared'
 
@@ -113,6 +114,7 @@ export function WorkTab({ m, ctx }: { m: ComplianceView; ctx: AnalyticsContext }
         title="Expiring authorizations"
         dek={`Everyone whose work authorization ends in the next ${daysText(cfg.horizonDays)}, with where reverification stands. Reverification should start ${daysText(cfg.leadDays)} before the expiry date. Authorization types show only while "Show immigration details" is on.`}
       >
+        <RunwayFigure m={m} ctx={ctx} />
         <Figure
           id="compliance-expiring-authorizations"
           uses={showType ? [...USES.reverification, 'rightToWork.authorizationType'] : USES.reverification}
@@ -154,7 +156,7 @@ export function WorkTab({ m, ctx }: { m: ComplianceView; ctx: AnalyticsContext }
           id="compliance-authorization-mix"
           uses={mixUses}
           metric={M.mix}
-          span={6}
+          span={4}
           title="Authorization mix"
           subtitle={`Active employees by broad authorization category, as of the as-of date`}
           data={w.mix}
@@ -191,7 +193,7 @@ export function WorkTab({ m, ctx }: { m: ComplianceView; ctx: AnalyticsContext }
           id="compliance-i9-by-site"
           uses={USES.i9}
           metric={M.i9Section2}
-          span={6}
+          span={4}
           title="I-9 Section 2 on time by site"
           subtitle={`Share of US employee starts in the ${periodWords(ctx)} with Section 2 done within ${businessDaysText(cfg.i9Days)} of the start`}
           data={m.i9.bySite}
@@ -237,6 +239,7 @@ export function WorkTab({ m, ctx }: { m: ComplianceView; ctx: AnalyticsContext }
             onSelect={(d) => drill(siteDrill(d))}
           />
         </Figure>
+        <I9DaysFigure m={m} ctx={ctx} />
       </Section>
     </>
   )

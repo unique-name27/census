@@ -84,7 +84,7 @@ export function MoveDialog({
               { value: 'team', label: 'With their org' },
             ]}
           />
-          <p className="-mt-2 text-[12px] text-muted">
+          <p className="-mt-2 text-meta text-muted">
             {mode === 'person'
               ? `${e.name}'s direct reports stay behind and roll up to their current manager.`
               : `Everyone in ${e.name}'s org moves with them.`}

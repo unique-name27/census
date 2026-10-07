@@ -70,9 +70,16 @@ export function findMetrics(rt: ToolRuntime, raw: unknown): ToolOutput {
   // On a tie, a metric with a target in force (a key figure judged on screen) before a finding
   // or a rule, then the shorter name.
   const rank = (def: MetricDef) => (m.target(def.id) ? 0 : def.kind ? 2 : 1)
+  // Only the metrics the mode shows (Manager mode: its views, after the hide lists).
+  const access = rt.base.access
   const scored = m.list
     .map((def, i) => ({ def, i, s: score(def, terms, query), r: rank(def) }))
-    .filter((x) => x.s > 0 && (!view || (x.def.views as readonly string[]).includes(view)))
+    .filter(
+      (x) =>
+        x.s > 0 &&
+        (!view || (x.def.views as readonly string[]).includes(view)) &&
+        (!access || access.can(`metric:${x.def.id}`)),
+    )
     .sort((a, b) => b.s - a.s || a.r - b.r || a.def.name.length - b.def.name.length || a.i - b.i)
   const list = scored.slice(0, MAX_METRICS).map(({ def }) => {
     const target = m.target(def.id)

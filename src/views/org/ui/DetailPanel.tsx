@@ -7,6 +7,8 @@
  * the metric dictionary; the exits window and the anonymity minimum are the settings in force.
  */
 import { type ReactNode, useState } from 'react'
+import { personInLock } from '@/access/records'
+import { S } from '@/access/surfaces'
 import { Button, goTo, IconButton, IconChevronRight, IconClose, IconExternal, StatusPill } from '@/components'
 import { useAnalytics } from '@/data/context'
 import type { Employee, Requisition } from '@/data/schema'
@@ -55,7 +57,10 @@ export interface DetailPanelProps {
 export function DetailPanel(p: DetailPanelProps) {
   const [allReports, setAllReports] = useState(false)
   const setFilters = useCensus((s) => s.setFilters)
-  const { metrics } = useAnalytics()
+  const { metrics, access } = useAnalytics()
+  // Manager mode: names above the manager read as plain text, and there is no exit what-if.
+  const opens = (id: string) => personInLock(id, access)
+  const canExit = access.can(S.org('simulate-exit'))
   const e = p.tree.people.get(p.id)
   if (!e) return null
   const t = p.tree
@@ -117,12 +122,12 @@ export function DetailPanel(p: DetailPanelProps) {
   }
 
   return (
-    <aside aria-label={`Details for ${e.name}`} className="flex min-h-0 flex-col text-[13px]">
+    <aside aria-label={`Details for ${e.name}`} className="flex min-h-0 flex-col text-small">
       <header className="flex items-start gap-2 border-b border-rule px-4 pt-3 pb-3">
         <div className="min-w-0 flex-1">
-          <h3 className="cut-head text-[16px] leading-tight font-semibold text-ink">{e.name}</h3>
-          <p className="mt-0.5 text-[13px] leading-snug text-ink-2">{e.jobTitle}</p>
-          <p className="mt-1 font-mono text-[12px] text-muted">{e.employeeId}</p>
+          <h3 className="cut-head text-title leading-tight font-semibold text-ink">{e.name}</h3>
+          <p className="mt-0.5 text-small leading-snug text-ink-2">{e.jobTitle}</p>
+          <p className="mt-1 font-mono text-meta text-muted">{e.employeeId}</p>
         </div>
         <Button size="sm" variant="ghost" onClick={() => openPerson(p.id)} className="-mt-0.5 shrink-0">
           Person card
@@ -138,13 +143,13 @@ export function DetailPanel(p: DetailPanelProps) {
             {flags.map((f) => (
               <li key={f.kind} className="flex flex-col items-start gap-1">
                 <StatusPill severity={f.severity} label={f.label} />
-                <span className="text-[12px] leading-snug text-ink-2">{f.detail}</span>
+                <span className="text-meta leading-snug text-ink-2">{f.detail}</span>
               </li>
             ))}
           </ul>
         )}
 
-        <dl className="mt-3 grid grid-cols-[minmax(0,7.5rem)_1fr] gap-x-3 gap-y-1.5 text-[13px]">
+        <dl className="mt-3 grid grid-cols-[minmax(0,7.5rem)_1fr] gap-x-3 gap-y-1.5 text-small">
           <Fact term="Level" value={e.level ?? DASH} />
           <Fact term="Department" value={e.department} />
           <Fact term="Business unit" value={e.businessUnit} />
@@ -157,7 +162,7 @@ export function DetailPanel(p: DetailPanelProps) {
           {e.hrbp && <Fact term="HR business partner" value={e.hrbp} />}
           <dt className="text-muted">Manager</dt>
           <dd className="min-w-0">
-            {manager ? (
+            {manager && opens(manager.employeeId) ? (
               <button
                 type="button"
                 className="text-left text-link hover:underline"
@@ -165,6 +170,8 @@ export function DetailPanel(p: DetailPanelProps) {
               >
                 {manager.name}
               </button>
+            ) : manager ? (
+              <span className="text-ink">{manager.name}</span>
             ) : (
               <span className="text-ink-2">Top of the chart</span>
             )}
@@ -176,11 +183,16 @@ export function DetailPanel(p: DetailPanelProps) {
                 {rating.rating} {RATING_LABELS[rating.rating] ?? ''}
                 <span className="text-muted"> · {rating.cycle}</span>
               </dd>
-              <dt className="text-muted">Potential</dt>
-              <dd>
-                {rating.potential ?? DASH}
-                {rating.potentialCycle && <span className="text-muted"> · {rating.potentialCycle}</span>}
-              </dd>
+              {/* Manager mode: the manager's own potential stays with HR (docs/ROLES.md, 4.5). */}
+              {access.lock?.managerId !== p.id && (
+                <>
+                  <dt className="text-muted">Potential</dt>
+                  <dd>
+                    {rating.potential ?? DASH}
+                    {rating.potentialCycle && <span className="text-muted"> · {rating.potentialCycle}</span>}
+                  </dd>
+                </>
+              )}
             </>
           )}
         </dl>
@@ -188,12 +200,20 @@ export function DetailPanel(p: DetailPanelProps) {
         {chain.length > 0 && (
           <section className="mt-4">
             <h4 className="eyebrow mb-1.5">Reporting line</h4>
-            <ol className="flex flex-wrap items-center gap-x-1 gap-y-0.5 text-[12px]">
+            <ol className="flex flex-wrap items-center gap-x-1 gap-y-0.5 text-meta">
               {chain.map((c, i) => (
                 <li key={c.id} className="flex items-center gap-1">
-                  <button type="button" className="text-link hover:underline" onClick={() => p.onJump(c.id)}>
-                    {c.name}
-                  </button>
+                  {opens(c.id) ? (
+                    <button
+                      type="button"
+                      className="text-link hover:underline"
+                      onClick={() => p.onJump(c.id)}
+                    >
+                      {c.name}
+                    </button>
+                  ) : (
+                    <span className="text-ink-2">{c.name}</span>
+                  )}
                   {i < chain.length - 1 && <IconChevronRight className="size-3 text-muted" />}
                 </li>
               ))}
@@ -275,16 +295,16 @@ export function DetailPanel(p: DetailPanelProps) {
                     <button
                       type="button"
                       onClick={() => p.onJump(id)}
-                      className="min-w-0 flex-1 rounded-[3px] px-1 py-1.5 text-left hover:bg-hover"
+                      className="min-w-0 flex-1 rounded-chip px-1 py-1.5 text-left hover:bg-hover"
                     >
                       <span className="block truncate text-ink">{r.name}</span>
-                      <span className="block truncate text-[12px] text-muted">{r.jobTitle}</span>
+                      <span className="block truncate text-meta text-muted">{r.jobTitle}</span>
                     </button>
                     {n > 0 && (
                       <Drill
                         spec={() => orgDrill(t, id, sc)}
                         label={`Show the ${n} people in ${r.name}'s org`}
-                        className="tnum shrink-0 text-[12px] text-muted"
+                        className="tnum shrink-0 text-meta text-muted"
                       >
                         {fmt(n, 'int')} org
                       </Drill>
@@ -312,7 +332,7 @@ export function DetailPanel(p: DetailPanelProps) {
               Focus on this org
             </Button>
           )}
-          {managerId && (
+          {managerId && canExit && (
             <Button size="sm" onClick={() => p.onExit(p.id)}>
               Simulate exit
             </Button>
@@ -327,9 +347,7 @@ export function DetailPanel(p: DetailPanelProps) {
         {isManager && p.mode === 'chart' && (
           <section className="mt-4 border-t border-rule pt-3">
             <h4 className="eyebrow mb-1">See this org elsewhere</h4>
-            <p className="mb-1.5 text-[12px] text-muted">
-              Sets the leader filter to {e.name} for every view.
-            </p>
+            <p className="mb-1.5 text-meta text-muted">Sets the leader filter to {e.name} for every view.</p>
             <div className="flex flex-col items-start gap-0.5">
               <LinkButton onClick={() => openIn('hrbp')}>Open in People stats</LinkButton>
               <LinkButton onClick={() => openIn('talent')}>Open in Talent</LinkButton>
@@ -337,7 +355,7 @@ export function DetailPanel(p: DetailPanelProps) {
           </section>
         )}
 
-        <p className="mt-4 text-[12px] text-muted">
+        <p className="mt-4 text-meta text-muted">
           {plural(directs.length, 'direct report')} · as of {formatDate(asOf)}
         </p>
       </div>
@@ -376,8 +394,8 @@ function Stat({
   }
   return (
     <div className="bg-sheet px-2.5 py-2" title={title}>
-      <dt className="text-[11px] text-muted">{label}</dt>
-      <dd className="cut-head mt-0.5 text-[16px] font-semibold text-ink">{shown}</dd>
+      <dt className="text-label text-muted">{label}</dt>
+      <dd className="cut-head mt-0.5 text-title font-semibold text-ink">{shown}</dd>
     </div>
   )
 }
@@ -387,7 +405,7 @@ function LinkButton({ onClick, children }: { onClick: () => void; children: stri
     <button
       type="button"
       onClick={onClick}
-      className="inline-flex items-center gap-1 text-[13px] text-link hover:underline"
+      className="inline-flex items-center gap-1 text-small text-link hover:underline"
     >
       {children}
       <IconExternal className="size-3.5" />

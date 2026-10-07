@@ -45,18 +45,18 @@ export function SheetStrip() {
               >
                 <span
                   className={cx(
-                    'flex size-5 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold',
+                    'flex size-5 shrink-0 items-center justify-center rounded-full text-label font-semibold',
                     st === 'applied' ? 'bg-good-wash text-good-text' : 'bg-sheet-3 text-ink-2',
                   )}
                 >
                   {st === 'applied' ? <IconCheck className="size-3" /> : i + 1}
                 </span>
                 <span className="min-w-0">
-                  <span className="block truncate text-[12px] font-medium">
+                  <span className="block truncate text-meta font-medium">
                     {multiFile ? `${s.fileName} › ` : ''}
                     {s.sheetName}
                   </span>
-                  <span className="block truncate text-[11px] text-muted">{line}</span>
+                  <span className="block truncate text-label text-muted">{line}</span>
                 </span>
               </button>
             </li>

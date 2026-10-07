@@ -21,15 +21,16 @@ const follow = (metricId: string) => (e: MouseEvent<HTMLAnchorElement>) => {
 
 /** "Edit definition" (or "Open in Metric definitions" for a locked privacy rule); null when the id is not registered. */
 export function EditDefinitionLink({ metricId, className }: { metricId: string; className?: string }) {
-  const { metrics } = useAnalytics()
+  const { metrics, access } = useAnalytics()
   const def = metrics.def(metricId)
-  if (!def) return null
+  // The dictionary is in the Data room, which Manager mode does not show (docs/ROLES.md, 3.1).
+  if (!def || !access.can('ui:edit-definition')) return null
   return (
     <a
       href={metricHref(metricId)}
       onClick={follow(metricId)}
       className={cx(
-        'inline-flex items-center gap-1 rounded-[2px] text-[12px] font-medium text-link underline-offset-2 hover:underline',
+        'inline-flex items-center gap-1 rounded-mark text-meta font-medium text-link underline-offset-2 hover:underline',
         className,
       )}
     >
@@ -45,10 +46,34 @@ export function EditDefinitionLink({ metricId, className }: { metricId: string; 
  * minimum included), or a data quality rule that sets its tier.
  */
 export function DefinitionChangedMark({ metricId, className }: { metricId: string; className?: string }) {
-  const { metrics } = useAnalytics()
+  const { metrics, access } = useAnalytics()
   const text = behindText(metrics, metricId)
   if (!text) return null
   const what = text.short
+  // Where the Data room is not shown, the mark says what changed but links nowhere.
+  if (!access.can('page:data'))
+    return (
+      <Tip
+        content={
+          <span className="block">
+            <span className="font-semibold">Definition changed.</span> {text.sentences.join(' ')}
+          </span>
+        }
+      >
+        <span
+          // biome-ignore lint/a11y/noNoninteractiveTabindex: the tooltip with what changed opens on focus
+          tabIndex={0}
+          className={cx(
+            'relative z-10 inline-flex h-5 shrink-0 items-center gap-1 rounded-chip px-1 text-label font-medium whitespace-nowrap text-ink-2',
+            className,
+          )}
+        >
+          <IconPencil className="size-3 text-warning" />
+          Definition changed
+          <span className="sr-only">: {what}.</span>
+        </span>
+      </Tip>
+    )
   return (
     <Tip
       content={
@@ -62,7 +87,7 @@ export function DefinitionChangedMark({ metricId, className }: { metricId: strin
         href={metricHref(metricId)}
         onClick={follow(metricId)}
         className={cx(
-          'relative z-10 inline-flex h-5 shrink-0 items-center gap-1 rounded-[3px] px-1 text-[11px] font-medium whitespace-nowrap text-ink-2 hover:bg-hover hover:text-ink',
+          'relative z-10 inline-flex h-5 shrink-0 items-center gap-1 rounded-chip px-1 text-label font-medium whitespace-nowrap text-ink-2 hover:bg-hover hover:text-ink',
           className,
         )}
       >

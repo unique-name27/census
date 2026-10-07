@@ -64,17 +64,17 @@ function Field({
 }) {
   return (
     <div className={cx('flex min-w-0 flex-col gap-1', className)}>
-      <label htmlFor={id} className="text-[13px] font-semibold text-ink">
+      <label htmlFor={id} className="text-small font-semibold text-ink">
         {label}
       </label>
       {hint && (
-        <span id={`${id}-hint`} className="-mt-0.5 text-[12px] text-ink-2">
+        <span id={`${id}-hint`} className="-mt-0.5 text-meta text-ink-2">
           {hint}
         </span>
       )}
       {children}
       {error && (
-        <span id={`${id}-error`} className="text-[12px] text-bad-text">
+        <span id={`${id}-error`} className="text-meta text-bad-text">
           {error}
         </span>
       )}
@@ -198,10 +198,10 @@ function AgentForm({
         className="flex min-w-0 flex-col gap-1 sm:col-span-2"
         aria-describedby={shown.audience ? `${id('audience')}-error` : undefined}
       >
-        <legend className="text-[13px] font-semibold text-ink">Audience</legend>
+        <legend className="text-small font-semibold text-ink">Audience</legend>
         <div className="mt-1 flex flex-wrap gap-x-5 gap-y-2">
           {AGENT_AUDIENCES.map((a, i) => (
-            <label key={a} className="inline-flex cursor-pointer items-center gap-2 text-[13px] text-ink">
+            <label key={a} className="inline-flex cursor-pointer items-center gap-2 text-small text-ink">
               <input
                 id={i === 0 ? id('audience') : undefined}
                 type="checkbox"
@@ -214,7 +214,7 @@ function AgentForm({
           ))}
         </div>
         {shown.audience && (
-          <span id={`${id('audience')}-error`} className="text-[12px] text-bad-text">
+          <span id={`${id('audience')}-error`} className="text-meta text-bad-text">
             {shown.audience}
           </span>
         )}
@@ -332,7 +332,7 @@ function AgentForm({
           className={INPUT}
         />
         {stillSample && (
-          <span id={`${id('url')}-sample`} className="text-[12px] text-ink-2">
+          <span id={`${id('url')}-sample`} className="text-meta text-ink-2">
             This is still the sample link, so the card keeps its Sample link tag. Paste the agent's own Glean
             link.
           </span>

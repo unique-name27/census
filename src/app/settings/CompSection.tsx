@@ -33,10 +33,10 @@ export function CompSection() {
               key={`${metricId}-${key}`}
               className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-0.5 border-t border-rule py-2 first:border-t-0 first:pt-0"
             >
-              <dt className="text-[13px] text-ink-2">{p.label}</dt>
-              <dd className="flex items-baseline gap-2 text-[13px] text-ink">
+              <dt className="text-small text-ink-2">{p.label}</dt>
+              <dd className="flex items-baseline gap-2 text-small text-ink">
                 <span className="tnum">{formatParam(p, metrics.param<ParamValue>(metricId, key))}</span>
-                {changed && <span className="text-[12px] text-muted">changed from default</span>}
+                {changed && <span className="text-meta text-muted">changed from default</span>}
                 <button type="button" className={LINK} onClick={() => openMetricDefinition(metricId)}>
                   Edit
                   <span className="sr-only"> {p.label.toLowerCase()} in Metric definitions</span>

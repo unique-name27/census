@@ -1,4 +1,5 @@
 /** Help articles, Start here: what Census is and how to read and use it. */
+import { NOT_SECURITY_LONG } from '@/access/copy'
 import type { HelpArticle } from '../types'
 
 export const START_ARTICLES: readonly HelpArticle[] = [
@@ -277,6 +278,11 @@ export const START_ARTICLES: readonly HelpArticle[] = [
       },
       {
         p: 'Other ready-made exports: People stats "Copy talking points" for a leader 1:1, the Org chart "Org slides", the reorg sandbox scenario, and "Export list" in the [Action center](route:actions).',
+        surface: 'tab:org.sandbox',
+      },
+      {
+        p: 'Other ready-made exports: the Org chart "Org slides", and "Export list" in the [Action center](route:actions).',
+        unless: 'tab:org.sandbox',
       },
     ],
   },
@@ -364,6 +370,46 @@ export const START_ARTICLES: readonly HelpArticle[] = [
           'When Census runs inside another page, such as a claude.ai artifact, the browser may block requests to Anthropic. Open Census in its own tab.',
           'Claude can misread a question. The numbers come from Census and each one opens its records, so check the ones you will repeat.',
         ],
+      },
+    ],
+  },
+  {
+    id: 'modes',
+    group: 'start',
+    title: 'Modes',
+    summary:
+      'What HR, Manager and Developer mode show, how to switch, and how Manager mode keeps to one org.',
+    keywords: ['mode', 'manager mode', 'hr mode', 'developer mode', 'my team', 'switch', 'role'],
+    body: [
+      {
+        p: 'Census has three modes. Each shows the views and tools that fit how you use Census. Switch with the Mode button in the masthead, or in [Settings, Mode](settings:mode).',
+      },
+      { h: 'What each mode shows' },
+      {
+        ul: [
+          'HR mode is for the HR team: every view, the Data room and Settings. Census opens on the Scorecard.',
+          "Manager mode is for one people manager: My team, Recruiting, Onboarding, People stats, Org chart and Talent, all kept to that manager's org. Compensation, surveys, HR ops, compliance, AI in HR and the Data room are not shown.",
+          'Developer mode is for whoever builds, tests or supports Census: everything in HR mode, plus the Developer page.',
+        ],
+      },
+      { h: 'Choosing a manager' },
+      {
+        p: 'Choosing Manager mode asks you to pick the manager from the people who lead 3 or more employees, the same list as the leader filter. Pick yourself. "Change manager…" in the Mode menu picks again.',
+      },
+      { h: 'How Manager mode keeps to the org' },
+      {
+        ul: [
+          'The leader filter is pinned to the manager. You can narrow to a leader inside the org; Whole org goes back to all of it.',
+          "Links and saved views open inside the org. A link for another leader opens the manager's org instead, and Census says so.",
+          'Company numbers stay as comparisons, such as attrition against the company. They open no records.',
+          'Records and person cards open only for people in the org. Successors outside the org show by readiness only.',
+          'Ask answers about the org only, and needs an org of 5 or more employees.',
+        ],
+      },
+      { h: 'A view, not security' },
+      { note: NOT_SECURITY_LONG },
+      {
+        p: 'The mode is remembered in this browser. It is not part of a link or the settings file, so a link you share opens in the mode of whoever opens it.',
       },
     ],
   },

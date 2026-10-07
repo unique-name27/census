@@ -6,6 +6,8 @@
  */
 import { createRef } from 'react'
 import { create } from 'zustand'
+import { ASK_NEW_CHAT } from '@/access/copy'
+import { useMode } from '@/access/store'
 import {
   type Conversation,
   createConversation,
@@ -33,6 +35,8 @@ interface AskState {
   keyVersion: number
   /** An answer finished while the sheet was closed and has not been seen yet. */
   unseen: boolean
+  /** A line at the top of the sheet: "Mode changed, so Ask started a new chat." */
+  notice: string | null
 
   openAsk: () => void
   closeAsk: () => void
@@ -45,6 +49,8 @@ interface AskState {
   answered: () => void
   /** A new conversation: new tokens, refs and history. */
   reset: () => void
+  /** The mode changed: a new conversation, with a line saying why (earlier answers may hold numbers it hides). */
+  modeChanged: () => void
   keyChanged: () => void
 }
 
@@ -58,6 +64,7 @@ export const useAsk = create<AskState>((set, get) => ({
   draft: '',
   keyVersion: 0,
   unseen: false,
+  notice: null,
 
   openAsk() {
     closedFor.route = false
@@ -89,7 +96,13 @@ export const useAsk = create<AskState>((set, get) => ({
       turns: [],
       busy: false,
       unseen: false,
+      notice: null,
     }))
+  },
+  modeChanged() {
+    const had = get().turns.length > 0
+    get().reset()
+    if (had) set({ notice: ASK_NEW_CHAT })
   },
   keyChanged() {
     set((s) => ({ keyVersion: s.keyVersion + 1 }))
@@ -122,6 +135,12 @@ if (typeof window !== 'undefined')
         useAsk.getState().closeAsk()
       }
   })
+
+// Any mode change starts a new chat (docs/ROLES.md, 1.5): earlier answers may hold numbers the new
+// mode does not show.
+useMode.subscribe((s, prev) => {
+  if (s.mode !== prev.mode || s.managerId !== prev.managerId) useAsk.getState().modeChanged()
+})
 
 // A key kept on this device (or the model choice or workspace ID) changed in another tab: read
 // them again.

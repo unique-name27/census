@@ -29,6 +29,7 @@ import {
 /** Metric ids, by what the view calls them. */
 export const M = {
   opened: 'services.cases.opened',
+  rate: 'services.cases.rate',
   backlog: 'services.cases.backlog',
   aged: 'services.cases.aged',
   resolutionSla: 'services.cases.resolutionSla',
@@ -82,6 +83,10 @@ export function categoryKey(category: string): string {
 
 /** The metric each figure shows (its `metric`, for "Edit definition" and the quality lens). */
 export const FIGURE_METRIC: Record<ServicesFigureId, string> = {
+  'services-cases-open-trend': M.backlog,
+  'services-cases-per-100': M.rate,
+  'services-tx-on-time-heatmap': M.onTime,
+  'services-leave-on-leave-trend': M.onLeave,
   'services-cases-by-month': M.opened,
   'services-sla-by-month': M.resolutionSla,
   'services-cases-by-category': M.opened,
@@ -282,6 +287,26 @@ const entries: MetricInput[] = [
     unit: 'int',
     goodDirection: null,
     uses: L.opened,
+    owner: OWNER,
+  },
+  {
+    id: M.rate,
+    name: 'Cases per 100 employees',
+    definition:
+      'Cases opened in the period by the people of a business unit for every 100 employees on its average headcount, annualized. It shows which units lean on HR ops most for their size.',
+    formula: 'cases opened ÷ average headcount × 100 × (12 ÷ window months)',
+    population:
+      'Cases whose requester is on the roster, placed in the requester’s business unit; employees only in the headcount. Units with fewer than the anonymity minimum of requesters are grouped as Other.',
+    window: PERIOD,
+    unit: 'num1',
+    goodDirection: null,
+    uses: union(L.opened, [
+      'cases.requesterId',
+      'employees.businessUnit',
+      'employees.hireDate',
+      'employees.terminationDate',
+      'employees.employmentType',
+    ]),
     owner: OWNER,
   },
   {
@@ -575,7 +600,8 @@ const entries: MetricInput[] = [
     name: 'On leave now',
     definition:
       'People on a leave of absence at the end of the as-of date: a leave start on or before it, no return from leave by then, and still employed. A return entered ahead for a later date does not end the leave yet.',
-    formula: 'leave starts on or before the as-of date without a return or an exit by then',
+    formula:
+      'people with a leave start on or before the as-of date and no return or exit by then; a person with two open leaves counts once',
     population:
       'Leave start and Return from leave transactions, each leave start paired with the next return of the same person on or after it. A count behind fewer people than the anonymity minimum shows as "—".',
     window: AS_OF,

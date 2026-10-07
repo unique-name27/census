@@ -15,7 +15,7 @@ export function AttrField({
 }) {
   if (attr.options)
     return (
-      <div className="flex min-w-0 flex-col gap-1 text-[12px] text-ink-2">
+      <div className="flex min-w-0 flex-col gap-1 text-meta text-ink-2">
         <span aria-hidden="true">{attr.label}</span>
         <Select label={attr.label} value={value} onChange={onChange}>
           <option value="">Not set</option>
@@ -28,7 +28,7 @@ export function AttrField({
       </div>
     )
   return (
-    <label className="flex min-w-0 flex-col gap-1 text-[12px] text-ink-2">
+    <label className="flex min-w-0 flex-col gap-1 text-meta text-ink-2">
       {attr.label}
       <input
         value={value}

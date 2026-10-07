@@ -170,7 +170,7 @@ export function JobSection({ model }: { model: MappingModel }) {
       <Figure
         id="data-map-job-levels"
         title="Job family by level"
-        subtitle={`Active headcount in each job family at each level, as of ${asOfText}. Click a cell to see the people.`}
+        subtitle={`Active headcount in each job family at each level, as of ${asOfText}.`}
         data={heat.cells}
         columns={heatColumns}
         definitions={LEVEL_DEFINITIONS}

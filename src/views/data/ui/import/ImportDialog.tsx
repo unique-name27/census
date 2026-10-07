@@ -134,7 +134,7 @@ export default function ImportDialog() {
     >
       <SheetStrip />
       {notes.length > 0 && (
-        <ul className="mb-4 space-y-0.5 text-[12px] text-muted">
+        <ul className="mb-4 space-y-0.5 text-meta text-muted">
           {notes.map((n) => (
             <li key={n}>{n}</li>
           ))}
@@ -154,7 +154,7 @@ export default function ImportDialog() {
                     disabled={!reachable}
                     onClick={() => go(s)}
                     className={cx(
-                      'relative flex h-9 items-center gap-1.5 text-[13px] whitespace-nowrap transition-colors disabled:opacity-45 focus-visible:-outline-offset-2',
+                      'relative flex h-9 items-center gap-1.5 text-small whitespace-nowrap transition-colors disabled:opacity-45 focus-visible:-outline-offset-2',
                       selected
                         ? 'font-semibold text-ink after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:bg-ink'
                         : 'font-medium text-ink-2 hover:text-ink',
@@ -166,7 +166,7 @@ export default function ImportDialog() {
                       {STEP_MORE[s] && <span className="hidden sm:inline">{STEP_MORE[s]}</span>}
                     </span>
                     {s === 'values' && openCount > 0 && (
-                      <span className="rounded-[3px] bg-warning-wash px-1 text-[11px] font-semibold text-ink">
+                      <span className="rounded-chip bg-warning-wash px-1 text-label font-semibold text-ink">
                         {openCount} to check
                       </span>
                     )}

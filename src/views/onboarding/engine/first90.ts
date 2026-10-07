@@ -4,14 +4,15 @@
  * hires entered on time by site, and the day-30 onboarding pulse.
  */
 import type { AnalyticsContext } from '@/data/context'
-import type {
-  Employee,
-  HrTransaction,
-  ISODate,
-  JobChange,
-  LearningRecord,
-  SurveyResponse,
-  SurveyType,
+import {
+  type Employee,
+  type HrTransaction,
+  type ISODate,
+  type JobChange,
+  type LearningRecord,
+  onboardingTaskByName,
+  type SurveyResponse,
+  type SurveyType,
 } from '@/data/schema'
 import { addBusinessDays, addDays, daysBetween, monthKey, monthsBetween } from '@/lib/dates'
 import { isActiveAt, isEmployee } from '@/lib/people'
@@ -448,4 +449,140 @@ export function computeFirst90(b: OnboardingBase, ctx: AnalyticsContext): First9
     newHire: newHireEntered(b, ctx),
     pulse: pulse(b, ctx),
   }
+}
+
+/* ───────────── late day-one tasks by task and place ───────────── */
+
+/** Regions in the order the heatmap shows them. */
+export const REGION_ORDER: readonly string[] = ['Americas', 'EMEA', 'Asia Pacific']
+
+/** One day-one task of one starter, as `First90Model.readinessTasks` holds it. */
+export type ReadinessTask = First90Model['readinessTasks'][number]
+
+export interface LateCell {
+  task: string
+  /** The region ("Asia Pacific") or site ("Bengaluru"). */
+  place: string
+  /** Starters with the task (not "Not needed"). */
+  n: number
+  /** Of these, done after the due date or still open past it; null under the anonymity minimum. */
+  late: number | null
+  /** late ÷ n; null under the anonymity minimum. */
+  share: number | null
+  /** The late tasks behind the cell; empty when it is hidden, so it never drills. */
+  items: ReadinessTask[]
+}
+
+/**
+ * The share of starters whose day-one task was late (finished after its due date, or still open
+ * past it), by task and by region or site. Tasks marked not needed are left out. A cell with fewer
+ * starters than the anonymity minimum shows its size only. Tasks run in checklist order.
+ */
+export function lateByTaskAndPlace(
+  tasks: readonly ReadinessTask[],
+  by: 'region' | 'site',
+  minGroup: number,
+): LateCell[] {
+  const cells = new Map<string, { task: string; place: string; all: ReadinessTask[] }>()
+  for (const x of tasks) {
+    if (x.task.state === 'Not needed') continue
+    const place = (by === 'region' ? x.start.region : x.start.location) ?? 'Unknown'
+    const k = `${x.task.name}\u0001${place}`
+    const c = cells.get(k)
+    if (c) c.all.push(x)
+    else cells.set(k, { task: x.task.name, place, all: [x] })
+  }
+  const order = [...onboardingTaskByName.keys()]
+  const taskIdx = (t: string) => {
+    const i = order.indexOf(t)
+    return i < 0 ? order.length : i
+  }
+  const placeIdx = (p: string) => {
+    const i = REGION_ORDER.indexOf(p)
+    return i < 0 ? REGION_ORDER.length : i
+  }
+  return [...cells.values()]
+    .map(({ task, place, all }) => {
+      const shown = all.length >= minGroup
+      const late = all.filter((x) => x.late)
+      return {
+        task,
+        place,
+        n: all.length,
+        late: shown ? late.length : null,
+        share: shown ? late.length / all.length : null,
+        items: shown ? late : [],
+      }
+    })
+    .sort(
+      (a, b) =>
+        taskIdx(a.task) - taskIdx(b.task) ||
+        a.task.localeCompare(b.task) ||
+        placeIdx(a.place) - placeIdx(b.place) ||
+        a.place.localeCompare(b.place),
+    )
+}
+
+/* ───────────── when day-one tasks were finished ───────────── */
+
+export interface TaskTimingItem {
+  item: ReadinessTask
+  /** Completed date − start date in days; negative means before the first day. */
+  days: number
+  /** Finished after its due date. */
+  late: boolean
+}
+
+export interface TaskTiming {
+  task: string
+  /** Starters with the task (not "Not needed"). */
+  n: number
+  /** The due day from the start (-3 for "Day -3"), from the checklist; null when it has none. */
+  dueDay: number | null
+  /** Completed tasks with their timing. */
+  done: TaskTimingItem[]
+  /** Tasks still open (not binned). */
+  open: ReadinessTask[]
+  late: number
+  /** Late tasks finished after the first day. */
+  lateAfterStart: number
+  /** False when fewer starters than the anonymity minimum have the task: the chart is hidden. */
+  shown: boolean
+}
+
+/**
+ * When one day-one task was finished, in days from the start date, for starters in the window.
+ * Open tasks are counted, not binned. Hidden (no timings) when fewer starters than the anonymity
+ * minimum have the task.
+ */
+export function taskTiming(tasks: readonly ReadinessTask[], task: string, minGroup: number): TaskTiming {
+  const mine = tasks.filter((x) => x.task.name === task && x.task.state !== 'Not needed')
+  const shown = mine.length >= minGroup
+  const def = onboardingTaskByName.get(task)
+  const done: TaskTimingItem[] = []
+  const open: ReadinessTask[] = []
+  for (const x of mine) {
+    const completed = x.task.task.completedDate
+    if (completed) {
+      const late = x.task.state === 'Done late'
+      done.push({ item: x, days: daysBetween(x.start.startDate, completed), late })
+    } else if (x.task.open) open.push(x)
+  }
+  return {
+    task,
+    n: mine.length,
+    dueDay: def?.dueDay ?? null,
+    done: shown ? done : [],
+    open: shown ? open : [],
+    late: shown ? done.filter((d) => d.late).length : 0,
+    lateAfterStart: shown ? done.filter((d) => d.late && d.days > 0).length : 0,
+    shown,
+  }
+}
+
+/** The day-one tasks with any late instance, the most late first (the timing chart's choices). */
+export function lateTaskNames(tasks: readonly ReadinessTask[]): string[] {
+  const n = new Map<string, number>()
+  for (const x of tasks) if (x.late) n.set(x.task.name, (n.get(x.task.name) ?? 0) + 1)
+  return [...n].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([t]) => t)
 }

@@ -57,6 +57,12 @@ export interface Kpi {
   link?: ViewLink
   /** Plain-English definition for the info popover. */
   definition?: string
+  /**
+   * How the shown number is worked out right now, as a sentence ("166 voluntary exits over an
+   * average headcount of 1,383, annualized."). The info popover shows it under the definition, so
+   * the tile's own note stays one short line.
+   */
+  formula?: string
   /** The records behind the value; clicking the value opens them (down to each person). */
   drill?: DrillSource
   /**

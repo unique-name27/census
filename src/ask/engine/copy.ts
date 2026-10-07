@@ -19,6 +19,12 @@ export const WHAT_IS_SENT: readonly string[] = [
 ]
 
 const SUGGESTIONS: Record<RouteView, readonly string[]> = {
+  team: [
+    'How has headcount in my org changed over the last 12 months?',
+    'How does voluntary attrition in my org compare with the company?',
+    'Which open reqs in my org have been open longest?',
+    'Who starts in the next 30 days, and are they ready for day one?',
+  ],
   scorecard: [
     'Which measures miss their target, and by how much?',
     'What are the most serious findings across Census right now?',
@@ -89,6 +95,12 @@ const SUGGESTIONS: Record<RouteView, readonly string[]> = {
     'Which datasets are below silver, and why?',
     'Which fields hold the employee data back?',
     'Which values are not on the official lists?',
+    'Which metric definitions were changed from the default?',
+  ],
+  dev: [
+    'Which datasets are loaded, and how good are they?',
+    'How is voluntary attrition defined?',
+    'What are the most serious findings right now?',
     'Which metric definitions were changed from the default?',
   ],
   actions: [

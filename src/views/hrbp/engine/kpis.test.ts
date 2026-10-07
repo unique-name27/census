@@ -124,7 +124,8 @@ describe('KPI tiles', () => {
     expect(tile.value).toBeCloseTo(5 / 50, 10)
     expect(tile.delta).toBeCloseTo(5 / 50 - 4 / 50, 10)
     expect(tile.deltaLabel).toBe('vs same period last year')
-    expect(tile.note).toBe('5 promotions over an average headcount of 50')
+    expect(tile.note).toBe('5 promotions')
+    expect(tile.formula).toBe('5 promotions over an average headcount of 50.')
     expect(m.movement.mobility.rate).toBeCloseTo(5 / 50, 10)
   })
 
@@ -138,10 +139,13 @@ describe('KPI tiles', () => {
         ],
       }),
     )
-    expect(m.kpi.kpis.find((k) => k.id === 'voluntary')!.note).toMatch(
-      /^1 voluntary exit over an average headcount of 20, annualized$/,
-    )
-    expect(m.kpi.kpis.find((k) => k.id === 'promotion-rate')!.note).toMatch(/^1 promotion over/)
+    // The tile says the count in one short line; the formula is in the definition popover.
+    const vol = m.kpi.kpis.find((k) => k.id === 'voluntary')!
+    expect(vol.note).toBe('1 voluntary exit')
+    expect(vol.formula).toMatch(/^1 voluntary exit over an average headcount of 20, annualized\.$/)
+    const promo = m.kpi.kpis.find((k) => k.id === 'promotion-rate')!
+    expect(promo.note).toBe('1 promotion')
+    expect(promo.formula).toMatch(/^1 promotion over/)
   })
 
   it('returns finite or null values for an empty roster', () => {

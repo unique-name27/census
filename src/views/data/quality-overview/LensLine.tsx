@@ -145,7 +145,7 @@ function LensBody({
       data-quality-lens
       className={cx(
         'leading-snug text-muted',
-        small ? 'mt-1.5 space-y-0.5 text-[11px]' : 'space-y-0.5 text-[12px]',
+        small ? 'mt-1.5 space-y-0.5 text-label' : 'space-y-0.5 text-meta',
         className,
       )}
     >
@@ -161,7 +161,7 @@ function LensBody({
         )}
         <Tip content={explain}>
           {/* biome-ignore lint/a11y/noNoninteractiveTabindex: focus shows the explanation, as hover does */}
-          <span tabIndex={0} className="relative z-10 cursor-default rounded-[2px]">
+          <span tabIndex={0} className="relative z-10 cursor-default rounded-mark">
             {tier === 'gold' ? limit : `Limited by ${limit}`}
             <span className="sr-only">. {explain}</span>
           </span>

@@ -18,6 +18,7 @@ export function Section({
   dek,
   actions,
   id,
+  align,
   children,
   className,
 }: {
@@ -28,19 +29,30 @@ export function Section({
   actions?: ReactNode
   /** Anchor id, for in-page links. */
   id?: string
+  /**
+   * 'start' when the figures in a row have very different chart heights: each sheet keeps its
+   * own height instead of stretching to the tallest, so a short chart never sits on a mostly
+   * empty sheet.
+   */
+  align?: 'start'
   children: ReactNode
   className?: string
 }) {
   return (
-    <section id={id} aria-label={title} className={cx('mt-10 scroll-mt-4 first:mt-0', className)}>
+    // A section whose figures all render nothing (hidden in this mode) goes with them, heading and all.
+    <section
+      id={id}
+      aria-label={title}
+      className={cx('mt-10 scroll-mt-4 first:mt-0 has-[>div:empty]:hidden', className)}
+    >
       <header className="mb-3 flex flex-wrap items-end gap-x-6 gap-y-2">
         <div className="min-w-0 flex-1">
-          <h2 className="cut-head text-[20px] leading-tight font-semibold">{title}</h2>
-          {dek && <p className="mt-1 max-w-[70ch] text-[13px] text-ink-2">{dek}</p>}
+          <h2 className="cut-head text-section font-semibold">{title}</h2>
+          {dek && <p className="mt-1 max-w-[70ch] text-small text-ink-2">{dek}</p>}
         </div>
         {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
       </header>
-      <Grid>{children}</Grid>
+      <Grid className={align === 'start' ? 'items-start' : undefined}>{children}</Grid>
     </section>
   )
 }

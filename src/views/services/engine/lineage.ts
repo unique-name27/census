@@ -174,6 +174,7 @@ export const LEAVE: LeaveLineage = {
 
 /** The Leave & return figures. */
 export const LEAVE_FIGURE_IDS = [
+  'services-leave-on-leave-trend',
   'services-leave-on-leave',
   'services-leave-length',
   'services-leave-return-rate',
@@ -202,6 +203,7 @@ export function leaveFigureUses(x: {
 }): Record<LeaveFigureId, Refs> {
   const r = when(x.hasReasons, LEAVE.reason)
   return {
+    'services-leave-on-leave-trend': LEAVE.onLeave,
     'services-leave-on-leave': union(LEAVE.onLeave, LEAVE.unit, r),
     'services-leave-length': union(LEAVE.length, r),
     'services-leave-return-rate': LEAVE.returnRate,
@@ -214,6 +216,9 @@ export function leaveFigureUses(x: {
 
 /** Every case and transaction figure in the view, by its Figure id. */
 export const CASE_TX_FIGURE_IDS = [
+  'services-cases-open-trend',
+  'services-cases-per-100',
+  'services-tx-on-time-heatmap',
   'services-cases-by-month',
   'services-sla-by-month',
   'services-cases-by-category',
@@ -279,6 +284,15 @@ export function figureUses(L: Lineage, x: FigureInputs): Record<CaseTxFigureId, 
   const c = x.caseCols
   const reopenCols = c.reopened || c.escalated
   return {
+    'services-cases-open-trend': L.open,
+    'services-cases-per-100': union(L.opened, [
+      'cases.requesterId',
+      'employees.businessUnit',
+      'employees.hireDate',
+      'employees.terminationDate',
+      'employees.employmentType',
+    ]),
+    'services-tx-on-time-heatmap': union(L.onTime, L.txType),
     'services-cases-by-month': union(L.opened, L.category),
     'services-sla-by-month': union(L.resolutionSla, when(c.firstResponseAt, L.responseSla)),
     'services-cases-by-category': union(

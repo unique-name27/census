@@ -136,7 +136,7 @@ export function ConflictList({
       uses={uses}
     >
       {conflicts.length === 0 ? (
-        <p className="flex items-start gap-2 text-[13px] text-ink-2">
+        <p className="flex items-start gap-2 text-small text-ink-2">
           <StatusPill severity="good" label="None" />
           <span>{none}</span>
         </p>
@@ -150,12 +150,12 @@ export function ConflictList({
                   <Drill
                     spec={conflictDrill(c, data, asOf)}
                     label={`Show the ${countText(c)}`}
-                    className="ml-auto shrink-0 text-[13px] font-semibold text-ink tnum"
+                    className="ml-auto shrink-0 text-small font-semibold text-ink tnum"
                   >
                     {countText(c)}
                   </Drill>
                 </div>
-                <p className="mt-1 text-[13px] leading-snug text-ink-2">{c.text}</p>
+                <p className="mt-1 text-small leading-snug text-ink-2">{c.text}</p>
                 {c.fix && c.fixLabel && (
                   <Button size="sm" variant="ghost" className="-ml-2.5 mt-0.5" onClick={() => fix(c)}>
                     {c.fixLabel}

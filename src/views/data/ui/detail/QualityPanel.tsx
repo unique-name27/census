@@ -5,6 +5,7 @@
  */
 import { Meter } from '@/charts'
 import { IconDownload } from '@/components/icons'
+import { TABLE_HEAD } from '@/components/styles'
 import { TierBadge } from '@/components/tier/TierBadge'
 import { withoutTierPrefix } from '@/components/tier/tierModel'
 import { Button, SeverityIcon } from '@/components/ui'
@@ -98,10 +99,10 @@ function FieldTable({
   /** Drills for reference mappings (the analytics context's index). */
   remap: Pick<QualityIndex, 'fieldRows' | 'explain'>
 }) {
-  const th = 'eyebrow py-1.5 pr-3 font-semibold'
+  const th = `${TABLE_HEAD} py-1.5 pr-3`
   return (
     <div className="scroll-x">
-      <table className="w-full border-collapse text-[13px] sm:min-w-[680px]">
+      <table className="w-full border-collapse text-small sm:min-w-[680px]">
         <caption className="sr-only">Field quality for {row.label}</caption>
         <thead>
           <tr className="border-b border-rule text-left">
@@ -123,7 +124,7 @@ function FieldTable({
             <th scope="col" className={`${th} hidden text-right md:table-cell`}>
               Defaulted
             </th>
-            <th scope="col" className="eyebrow py-1.5 font-semibold">
+            <th scope="col" className={`${TABLE_HEAD} py-1.5`}>
               Tier
             </th>
           </tr>
@@ -142,21 +143,21 @@ function FieldTable({
               <tr key={f.ref} className="border-b border-rule last:border-b-0">
                 <td className="py-1.5 pr-3 align-top">
                   {f.label}
-                  {f.scope && <span className="block text-[11px] text-muted">{f.scope}</span>}
+                  {f.scope && <span className="block text-label text-muted">{f.scope}</span>}
                   {f.blankOk && (
-                    <span className="block text-[11px] text-muted">
+                    <span className="block text-label text-muted">
                       Blanks are normal, so they don’t lower the tier
                     </span>
                   )}
-                  {f.capReason && <span className="block text-[11px] text-ink-2">{f.capReason}</span>}
+                  {f.capReason && <span className="block text-label text-ink-2">{f.capReason}</span>}
                   {f.remapped > 0 && (
-                    <span className="block text-[11px] text-ink-2">
+                    <span className="block text-label text-ink-2">
                       <Count {...counts} index={remap} kind="remapped" n={f.remapped} words /> by reference
                       mappings
                     </span>
                   )}
                   {/* Below sm the counts sit under the field name, so nothing scrolls sideways. */}
-                  <span className="tnum mt-0.5 flex flex-wrap gap-x-2 text-[12px] text-ink-2 sm:hidden">
+                  <span className="tnum mt-0.5 flex flex-wrap gap-x-2 text-meta text-ink-2 sm:hidden">
                     <span>{fmt(f.applicableRows, 'int')} rows</span>
                     {f.blank > 0 && <Count {...counts} kind="blank" n={f.blank} words />}
                     {f.invalid > 0 && <Count {...counts} kind="invalid" n={f.invalid} words />}
@@ -174,7 +175,7 @@ function FieldTable({
                       label={`${f.label} filled, ${share}`}
                       className="max-w-[120px]"
                     />
-                    <span className="tnum w-11 shrink-0 text-right text-[12px] text-ink-2">{share}</span>
+                    <span className="tnum w-11 shrink-0 text-right text-meta text-ink-2">{share}</span>
                   </span>
                 </td>
                 <td className="tnum hidden py-1.5 pr-3 text-right align-top sm:table-cell">
@@ -222,9 +223,9 @@ export function QualityPanel({
       <div className="min-w-0 lg:col-span-4">
         <div className="flex items-start gap-3">
           <TierBadge tier={dq.tier} explain={explain} />
-          <p className="min-w-0 text-[13px] text-ink">{withoutTierPrefix(explain)}</p>
+          <p className="min-w-0 text-small text-ink">{withoutTierPrefix(explain)}</p>
         </div>
-        {next && <p className="mt-2 text-[13px] text-ink-2">{next}</p>}
+        {next && <p className="mt-2 text-small text-ink-2">{next}</p>}
         <h4 className="eyebrow mt-5">Checks</h4>
         <RuleList rules={rules} ds={row} data={data} className="mt-2" />
         {extra.length > 0 && (
@@ -232,7 +233,7 @@ export function QualityPanel({
             <h4 className="eyebrow mt-5">Also worth a look</h4>
             <ul className="mt-1.5 space-y-1.5">
               {extra.map((c) => (
-                <li key={`${c.kind}|${c.text}`} className="flex gap-2 text-[13px]">
+                <li key={`${c.kind}|${c.text}`} className="flex gap-2 text-small">
                   <SeverityIcon severity={c.severity} className="mt-0.5 size-3.5 shrink-0" />
                   <span>
                     <CheckSentence check={c} row={row} data={data} />
@@ -247,7 +248,7 @@ export function QualityPanel({
         <div className="flex flex-wrap items-start gap-x-4 gap-y-2">
           <div className="min-w-0 flex-1 basis-[300px]">
             <h4 className="eyebrow">Fields</h4>
-            <p className="mt-1 text-[12px] text-muted">
+            <p className="mt-1 text-meta text-muted">
               Filled counts the rows each field applies to. Silver and gold need a field at least 95% filled
               there, with no more than 2% of values not recognized or defaulted; below that it is bronze.
             </p>

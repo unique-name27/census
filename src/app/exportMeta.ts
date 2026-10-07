@@ -78,6 +78,8 @@ export function buildExportMeta(args: {
   standard?: DataStandard
   /** False for a view that reads no datasets (AI in HR): no scope, window, as-of or standard lines. */
   readsData?: boolean
+  /** The mode line a whole-view export carries ("Made in Manager mode for Priya Raman's org."). */
+  modeLine?: string
 }): ExportMeta {
   const meta: ExportMeta = {
     view: args.viewLabel,
@@ -89,6 +91,7 @@ export function buildExportMeta(args: {
     isSample: args.isSample,
     company: args.isSample ? args.sampleCompany : 'Company data',
     ...(args.standard && { standard: args.standard }),
+    ...(args.modeLine && { modeLine: args.modeLine }),
   }
   return args.readsData === false ? withoutDataContext(meta) : meta
 }

@@ -8,10 +8,13 @@
  */
 import { type KeyboardEvent as ReactKeyboardEvent, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { TOUR_NOT_SHOWN } from '@/access/copy'
 import { Button, cx } from '@/components/ui'
+import { useAnalyticsIfAny } from '@/data/context'
 import type { ViewKey } from '@/data/schema'
 import { type RouteView, useCensus } from '@/data/store'
 import { viewByKey } from '@/views/registry'
+import { tourInMode } from '../access'
 import { type TourRun, useHelp } from '../store'
 import { type Box, moved, placePopover, type Size, tourKey } from '../tour/place'
 import { tourById } from '../tours'
@@ -232,7 +235,7 @@ function ActiveTour({ run, tour }: { run: TourRun; tour: Tour }) {
       {target ? (
         <div
           aria-hidden="true"
-          className="pointer-events-none fixed z-[45] rounded-[8px] transition-[top,left,width,height] duration-200 ease-out"
+          className="pointer-events-none fixed z-[45] rounded-sheet transition-[top,left,width,height] duration-200 ease-out"
           style={{
             top: target.top - pad,
             left: target.left - pad,
@@ -263,21 +266,21 @@ function ActiveTour({ run, tour }: { run: TourRun; tour: Tour }) {
       >
         <div className="flex items-baseline gap-2">
           <span className="eyebrow min-w-0 flex-1 truncate">{tour.title}</span>
-          <span className="tnum shrink-0 text-[12px] text-muted">
+          <span className="tnum shrink-0 text-meta text-muted">
             {index + 1} of {total}
           </span>
         </div>
         <div aria-hidden="true" className="mt-2 h-0.5 overflow-hidden rounded-full bg-sheet-3">
           <div className="h-full bg-ink" style={{ width: `${((index + 1) / total) * 100}%` }} />
         </div>
-        <h2 id={titleId} className="cut-head mt-3 text-[17px] leading-snug font-semibold">
+        <h2 id={titleId} className="cut-head mt-3 text-title leading-snug font-semibold">
           {step.title}
         </h2>
-        <p id={bodyId} className="mt-1 text-[13px] leading-snug text-ink-2">
+        <p id={bodyId} className="mt-1 text-small leading-snug text-ink-2">
           {step.body}
         </p>
         {missing && (
-          <p className="mt-2 text-[12px] leading-snug text-muted">
+          <p className="mt-2 text-meta leading-snug text-muted">
             This part is not on screen right now. A filter, the data standard or the screen size may hide it.
           </p>
         )}
@@ -308,7 +311,11 @@ function ActiveTour({ run, tour }: { run: TourRun; tour: Tour }) {
  */
 export function TourLayer() {
   const run = useHelp((s) => s.tour)
-  const tour = tourById(run?.id)
+  // The tour as the mode runs it: steps on a page, tab or control the mode hides are skipped, and
+  // a tour the mode hides does not run (docs/ROLES.md, 3.8).
+  const access = useAnalyticsIfAny()?.access
+  const known = tourById(run?.id)
+  const tour = known && access ? tourInMode(access, known) : known
   const opener = useRef<HTMLElement | null>(null)
   const wasRunning = useRef(false)
   useEffect(() => {
@@ -327,10 +334,13 @@ export function TourLayer() {
     }, 0)
     return () => window.clearTimeout(timer)
   }, [run])
-  // A tour that no longer exists (renamed in an update) just ends.
+  // A tour that no longer exists (renamed in an update) just ends; one the mode hides opens the
+  // Help sheet's list, saying so.
   useEffect(() => {
-    if (run && !tour) useHelp.getState().endTour('skip')
-  }, [run, tour])
+    if (!run || tour) return
+    useHelp.getState().endTour('skip')
+    if (known) useHelp.getState().openHelp(null, TOUR_NOT_SHOWN)
+  }, [run, tour, known])
   if (!run || !tour) return null
   return <ActiveTour key={run.id} run={run} tour={tour} />
 }

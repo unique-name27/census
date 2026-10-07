@@ -37,10 +37,10 @@ function LinksForm({ tools }: { tools: Tool[] }) {
         const id = `${base}-${t.id}`
         return (
           <div key={t.id} className="flex flex-col gap-1">
-            <label htmlFor={id} className="text-[13px] font-semibold">
+            <label htmlFor={id} className="text-small font-semibold">
               {t.label}
             </label>
-            <span className="text-[12px] text-ink-2">{t.description}</span>
+            <span className="text-meta text-ink-2">{t.description}</span>
             <input
               id={id}
               type="text"
@@ -55,7 +55,7 @@ function LinksForm({ tools }: { tools: Tool[] }) {
               className={cx(INPUT, 'w-full')}
             />
             {errors[t.id] && (
-              <span id={`${id}-error`} className="text-[12px] text-bad-text">
+              <span id={`${id}-error`} className="text-meta text-bad-text">
                 {errors[t.id]}
               </span>
             )}

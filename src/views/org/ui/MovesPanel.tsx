@@ -42,10 +42,10 @@ export function MovesPanel({
     >
       <div className="flex items-start gap-2">
         <div className="min-w-0 flex-1">
-          <h3 id="org-moves-title" className="cut-head text-[15px] leading-snug font-semibold">
+          <h3 id="org-moves-title" className="cut-head text-title leading-snug font-semibold">
             Moves
           </h3>
-          <p className="mt-0.5 text-[13px] text-ink-2">Each step of the scenario, in order.</p>
+          <p className="mt-0.5 text-small text-ink-2">Each step of the scenario, in order.</p>
         </div>
         <div className="flex shrink-0 gap-1">
           <Button size="sm" variant="ghost" disabled={!canUndo} onClick={onUndo}>
@@ -59,11 +59,11 @@ export function MovesPanel({
       {moves.length ? (
         <ol className="mt-3 divide-y divide-rule">
           {moves.map((m) => (
-            <li key={m.step} className="flex gap-3 py-2 text-[13px]">
+            <li key={m.step} className="flex gap-3 py-2 text-small">
               <span className="tnum w-5 shrink-0 text-right text-muted">{m.step}</span>
               <span className="min-w-0">
                 <span className="block text-ink">{m.change}</span>
-                <span className="block text-[12px] text-muted">
+                <span className="block text-meta text-muted">
                   {m.type === 'Exit' ? `Reported to ${m.fromManager}` : `From ${m.fromManager}`}
                   {m.peopleMoving > 1 && (
                     <>
@@ -77,12 +77,12 @@ export function MovesPanel({
           ))}
         </ol>
       ) : (
-        <p className="mt-3 text-[13px] text-muted">No moves yet.</p>
+        <p className="mt-3 text-small text-muted">No moves yet.</p>
       )}
       {undone.length > 0 && (
         <div className="mt-3 border-t border-rule pt-2">
           <div className="eyebrow mb-1">Undone, can be redone</div>
-          <ol className="space-y-0.5 text-[12px] text-muted">
+          <ol className="space-y-0.5 text-meta text-muted">
             {undone.map((u, i) => (
               <li key={i}>{u}</li>
             ))}

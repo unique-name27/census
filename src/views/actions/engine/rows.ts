@@ -123,9 +123,7 @@ export function itemsDrill(
     subtitle: `${ctx.scopeLabel} · as of ${formatDate(ctx.asOf)}`,
     rows,
     ...(hide.length ? { hide } : {}),
-    note:
-      opts.note ??
-      'Items from every view that wait on someone. Select an About cell to open the records behind an item.',
+    note: opts.note ?? 'Items from every view that wait on someone.',
     ...(uses.length ? { uses } : {}),
   })
 }

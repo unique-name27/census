@@ -1086,3 +1086,91 @@ export function locationOffersDrill(
     only === 'Hired' ? 'Offers accepted' : only === 'Declined' ? 'Offers declined' : 'Offers resolved'
   return groupOffersDrill(b, row.apps, `${what}, ${row.group}`, windowSub(b, w), only)
 }
+
+/* ───────── new figures: month ends, quarters, decisions, req age ───────── */
+
+/**
+ * Reqs open on one month end: a segment (one business unit or department) or a whole column of
+ * "Open reqs at month end". A month end is a snapshot, so no period is set; the days open are
+ * counted to that date.
+ */
+export function monthEndReqsDrill(
+  b: RecruitingBase,
+  date: ISODate,
+  reqs: readonly Requisition[],
+  group?: string,
+): DrillSpec<'requisitions'> | null {
+  const when = formatDate(date)
+  return reqDrill(reqs.slice().sort(byAge(date)), {
+    title: group ? `Open reqs on ${when}, ${group}` : `Open reqs on ${when}`,
+    subtitle: asOfLine(date, b.scopeLabel),
+    note: 'Open on that date: opened by then and not yet filled, closed or cancelled. Reqs on hold are not counted.',
+    extras: [
+      {
+        columns: [{ key: 'daysOpenThen', label: `Days open on ${when}`, format: 'days' }],
+        values: (r) => ({ daysOpenThen: reqAge(r, date) }),
+      },
+    ],
+    hide: ['daysOpen'],
+  })
+}
+
+/**
+ * The reqs filled in one quarter, for all reqs or a level band of "Median time to fill by
+ * quarter". The quarter is the drill's period; a band's levels are added by the figure.
+ */
+export function ttfQuarterDrill(
+  b: RecruitingBase,
+  row: {
+    quarter: string
+    quarterStart: ISODate
+    quarterEnd: ISODate
+    series: string
+    filled: readonly Requisition[]
+  },
+  allLabel: string,
+): DrillSpec<'requisitions'> | null {
+  if (!row.filled.length) return null
+  const w = { start: row.quarterStart, end: row.quarterEnd }
+  const what = row.series === allLabel ? row.quarter : `${row.series}, ${row.quarter}`
+  return withScope(filledReqsDrill(b, row.filled, `Reqs filled, ${what}`, w), periodFilter(w.start, w.end))
+}
+
+/** One hiring manager's candidates waiting on an interview decision, the longest wait first. */
+export function decisionsDrill(
+  b: RecruitingBase,
+  row: { hiringManager: string; items: readonly ActiveItem[]; overdue: number; watch: number },
+): DrillSpec<'candidates'> | null {
+  return activeDrill(b, row.items, {
+    title: `Interview decisions waiting on ${row.hiringManager}`,
+    note: `${plural(row.overdue, 'decision')} overdue and ${fmt(row.watch, 'int')} to watch. Days waiting count from the interview.`,
+  })
+}
+
+/** Candidates waiting on decisions across several hiring managers (the folded "Other" bar). */
+export function otherDecisionsDrill(
+  b: RecruitingBase,
+  rows: readonly { items: readonly ActiveItem[] }[],
+): DrillSpec<'candidates'> | null {
+  return activeDrill(
+    b,
+    rows.flatMap((r) => r.items),
+    { title: `Interview decisions waiting on ${plural(rows.length, 'other hiring manager')}` },
+  )
+}
+
+/** An open req's active candidates past the screen (hiring manager, onsite and offer stages). */
+export function pastScreenDrill(b: RecruitingBase, row: OpenReqRow): DrillSpec<'candidates'> | null {
+  const name = row.title ? `${row.reqId} ${row.title}` : row.reqId
+  return activeDrill(
+    b,
+    row.items.filter((x) => x.stage >= 2),
+    { title: `${name}: active past the screen` },
+  )
+}
+
+/** An open req's active candidates, every stage. */
+export function reqActiveDrill(b: RecruitingBase, row: OpenReqRow): DrillSpec<'candidates'> | null {
+  const name = row.title ? `${row.reqId} ${row.title}` : row.reqId
+  return activeDrill(b, row.items, { title: `${name}: active candidates` })
+}

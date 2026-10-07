@@ -231,6 +231,25 @@ export interface TimeTick {
  * to every k-th, counted back from the latest, so labels `measure`d in px stay apart over
  * `width` px. Pure; `measure` is the text-width function.
  */
+/**
+ * Thinned axis ticks that still show at least three labels (start, middle, end) when the axis has
+ * three or more positions, so a phone never shows one lonely "Jan '26" (docs/DESIGN-REFRESH.md 2.7).
+ */
+export function minThreeTicks<K>(all: readonly K[], kept: readonly K[]): K[] {
+  if (kept.length >= 3 || all.length < 3) return [...kept]
+  return [all[0], all[Math.floor((all.length - 1) / 2)], all[all.length - 1]]
+}
+
+/**
+ * Whether the i-th of a run of month ticks carries its year: the first does, and any whose year
+ * differs from the tick before ("Oct '24, Sep '25, Sep '26"), so two ticks never read the same.
+ */
+export function tickHasYear(ticks: readonly (number | Date)[], i: number): boolean {
+  if (i <= 0) return true
+  const year = (t: number | Date) => new Date(t).getUTCFullYear()
+  return year(ticks[i]) !== year(ticks[i - 1])
+}
+
 export function timeTicks(
   times: readonly number[],
   unit: 'month' | 'quarter',
@@ -276,10 +295,13 @@ export function timeTicks(
     minGap = Math.min(minGap, ((picks[i] - picks[i - 1]) / (span || 1)) * width)
   const every = Number.isFinite(minGap) && minGap > 0 ? Math.max(1, Math.ceil((widest + 12) / minGap)) : 1
   const last = picks.length - 1
-  const kept = picks.filter((_, i) => (last - i) % every === 0)
+  const kept = minThreeTicks(
+    picks,
+    picks.filter((_, i) => (last - i) % every === 0),
+  )
   return kept.map((t, j) => ({
     t,
-    label: unit === 'quarter' ? quarterLabel(t) : monthText(t, j === 0),
+    label: unit === 'quarter' ? quarterLabel(t) : monthText(t, tickHasYear(kept, j)),
   }))
 }
 

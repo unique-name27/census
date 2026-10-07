@@ -4,8 +4,17 @@
  * Active org filters show as removable chips underneath, with the leader's chain. Each org
  * filter's menu has an Include / Exclude switch at the top (docs/FILTERS.md, part 3), and the
  * changes made while one menu is open are one history entry.
+ *
+ * Widths (docs/DESIGN-REFRESH.md 2.13 and 3.4): from 1280px the data standard folds into the row's
+ * right end as a compact menu beside the scope count, so the row is one line. Under 768px the row
+ * is the period control and one "Filters (n)" button, which opens a bottom sheet with the saved
+ * views, every org filter, the scope count and the data standard; active filters still show as
+ * removable chips under the row.
  */
-import { useEffect, useMemo, useRef } from 'react'
+import { Dialog as BDialog } from '@base-ui/react/dialog'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { lockTip, NO_MANAGER_PICKED, orgOf, peopleInOrg, WHOLE_ORG } from '@/access/copy'
+import { openManagerPicker } from '@/access/store'
 import {
   FILTER_DIMENSION_LABELS,
   filterChips,
@@ -13,9 +22,10 @@ import {
   leaderExcludedLabel,
   leaderOrgLabel,
 } from '@/components/filterLabels'
-import { IconChevronRight, IconClose, IconReset } from '@/components/icons'
+import { IconChevronRight, IconClose, IconFilter, IconPin, IconReset } from '@/components/icons'
 import { MultiSelect } from '@/components/MultiSelect'
 import { Button } from '@/components/ui'
+import { useMinWidth, useNarrow } from '@/components/useNarrow'
 import { useAnalytics } from '@/data/context'
 import { dropIdleModes, type FilterMode, hasOrgFilter, isExcluded, withMode } from '@/data/scope'
 import { useCensus } from '@/data/store'
@@ -44,7 +54,7 @@ const tooFewNote = (what: string, min: number) =>
   `${what} of fewer than ${min} people can't be left out. Comparing the scope with and without them would single them out.`
 
 const CHIP =
-  'inline-flex h-7 max-w-full items-center gap-1.5 rounded-control bg-sheet pl-2 text-[12px] shadow-[inset_0_0_0_1px_var(--rule)]'
+  'inline-flex h-7 max-w-full items-center gap-1.5 rounded-control bg-sheet pl-2 text-meta shadow-[inset_0_0_0_1px_var(--rule)]'
 
 function RemoveButton({ label, onClick }: { label: string; onClick: (button: HTMLElement) => void }) {
   return (
@@ -53,7 +63,7 @@ function RemoveButton({ label, onClick }: { label: string; onClick: (button: HTM
       data-chip-remove=""
       aria-label={label}
       onClick={(e) => onClick(e.currentTarget)}
-      className="mr-0.5 inline-flex size-6 shrink-0 items-center justify-center rounded-[3px] text-muted hover:bg-hover hover:text-ink"
+      className="mr-0.5 inline-flex size-6 shrink-0 items-center justify-center rounded-chip text-muted hover:bg-hover hover:text-ink"
     >
       <IconClose className="size-3" />
     </button>
@@ -65,7 +75,11 @@ function LeaderCrumbs({ leaderId, onRemove }: { leaderId: string; onRemove: () =
   const ctx = useAnalytics()
   const setFilters = useCensus((s) => s.setFilters)
   const excluded = useCensus((s) => isExcluded(s.filters, 'leaderId'))
-  const chain = leaderChain(ctx.org, leaderId)
+  const lock = ctx.access.lock
+  const full = leaderChain(ctx.org, leaderId)
+  // Manager mode: the chain starts at the manager, nobody above (docs/ROLES.md, 3.10).
+  const from = lock ? full.findIndex((e) => e.employeeId === lock.managerId) : -1
+  const chain = from > 0 ? full.slice(from) : full
   if (excluded) {
     const nameOf = (id: string) => ctx.org.byId.get(id)?.name
     return (
@@ -100,7 +114,7 @@ function LeaderCrumbs({ leaderId, onRemove }: { leaderId: string; onRemove: () =
               type="button"
               onClick={() => setFilters({ leaderId: e.employeeId })}
               title={`Widen to ${e.name}'s org`}
-              className="max-w-[120px] truncate rounded-[2px] text-ink-2 hover:text-ink hover:underline"
+              className="max-w-[120px] truncate rounded-mark text-ink-2 hover:text-ink hover:underline"
             >
               {e.name}
             </button>
@@ -111,13 +125,16 @@ function LeaderCrumbs({ leaderId, onRemove }: { leaderId: string; onRemove: () =
           {leader ? `${leader.name}'s org` : 'Leader org'}
         </span>
       </nav>
-      <RemoveButton
-        label="Remove leader filter"
-        onClick={() => {
-          onRemove()
-          setFilters({ leaderId: null })
-        }}
-      />
+      {/* Manager mode keeps the manager's org: removing a narrower leader goes back to it. */}
+      {(!lock || leaderId !== lock.managerId) && (
+        <RemoveButton
+          label={lock ? `Back to ${orgOf(lock.managerName)}` : 'Remove leader filter'}
+          onClick={() => {
+            onRemove()
+            setFilters({ leaderId: null })
+          }}
+        />
+      )}
     </span>
   )
 }
@@ -127,7 +144,15 @@ export function FilterBar() {
   const filters = useCensus((s) => s.filters)
   const setFilters = useCensus((s) => s.setFilters)
   const resetFilters = useCensus((s) => s.resetFilters)
-  const employees = ctx.all.employees
+  // Manager mode pins the leader to the manager's org: the options and counts come from the org.
+  const lock = ctx.access.lock
+  // Manager mode with nobody usable picked: the row says so instead of naming an empty org.
+  const unset = ctx.access.unset
+  const all = ctx.all.employees
+  const employees = useMemo(
+    () => (lock ? all.filter((e) => lock.orgIds.has(e.employeeId)) : all),
+    [all, lock],
+  )
 
   // Each dimension counts within the rest of the row, so a count is who would be in scope.
   const options = useMemo(
@@ -147,16 +172,16 @@ export function FilterBar() {
     [employees, ctx.asOf, ctx.org, filters],
   )
   // Leader sizes count within the other filters (exclusions included): who would be in scope.
-  const leaders = useMemo(
-    () =>
-      leaderOptions(
-        ctx.org,
-        ctx.asOf,
-        3,
-        hasOrgFilter({ ...filters, leaderId: null }) ? otherFilters(filters, ctx.org, 'leaderId') : undefined,
-      ),
-    [ctx.org, ctx.asOf, filters],
-  )
+  const leaders = useMemo(() => {
+    const list = leaderOptions(
+      ctx.org,
+      ctx.asOf,
+      3,
+      hasOrgFilter({ ...filters, leaderId: null }) ? otherFilters(filters, ctx.org, 'leaderId') : undefined,
+    )
+    // Manager mode: the manager and the leaders inside their org.
+    return lock ? list.filter((o) => lock.orgIds.has(o.id) || o.id === lock.managerId) : list
+  }, [ctx.org, ctx.asOf, filters, lock])
   // Excluding, a choice that would leave out 1 to min - 1 people can't be picked (the anonymity
   // rule Ask and the records panel apply); one already picked stays, so it can be taken off.
   const min = minGroupOf(ctx.metrics)
@@ -192,7 +217,13 @@ export function FilterBar() {
 
   const nameOf = (id: string) => ctx.org.byId.get(id)?.name
   const chips = filterChips(filters, nameOf).filter((c) => c.key !== 'leaderId')
-  const showChips = isFiltered(filters)
+  // Manager mode: the manager's own org is the scope, not a filter. The scope line carries its
+  // pin, so it gets no chip, and with nothing else set there is nothing to reset.
+  const lockedLeader = !!lock && filters.leaderId === lock.managerId
+  const leaderChip = !!filters.leaderId && !unset && !lockedLeader
+  const showChips = isFiltered(filters) && (chips.length > 0 || leaderChip)
+  // A read-only data standard (Manager mode) is one short label at the row's end at every width.
+  const standardFixed = ctx.access.decide('filter:standard').access === 'limited'
 
   // A chip's remove button and Reset take themselves away: focus moves to the chip that took the
   // removed one's place (or the one before it), and to the leader picker when no chip is left.
@@ -214,61 +245,148 @@ export function FilterBar() {
     refocus.current = Math.max(0, all.indexOf(el))
   }
 
-  return (
-    <div className="pt-4 pb-1">
-      <fieldset ref={fieldset} data-tour="filter-row" className="flex min-w-0 flex-wrap items-center gap-2">
-        <legend className="sr-only">Filters</legend>
-        <ViewsMenu />
-        <span aria-hidden="true" className="mx-0.5 hidden h-5 w-px bg-rule-strong sm:block" />
-        <PeriodControl />
-        <span aria-hidden="true" className="mx-0.5 hidden h-5 w-px bg-rule-strong sm:block" />
+  const narrow = useNarrow()
+  const wide = useMinWidth(1280)
+  const [sheetOpen, setSheetOpen] = useState(false)
+  const activeCount = chips.length + (filters.leaderId && !lock ? 1 : 0)
+
+  const orgFilters = (
+    <>
+      {unset ? (
+        <Button
+          data-tour="filter-leader"
+          icon={<IconPin className="text-muted" />}
+          aria-label={`Leader: ${NO_MANAGER_PICKED}. Choose a manager`}
+          onClick={() => openManagerPicker()}
+        >
+          <span className="flex items-baseline gap-1">
+            <span className="font-normal text-muted">Leader</span>
+            <span className="text-ink">{NO_MANAGER_PICKED}</span>
+          </span>
+        </Button>
+      ) : (
         <LeaderPicker
           options={leaderChoices}
           value={filters.leaderId}
           currentName={filters.leaderId ? nameOf(filters.leaderId) : undefined}
           onChange={(leaderId) => setFilters({ leaderId })}
           mode={leaderExcluded ? 'exclude' : 'include'}
-          onModeChange={(m) => setMode('leaderId', m)}
+          onModeChange={lock ? undefined : (m) => setMode('leaderId', m)}
           onOpenChange={onMenu}
+          {...(lock && {
+            clearLabel: WHOLE_ORG,
+            pinned: lockTip(lock.managerName),
+            youId: lock.managerId,
+            emptyText: 'Nobody in this org leads 3 or more employees.',
+          })}
           note={leaderChoices.some((o) => o.disabled) ? tooFewNote('Orgs', min) : undefined}
         />
-        {DIMENSIONS.map((k) => {
-          const mode: FilterMode = isExcluded(filters, k) ? 'exclude' : 'include'
-          const list = choices(k)
-          return (
-            <MultiSelect
-              key={k}
-              label={FILTER_DIMENSION_LABELS[k]}
-              options={list}
-              note={list.some((o) => o.disabled) ? tooFewNote('Groups', min) : undefined}
-              value={filters[k]}
-              onChange={(v) => setFilters({ [k]: v })}
-              width={k === 'department' ? 340 : 300}
-              excluded={mode === 'exclude'}
-              onOpenChange={onMenu}
-              header={
-                <ModeSwitch
-                  label={FILTER_DIMENSION_LABELS[k]}
-                  value={mode}
-                  onChange={(m) => setMode(k, m)}
-                  hint={listModeHint(mode)}
-                />
-              }
-            />
-          )
-        })}
-        <p aria-live="polite" className="ml-auto pl-2 text-[12px] whitespace-nowrap text-muted">
-          {ctx.isCompany
-            ? `${plural(inScope, 'person', 'people')} in scope`
-            : `${fmt(inScope, 'int')} of ${plural(total, 'person', 'people')} in scope`}
+      )}
+      {DIMENSIONS.map((k) => {
+        const mode: FilterMode = isExcluded(filters, k) ? 'exclude' : 'include'
+        const list = choices(k)
+        return (
+          <MultiSelect
+            key={k}
+            label={FILTER_DIMENSION_LABELS[k]}
+            options={list}
+            note={list.some((o) => o.disabled) ? tooFewNote('Groups', min) : undefined}
+            value={filters[k]}
+            onChange={(v) => setFilters({ [k]: v })}
+            width={k === 'department' ? 340 : 300}
+            excluded={mode === 'exclude'}
+            onOpenChange={onMenu}
+            header={
+              <ModeSwitch
+                label={FILTER_DIMENSION_LABELS[k]}
+                value={mode}
+                onChange={(m) => setMode(k, m)}
+                hint={listModeHint(mode)}
+              />
+            }
+          />
+        )
+      })}
+    </>
+  )
+  const scopeCount = lock
+    ? unset
+      ? NO_MANAGER_PICKED
+      : peopleInOrg(fmt(inScope, 'int'), plural(total, 'person', 'people'), lock.managerName)
+    : ctx.isCompany
+      ? `${plural(inScope, 'person', 'people')} in scope`
+      : `${fmt(inScope, 'int')} of ${plural(total, 'person', 'people')} in scope`
+
+  return (
+    <div className="pt-4 pb-1">
+      <fieldset ref={fieldset} data-tour="filter-row" className="flex min-w-0 flex-wrap items-center gap-2">
+        <legend className="sr-only">Filters</legend>
+        {narrow ? (
+          <>
+            <PeriodControl />
+            <BDialog.Root open={sheetOpen} onOpenChange={(o) => setSheetOpen(o)}>
+              <BDialog.Trigger
+                render={
+                  <Button
+                    icon={<IconFilter />}
+                    aria-label={`Filters${activeCount ? `, ${activeCount} active` : ''}`}
+                  >
+                    Filters{activeCount ? ` (${activeCount})` : ''}
+                  </Button>
+                }
+              />
+              <BDialog.Portal>
+                <BDialog.Backdrop className="fixed inset-0 z-40 bg-overlay transition-opacity duration-150 data-[ending-style]:opacity-0 data-[starting-style]:opacity-0" />
+                <BDialog.Popup className="fixed inset-x-0 bottom-0 z-40 flex max-h-[85dvh] flex-col rounded-t-sheet bg-sheet text-ink shadow-(--shadow-pop) outline-none transition-transform duration-200 data-[ending-style]:translate-y-full data-[starting-style]:translate-y-full">
+                  <div className="flex items-center gap-3 border-b border-rule px-4 pt-4 pb-3">
+                    <div className="min-w-0 flex-1">
+                      <BDialog.Title className="cut-head text-section font-semibold">Filters</BDialog.Title>
+                      <BDialog.Description className="mt-0.5 text-meta text-muted">
+                        {scopeCount}
+                      </BDialog.Description>
+                    </div>
+                    <BDialog.Close
+                      aria-label="Close"
+                      className="inline-flex size-8 shrink-0 items-center justify-center rounded-control text-ink-2 hover:bg-hover hover:text-ink"
+                    >
+                      <IconClose />
+                    </BDialog.Close>
+                  </div>
+                  <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <ViewsMenu />
+                      {orgFilters}
+                    </div>
+                    <div className="mt-4 border-t border-rule pt-4">
+                      <StandardControl />
+                    </div>
+                  </div>
+                </BDialog.Popup>
+              </BDialog.Portal>
+            </BDialog.Root>
+          </>
+        ) : (
+          <>
+            <ViewsMenu />
+            <span aria-hidden="true" className="mx-0.5 hidden h-5 w-px bg-rule-strong sm:block" />
+            <PeriodControl />
+            <span aria-hidden="true" className="mx-0.5 hidden h-5 w-px bg-rule-strong sm:block" />
+            {orgFilters}
+          </>
+        )}
+        <p aria-live="polite" className="ml-auto pl-2 text-meta whitespace-nowrap text-muted max-md:sr-only">
+          {scopeCount}
         </p>
+        {(wide || (standardFixed && !narrow)) && <StandardControl compact />}
       </fieldset>
-      <div className="mt-2.5">
-        <StandardControl />
-      </div>
+      {!wide && !narrow && !standardFixed && (
+        <div className="mt-2.5">
+          <StandardControl />
+        </div>
+      )}
       {showChips && (
         <div ref={chipRow} className="mt-2 flex flex-wrap items-center gap-1.5">
-          {filters.leaderId && (
+          {leaderChip && filters.leaderId && (
             <LeaderCrumbs
               leaderId={filters.leaderId}
               onRemove={() => {

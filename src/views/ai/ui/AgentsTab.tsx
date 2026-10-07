@@ -32,9 +32,11 @@ import {
   toggleArea,
 } from '../catalog'
 import { useAreasFromRoute } from '../link'
+import { M } from '../metrics'
 import { useAiAgents } from '../state'
 import { AgentCard } from './AgentCard'
 import { AgentDialog } from './AgentDialog'
+import { CoverageFigure, SourcesFigure, sourceFilterText } from './CatalogCharts'
 import { ImportDialog, ResetDialog } from './CatalogDialogs'
 import { CATALOG_COLUMNS } from './catalogColumns'
 import { useAiUi } from './uiState'
@@ -49,8 +51,8 @@ function UseNote({ sample }: { sample: boolean }) {
       className="col-span-full flex min-w-0 gap-3 rounded-sheet bg-sheet px-4 py-3.5 lg:col-span-4"
     >
       <IconInfo className="mt-0.5 shrink-0 text-ink-2" />
-      <div className="min-w-0 text-[13px] leading-snug">
-        <h2 className="cut-head text-[15px] font-semibold text-ink">Using agents well</h2>
+      <div className="min-w-0 text-small leading-snug">
+        <h2 className="cut-head text-title font-semibold text-ink">Using agents well</h2>
         <p className="mt-1 text-ink-2">
           Agents assist and people decide: no agent makes a hiring, rating or pay decision. Share only the
           data an agent is approved for, and check what it gives you before you use it.
@@ -88,11 +90,12 @@ function AreaSummary({ agents }: { agents: readonly Agent[] }) {
   return (
     <Figure
       id="ai-agents-by-area"
+      metric={M.byArea}
       title="Agents by area"
       subtitle={
         narrowed
           ? 'Agents that match the audience, status and search filters'
-          : 'Select an area to show only its agents'
+          : 'Every agent in the catalog, by the HR area it serves'
       }
       data={rows}
       columns={columns}
@@ -118,22 +121,20 @@ function AreaSummary({ agents }: { agents: readonly Agent[] }) {
                 c.selected ? 'bg-sheet-2' : 'hover:bg-hover',
               )}
             >
-              <span className="flex w-full items-center gap-1 text-[12px] font-medium text-ink-2">
+              <span className="flex w-full items-center gap-1 text-meta font-medium text-ink-2">
                 <span className="min-w-0 truncate">{c.label}</span>
                 {c.selected && <IconCheck className="size-3.5 shrink-0 text-ink" />}
               </span>
               <span
                 className={cx(
-                  'cut-head text-[28px] leading-none font-[650]',
+                  'cut-head text-page-title leading-none font-[650]',
                   c.count ? 'text-ink' : 'text-muted',
                   c.count > 0 && cx(DRILL_CLASS, 'group-hover:decoration-ink'),
                 )}
               >
                 {c.count}
               </span>
-              {narrowed && c.total !== c.count && (
-                <span className="text-[11px] text-muted">of {c.total}</span>
-              )}
+              {narrowed && c.total !== c.count && <span className="text-label text-muted">of {c.total}</span>}
             </button>
           </li>
         ))}
@@ -163,7 +164,7 @@ function FilterRow({ agents, shown }: { agents: readonly Agent[]; shown: number 
           value={filters.query}
           onChange={(e) => setFilters({ query: e.target.value })}
           placeholder="Search names, descriptions and uses"
-          className="h-8 w-full rounded-control bg-sheet pr-2.5 pl-8 text-[13px] text-ink shadow-[inset_0_0_0_1px_var(--rule-strong)] outline-none placeholder:text-muted focus-visible:shadow-[inset_0_0_0_2px_var(--focus)]"
+          className="h-8 w-full rounded-control bg-sheet pr-2.5 pl-8 text-small text-ink shadow-[inset_0_0_0_1px_var(--rule-strong)] outline-none placeholder:text-muted focus-visible:shadow-[inset_0_0_0_2px_var(--focus)]"
         />
       </label>
       <MultiSelect
@@ -195,12 +196,25 @@ function FilterRow({ agents, shown }: { agents: readonly Agent[]; shown: number 
         onChange={(v) => setFilters({ statuses: v as AgentStatus[] })}
         width={220}
       />
+      {filters.sources?.length ? (
+        <span className="inline-flex h-8 items-center gap-1 rounded-chip bg-sheet-2 pr-1 pl-2.5 text-small text-ink">
+          {sourceFilterText(agents, filters.sources)}
+          <Button
+            variant="ghost"
+            size="sm"
+            aria-label="Show agents for every data source"
+            onClick={() => setFilters({ sources: [] })}
+          >
+            Remove
+          </Button>
+        </span>
+      ) : null}
       {hasFilters(filters) && (
         <Button variant="ghost" onClick={clearFilters}>
           Clear filters
         </Button>
       )}
-      <p role="status" className="ml-auto text-[13px] text-ink-2">
+      <p role="status" className="ml-auto text-small text-ink-2">
         {hasFilters(filters)
           ? `Showing ${shown} of ${plural(agents.length, 'agent')}`
           : plural(agents.length, 'agent')}
@@ -268,11 +282,13 @@ export function AgentsTab() {
       <Grid>
         <UseNote sample={sample} />
         <AreaSummary agents={agents} />
+        <CoverageFigure agents={agents} />
+        <SourcesFigure agents={agents} />
       </Grid>
 
       <section aria-labelledby="ai-agents-heading" className="flex flex-col gap-4">
         <div className="flex flex-col gap-3">
-          <h2 id="ai-agents-heading" className="cut-head text-[20px] leading-tight font-semibold">
+          <h2 id="ai-agents-heading" className="cut-head text-section leading-tight font-semibold">
             Agents
           </h2>
           {agents.length > 0 && <FilterRow agents={agents} shown={shown.length} />}
@@ -317,8 +333,8 @@ export function AgentsTab() {
               className="mt-2 flex flex-col gap-2.5"
             >
               <h3 id={`ai-area-${g.area}`} className="flex items-baseline gap-2">
-                <span className="cut-head text-[16px] font-semibold text-ink">{g.label}</span>
-                <span className="text-[13px] text-muted">{plural(g.agents.length, 'agent')}</span>
+                <span className="cut-head text-title font-semibold text-ink">{g.label}</span>
+                <span className="text-small text-muted">{plural(g.agents.length, 'agent')}</span>
               </h3>
               <Grid>
                 {g.agents.map((a) => (
@@ -336,10 +352,10 @@ export function AgentsTab() {
 
       <section aria-labelledby="ai-catalog-heading" className="flex flex-col gap-3">
         <div>
-          <h2 id="ai-catalog-heading" className="cut-head text-[20px] leading-tight font-semibold">
+          <h2 id="ai-catalog-heading" className="cut-head text-section leading-tight font-semibold">
             Catalog
           </h2>
-          <p className="mt-1 max-w-[70ch] text-[13px] text-ink-2">
+          <p className="mt-1 max-w-[70ch] text-small text-ink-2">
             The same agents as a table, to export or paste into a deck. Download the AI agents sheet from the
             Catalog menu to edit it in Excel and import it back.
           </p>

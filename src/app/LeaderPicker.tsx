@@ -4,7 +4,7 @@
  */
 import { Combobox } from '@base-ui/react/combobox'
 import { type ReactNode, useMemo, useState } from 'react'
-import { IconCheck, IconSearch } from '@/components/icons'
+import { IconCheck, IconPin, IconSearch } from '@/components/icons'
 import { PICKER_ITEM, POPUP_SURFACE, SEARCH_INPUT } from '@/components/styles'
 import { Button, cx } from '@/components/ui'
 import type { FilterMode } from '@/data/scope'
@@ -30,6 +30,8 @@ export function LeaderPicker({
   onModeChange,
   onOpenChange,
   note,
+  pinned,
+  youId,
 }: {
   options: LeaderOption[]
   value: string | null
@@ -51,6 +53,13 @@ export function LeaderPicker({
   onOpenChange?: (open: boolean) => void
   /** A muted line under the list, e.g. why some leaders can't be picked (`LeaderOption.disabled`). */
   note?: ReactNode
+  /**
+   * Manager mode keeps the filter on one org (docs/ROLES.md, 3.10): the trigger shows a pin and
+   * names the org, and this text says why on hover.
+   */
+  pinned?: string
+  /** The option tagged "You" (Manager mode's manager). */
+  youId?: string
 }) {
   const items = useMemo(
     () => Combobox.createItems(options, { getValue: (o) => o.id, getLabel: (o) => o.name }),
@@ -76,6 +85,8 @@ export function LeaderPicker({
           <Button
             caret
             data-tour="filter-leader"
+            icon={pinned ? <IconPin className="text-muted" /> : undefined}
+            title={pinned}
             aria-label={
               value
                 ? excluded
@@ -90,7 +101,7 @@ export function LeaderPicker({
                 {/* Excluding leaves out the leader's whole org, so the trigger names the org. */}
                 {excluded && <span className="shrink-0 text-ink">not in</span>}
                 <span className="truncate text-ink">
-                  {excluded
+                  {excluded || pinned
                     ? currentName
                       ? `${currentName}'s org`
                       : "the leader's org"
@@ -116,7 +127,7 @@ export function LeaderPicker({
               <IconSearch className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-muted" />
               <Combobox.Input placeholder="Search by name or title" className={SEARCH_INPUT} />
             </div>
-            <Combobox.Empty className="text-[13px] text-muted empty:hidden">
+            <Combobox.Empty className="text-small text-muted empty:hidden">
               <div className="px-3 py-3">{options.length ? 'No matches.' : emptyText}</div>
             </Combobox.Empty>
             <Combobox.List className="max-h-[min(360px,calc(var(--available-height)-90px))] overflow-y-auto overscroll-contain py-1 empty:p-0">
@@ -134,21 +145,24 @@ export function LeaderPicker({
                     />
                   </span>
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate group-data-[selected]:font-semibold">{o.name}</span>
-                    {o.title && <span className="block truncate text-[12px] text-muted">{o.title}</span>}
+                    <span className="flex min-w-0 items-baseline gap-1.5">
+                      <span className="truncate group-data-[selected]:font-semibold">{o.name}</span>
+                      {o.id === youId && <span className="shrink-0 text-meta text-muted">You</span>}
+                    </span>
+                    {o.title && <span className="block truncate text-meta text-muted">{o.title}</span>}
                   </span>
                   {/* Headcount basis (employees only), like every other count in the filters; the Org
                       chart's own counts include contractors and interns and say "people". Excluding,
                       the org is who would be left out. */}
-                  <span className="tnum mt-0.5 shrink-0 text-[12px] text-muted">
+                  <span className="tnum mt-0.5 shrink-0 text-meta text-muted">
                     {excluded ? `leaves out ${fmt(o.size, 'int')}` : plural(o.size, 'employee')}
                   </span>
                 </Combobox.Item>
               )}
             </Combobox.List>
-            {note && <p className="border-t border-rule px-3 py-1.5 text-[12px] text-muted">{note}</p>}
+            {note && <p className="border-t border-rule px-3 py-1.5 text-meta text-muted">{note}</p>}
             <div className="flex items-center justify-between border-t border-rule py-1.5 pr-1.5 pl-3">
-              <span className="text-[12px] text-muted">{plural(options.length, noun)}</span>
+              <span className="text-meta text-muted">{plural(options.length, noun)}</span>
               <Button
                 size="sm"
                 variant="ghost"

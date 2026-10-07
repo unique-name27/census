@@ -15,14 +15,14 @@ import { cx } from '@/components'
 export function ProcessId({ id }: { id: string }) {
   const tools = useTools()
   const href = processLink(tools, id)
-  const text = 'font-mono text-[12px] whitespace-nowrap'
+  const text = 'font-mono text-meta whitespace-nowrap'
   if (!href) return <span className={cx(text, 'text-ink-2')}>{id}</span>
   return (
     <a
       href={href}
       target="_blank"
       rel="noopener noreferrer"
-      className={cx(text, 'rounded-[2px] text-link underline-offset-2 hover:underline')}
+      className={cx(text, 'rounded-mark text-link underline-offset-2 hover:underline')}
       title={`Open ${id} in the HR process catalog (new tab)`}
     >
       {id}
@@ -41,7 +41,7 @@ export interface AtlasColumn<T> {
 }
 
 const TH =
-  'border-b border-rule-strong py-1.5 px-2 first:pl-0 last:pr-0 align-bottom cut-head text-[12px] font-semibold text-ink-2'
+  'border-b border-rule-strong py-1.5 px-2 first:pl-0 last:pr-0 align-bottom cut-head text-meta font-semibold text-ink-2'
 const TD = 'border-b border-rule py-2 px-2 first:pl-0 last:pr-0 align-top'
 
 export function AtlasTable<T>({
@@ -57,7 +57,7 @@ export function AtlasTable<T>({
 }) {
   return (
     <div className="scroll-x relative min-w-0">
-      <table className="w-full border-separate border-spacing-0 text-[13px] leading-snug">
+      <table className="w-full border-separate border-spacing-0 text-small leading-snug">
         <caption className="sr-only">{caption}</caption>
         <thead>
           <tr>

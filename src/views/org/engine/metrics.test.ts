@@ -156,7 +156,7 @@ describe('the org metric dictionary', () => {
         figures++
       }
     }
-    expect(figures).toBe(4)
+    expect(figures).toBe(8)
   })
 
   it('reads every registered setting through ctx.metrics, and nothing it did not register', () => {

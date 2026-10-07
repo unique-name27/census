@@ -50,16 +50,17 @@ export interface DeadlinesModel {
 }
 
 const pad = (n: number) => String(n).padStart(2, '0')
-const dateOf = (y: number, m: number, d: number): ISODate => `${y}-${pad(m)}-${pad(d)}`
+export const dateOf = (y: number, m: number, d: number): ISODate => `${y}-${pad(m)}-${pad(d)}`
 
-function occursIn(entry: CalendarEntry, year: number): boolean {
+/** Whether an entry applies in a year (some run in named years or odd years only). */
+export function occursIn(entry: CalendarEntry, year: number): boolean {
   if (entry.years && !entry.years.includes(year)) return false
   if (entry.oddYears && year % 2 === 0) return false
   return true
 }
 
 /** The months (1-12) an entry falls in each year. */
-function monthsOf(entry: CalendarEntry): number[] {
+export function monthsOf(entry: CalendarEntry): number[] {
   if (entry.recurrence === 'monthly') return [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
   if (entry.recurrence === 'quarterly') return [0, 3, 6, 9].map((k) => ((entry.month - 1 + k) % 12) + 1)
   return [entry.month]
@@ -71,7 +72,8 @@ const RECURRENCE_WORD: Record<CalendarEntry['recurrence'], string> = {
   monthly: 'Every month',
 }
 
-function recurrenceWord(e: CalendarEntry): string {
+/** "Every year", "Every quarter", "Odd years", "In 2027 only". */
+export function recurrenceWord(e: CalendarEntry): string {
   if (e.years) return e.years.length === 1 ? `In ${e.years[0]} only` : `In ${e.years.join(', ')}`
   if (e.oddYears) return 'Odd years'
   return RECURRENCE_WORD[e.recurrence]

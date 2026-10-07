@@ -40,11 +40,11 @@ export function Dialog({
         >
           <div className="flex items-start gap-3 px-5 pt-4 pb-3">
             <div className="min-w-0 flex-1">
-              <BDialog.Title className="cut-head text-[20px] leading-tight font-semibold">
+              <BDialog.Title className="cut-head text-section leading-tight font-semibold">
                 {title}
               </BDialog.Title>
               {description && (
-                <BDialog.Description className="mt-1 max-w-[70ch] text-[13px] text-ink-2">
+                <BDialog.Description className="mt-1 max-w-[70ch] text-small text-ink-2">
                   {description}
                 </BDialog.Description>
               )}

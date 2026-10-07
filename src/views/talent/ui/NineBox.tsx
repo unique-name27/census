@@ -16,7 +16,7 @@ import {
   textWidth,
   useChartTheme,
 } from '@/charts'
-import { cx, IconClose } from '@/components'
+import { IconClose } from '@/components'
 import { POTENTIALS } from '@/data/schema'
 import { Drill, type DrillSource, drill, openPerson } from '@/drill'
 import { fmt, plural } from '@/lib/format'
@@ -72,7 +72,8 @@ export function NineBox({
 
   const byKey = new Map(cells.map((c) => [cellKey(c.performance, c.potential), c]))
   const max = Math.max(1, ...cells.map((c) => c.count))
-  const color = sequentialScale(t, 0, max)
+  // Large cells stop the ramp at --seq-600, so the busiest box never outweighs the page (DESIGN-REFRESH 2.7).
+  const color = sequentialScale(t, 0, max, 600)
   const left = width < 480 ? 76 : 88
   const gridW = Math.max(0, width - left)
   const cellW = (gridW - 2 * GAP) / 3
@@ -248,9 +249,9 @@ export function NineBox({
                     )}
                     <text
                       x={x + 10}
-                      y={y + cellH - (showLabels ? 30 : 26)}
+                      y={y + cellH - (showLabels ? 31 : 26)}
                       fill={ink}
-                      fontSize={showLabels ? 24 : 20}
+                      fontSize={showLabels ? 28 : 20}
                       fontWeight={600}
                       style={{ fontStretch: '84%' }}
                     >
@@ -271,7 +272,7 @@ export function NineBox({
       {active ? (
         <div className="mt-3 border-t border-rule pt-3">
           <div className="mb-2 flex items-center gap-2">
-            <h4 className="text-[13px] font-semibold [font-stretch:100%]">
+            <h4 className="text-small font-semibold [font-stretch:100%]">
               {active.label.replace(/^./, (m) => m.toUpperCase())}
               <span className="ml-1.5 font-normal text-muted">
                 <Drill
@@ -296,7 +297,7 @@ export function NineBox({
             <button
               type="button"
               onClick={() => setSelected(null)}
-              className="ml-auto inline-flex h-6 items-center gap-1 rounded-control px-1.5 text-[12px] text-ink-2 hover:bg-hover hover:text-ink"
+              className="ml-auto inline-flex h-6 items-center gap-1 rounded-control px-1.5 text-meta text-ink-2 hover:bg-hover hover:text-ink"
             >
               <IconClose className="size-3.5" />
               Clear
@@ -313,9 +314,7 @@ export function NineBox({
             emptyText="Nobody is in this box."
           />
         </div>
-      ) : (
-        <p className={cx('mt-2 text-[12px] text-muted')}>Select a box to see the people in it.</p>
-      )}
+      ) : null}
     </div>
   )
 }

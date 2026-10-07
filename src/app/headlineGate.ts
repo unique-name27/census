@@ -9,6 +9,7 @@ import type { DataStandard } from '@/data/quality/tier'
 import type { QualityIndex } from '@/data/quality/types'
 import type { DatasetKey } from '@/data/schema'
 import { DASH } from '@/lib/format'
+import { timed } from '@/lib/timing'
 import { catalogHeadline } from '@/views/ai/catalog/summary'
 import type { Agent } from '@/views/ai/catalog/types'
 import type { Headline, ViewDef } from '@/views/types'
@@ -33,7 +34,7 @@ export function gateHeadline(
 /** A view's headline; "—" when computing it fails, so one view never blanks the tab strip. */
 export function safeHeadline(view: ViewDef, ctx: AnalyticsContext): Headline {
   try {
-    return view.headline(ctx)
+    return timed(`census:headline:${view.key}`, () => view.headline(ctx))
   } catch (err) {
     console.error(`Headline for ${view.key} failed`, err)
     return { value: DASH, label: '' }

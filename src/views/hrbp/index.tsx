@@ -1,4 +1,5 @@
 import { Button, EmptyState, goTo } from '@/components'
+import { useRouteShown } from '@/components/RouteLink'
 import { useAnalytics } from '@/data/context'
 import { fmt } from '@/lib/format'
 import type { ViewDef } from '../types'
@@ -31,15 +32,18 @@ function Body({ tab }: { tab: string }) {
 
 function View({ tab }: { tab: string }) {
   const ctx = useAnalytics()
+  const dataRoom = useRouteShown('data')
   if (!ctx.all.employees.length) {
     return (
       <EmptyState
         title="Upload Employees to see this view"
         body="Headcount, attrition, movement and org design all come from the Employees roster. Job changes and Reviews add promotions and exit ratings."
         action={
-          <Button variant="primary" size="sm" onClick={() => goTo('data')}>
-            Open the Data room
-          </Button>
+          dataRoom && (
+            <Button variant="primary" size="sm" onClick={() => goTo('data')}>
+              Open the Data room
+            </Button>
+          )
         }
       />
     )

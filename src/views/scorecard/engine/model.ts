@@ -269,6 +269,8 @@ export function missedFinding(
     detail,
     action: 'Review the missed measures with each practice lead this month.',
     uses: union(missed.map((r) => r.kpi.uses)),
+    // The records behind the measure the detail names, the furthest from its target.
+    ...(furthest.kpi.drill ? { drill: furthest.kpi.drill } : {}),
   }
 }
 

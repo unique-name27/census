@@ -6,6 +6,7 @@
 import { useEffect, useRef } from 'react'
 import { Meter } from '@/charts'
 import { IconChevronRight, IconDownload, IconFile, IconReset, IconUpload } from '@/components/icons'
+import { TABLE_HEAD } from '@/components/styles'
 import { TierBadge } from '@/components/tier/TierBadge'
 import { toast } from '@/components/toast'
 import { Button, cx, IconButton, Menu, SeverityIcon, Tag, Tip } from '@/components/ui'
@@ -29,7 +30,7 @@ const COLS =
   'lg:grid lg:grid-cols-[minmax(0,1.3fr)_92px_minmax(0,1.15fr)_72px_132px_minmax(0,1.6fr)_auto] lg:items-start lg:gap-x-5'
 
 function CellLabel({ children }: { children: string }) {
-  return <span className="eyebrow mb-0.5 block lg:hidden">{children}</span>
+  return <span className={cx(TABLE_HEAD, 'mb-0.5 block lg:hidden')}>{children}</span>
 }
 
 function Source({ row }: { row: ManifestRow }) {
@@ -41,12 +42,10 @@ function Source({ row }: { row: ManifestRow }) {
     )
   return (
     <span className="block min-w-0">
-      <span className="block truncate text-[13px]" title={row.source.label}>
+      <span className="block truncate text-small" title={row.source.label}>
         {row.source.label}
       </span>
-      {row.source.detail && (
-        <span className="block truncate text-[12px] text-muted">{row.source.detail}</span>
-      )}
+      {row.source.detail && <span className="block truncate text-meta text-muted">{row.source.detail}</span>}
     </span>
   )
 }
@@ -85,7 +84,7 @@ function Coverage({
           tone={row.coverage.core != null && row.coverage.core < 0.8 ? 'warning' : 'default'}
           className="w-14 shrink-0"
         />
-        <span className="tnum text-[13px]">{text}</span>
+        <span className="tnum text-small">{text}</span>
       </button>
     </Tip>
   )
@@ -93,15 +92,15 @@ function Coverage({
 
 function Issues({ row, data }: { row: ManifestRow; data: Datasets }) {
   const [first, ...rest] = row.checks
-  if (!first) return <span className="text-[13px] text-muted">None</span>
+  if (!first) return <span className="text-small text-muted">None</span>
   return (
-    <span className="flex min-w-0 gap-2 text-[13px]">
+    <span className="flex min-w-0 gap-2 text-small">
       <SeverityIcon severity={first.severity} className="mt-0.5 size-3.5 shrink-0" />
       <span className="min-w-0">
         <span className="line-clamp-2">
           <CheckSentence check={first} row={row} data={data} />
         </span>
-        {rest.length > 0 && <span className="text-[12px] text-muted">{rest.length} more in details</span>}
+        {rest.length > 0 && <span className="text-meta text-muted">{rest.length} more in details</span>}
       </span>
     </span>
   )
@@ -190,7 +189,7 @@ function Actions({ row, onUpload }: { row: ManifestRow; onUpload: (key: DatasetK
 function Tier({ row }: { row: ManifestRow }) {
   const ctx = useAnalytics()
   const show = useRoom((s) => s.show)
-  if (!row.tier) return <span className="text-[13px] text-muted">—</span>
+  if (!row.tier) return <span className="text-small text-muted">—</span>
   return (
     <TierBadge
       tier={row.tier}
@@ -204,12 +203,12 @@ function Tier({ row }: { row: ManifestRow }) {
 /** The row count opens every row it counts; the panel pages through them. */
 function RowCount({ row, data }: { row: ManifestRow; data: Datasets }) {
   const n = fmt(row.rows, 'int')
-  if (!row.rows) return <span className="tnum text-[13px]">{n}</span>
+  if (!row.rows) return <span className="tnum text-small">{n}</span>
   return (
     <Drill
       spec={() => rowsSpec(row, data)}
       label={`Show the ${n} ${row.rows === 1 ? 'row' : 'rows'} loaded in ${row.label}`}
-      className="tnum text-[13px]"
+      className="tnum text-small"
     >
       {n}
     </Drill>
@@ -237,7 +236,7 @@ function Row({
   }, [reveal])
   return (
     <li ref={ref} className="scroll-mt-4 border-b border-rule last:border-b-0">
-      <div className={cx(COLS, 'grid grid-cols-2 gap-x-4 gap-y-3 px-4 py-3')}>
+      <div className={cx(COLS, 'grid grid-cols-2 gap-x-4 gap-y-3 px-4 py-3 lg:px-5')}>
         <div className="col-span-2 min-w-0 lg:col-span-1">
           <h3>
             <button
@@ -254,8 +253,8 @@ function Row({
                 )}
               />
               <span className="min-w-0">
-                <span className="cut-head block text-[15px] leading-snug font-semibold">{row.label}</span>
-                <span className="block text-[12px] leading-snug text-muted">{feedsLine(row.feeds)}</span>
+                <span className="cut-head block text-title leading-snug font-semibold">{row.label}</span>
+                <span className="block text-meta leading-snug text-muted">{feedsLine(row.feeds)}</span>
               </span>
             </button>
           </h3>
@@ -303,15 +302,18 @@ export function Manifest({
   const toggle = useRoom((s) => s.toggle)
   return (
     // Bleeds to the edges of the Figure it sits in, so row hairlines run sheet-wide.
-    <div className="-mx-4 -mb-4 min-w-0 border-t border-rule">
-      <div aria-hidden="true" className={cx(COLS, 'hidden border-b border-rule px-4 py-2 lg:grid')}>
-        <span className="eyebrow">Dataset</span>
-        <span className="eyebrow">Tier</span>
-        <span className="eyebrow">Source</span>
-        <span className="eyebrow text-right">Rows</span>
-        <span className="eyebrow">Field coverage</span>
-        <span className="eyebrow">Issues</span>
-        <span className="eyebrow w-[132px]">Actions</span>
+    <div className="-mx-4 -mb-5 min-w-0 border-t border-rule lg:-mx-5">
+      <div
+        aria-hidden="true"
+        className={cx(COLS, 'hidden border-b border-rule-strong px-4 py-2 lg:grid lg:px-5', TABLE_HEAD)}
+      >
+        <span>Dataset</span>
+        <span>Tier</span>
+        <span>Source</span>
+        <span className="text-right">Rows</span>
+        <span>Field coverage</span>
+        <span>Issues</span>
+        <span className="w-[132px]">Actions</span>
       </div>
       <ul aria-label="Datasets">
         {rows.map((r) => (

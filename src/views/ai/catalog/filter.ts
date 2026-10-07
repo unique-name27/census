@@ -1,7 +1,9 @@
 /**
- * Filtering and grouping the catalog: HR area, audience, status and a search over names,
- * descriptions and use cases. Pure.
+ * Filtering and grouping the catalog: HR area, audience, status, data source and a search over
+ * names, descriptions and use cases. Pure.
  */
+
+import { drawsOn } from './charts'
 import {
   AGENT_AREAS,
   type Agent,
@@ -18,12 +20,21 @@ export interface AgentFilters {
   audiences: AgentAudience[]
   statuses: AgentStatus[]
   query: string
+  /**
+   * Data sources (folded with `sourceKey`), set from the "What agents draw on" chart: an agent
+   * passes when it draws on any of them. Absent or empty means every source.
+   */
+  sources?: string[]
 }
 
 export const NO_FILTERS: AgentFilters = { areas: [], audiences: [], statuses: [], query: '' }
 
 export const hasFilters = (f: AgentFilters): boolean =>
-  f.areas.length > 0 || f.audiences.length > 0 || f.statuses.length > 0 || f.query.trim() !== ''
+  f.areas.length > 0 ||
+  f.audiences.length > 0 ||
+  f.statuses.length > 0 ||
+  f.query.trim() !== '' ||
+  (f.sources?.length ?? 0) > 0
 
 /** Lowercase, accents and punctuation folded to spaces, so "1:1" finds "1 1" and "Leader 1:1". */
 const fold = (s: string) =>
@@ -80,6 +91,7 @@ export function matches(a: Agent, f: AgentFilters, skip?: Facet): boolean {
   if (skip !== 'audiences' && f.audiences.length && !a.audience.some((x) => f.audiences.includes(x)))
     return false
   if (skip !== 'statuses' && f.statuses.length && !f.statuses.includes(a.status)) return false
+  if (f.sources?.length && !drawsOn(a, f.sources)) return false
   return matchesQuery(a, f.query)
 }
 

@@ -6,6 +6,8 @@
  */
 import { Dialog as BDialog } from '@base-ui/react/dialog'
 import { useMemo } from 'react'
+import { outsideOrg } from '@/access/copy'
+import { personInLock } from '@/access/records'
 import { Button, StatusPill, Tag } from '@/components/ui'
 import { useAnalytics } from '@/data/context'
 import { RATING_LABELS } from '@/data/schema'
@@ -19,7 +21,7 @@ import { directsSpec, openCasesSpec, orgSpec, overdueSpec } from './related'
 import { useDrillStore } from './store'
 
 const LINK =
-  'rounded-[2px] text-left text-link underline decoration-rule-strong underline-offset-[3px] hover:decoration-link'
+  'rounded-mark text-left text-link underline decoration-rule-strong underline-offset-[3px] hover:decoration-link'
 
 export function PersonCard({ employeeId }: { employeeId: string }) {
   const ctx = useAnalytics()
@@ -38,16 +40,28 @@ export function PersonCard({ employeeId }: { employeeId: string }) {
   if (!p) {
     return (
       <div className="flex flex-col gap-2">
-        <BDialog.Title tabIndex={-1} className="cut-head text-[22px] font-semibold">
+        <BDialog.Title tabIndex={-1} className="cut-head text-section font-semibold">
           Not in the roster
         </BDialog.Title>
-        <BDialog.Description className="text-[13px] text-ink-2">
+        <BDialog.Description className="text-small text-ink-2">
           No employee with ID {employeeId} is in the Employees dataset.
         </BDialog.Description>
       </div>
     )
   }
   const e = p.employee
+  // Manager mode, someone outside the org: who they are, and nothing else (docs/ROLES.md, 3.12).
+  if (p.outside)
+    return (
+      <article className="flex flex-col gap-2">
+        <BDialog.Title tabIndex={-1} className="cut-head text-page-title leading-tight font-semibold">
+          {e.name}
+        </BDialog.Title>
+        <BDialog.Description className="text-body text-ink-2">{e.jobTitle}</BDialog.Description>
+        {e.department && <p className="text-small text-ink-2">{e.department}</p>}
+        <p className="text-small text-muted">{outsideOrg(ctx.access.lock?.managerName ?? 'the manager')}</p>
+      </article>
+    )
   const latest = p.reviews[0]
   const count = (n: number, one: string, many: string) => `${fmt(n, 'int')} ${n === 1 ? one : many}`
   const casesText = count(p.openCases, 'open HR case', 'open HR cases')
@@ -56,7 +70,7 @@ export function PersonCard({ employeeId }: { employeeId: string }) {
     <article className="flex flex-col gap-5">
       <header className="flex flex-col gap-2">
         <div className="flex flex-wrap items-center gap-2">
-          <BDialog.Title tabIndex={-1} className="cut-head text-[26px] leading-tight font-semibold">
+          <BDialog.Title tabIndex={-1} className="cut-head text-page-title leading-tight font-semibold">
             {e.name}
           </BDialog.Title>
           {p.status === 'Left' ? (
@@ -67,28 +81,33 @@ export function PersonCard({ employeeId }: { employeeId: string }) {
             <StatusPill severity="good" label="Active" />
           )}
         </div>
-        <BDialog.Description className="text-[14px] text-ink-2">
+        <BDialog.Description className="text-body text-ink-2">
           {e.jobTitle}
           {p.levelLabel ? ` · ${p.levelLabel}` : ''}
         </BDialog.Description>
-        <p className="text-[13px] text-ink-2">
+        <p className="text-small text-ink-2">
           {[e.department, e.businessUnit, e.location].filter(Boolean).join(' · ')}
           {e.employmentType && e.employmentType !== 'Employee' ? ` · ${e.employmentType}` : ''}
         </p>
         <PersonActions employeeId={e.employeeId} manages={p.directs.length > 0} />
       </header>
 
-      <section className="rounded-sheet bg-sheet p-4">
-        <dl className="grid grid-cols-1 gap-x-6 gap-y-3 text-[13px] sm:grid-cols-2">
+      <section className="border-y border-rule py-4">
+        <dl className="grid grid-cols-1 gap-x-6 gap-y-3 text-small sm:grid-cols-2">
           <Fact label="Reports to">
             {p.chain.length ? (
               <span className="flex flex-wrap items-center gap-x-1 gap-y-0.5">
                 {p.chain.map((m, i) => (
                   <span key={m.employeeId} className="flex items-center gap-1">
                     {i > 0 && <span className="text-muted">›</span>}
-                    <button type="button" className={LINK} onClick={() => openPerson(m.employeeId)}>
-                      {m.name}
-                    </button>
+                    {/* Manager mode: names above the manager read as plain text. */}
+                    {personInLock(m.employeeId, ctx.access) ? (
+                      <button type="button" className={LINK} onClick={() => openPerson(m.employeeId)}>
+                        {m.name}
+                      </button>
+                    ) : (
+                      <span>{m.name}</span>
+                    )}
                   </span>
                 ))}
               </span>
@@ -129,13 +148,20 @@ export function PersonCard({ employeeId }: { employeeId: string }) {
               ? `${latest.rating} ${RATING_LABELS[latest.rating] ?? ''} (${latest.cycle})${latest.potential ? ` · ${latest.potential} potential` : ''}`
               : 'Not rated'}
           </Fact>
-          <Fact label="Compa-ratio">{p.compaRatio == null ? '—' : fmt(p.compaRatio, 'num2')}</Fact>
+          {!p.limited && (
+            <Fact label="Compa-ratio">{p.compaRatio == null ? '—' : fmt(p.compaRatio, 'num2')}</Fact>
+          )}
           <Fact label="Open items">
-            {/* Employee relations cases are left out of this count: ER is never tied to a named person. */}
-            <Drill spec={lists.cases} label={`Show ${e.name}'s ${casesText}`}>
-              {casesText}
-            </Drill>
-            {' · '}
+            {/* Employee relations cases are left out of this count: ER is never tied to a named person.
+                Manager mode shows no HR cases at all. */}
+            {!p.limited && (
+              <>
+                <Drill spec={lists.cases} label={`Show ${e.name}'s ${casesText}`}>
+                  {casesText}
+                </Drill>
+                {' · '}
+              </>
+            )}
             <Drill spec={lists.courses} label={`Show ${e.name}'s ${coursesText}`}>
               {coursesText}
             </Drill>
@@ -154,7 +180,7 @@ export function PersonCard({ employeeId }: { employeeId: string }) {
       {p.directs.length > 0 && (
         <section className="flex flex-col gap-2">
           <h3 className="eyebrow">Direct reports</h3>
-          <ul className="grid grid-cols-1 gap-x-6 gap-y-1 text-[13px] sm:grid-cols-2">
+          <ul className="grid grid-cols-1 gap-x-6 gap-y-1 text-small sm:grid-cols-2">
             {p.directs
               .slice()
               .sort((a, b) => a.name.localeCompare(b.name))
@@ -163,7 +189,7 @@ export function PersonCard({ employeeId }: { employeeId: string }) {
                   <button type="button" className={LINK} onClick={() => openPerson(d.employeeId)}>
                     {d.name}
                   </button>
-                  <span className="truncate text-[12px] text-muted">{d.jobTitle}</span>
+                  <span className="truncate text-meta text-muted">{d.jobTitle}</span>
                 </li>
               ))}
           </ul>
@@ -173,7 +199,7 @@ export function PersonCard({ employeeId }: { employeeId: string }) {
       {p.reviews.length > 0 && (
         <section className="flex flex-col gap-2">
           <h3 className="eyebrow">Reviews</h3>
-          <table className="w-full text-[13px] tnum">
+          <table className="w-full text-small tnum">
             <tbody>
               {p.reviews.map((r) => (
                 <tr key={r.cycle} className="border-b border-rule last:border-0">
@@ -199,7 +225,7 @@ export function PersonCard({ employeeId }: { employeeId: string }) {
       {p.jobChanges.length > 0 && (
         <section className="flex flex-col gap-2">
           <h3 className="eyebrow">Job history</h3>
-          <ol className="flex flex-col gap-1 text-[13px]">
+          <ol className="flex flex-col gap-1 text-small">
             {p.jobChanges.slice(0, 8).map((j, i) => (
               <li key={`${j.effectiveDate}-${i}`} className="flex gap-3">
                 <span className="w-24 shrink-0 text-ink-2 tnum">{formatDate(j.effectiveDate)}</span>
@@ -224,7 +250,7 @@ export function PersonCard({ employeeId }: { employeeId: string }) {
 function Fact({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex min-w-0 flex-col gap-0.5">
-      <dt className="text-[12px] text-muted">{label}</dt>
+      <dt className="text-meta text-muted">{label}</dt>
       <dd className="min-w-0">{children}</dd>
     </div>
   )

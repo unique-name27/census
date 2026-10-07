@@ -12,6 +12,7 @@ import { clearDatasetFocus, useDatasetFocus } from '@/app/datasetFocus'
 import { type Column, type Definition, Figure } from '@/charts'
 import { type CurrentView, CurrentViewProvider } from '@/components/currentView'
 import { IconDownload } from '@/components/icons'
+import { Pending } from '@/components/Pending'
 import { Grid } from '@/components/Section'
 import { Button } from '@/components/ui'
 import { useAnalytics } from '@/data/context'
@@ -44,6 +45,7 @@ import { rowsSpec } from './ui/drillSpecs'
 import { DATA_BODY_ID, DataRoomHeader } from './ui/Header'
 import { Manifest } from './ui/Manifest'
 import { roomMeta } from './ui/meta'
+import { RecordsByMonthFigure } from './ui/RecordsByMonth'
 import { ReportingLine } from './ui/ReportingLine'
 import { useBusy } from './ui/useBusy'
 import { useFilePicker } from './ui/useFilePicker'
@@ -135,6 +137,9 @@ function DatasetsTab({
         <DropZone />
       </Grid>
       <Grid className="mt-10">
+        <RecordsByMonthFigure />
+      </Grid>
+      <Grid className="mt-4">
         <Figure
           id="data-manifest"
           title="Datasets"
@@ -176,9 +181,9 @@ function DatasetsTab({
 }
 
 const LOADING: Record<Exclude<DataTab, 'datasets'>, string> = {
-  quality: 'Loading data quality…',
-  metrics: 'Loading metric definitions…',
-  mapping: 'Loading categories and mapping…',
+  quality: 'Reading the data quality checks.',
+  metrics: 'Reading the metric definitions.',
+  mapping: 'Reading the categories and mapping.',
 }
 
 function RoomTab({
@@ -192,7 +197,17 @@ function RoomTab({
 }) {
   if (tab === 'datasets') return <DatasetsTab rows={rows} summaryRows={summaryRows} />
   const body = tab === 'mapping' ? <MappingTab /> : tab === 'metrics' ? <MetricsTab /> : <QualityTab />
-  return <Suspense fallback={<p className="text-[13px] text-muted">{LOADING[tab]}</p>}>{body}</Suspense>
+  return (
+    <Suspense
+      fallback={
+        <Grid>
+          <Pending message={LOADING[tab]} height={320} />
+        </Grid>
+      }
+    >
+      {body}
+    </Suspense>
+  )
 }
 
 export function DataRoom() {

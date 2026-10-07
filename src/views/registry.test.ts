@@ -29,8 +29,9 @@ describe('DATASETS[].usedBy', () => {
 })
 
 describe('folder tabs', () => {
-  it('open on the scorecard and follow the employee lifecycle, every view key once', () => {
+  it('open on My team and the scorecard and follow the employee lifecycle, every view key once', () => {
     expect(VIEWS.map((v) => v.key)).toEqual([
+      'team',
       'scorecard',
       'recruiting',
       'onboarding',

@@ -29,8 +29,8 @@ export function EmptyState({
         {icon ?? <IconFile />}
       </span>
       <div className="min-w-0">
-        <h3 className="cut-head text-[16px] leading-snug font-semibold">{title}</h3>
-        {body && <div className="mt-1 max-w-[62ch] text-[13px] text-ink-2">{body}</div>}
+        <h3 className="cut-head text-title leading-snug font-semibold">{title}</h3>
+        {body && <div className="mt-1 max-w-[62ch] text-small text-ink-2">{body}</div>}
         {action && <div className="mt-3 flex flex-wrap gap-2">{action}</div>}
       </div>
     </div>

@@ -68,10 +68,10 @@ function ImportPreview({ pending, by, onDone }: { pending: Pending; by: string; 
 
   return (
     <section aria-labelledby={titleId} className="mt-4 rounded-sheet bg-sheet px-4 py-3.5">
-      <h3 id={titleId} className="cut-head text-[15px] font-semibold text-ink">
+      <h3 id={titleId} className="cut-head text-title font-semibold text-ink">
         Import {pending.fileName}?
       </h3>
-      <p className="mt-0.5 text-[13px] text-ink-2">
+      <p className="mt-0.5 text-small text-ink-2">
         {previewSummary(report)} Nothing changes until you apply it.
       </p>
       {changes.length > 0 && (
@@ -79,7 +79,7 @@ function ImportPreview({ pending, by, onDone }: { pending: Pending; by: string; 
           <p className="eyebrow mt-3">Changes</p>
           <ul className="mt-1 divide-y divide-rule">
             {shown.map((c) => (
-              <li key={c.id} className="py-1.5 text-[13px] leading-snug text-ink">
+              <li key={c.id} className="py-1.5 text-small leading-snug text-ink">
                 {describeChange(c, CATALOG)}
               </li>
             ))}
@@ -98,16 +98,14 @@ function ImportPreview({ pending, by, onDone }: { pending: Pending; by: string; 
             {report.rejected.map((r, i) => (
               <li key={`${r.sheet}-${r.row}-${r.field}-${i}`} className="flex items-start gap-2 py-1.5">
                 <StatusPill severity="warning" label="Not applied" />
-                <span className="min-w-0 text-[13px] leading-snug text-ink-2">
-                  {rejectedText(r, CATALOG)}
-                </span>
+                <span className="min-w-0 text-small leading-snug text-ink-2">{rejectedText(r, CATALOG)}</span>
               </li>
             ))}
           </ul>
         </>
       )}
       {report.unknown.length > 0 && (
-        <p className="mt-3 text-[12px] text-muted">
+        <p className="mt-3 text-meta text-muted">
           Not in Census, skipped: <span className="font-mono">{report.unknown.join(', ')}</span>
         </p>
       )}
@@ -140,7 +138,7 @@ function ResetAllConfirm({ count, by, onDone }: { count: number; by: string; onD
     <fieldset className="mt-4 flex min-w-0 flex-wrap items-center gap-x-4 gap-y-3 rounded-sheet bg-sheet px-4 py-3">
       <legend className="sr-only">Confirm reset</legend>
       <IconWarning className="size-4 shrink-0 text-warning" />
-      <p className="min-w-0 flex-1 basis-[320px] text-[13px]">
+      <p className="min-w-0 flex-1 basis-[320px] text-small">
         <span className="font-semibold">
           {count === 1
             ? 'Put the 1 changed metric back to its defaults?'
@@ -258,7 +256,7 @@ export function DictionaryBar({
           </Button>
         </div>
         <div className="ml-auto grid gap-1">
-          <label htmlFor={nameId} className="text-[12px] font-medium text-ink-2">
+          <label htmlFor={nameId} className="text-meta font-medium text-ink-2">
             Your name, for the change log
           </label>
           <input

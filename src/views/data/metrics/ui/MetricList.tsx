@@ -46,7 +46,7 @@ function FilterToggle({
       aria-pressed={pressed}
       onClick={() => onChange(!pressed)}
       className={cx(
-        'inline-flex h-7 items-center rounded-control px-2.5 text-[12px] font-medium transition-colors',
+        'inline-flex h-7 items-center rounded-control px-2.5 text-meta font-medium transition-colors',
         pressed
           ? 'bg-ink text-on-ink hover:bg-ink-2'
           : 'text-ink-2 shadow-[inset_0_0_0_1px_var(--rule-strong)] hover:bg-hover hover:text-ink',
@@ -90,26 +90,26 @@ function Row({
         )}
       >
         <span className="flex items-start gap-2">
-          <span className="min-w-0 flex-1 text-[13px] leading-snug font-semibold text-ink">{row.name}</span>
+          <span className="min-w-0 flex-1 text-small leading-snug font-semibold text-ink">{row.name}</span>
           {row.tier ? (
-            <span className="mt-px inline-flex shrink-0 items-center gap-1 text-[11px] font-medium text-ink-2">
+            <span className="mt-px inline-flex shrink-0 items-center gap-1 text-label font-medium text-ink-2">
               <MedalGlyph tier={row.tier} className="size-3" />
               {TIER_LABEL[row.tier]}
             </span>
           ) : (
-            <span className="mt-px inline-flex shrink-0 items-center gap-1 text-[11px] font-medium text-muted">
+            <span className="mt-px inline-flex shrink-0 items-center gap-1 text-label font-medium text-muted">
               {row.locked && <IconLock className="size-3" />}
               Rule
             </span>
           )}
         </span>
-        <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-[12px] leading-snug text-muted">
-          <span className="truncate font-mono text-[11px]">{row.id}</span>
+        <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-meta leading-snug text-muted">
+          <span className="truncate font-mono text-label">{row.id}</span>
           {facts.filter(Boolean).map((f) => (
             <span key={f}>{f}</span>
           ))}
           {row.changed && (
-            <span className="inline-flex h-4 items-center rounded-[3px] bg-warning-wash px-1 text-[11px] font-semibold text-ink">
+            <span className="inline-flex h-4 items-center rounded-chip bg-warning-wash px-1 text-label font-semibold text-ink">
               Changed
             </span>
           )}
@@ -180,7 +180,7 @@ export function MetricList({
             onChange={(e) => setFilters({ ...filters, query: e.target.value })}
             placeholder="Search names, wording, fields and settings"
             aria-label="Search metrics"
-            className="h-8 w-full rounded-control bg-sheet-2 pr-2 pl-7 text-[13px] text-ink outline-none placeholder:text-muted focus-visible:shadow-[inset_0_0_0_2px_var(--focus)]"
+            className="h-8 w-full rounded-control bg-sheet-2 pr-2 pl-7 text-small text-ink outline-none placeholder:text-muted focus-visible:shadow-[inset_0_0_0_2px_var(--focus)]"
           />
         </label>
         <div className="flex flex-wrap items-center gap-2">
@@ -227,7 +227,7 @@ export function MetricList({
           className="-mx-2 mt-1 lg:max-h-[calc(100vh-260px)] lg:min-h-[320px] lg:overflow-y-auto"
         >
           {groups.length === 0 ? (
-            <p className="px-2 py-6 text-[13px] text-ink-2">
+            <p className="px-2 py-6 text-small text-ink-2">
               No metric matches these filters.{' '}
               <button
                 type="button"

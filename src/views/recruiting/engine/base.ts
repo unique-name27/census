@@ -64,6 +64,11 @@ export interface RecruitingBase {
    * default) match; else null.
    */
   joinNote: string | null
+  /**
+   * The mode shows why offers were declined (`recruiting.offers.declineReasons`). Manager mode does
+   * not, so findings leave the reasons out. Missing means shown.
+   */
+  showDeclineReasons?: boolean
 }
 
 const COMPARE: Record<string, [string, string]> = {
@@ -106,6 +111,7 @@ export function computeBase(ctx: AnalyticsContext): RecruitingBase {
   const [compareLabel, windowWords] = COMPARE[ctx.filters.period] ?? COMPARE.custom
   return {
     metrics: ctx.metrics,
+    showDeclineReasons: ctx.access.can('metric:recruiting.offers.declineReasons'),
     settings,
     ttf: ttfClock(settings.ttfEnd, companyApps, ctx.all.employees, asOf),
     asOf,

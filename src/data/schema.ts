@@ -1105,6 +1105,7 @@ export interface DatasetDef {
 }
 
 export type ViewKey =
+  | 'team'
   | 'scorecard'
   | 'recruiting'
   | 'onboarding'
@@ -1119,6 +1120,7 @@ export type ViewKey =
 
 /** Folder-tab labels, in folder-tab order. */
 export const VIEW_LABEL: Record<ViewKey, string> = {
+  team: 'My team',
   scorecard: 'Scorecard',
   recruiting: 'Recruiting',
   onboarding: 'Onboarding',
@@ -1150,6 +1152,7 @@ export const DATASETS: DatasetDef[] = [
     description:
       'Roster of current and former workers. One row per person; leavers keep their termination fields.',
     usedBy: [
+      'team',
       'scorecard',
       'onboarding',
       'hrbp',
@@ -1300,7 +1303,7 @@ export const DATASETS: DatasetDef[] = [
     label: 'Job changes',
     sheet: 'Job changes',
     description: 'Job history events: promotions, transfers, lateral moves, demotions and manager changes.',
-    usedBy: ['scorecard', 'onboarding', 'hrbp', 'org', 'talent', 'comp'],
+    usedBy: ['team', 'scorecard', 'onboarding', 'hrbp', 'org', 'talent', 'comp'],
     rowKey: ['employeeId', 'effectiveDate', 'changeType'],
     fields: [
       f(
@@ -1370,7 +1373,7 @@ export const DATASETS: DatasetDef[] = [
     label: 'Requisitions',
     sheet: 'Requisitions',
     description: 'Job requisitions from the ATS. Time to fill runs from opened date to filled date.',
-    usedBy: ['scorecard', 'recruiting', 'onboarding', 'org', 'listening'],
+    usedBy: ['team', 'scorecard', 'recruiting', 'onboarding', 'org', 'listening'],
     rowKey: ['reqId'],
     fields: [
       f(
@@ -1489,7 +1492,7 @@ export const DATASETS: DatasetDef[] = [
     label: 'Candidates',
     sheet: 'Candidates',
     description: 'One row per application, with the date each stage was reached.',
-    usedBy: ['scorecard', 'recruiting', 'onboarding', 'listening'],
+    usedBy: ['team', 'scorecard', 'recruiting', 'onboarding', 'listening'],
     rowKey: ['applicationId'],
     fields: [
       f(
@@ -1905,7 +1908,7 @@ export const DATASETS: DatasetDef[] = [
     label: 'Performance reviews',
     sheet: 'Reviews',
     description: 'Calibrated performance ratings and potential, one row per person per cycle.',
-    usedBy: ['scorecard', 'hrbp', 'org', 'talent', 'comp'],
+    usedBy: ['team', 'scorecard', 'hrbp', 'org', 'talent', 'comp'],
     rowKey: ['employeeId', 'cycle'],
     fields: [
       f('employeeId', 'Employee ID', 'id', ['employee id', 'emp id', 'worker id', 'id'], 'Reviewed worker.', {
@@ -1964,7 +1967,7 @@ export const DATASETS: DatasetDef[] = [
     label: 'Succession plans',
     sheet: 'Succession',
     description: 'Critical and key roles with named successors, one row per successor.',
-    usedBy: ['scorecard', 'talent'],
+    usedBy: ['team', 'scorecard', 'talent'],
     rowKey: ['roleId', 'successorId'],
     fields: [
       f(
@@ -2035,7 +2038,7 @@ export const DATASETS: DatasetDef[] = [
     label: 'Learning',
     sheet: 'Learning',
     description: 'Training assignments and completions.',
-    usedBy: ['scorecard', 'onboarding', 'talent', 'compliance'],
+    usedBy: ['team', 'scorecard', 'onboarding', 'talent', 'compliance'],
     rowKey: ['employeeId', 'course', 'assignedDate'],
     fields: [
       f(
@@ -2336,7 +2339,7 @@ export const DATASETS: DatasetDef[] = [
     sheet: 'Onboarding tasks',
     description:
       'One row per person per onboarding task (Atlas ON-01 to ON-04), for pre-hires, accepted candidates and new starters.',
-    usedBy: ['scorecard', 'onboarding', 'compliance', 'listening'],
+    usedBy: ['team', 'scorecard', 'onboarding', 'compliance', 'listening'],
     rowKey: ['employeeId', 'applicationId', 'task'],
     requireOneOf: ['employeeId', 'applicationId'],
     fields: [

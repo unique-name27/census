@@ -4,6 +4,7 @@
  */
 import { useState } from 'react'
 import { IconCritical, IconInfoFilled } from '@/components/icons'
+import { TABLE_HEAD } from '@/components/styles'
 import { Button, cx, Segmented, Switch, Tag, Tip } from '@/components/ui'
 import {
   type Confidence,
@@ -73,7 +74,7 @@ function MatchDot({ m }: { m: MappedField | undefined }) {
   const level: Confidence | 'none' = m?.header ? m.confidence : 'none'
   return (
     <Tip content={m?.reason ?? 'No matching column'}>
-      <span className="inline-flex items-center gap-1.5 text-[12px] text-ink-2">
+      <span className="inline-flex items-center gap-1.5 text-meta text-ink-2">
         <span aria-hidden="true" className={cx('size-2 shrink-0 rounded-full', DOT[level])} />
         {DOT_WORD[level]}
       </span>
@@ -92,7 +93,7 @@ function DatasetChoice({ item, draft, def }: { item: SessionSheet; draft: Draft;
   const remapping = useImportSession((s) => s.mode === 'remap')
   if (remapping && def)
     return (
-      <p className="max-w-[80ch] text-[13px] text-ink-2">
+      <p className="max-w-[80ch] text-small text-ink-2">
         Re-mapping the sheet kept with the current version of {def.label}, starting from the columns it was
         read with. Nothing is uploaded again. Applying makes a new version, so its mapping needs confirming
         again.
@@ -113,7 +114,7 @@ function DatasetPicker({ item, draft, def }: { item: SessionSheet; draft: Draft;
   return (
     <div>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-        <span className="text-[13px] font-medium">Import this sheet as</span>
+        <span className="text-small font-medium">Import this sheet as</span>
         <Select
           label="Dataset for this sheet"
           value={draft.dataset ?? ''}
@@ -128,7 +129,7 @@ function DatasetPicker({ item, draft, def }: { item: SessionSheet; draft: Draft;
           <option value="">Skip this sheet</option>
         </Select>
         {strength && (
-          <span className="inline-flex items-center gap-1.5 text-[12px] text-ink-2">
+          <span className="inline-flex items-center gap-1.5 text-meta text-ink-2">
             <span
               aria-hidden="true"
               className={cx(
@@ -141,7 +142,7 @@ function DatasetPicker({ item, draft, def }: { item: SessionSheet; draft: Draft;
         )}
       </div>
       {!def && (
-        <p className="mt-2 text-[13px] text-ink-2">
+        <p className="mt-2 text-small text-ink-2">
           {item.reason === 'not-census'
             ? 'This sheet does not look like any Census dataset. Pick one above to import it, or skip it.'
             : item.reason === 'not-target'
@@ -150,18 +151,18 @@ function DatasetPicker({ item, draft, def }: { item: SessionSheet; draft: Draft;
         </p>
       )}
       {def && confidence != null && confidence < WEAK_MATCH && (
-        <p className="mt-2 flex gap-2 text-[13px]">
+        <p className="mt-2 flex gap-2 text-small">
           <IconCritical className="mt-0.5 size-3.5 shrink-0 text-critical" />
           This sheet does not look much like {def.label}. Check the columns below before you continue.
         </p>
       )}
       {def && strength === 'possible' && (
-        <p className="mt-2 text-[13px] text-ink-2">
+        <p className="mt-2 text-small text-ink-2">
           A possible match. Check the columns below before you continue.
         </p>
       )}
       {def && twins.length > 0 && (
-        <p className="mt-2 flex gap-2 text-[13px] text-ink-2">
+        <p className="mt-2 flex gap-2 text-small text-ink-2">
           <IconInfoFilled className="mt-0.5 size-3.5 shrink-0 text-s1" />
           {twins.join(', ')} in this upload also {twins.length === 1 ? 'goes' : 'go'} to {def.label}. The
           sheet applied last replaces the other.
@@ -202,20 +203,20 @@ function MappingTable({
     <div>
       {/* Below sm the match and the file's values sit under each column choice. */}
       <div className="scroll-x -mx-1 px-1">
-        <table className="w-full border-collapse text-[13px] sm:min-w-[680px]">
+        <table className="w-full border-collapse text-small sm:min-w-[680px]">
           <caption className="sr-only">Columns for {def.label}</caption>
           <thead>
             <tr className="border-b border-rule text-left">
-              <th scope="col" className="eyebrow w-[45%] py-2 pr-3 font-semibold sm:w-[30%]">
+              <th scope="col" className={`${TABLE_HEAD} w-[45%] py-2 pr-3 sm:w-[30%]`}>
                 Field
               </th>
-              <th scope="col" className="eyebrow py-2 font-semibold sm:w-[30%] sm:pr-3">
+              <th scope="col" className={`${TABLE_HEAD} py-2 sm:w-[30%] sm:pr-3`}>
                 Column in your file
               </th>
-              <th scope="col" className="eyebrow hidden w-[13%] py-2 pr-3 font-semibold sm:table-cell">
+              <th scope="col" className={`${TABLE_HEAD} hidden w-[13%] py-2 pr-3 sm:table-cell`}>
                 Match
               </th>
-              <th scope="col" className="eyebrow hidden py-2 font-semibold sm:table-cell">
+              <th scope="col" className={`${TABLE_HEAD} hidden py-2 sm:table-cell`}>
                 Values in the file
               </th>
             </tr>
@@ -234,7 +235,7 @@ function MappingTable({
               )
               const samples = header ? sampleValues(sheet, header) : []
               const match = blocked ? (
-                <span className="inline-flex items-center gap-1.5 text-[12px] font-medium">
+                <span className="inline-flex items-center gap-1.5 text-meta font-medium">
                   <IconCritical className="size-3.5 text-critical" />
                   Needed
                 </span>
@@ -244,20 +245,20 @@ function MappingTable({
               const values =
                 header == null ? (
                   f.key === nameField && parts ? (
-                    <span className="text-[12px] text-ink-2">
+                    <span className="text-meta text-ink-2">
                       Built from “{parts[0]}” and “{parts[1]}”
                     </span>
                   ) : (
-                    <span className="text-[12px] text-muted">—</span>
+                    <span className="text-meta text-muted">—</span>
                   )
                 ) : f.pay && !showPay ? (
-                  <span className="text-[12px] text-muted">Hidden while pay amounts are off</span>
+                  <span className="text-meta text-muted">Hidden while pay amounts are off</span>
                 ) : samples.length ? (
-                  <span className="block truncate text-[12px] text-ink-2" title={samples.join(' · ')}>
+                  <span className="block truncate text-meta text-ink-2" title={samples.join(' · ')}>
                     {samples.join(' · ')}
                   </span>
                 ) : (
-                  <span className="text-[12px] text-muted">Blank in every row</span>
+                  <span className="text-meta text-muted">Blank in every row</span>
                 )
               return (
                 <tr
@@ -269,7 +270,7 @@ function MappingTable({
                       <span className="font-medium">{f.label}</span>
                       <Requirement f={f} />
                     </span>
-                    <span className="mt-0.5 block text-[12px] leading-snug text-muted">{f.description}</span>
+                    <span className="mt-0.5 block text-meta leading-snug text-muted">{f.description}</span>
                   </td>
                   <td className="py-2 align-top sm:pr-3">
                     <Select
@@ -316,7 +317,7 @@ function MappingTable({
           </tbody>
         </table>
       </div>
-      <div className="mt-2 flex flex-wrap items-baseline gap-x-4 gap-y-1 text-[12px] text-muted">
+      <div className="mt-2 flex flex-wrap items-baseline gap-x-4 gap-y-1 text-meta text-muted">
         {hidden.length > 0 && (
           <Button size="sm" variant="ghost" className="-ml-2.5" onClick={() => setShowAll(!showAll)}>
             {showAll
@@ -363,16 +364,16 @@ function ReadingOptions({
   const basis = (o.hourlyToAnnual ?? suggested.hourlyToAnnual)?.basisHeader ?? null
   return (
     <div>
-      <h3 className="cut-head text-[16px] font-semibold">Reading the values</h3>
+      <h3 className="cut-head text-title font-semibold">Reading the values</h3>
       <ul className="mt-2 divide-y divide-rule rounded-control shadow-[inset_0_0_0_1px_var(--rule)]">
         {dateHeaders.map((h) => {
           const guess = suggested.dateOrders[h]
           const value = o.dateOrders?.[h] ?? guess.order
           return (
             <li key={h} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-3 py-2.5">
-              <span className="min-w-0 flex-1 basis-[260px] text-[13px]">
+              <span className="min-w-0 flex-1 basis-[260px] text-small">
                 Dates in “{h}”{fieldFor(h) ? ` (${fieldFor(h)})` : ''}
-                <span className="block text-[12px] text-muted">
+                <span className="block text-meta text-muted">
                   {guess.certain
                     ? `Read as ${guess.order === 'DMY' ? 'day' : 'month'} first, from values that can only be read one way.`
                     : 'Every value could be read either way. Check one and pick the order your system uses.'}
@@ -396,9 +397,9 @@ function ReadingOptions({
           const whole = o.percentWhole?.[k] ?? suggested.percentWhole[k]
           return (
             <li key={k} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-3 py-2.5">
-              <span className="min-w-0 flex-1 basis-[260px] text-[13px]">
+              <span className="min-w-0 flex-1 basis-[260px] text-small">
                 {label}
-                <span className="block text-[12px] text-muted">
+                <span className="block text-meta text-muted">
                   {whole ? 'Read 3.5 as 3.5%.' : 'Read 0.035 as 3.5%.'} Detected from the values.
                 </span>
               </span>
@@ -437,7 +438,7 @@ function ReadingOptions({
               }
               label="Convert hourly pay to annual at 2,080 hours"
             />
-            <span className="mt-1 block pl-[38px] text-[12px] text-muted">
+            <span className="mt-1 block pl-[38px] text-meta text-muted">
               {basis
                 ? `Rows marked hourly in “${basis}” are converted.`
                 : 'Base pay under 1,000 is treated as an hourly rate.'}
@@ -469,22 +470,22 @@ export function ColumnsStep({
       {def && draft.mapping && (
         <>
           {draft.profileStale && (
-            <p className="text-[13px] text-ink-2">
+            <p className="text-small text-ink-2">
               The column choices you saved for this layout no longer cover every required field. Check them
               below.
             </p>
           )}
           {def && payLeftOut(def, blockers, null) && <PayLeftOutNote />}
           {blockerLabels.length > 0 && (
-            <p className="flex gap-2 text-[13px]">
+            <p className="flex gap-2 text-small">
               <IconCritical className="mt-0.5 size-3.5 shrink-0 text-critical" />
               Pick a column for {blockerLabels.join(' and ')} to continue. Without{' '}
               {blockerLabels.length === 1 ? 'it' : 'them'} no row can be imported.
             </p>
           )}
           <div>
-            <h3 className="cut-head text-[16px] font-semibold">Columns</h3>
-            <p className="mt-0.5 mb-2 text-[12px] text-muted">
+            <h3 className="cut-head text-title font-semibold">Columns</h3>
+            <p className="mt-0.5 mb-2 text-meta text-muted">
               Matched by column names and the values in them. Change any choice; Census remembers it for this
               layout.
             </p>

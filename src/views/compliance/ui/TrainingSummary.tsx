@@ -138,7 +138,7 @@ function Measure({
     <div className={cx('flex min-w-0 flex-col gap-2', className)}>
       <p className="eyebrow text-muted">{row.measure}</p>
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <span className="cut-head text-[28px] leading-none font-semibold">
+        <span className="cut-head text-page-title leading-none font-semibold">
           {missing || row.value == null ? '—' : <Drill spec={row.drill}>{fmt(row.value, 'pct')}</Drill>}
         </span>
         {status && (
@@ -148,7 +148,7 @@ function Measure({
           />
         )}
       </div>
-      <p className="text-[13px] text-ink-2">
+      <p className="text-small text-ink-2">
         {missing ??
           (small ? (
             `Hidden to protect anonymity (fewer than the minimum due).`

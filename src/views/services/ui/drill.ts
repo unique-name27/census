@@ -9,6 +9,10 @@
  *    set of its sites).
  *  - Retro adjustments by month: the cut-off month as a custom period. The figure shows the
  *    months of the period, so after "Filter to" the month is the whole figure.
+ *  - Cases per 100 employees by business unit: the unit (its requesters' cases; "Other" is none).
+ *  - On time by transaction type and quarter: the due quarter as a custom period
+ *    (engine/trendDrills.ts). The cell keeps its rate, and the tab's period figures then show
+ *    that quarter.
  *
  * Everything else HR ops draws is grouped by something the filters do not have (case category,
  * channel, team, transaction type, timing, Atlas measure, leave reason, quarter or month of a
@@ -21,6 +25,7 @@ import type { DrillSpec } from '@/drill/types'
 import { monthEnd } from '@/lib/dates'
 import {
   asOfSub,
+  caseDrill,
   changesDrill,
   type DrillScope,
   isLateTx,
@@ -34,7 +39,9 @@ import {
 import type { TxFact } from '../engine/facts'
 import { NO_UNIT, type OnLeaveRow } from '../engine/leave'
 import { leaveDrill } from '../engine/leaveDrills'
+import type { UnitRateRow } from '../engine/rates'
 import type { FinalPayRow, RetroMonthRow } from '../engine/transactions'
+import { isOther } from '../engine/util'
 
 /** A drill title in plain words: what, then where and when. */
 const titled = (...parts: (string | null | undefined | false)[]): string => parts.filter(Boolean).join(', ')
@@ -172,5 +179,19 @@ export function onLeaveUnitDrill(
         columns: ['expected', 'days'],
         order: (a, b) => a.start.localeCompare(b.start),
       }),
+  )
+}
+
+/**
+ * The cases behind a business unit's cases per 100 employees, filtered to the unit ("Filter to
+ * Operations"); the folded "Other (k)" opens without a filter. Employee relations cases are counted
+ * in the note, never listed.
+ */
+export function unitCasesDrill(s: DrillScope): (r: UnitRateRow) => DrillSource {
+  return byGroup(
+    'businessUnit',
+    (r: UnitRateRow) => (isOther(r.unit) ? null : r.unit),
+    (r: UnitRateRow) =>
+      r.rate == null ? null : () => caseDrill(s, r.records, { title: titled('Cases opened', r.unit, s.per) }),
   )
 }

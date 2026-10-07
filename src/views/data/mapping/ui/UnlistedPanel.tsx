@@ -75,7 +75,7 @@ export function UnlistedPanel({ model }: { model: MappingModel }) {
       uses={[...new Set(items.map((u) => u.ref))]}
     >
       {items.length === 0 ? (
-        <p className="flex items-start gap-2 text-[13px] text-ink-2">
+        <p className="flex items-start gap-2 text-small text-ink-2">
           <StatusPill severity="good" label="None" />
           <span>
             Every field with a list uses it: the official lists, case channels and the other fixed lists.
@@ -91,12 +91,12 @@ export function UnlistedPanel({ model }: { model: MappingModel }) {
                   <Drill
                     spec={drillOf(u)}
                     label={`Show the ${rowsText(u.count)}`}
-                    className="ml-auto shrink-0 text-[13px] font-semibold text-ink tnum"
+                    className="ml-auto shrink-0 text-small font-semibold text-ink tnum"
                   >
                     {rowsText(u.count)}
                   </Drill>
                 </div>
-                <p className="mt-1 text-[13px] leading-snug text-ink-2">
+                <p className="mt-1 text-small leading-snug text-ink-2">
                   <span className="text-ink">“{u.value}”</span> in {fieldLabel(u.ref)}
                   {u.suggestion ? `, likely ${u.suggestion}` : ''}
                 </p>

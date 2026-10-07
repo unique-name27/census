@@ -36,7 +36,7 @@ export function loadExcel(): Promise<ExcelModule> {
 export const XL = {
   ink: 'FF12151A',
   ink2: 'FF475060',
-  muted: 'FF737B8A',
+  muted: 'FF616A78',
   rule: 'FFDDE1E7',
   ruleStrong: 'FFC3C9D2',
   link: 'FF1C5CAB',

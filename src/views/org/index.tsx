@@ -1,4 +1,5 @@
 import { Button, EmptyState, goTo } from '@/components'
+import { useRouteShown } from '@/components/RouteLink'
 import { useAnalytics } from '@/data/context'
 import { fmt } from '@/lib/format'
 import type { ViewDef } from '../types'
@@ -10,15 +11,18 @@ import { SandboxTab } from './ui/SandboxTab'
 
 function View({ tab }: { tab: string }) {
   const ctx = useAnalytics()
+  const dataRoom = useRouteShown('data')
   if (!ctx.all.employees.length) {
     return (
       <EmptyState
         title="Upload Employees to see the org chart"
         body="The chart is drawn from the Employees roster: employee ID, name, title and manager ID. Requisitions add open roles under their hiring manager, and Reviews add ratings to the detail panel."
         action={
-          <Button variant="primary" size="sm" onClick={() => goTo('data')}>
-            Open the Data room
-          </Button>
+          dataRoom && (
+            <Button variant="primary" size="sm" onClick={() => goTo('data')}>
+              Open the Data room
+            </Button>
+          )
         }
       />
     )

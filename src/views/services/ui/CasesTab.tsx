@@ -48,6 +48,7 @@ import {
   titled,
   useProcessHref,
 } from './shared'
+import { CasesOpenTrendFigure, CasesPer100Figure } from './trends'
 
 const CASE_DETAIL_COLUMNS = [
   { key: 'caseId', label: 'Case ID' },
@@ -369,6 +370,13 @@ export function CasesTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext }
   return (
     <>
       <Section
+        title="Backlog over time"
+        dek={`Whether the open backlog is growing, and how much of it has been open longer than ${count(agedDays, 'day')}.`}
+      >
+        <CasesOpenTrendFigure m={m} ctx={ctx} />
+      </Section>
+
+      <Section
         title="Service levels by category"
         dek={`Which categories met their resolution target for cases opened in the ${per}, and how long cases took against each category's own target.`}
       >
@@ -524,13 +532,13 @@ export function CasesTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext }
 
       <Section
         title="Quality and workload"
-        dek="Where first fixes did not hold, where cases went up a tier, and how the work spread across the teams."
+        dek="Where first fixes did not hold, where cases went up a tier, which business units lean on HR ops most for their size, and how the work spread across the teams."
       >
         <Figure
           id="services-reopen-escalate"
           uses={m.uses['services-reopen-escalate']}
           metric={FIGURE_METRIC['services-reopen-escalate']}
-          span={12}
+          span={7}
           title="Reopened and escalated by category"
           subtitle={`Cases opened in the ${per}: reopened after resolution, and escalated to a higher tier`}
           data={m.reopen}
@@ -561,6 +569,7 @@ export function CasesTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext }
             lockedNote={(d) => lockedReason(s, d.row.records)}
           />
         </Figure>
+        <CasesPer100Figure m={m} ctx={ctx} />
         <Figure
           id="services-team-workload"
           uses={m.uses['services-team-workload']}

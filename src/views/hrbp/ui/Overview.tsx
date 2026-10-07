@@ -1,5 +1,6 @@
-import { Columns, Figure, Lines } from '@/charts'
+import { type ChartNote, Columns, Figure, Lines } from '@/charts'
 import { Grid, KpiStrip, Readout } from '@/components'
+import { useChartHeight } from '@/components/useNarrow'
 import { useAnalytics } from '@/data/context'
 import { BELOW_STANDARD_TEXT } from '@/data/quality'
 import { focusLeader } from '@/data/scope'
@@ -17,6 +18,7 @@ import { ANONYMITY_ID, ID } from './defs'
 import { drillWhen } from './drill'
 import { rescope } from './model'
 import { ScorecardTable } from './ScorecardTable'
+import { AttritionTrailing } from './Trends'
 
 const METRIC_LABEL: Record<ScoreMetric, string> = {
   voluntary: 'Voluntary',
@@ -34,6 +36,22 @@ export function Overview({ m }: { m: HrbpModel }) {
   const wf = m.workforce
   const series = wf.series
   const last = series[series.length - 1]
+  const leadHeight = useChartHeight('lead')
+  // The year's change as a note on the latest point (the KPI tile's number, said on the chart).
+  const thisYear = wf.overlay.filter((o) => o.period === LAST_YEAR)
+  const first = thisYear[0]
+  const end = thisYear.at(-1)
+  const change = first && end ? end.headcount - first.headcount : 0
+  const headcountNotes: ChartNote[] =
+    first && end && first.headcount > 0 && Math.abs(change) / first.headcount >= 0.02
+      ? [
+          {
+            at: end.x,
+            series: LAST_YEAR,
+            text: `${change > 0 ? 'Up' : 'Down'} ${fmt(Math.abs(change), 'int')} in 12 months`,
+          },
+        ]
+      : []
   const yearAgo = formatDate(addDays(m.prep.t12.start, -1))
   const flowsTotal = wf.flows.reduce((a, r) => a + r.people, 0)
   const step = (name: string) => wf.bridge.find((b) => b.step === name)?.people ?? 0
@@ -63,7 +81,7 @@ export function Overview({ m }: { m: HrbpModel }) {
       title="Sub-org scorecard"
       subtitle={`${
         focusLeader(ctx.filters) ? 'Each direct report’s organization' : card.rowsLabel
-      } against the company: headcount on ${asOf}, rates over ${ctx.window.label}. Select a row to focus on it.`}
+      } against the company: headcount on ${asOf}, rates over ${ctx.window.label}.`}
       data={card.rows.map((r) => ({
         organization: r.label,
         role: r.sublabel,
@@ -138,11 +156,12 @@ export function Overview({ m }: { m: HrbpModel }) {
     <Grid>
       <KpiStrip kpis={m.kpi.kpis} />
       {/* Full width on tablets (the column beside it is full width there too), 4 of 12 from lg. */}
-      <div className="col-span-full min-w-0 lg:col-span-4">
+      {/* Phones: the lead figure comes first, then the readout, then the rest (max-md:order). */}
+      <div className="col-span-full min-w-0 max-md:order-1 lg:col-span-4">
         <Readout findings={m.findings} span={12} emptyText="Nothing unusual in this scope for this period." />
       </div>
       {/* The lead figure and the monthly flows (and the scorecard, beside a long readout) stack beside the readout. */}
-      <div className="col-span-full flex min-w-0 flex-col gap-4 lg:col-span-8">
+      <div className="col-span-full flex min-w-0 flex-col gap-4 max-md:contents lg:col-span-8">
         <Figure
           id="hrbp-headcount-trend"
           metric={ID.headcount}
@@ -182,11 +201,12 @@ export function Overview({ m }: { m: HrbpModel }) {
             seriesOrder={[YEAR_BEFORE, LAST_YEAR]}
             emphasize={LAST_YEAR}
             format="int"
-            height={350}
+            height={leadHeight}
+            notes={headcountNotes}
             onSelect={(d) => drill(() => employeesOnSpec(p, d.date))}
           />
         </Figure>
-        <Grid>
+        <Grid className="max-md:order-2">
           <Figure
             id="hrbp-hires-exits"
             metric={ID.hires}
@@ -206,7 +226,7 @@ export function Overview({ m }: { m: HrbpModel }) {
             ]}
             definitions={p.defs(ID.hires, ID.exits)}
             note={`${hires.toLocaleString('en-US')} hires, ${exits.toLocaleString('en-US')} exits, net ${signed(hires - exits)} · as of ${asOf}`}
-            span={showBridge ? 7 : 12}
+            span={6}
             empty={flowsTotal ? null : 'No hires or exits in the last 12 months.'}
           >
             <Columns
@@ -216,11 +236,12 @@ export function Overview({ m }: { m: HrbpModel }) {
               series="series"
               seriesOrder={['Hires', 'Exits']}
               xType="month"
-              height={showBridge ? undefined : 260}
               onSelect={(d) => drill(() => flowMonthSpec(p, wf.flows, d.month))}
               onSelectSegment={(d) => drill(() => flowSpec(p, d))}
             />
           </Figure>
+          {/* Beside the monthly flows, so the column ends level with the readout. */}
+          <AttritionTrailing m={m} span={6} />
           {showBridge && (
             <Figure
               id="hrbp-headcount-bridge"
@@ -240,7 +261,7 @@ export function Overview({ m }: { m: HrbpModel }) {
               ]}
               definitions={p.defs(ID.headcount, ID.bridge)}
               note={`As of ${asOf}`}
-              span={5}
+              span={12}
               tableOnly
               table={{ maxRows: 8 }}
             />

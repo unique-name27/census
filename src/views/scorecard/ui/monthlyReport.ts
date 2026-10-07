@@ -17,6 +17,7 @@ import { SAMPLE_COMPANY } from '@/data/sample'
 import { DATASET_KEYS } from '@/data/schema'
 import type { RasterImage } from '@/lib/export/image'
 import { type ViewDef, withFeatureTabs } from '../../types'
+import { PRACTICE_STANDING_COLUMNS, practiceStanding } from '../engine/band'
 import type { ScorecardModel, SourcedFinding } from '../engine/model'
 import {
   detached,
@@ -72,7 +73,25 @@ function tableFigure(
   return { ...rest, getSvg: () => null, order, tier: gate?.tier ?? null }
 }
 
-/** The scorecard on slide-sized parts, then the top findings, ready for the deck. */
+/** Each practice's measures by status: the slide after the title (docs/ROLES.md 2.1). */
+function targetsByPractice(ctx: AnalyticsContext, model: ScorecardModel): RegisteredFigure {
+  return tableFigure(
+    ctx,
+    {
+      id: 'report:targets-by-practice',
+      title: 'Targets met by practice',
+      subtitle: standingLine(model.counts),
+      note: 'Measures with a target and a value shown count toward targets met.',
+      columns: PRACTICE_STANDING_COLUMNS,
+      rows: practiceStanding(model) as unknown as Record<string, unknown>[],
+      metric: M.targetsMet,
+      uses: model.headline.uses,
+    },
+    0,
+  )
+}
+
+/** Targets met by practice, the scorecard on slide-sized parts, then the top findings, for the deck. */
 function scorecardForDeck(ctx: AnalyticsContext, model: ScorecardModel): RegisteredFigure[] {
   const parts = scorecardSlides(model)
   const out = parts.map((rows, i) =>
@@ -88,9 +107,10 @@ function scorecardForDeck(ctx: AnalyticsContext, model: ScorecardModel): Registe
         metric: M.status,
         uses: model.uses,
       },
-      i,
+      i + 1,
     ),
   )
+  out.unshift(targetsByPractice(ctx, model))
   out.push(
     findingsFigure(ctx, model.findings.top, 'Top findings across Census', 'report:findings', out.length),
   )

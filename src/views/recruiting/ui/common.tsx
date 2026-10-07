@@ -3,6 +3,7 @@
  */
 import type { Definition } from '@/charts'
 import { Button, EmptyState, goTo, IconFilter, IconUpload } from '@/components'
+import { useRouteShown } from '@/components/RouteLink'
 import { useAnalytics } from '@/data/context'
 import { useCensus } from '@/data/store'
 import type { DrillSpec } from '@/drill'
@@ -57,6 +58,7 @@ export function windowText(w: { start: string; end: string }): string {
 export function NoRecruitingData() {
   const ctx = useAnalytics()
   const resetFilters = useCensus((s) => s.resetFilters)
+  const dataRoom = useRouteShown('data')
   if (ctx.all.requisitions.length || ctx.all.candidates.length) {
     return (
       <EmptyState
@@ -73,9 +75,11 @@ export function NoRecruitingData() {
       title="Upload Requisitions and Candidates to see recruiting"
       body="Recruiting reads two sheets: Requisitions (one row per req, with opened and filled dates) and Candidates (one row per application, with the date each stage was reached). The Data room has templates for both."
       action={
-        <Button variant="primary" onClick={() => goTo('data')}>
-          Open the Data room
-        </Button>
+        dataRoom && (
+          <Button variant="primary" onClick={() => goTo('data')}>
+            Open the Data room
+          </Button>
+        )
       }
     />
   )

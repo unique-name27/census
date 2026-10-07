@@ -91,7 +91,7 @@ export function ScorecardTable({
   }
 
   const th =
-    'border-b border-rule-strong bg-sheet px-2 py-1.5 align-bottom first:pl-0 last:pr-0 cut-head text-[12px] font-semibold whitespace-nowrap text-ink-2'
+    'border-b border-rule-strong bg-sheet px-2 py-1.5 align-bottom first:pl-0 last:pr-0 cut-head text-meta font-semibold whitespace-nowrap text-ink-2'
   const td = 'border-b border-rule px-2 py-1.5 align-middle first:pl-0 last:pr-0'
   /**
    * The organization column: pinned to the left edge of the scroller, with a hairline once rates
@@ -113,7 +113,7 @@ export function ScorecardTable({
           type="button"
           onClick={() => toggle(key)}
           className={cx(
-            'group inline-flex items-center gap-1 rounded-[2px] hover:text-ink',
+            'group inline-flex items-center gap-1 rounded-mark hover:text-ink',
             right && 'flex-row-reverse',
             active && 'text-ink',
           )}
@@ -142,7 +142,7 @@ export function ScorecardTable({
       <td key={c.key} className={cx(td, 'tnum text-right whitespace-nowrap')}>
         <span
           className={cx(
-            'inline-flex items-center justify-end gap-1 rounded-[3px] px-1.5 py-0.5',
+            'inline-flex items-center justify-end gap-1 rounded-chip px-1.5 py-0.5',
             shade && c.metric ? washFor(c.metric, shade) : '',
           )}
         >
@@ -197,7 +197,7 @@ export function ScorecardTable({
           >
             {row.label}
           </div>
-          {row.sublabel && <div className="text-[12px] leading-snug text-muted">{row.sublabel}</div>}
+          {row.sublabel && <div className="text-meta leading-snug text-muted">{row.sublabel}</div>}
         </td>
         {cols.map((c) => cell(row, c))}
       </tr>
@@ -208,7 +208,7 @@ export function ScorecardTable({
     <div className="min-w-0">
       {/* relative: keeps the screen-reader-only notes inside the scroller so they never widen the page */}
       <div className="scroll-x relative">
-        <table className="w-full border-separate border-spacing-0 text-[13px] leading-snug">
+        <table className="w-full border-separate border-spacing-0 text-small leading-snug">
           <caption className="sr-only">Sub-org scorecard</caption>
           <thead>
             <tr>
@@ -222,22 +222,22 @@ export function ScorecardTable({
           </tbody>
         </table>
       </div>
-      <p className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px] text-muted">
+      <p className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-meta text-muted">
         <span>
           Marked cells differ from the company by more than {ptsText(rule.rateFloor)} or{' '}
           {fmt(rule.relative, 'pct0')} ({plain(rule.spanFloor)} for span), in orgs of {rule.minHeadcount} or
           more:
         </span>
         <span className="inline-flex items-center gap-1">
-          <span className="inline-block size-2.5 rounded-[2px] bg-critical-wash shadow-[inset_0_0_0_1px_var(--rule-strong)]" />
+          <span className="inline-block size-2.5 rounded-mark bg-critical-wash shadow-[inset_0_0_0_1px_var(--rule-strong)]" />
           higher attrition
         </span>
         <span className="inline-flex items-center gap-1">
-          <span className="inline-block size-2.5 rounded-[2px] bg-good-wash shadow-[inset_0_0_0_1px_var(--rule-strong)]" />
+          <span className="inline-block size-2.5 rounded-mark bg-good-wash shadow-[inset_0_0_0_1px_var(--rule-strong)]" />
           lower attrition
         </span>
         <span className="inline-flex items-center gap-1">
-          <span className="inline-block size-2.5 rounded-[2px] bg-warning-wash shadow-[inset_0_0_0_1px_var(--rule-strong)]" />
+          <span className="inline-block size-2.5 rounded-mark bg-warning-wash shadow-[inset_0_0_0_1px_var(--rule-strong)]" />
           different, no good direction
         </span>
       </p>

@@ -427,8 +427,11 @@ function offerAcceptance(b: RecruitingBase, waiting: ReturnType<typeof offersWai
   ).find((s) => !s.small)
   const inSeg = (a: App) => !seg || a[seg.dim as DimKey] === seg.value
   const segDeclines = period.offers.filter((a) => a.outcome === 'Declined' && inSeg(a))
+  // Why offers were declined only where the mode shows decline reasons (Manager mode does not).
+  const showReasons = b.showDeclineReasons !== false
   const reasons = new Map<string, number>()
-  for (const a of segDeclines) if (a.reason) reasons.set(a.reason, (reasons.get(a.reason) ?? 0) + 1)
+  if (showReasons)
+    for (const a of segDeclines) if (a.reason) reasons.set(a.reason, (reasons.get(a.reason) ?? 0) + 1)
   const topReasons = [...reasons]
     .sort((a, c) => c[1] - a[1])
     .slice(0, 2)
@@ -457,7 +460,9 @@ function offerAcceptance(b: RecruitingBase, waiting: ReturnType<typeof offersWai
     people: segDeclines.map((a) => ({
       id: a.id,
       name: a.name,
-      note: `Declined · ${a.reason ?? 'no reason given'} · ${a.reqId}`,
+      note: showReasons
+        ? `Declined · ${a.reason ?? 'no reason given'} · ${a.reqId}`
+        : `Declined · ${a.reqId}`,
     })),
     filter: seg ? filterFor(seg, b.apps) : undefined,
     tab: 'sources',

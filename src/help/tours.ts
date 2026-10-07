@@ -48,6 +48,8 @@ const GETTING_STARTED: Tour = {
     {
       ...at('hrbp', 'overview'),
       target: tourTarget('data-standard'),
+      // A control a mode can hide: the tour skips the step there.
+      surface: 'settings:data',
       title: 'The data standard',
       body: 'Every number carries a tier: bronze, silver or gold. The data standard sets the lowest tier shown in every view. Pick Production for a leadership meeting to show only certified numbers.',
       placement: 'bottom',
@@ -102,6 +104,8 @@ const GETTING_STARTED: Tour = {
     },
     {
       target: tourTarget('masthead-data'),
+      // A control a mode can hide: the tour skips the step there.
+      surface: 'masthead:data',
       title: 'The Data room',
       body: 'See what data is loaded and how good it is, load your own exports, read and change the metric definitions, and fix how categories are mapped.',
       placement: 'bottom',
@@ -136,6 +140,8 @@ const OWN_DATA: Tour = {
   steps: [
     {
       target: tourTarget('masthead-data'),
+      // A control a mode can hide: the tour skips the step there.
+      surface: 'masthead:data',
       title: 'Start in the Data room',
       body: 'Everything about the data lives in the Data room. Files you add stay in this browser; Census reads them on this device and never sends them anywhere.',
       placement: 'bottom',
@@ -200,6 +206,8 @@ const QUALITY_DEFINITIONS: Tour = {
     {
       ...at('hrbp', 'overview'),
       target: tourTarget('quality-lens'),
+      // A control a mode can hide: the tour skips the step there.
+      surface: 'filter:lens',
       title: 'Show data quality',
       body: 'Turn this on to see, under every number, the field limiting it and the rows used and left out. It is off by default so the dashboard stays clean for meetings.',
       placement: 'bottom',
@@ -253,10 +261,24 @@ const SCORECARD: Tour = {
   steps: [
     {
       ...at('scorecard'),
+      target: figureTarget('scorecard-standing'),
+      title: 'Targets met',
+      body: 'How many measures with a target meet it, and the bar split by status. Click a part of the bar to list its measures; each value opens its records.',
+      placement: 'right',
+    },
+    {
+      ...at('scorecard'),
+      target: figureTarget('scorecard-measures'),
+      title: 'Measures against target',
+      body: 'Every measure on its own scale with its target as a tick. "Furthest from target" puts the biggest misses first. Click a bar for its records, or a name to open its view.',
+      placement: 'right',
+    },
+    {
+      ...at('scorecard'),
       target: figureTarget('scorecard-people'),
       title: 'People scorecard',
-      body: 'Two or three measures per practice with the value, target, status (Met, Watch or Missed), change, trend and tier. Click a value for its records, or a practice name to open that view.',
-      placement: 'right',
+      body: 'Two or three measures per practice with the value, target, status (Met, Watch or Missed), change, trend and tier: the record behind the charts. Click a value for its records, or a practice name to open that view.',
+      placement: 'top',
     },
     {
       ...at('scorecard'),
@@ -276,7 +298,7 @@ const SCORECARD: Tour = {
       ...at('scorecard'),
       target: tourTarget('scorecard-report'),
       title: 'Monthly people report',
-      body: "One click builds the report as a PowerPoint deck or an Excel workbook: the scorecard, the top findings and each practice's lead chart.",
+      body: "One click builds the report as a PowerPoint deck or an Excel workbook: targets met by practice, the scorecard, the top findings and each practice's lead chart.",
       placement: 'bottom',
     },
   ],
@@ -338,6 +360,12 @@ const ONBOARDING: Tour = {
   id: 'view-onboarding',
   title: 'Onboarding',
   summary: 'Upcoming starts and their readiness, the first 90 days and the hiring plan.',
+  without: [
+    {
+      surface: 'tab:onboarding.plan',
+      summary: 'Upcoming starts and their readiness, and the first 90 days.',
+    },
+  ],
   length: '1 minute',
   route: 'onboarding',
   steps: [
@@ -417,6 +445,8 @@ const PEOPLE_STATS: Tour = {
     {
       ...at('hrbp', 'overview'),
       target: tourTarget('hrbp-talking-points'),
+      // A control a mode can hide: the tour skips the step there.
+      surface: 'header:hrbp',
       title: 'Copy talking points',
       body: 'Five to seven plain bullets for a leader 1:1, ready to paste: headcount, attrition against the company, regretted exits, first-year attrition, promotions and the top finding.',
       placement: 'bottom',
@@ -442,6 +472,7 @@ const ORG_CHART: Tour = {
   id: 'view-org',
   title: 'Org chart',
   summary: 'Reporting lines, team shape, flags and the reorg sandbox.',
+  without: [{ surface: 'tab:org.sandbox', summary: 'Reporting lines, team shape and flags.' }],
   length: '1 minute',
   route: 'org',
   steps: [
@@ -539,6 +570,9 @@ const TALENT: Tour = {
   id: 'view-talent',
   title: 'Talent',
   summary: 'Ratings, the 9-box, succession, flight risk and required training.',
+  without: [
+    { surface: 'tab:talent.retention', summary: 'Ratings, the 9-box, succession and required training.' },
+  ],
   length: '1 minute',
   route: 'talent',
   steps: [
@@ -831,8 +865,155 @@ const ACTION_CENTER: Tour = {
   ],
 }
 
+/** Manager mode's first tour (docs/ROLES.md, 3.8): the Mode button, My team, the pinned org, a drill and the Action center. */
+const MANAGER_START: Tour = {
+  id: 'manager-start',
+  title: 'Getting started as a manager',
+  summary: "Your org on one page, how Census keeps to it, and where your team's open items wait.",
+  length: '1 minute',
+  steps: [
+    {
+      ...at('team'),
+      target: tourTarget('masthead-mode'),
+      title: 'The mode',
+      body: "Census is in Manager mode for one manager's org. Switch modes here, or pick another manager.",
+      placement: 'bottom',
+    },
+    {
+      ...at('team'),
+      target: tourTarget('kpi-strip'),
+      title: 'Your org at a glance',
+      body: 'Headcount, attrition against the company, open reqs, starts in the next 30 days, required training on time and the open items your org owns.',
+      placement: 'bottom',
+    },
+    {
+      ...at('team'),
+      target: tourTarget('filter-leader'),
+      title: 'Your org, pinned',
+      body: 'Every view shows your org. Pick a leader inside it to narrow the page; Whole org goes back to all of it.',
+      placement: 'bottom',
+    },
+    {
+      ...at('team'),
+      target: tourTarget('kpi-value'),
+      title: 'Down to the people',
+      body: 'Every number opens the people and records behind it. Company numbers are comparisons and open no records.',
+      placement: 'bottom',
+    },
+    {
+      ...at('team'),
+      target: tourTarget('masthead-actions'),
+      title: 'Waiting on your team',
+      body: 'The Action center lists the open items about your org and the ones your team owns, with a polite note to copy for each owner.',
+      placement: 'bottom',
+    },
+  ],
+}
+
+/** My team, Manager mode's home (docs/ROLES.md, 2.2). */
+const MY_TEAM: Tour = {
+  id: 'view-team',
+  title: 'My team',
+  summary: "One manager's org on one page: people, hiring, starts, talent and what waits on them.",
+  length: '1 minute',
+  route: 'team',
+  steps: [
+    {
+      ...at('team'),
+      target: tourTarget('kpi-strip'),
+      title: 'Your org at a glance',
+      body: 'Headcount, attrition against the company, open reqs, starts in the next 30 days, required training on time and the open items your org owns. Each tile opens the tab that explains it.',
+      placement: 'bottom',
+    },
+    {
+      ...at('team'),
+      target: tourTarget('readout'),
+      title: 'What needs attention',
+      body: 'The most serious findings from People stats, Recruiting, Onboarding and Talent for your org, each with the view that explains it.',
+      placement: 'right',
+    },
+    {
+      ...at('team'),
+      target: figureTarget('team-attrition-vs-company'),
+      title: 'Against the company',
+      body: 'Your attrition beside the company. Your bars open your leavers; company bars are a comparison only and open no records.',
+      placement: 'top',
+    },
+    {
+      ...at('team'),
+      target: figureTarget('team-start-calendar'),
+      title: 'Who starts soon',
+      body: 'Starts in each of the next weeks by day-one readiness. Click a week for the people and their open tasks.',
+      placement: 'top',
+    },
+    {
+      ...at('team'),
+      target: tourTarget('filter-leader'),
+      title: 'Your org, pinned',
+      body: 'The page keeps to your org. Pick a leader inside it to narrow every view.',
+      placement: 'bottom',
+    },
+    {
+      ...at('team'),
+      target: tourTarget('view-export'),
+      title: 'Take it to a meeting',
+      body: 'Export writes the page as an Excel workbook or PowerPoint slides, with a line saying it was made in Manager mode.',
+      placement: 'bottom',
+    },
+  ],
+}
+
+/** Developer mode only (docs/ROLES.md, 3.8): the Developer page and the debug overlays. */
+const DEVELOPER_TOOLS: Tour = {
+  id: 'developer-tools',
+  title: 'Developer tools',
+  summary:
+    'The Developer page: the inventory, the Ask tools console, the state behind the screen and the debug overlays.',
+  length: '1 minute',
+  route: 'dev',
+  steps: [
+    {
+      ...at('dev'),
+      target: tourTarget('masthead-dev'),
+      title: 'A page for developers',
+      body: 'Developer mode adds this page: whether the data, the metric dictionary, the view contracts and the runtime are healthy. Nothing on it is sent anywhere.',
+      placement: 'bottom',
+    },
+    {
+      ...at('dev', 'inventory'),
+      target: tourTarget('dev-inventory-list'),
+      title: 'Everything Census has',
+      body: 'Every view, tab, figure, metric, engine function, Ask tool, drill kind, field, storage key, route, setting, shortcut and help entry, with what each mode shows. Search a list or export it.',
+      placement: 'bottom',
+    },
+    {
+      ...at('dev', 'ask'),
+      target: tourTarget('dev-ask-console'),
+      title: 'Run a tool here',
+      body: 'Run one tool on the live context and see the exact JSON Claude would get, without sending anything.',
+      placement: 'bottom',
+    },
+    {
+      ...at('dev', 'state'),
+      target: tourTarget('dev-state'),
+      title: 'The state behind the screen',
+      body: 'Route, scope, mode, switches, quality index, saved views, panels and storage, each copyable as JSON.',
+      placement: 'top',
+    },
+    {
+      ...at('dev'),
+      target: tourTarget('dev-overlays'),
+      title: 'Debug overlays',
+      body: 'Figure ids, tour targets and metric ids on hover. Alt+Shift+D switches them all.',
+      placement: 'bottom',
+    },
+  ],
+}
+
 export const TOURS: readonly Tour[] = [
   GETTING_STARTED,
+  MANAGER_START,
+  MY_TEAM,
   OWN_DATA,
   QUALITY_DEFINITIONS,
   SCORECARD,
@@ -847,6 +1028,7 @@ export const TOURS: readonly Tour[] = [
   LISTENING,
   AI_IN_HR,
   ACTION_CENTER,
+  DEVELOPER_TOOLS,
 ]
 
 const BY_ID = new Map(TOURS.map((t) => [t.id, t]))

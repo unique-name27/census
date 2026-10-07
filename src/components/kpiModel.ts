@@ -57,13 +57,17 @@ export interface TileTarget {
 export function tileTarget(
   k: Pick<Kpi, 'tab' | 'link'>,
   view: (Pick<CurrentView, 'key' | 'tabs'> & { tab?: string }) | null,
+  /** Whether the mode shows a route (`routeShown`); a tile opens nothing the mode hides. */
+  shown: (view: string, tab: string) => boolean = () => true,
 ): TileTarget | null {
   const here = (v: string, tab: string) => !!view?.tab && v === view.key && tab === view.tab
   if (k.link) {
     const tab = k.link.tab ?? ''
-    return here(k.link.view, tab) ? null : { view: k.link.view, tab, label: k.link.label }
+    return here(k.link.view, tab) || !shown(k.link.view, tab)
+      ? null
+      : { view: k.link.view, tab, label: k.link.label }
   }
-  if (!k.tab || !view || here(view.key, k.tab)) return null
+  if (!k.tab || !view || here(view.key, k.tab) || !shown(view.key, k.tab)) return null
   return { view: view.key, tab: k.tab, label: view.tabs.find((t) => t.key === k.tab)?.label ?? k.tab }
 }
 

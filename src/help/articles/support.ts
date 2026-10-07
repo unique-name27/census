@@ -42,9 +42,9 @@ export const SUPPORT_ARTICLES: readonly HelpArticle[] = [
           '+ and - zoom in and out.',
         ],
       },
-      { h: 'Reorg sandbox' },
+      { h: 'Reorg sandbox', surface: 'tab:org.sandbox' },
       { ul: ['Ctrl+Z undoes the last move.', 'Ctrl+Shift+Z or Ctrl+Y redoes it.'] },
-      { h: 'Metric definitions' },
+      { h: 'Metric definitions', surface: 'page:data' },
       {
         ul: [
           'In a one-line field, Enter saves.',
@@ -182,5 +182,52 @@ export const SUPPORT_ARTICLES: readonly HelpArticle[] = [
     keywords: ['release notes', 'changes', 'new', 'updates', 'version', 'changelog'],
     generated: 'whats-new',
     body: [],
+  },
+  {
+    id: 'developer-tools',
+    group: 'support',
+    title: 'Developer tools',
+    summary: 'The Developer page and the debug overlays, for whoever builds, tests or supports Census.',
+    keywords: [
+      'developer',
+      'debug',
+      'inventory',
+      'figure id',
+      'metric id',
+      'timings',
+      'console',
+      'state',
+      'overlay',
+    ],
+    route: { view: 'dev' },
+    tour: 'developer-tools',
+    body: [
+      {
+        p: 'Developer mode shows everything HR mode shows, plus the Developer page and three debug overlays. Switch to it with the Mode button. Nothing on the Developer page is sent anywhere.',
+      },
+      { h: 'The Developer page' },
+      {
+        ul: [
+          'Overview: whether the data, the metric dictionary, the view contracts and the runtime are healthy. Run contract checks lays out every view off screen and lists each figure, key figure or finding that lacks a metric id, the fields it reads or its records.',
+          'Inventory: every view, tab, figure, metric, engine function, Ask tool, drill kind, dataset field, storage key, route, setting, shortcut and help article, each with what every mode shows. Search a list, or export it like any table.',
+          'Access: every surface and its decision in Developer, HR and Manager mode, the same rows the access matrix test checks.',
+          'Ask tools: run one Ask tool in this browser and see exactly what Claude would get. Nothing is sent to Anthropic.',
+          'State: the route, scope, mode, switches, quality index, saved views, panels and storage, each copyable as JSON. The Ask key and the workspace ID are never copied.',
+          'Timings: how long the engines, records lists, exports and Ask tools took. Timings record in Developer mode only.',
+        ],
+      },
+      { h: 'Debug overlays' },
+      {
+        ul: [
+          'Figure ids: a label on each figure with its id. Click it to copy the id.',
+          'Tour targets: an outline and a label on every element a tour can point at.',
+          'Metric ids on hover: hovering a key figure, figure or finding shows its metric id and the fields it reads.',
+          'Alt+Shift+D (Option+Shift+D on a Mac) switches every overlay on or off. Settings, Mode has the same switches.',
+        ],
+      },
+      {
+        note: 'Errors caught this session are listed on the Overview. A tab that could not be drawn shows Details with the message and the component stack in this mode.',
+      },
+    ],
   },
 ]

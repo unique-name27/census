@@ -4,7 +4,7 @@
 import type { AnalyticsContext } from '@/data/context'
 import type { Filters } from '@/data/scope'
 import type { ViewDef } from '@/views/types'
-import { withFeatureTabs } from '@/views/types'
+import { withAccessTabs, withFeatureTabs } from '@/views/types'
 import type { ReleaseAudit } from '../audit'
 import type { TokenMap } from '../privacy'
 import type { RefRegistry } from '../refs'
@@ -56,10 +56,18 @@ export function scopedCtx(
   return { ok: true, ctx: contextFor(rt.base, r.filters), filters: r.filters }
 }
 
-/** Views as the user sees them: feature-gated tabs dropped. */
+/** Views as the user sees them: feature-gated tabs dropped, and only the views and tabs the mode shows. */
 export function liveViews(rt: ToolRuntime): ViewDef[] {
-  return rt.env.views.map((v) => withFeatureTabs(v, rt.base.features))
+  const access = rt.base.access
+  const views = access ? rt.env.views.filter((v) => access.can(`view:${v.key}`)) : rt.env.views
+  return views.map((v) => {
+    const f = withFeatureTabs(v, rt.base.features)
+    return access ? withAccessTabs(f, access) : f
+  })
 }
+
+/** Manager mode's lock, when Ask runs in Manager mode. */
+export const lockOf = (rt: ToolRuntime) => rt.base.access?.lock ?? null
 
 /** Views that read data and can be summarized (the scorecard included). */
 export function dataViews(rt: ToolRuntime): ViewDef[] {

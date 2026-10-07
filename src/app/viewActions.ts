@@ -2,6 +2,7 @@
  * What the Views menu and "Copy link to this view" do (docs/FILTERS.md, parts 1 and 2): apply a
  * saved view in one step (one history entry), and copy the full address of a view.
  */
+import { noteLeaderReplaced } from '@/access/connect'
 import { currentScope, linkToView } from '@/components/navigation'
 import { toast } from '@/components/toast'
 import { batchAddress, setLensOn } from '@/data/address'
@@ -30,6 +31,8 @@ export function applySavedView(view: SavedView, ctx: Pick<AnalyticsContext, 'all
       st.navigate(page.view as RouteView, page.tab, { scroll: page.view !== st.route.view })
   })
   useSavedViews.getState().setApplied(view.id)
+  // Manager mode keeps the manager's org: a view saved for another leader opens inside it.
+  noteLeaderReplaced(scope.filters, 'view')
   if (leftOut.length || period)
     toast(`Applied "${view.name}" without part of its scope`, {
       description: [

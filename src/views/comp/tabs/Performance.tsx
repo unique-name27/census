@@ -154,7 +154,7 @@ export function Performance({ m }: { m: CompModel }) {
             format="times"
             sort="asc"
             ref={{ value: floor, label: `Floor ${fmt(floor, 'times')}` }}
-            tone={flatTone(floor)}
+            glyphTone={flatTone(floor)}
             rowHeight={26}
             nullNote={`Fewer than ${min} people rated 3 or rated 4-5`}
             onSelect={(d) => drill(differentiationDrill(m, d, d.group, null))}

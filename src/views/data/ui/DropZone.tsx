@@ -31,7 +31,7 @@ function SavedChoices() {
   }, [idle, refresh])
   if (!layouts && !learned) return null
   return (
-    <p className="mt-auto flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-rule px-5 py-2.5 text-[12px] text-ink-2">
+    <p className="mt-auto flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-rule px-5 py-2.5 text-meta text-ink-2">
       <span className="min-w-0 flex-1 basis-[260px]">
         {layouts
           ? `Saved column choices for ${fmt(layouts, 'int')} file ${layouts === 1 ? 'layout' : 'layouts'} are applied to files with the same columns.`
@@ -101,20 +101,20 @@ export function DropZone({ className }: { className?: string }) {
         <h2 className="eyebrow">Your files</h2>
         {reading ? (
           <div aria-live="polite">
-            <p className="cut-head mt-2 truncate text-[20px] leading-tight font-semibold">
+            <p className="cut-head mt-2 truncate text-section leading-tight font-semibold">
               Reading {reading.fileName}
             </p>
-            <p className="mt-2 text-[13px] text-ink-2">
+            <p className="mt-2 text-small text-ink-2">
               {reading.total > 1 ? `File ${reading.index + 1} of ${reading.total}. ` : ''}Large workbooks take
               a few seconds. Nothing changes until you apply a sheet.
             </p>
           </div>
         ) : (
           <>
-            <p className="cut-head mt-2 text-[20px] leading-tight font-semibold">
+            <p className="cut-head mt-2 text-section leading-tight font-semibold">
               {over ? 'Drop to read these files' : 'Replace the sample with your exports'}
             </p>
-            <p className="mt-2 max-w-[72ch] text-[13px] text-ink-2">
+            <p className="mt-2 max-w-[72ch] text-small text-ink-2">
               Add one file or several: .xlsx, .xls, .csv or .tsv, with any number of sheets. Each sheet is
               matched to a dataset by its columns, and you check the match and the rows before anything is
               replaced.
@@ -123,7 +123,7 @@ export function DropZone({ className }: { className?: string }) {
               <Button variant="primary" icon={<IconUpload />} disabled={busy} onClick={() => picker.open()}>
                 Choose files
               </Button>
-              <span className="hidden text-[12px] text-muted sm:inline">or drop them on this panel</span>
+              <span className="hidden text-meta text-muted sm:inline">or drop them on this panel</span>
             </div>
           </>
         )}

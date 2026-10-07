@@ -44,6 +44,8 @@ export interface DrillInputs {
   overdue: OverdueResult
   learning: LearningResult
   risk: RiskModel
+  /** False where the mode hides flight-risk scores about named people (Manager): no risk columns. */
+  riskShown?: boolean
 }
 
 export interface TalentDrills {
@@ -176,6 +178,7 @@ export function buildDrills(x: DrillInputs): TalentDrills {
     overdue,
     learning,
     risk,
+    riskShown = true,
   } = x
   const { ctx, asOf } = base
   const { highRating, minGroup, promotionYears } = base.settings
@@ -393,7 +396,7 @@ export function buildDrills(x: DrillInputs): TalentDrills {
 
     activeHighPerformers: () => {
       const rows = ret.highPerformerPeople
-      return when(rows.length >= minGroup, () =>
+      return when(riskShown && rows.length >= minGroup, () =>
         drillSpec({
           kind: 'employees',
           title: `Active people rated ${hi}`,
@@ -581,16 +584,19 @@ export function buildDrills(x: DrillInputs): TalentDrills {
             columns: [
               { key: 'boxRating', label: cycle ? `Rating (${cycle})` : 'Rating', format: 'int' },
               { key: 'boxPotential', label: cycle ? `Potential (${cycle})` : 'Potential' },
-              { key: 'riskBand', label: 'Flight-risk band' },
-              { key: 'riskScore', label: 'Flight-risk score', format: 'int' },
+              ...(riskShown
+                ? [
+                    { key: 'riskBand', label: 'Flight-risk band' },
+                    { key: 'riskScore', label: 'Flight-risk score', format: 'int' as const },
+                  ]
+                : []),
             ],
             values: (e) => {
               const p = byId.get(e.employeeId)
               return {
                 boxRating: p?.rating ?? null,
                 boxPotential: p?.potential ?? null,
-                riskBand: p?.riskBand ?? null,
-                riskScore: p?.riskScore ?? null,
+                ...(riskShown ? { riskBand: p?.riskBand ?? null, riskScore: p?.riskScore ?? null } : {}),
               }
             },
           },
@@ -699,7 +705,7 @@ export function buildDrills(x: DrillInputs): TalentDrills {
       const row = ret.bands.find((b) => b.band === band)
       const count = company ? null : (row?.people ?? 0)
       const shown = company ? row?.companyShare != null : row?.share != null
-      return when(total >= minGroup && shown && (count == null || count > 0), () => {
+      return when(riskShown && total >= minGroup && shown && (count == null || count > 0), () => {
         const rows = company
           ? people([...risk.scores.values()].filter((s) => s.band === band).map((s) => s.employeeId))
           : ret.bandPeople[band]
@@ -716,7 +722,7 @@ export function buildDrills(x: DrillInputs): TalentDrills {
     },
 
     keyTalent: () =>
-      when(ret.keyTalent.length > 0, () =>
+      when(riskShown && ret.keyTalent.length > 0, () =>
         drillSpec({
           kind: 'employees',
           title: 'Key talent at risk',
@@ -735,7 +741,7 @@ export function buildDrills(x: DrillInputs): TalentDrills {
         return part === 'any' ? f.some((h) => h.key === key) : reasonsFor(f, common)[0]?.key === key
       })
       const label = factorDef.get(key)?.label ?? key
-      return when(high.length >= minGroup && rows.length > 0, () =>
+      return when(riskShown && high.length >= minGroup && rows.length > 0, () =>
         drillSpec({
           kind: 'employees',
           title:
@@ -772,7 +778,7 @@ export function buildDrills(x: DrillInputs): TalentDrills {
       const bt = risk.backTest
       const row = bt.bands.find((b) => b.band === band)
       const count = part === 'scored' ? (row?.people ?? 0) : (row?.leavers ?? 0)
-      return when(row?.rate != null && count > 0, () => {
+      return when(riskShown && row?.rate != null && count > 0, () => {
         const inBand = [...bt.scored.values()].filter((s) => s.band === band)
         const ids = inBand.map((s) => s.employeeId).filter((id) => part === 'scored' || bt.leaverIds.has(id))
         return drillSpec({
@@ -809,7 +815,7 @@ export function buildDrills(x: DrillInputs): TalentDrills {
       const leftMonths = side === 'with' ? e?.withLeft : e?.withoutLeft
       const rate = side === 'with' ? e?.withRate : e?.withoutRate
       const count = part === 'counted' ? months : leftMonths
-      return when(!!e && !!count && (part === 'counted' || rate != null), () => {
+      return when(riskShown && !!e && !!count && (part === 'counted' || rate != null), () => {
         const all = e!.people[side]
         const ids = [...all].filter(([, p]) => part === 'counted' || p.left > 0).map(([id]) => id)
         const label = e!.label
@@ -833,7 +839,7 @@ export function buildDrills(x: DrillInputs): TalentDrills {
 
     evidenceLift: (key) => {
       const e = risk.evidence.find((x) => x.key === key)
-      return when(e?.lift != null && e.withLeft + e.withoutLeft > 0, () => {
+      return when(riskShown && e?.lift != null && e.withLeft + e.withoutLeft > 0, () => {
         const ev = e!
         const ids = new Set<string>()
         for (const side of ['with', 'without'] as const)
@@ -904,14 +910,14 @@ export function buildDrills(x: DrillInputs): TalentDrills {
             columns: [
               { key: 'lastPromotion', label: 'Last promotion', format: 'date' },
               { key: 'twoRatings', label: 'Last two annual ratings' },
-              { key: 'riskBand', label: 'Flight-risk band' },
+              ...(riskShown ? [{ key: 'riskBand', label: 'Flight-risk band' }] : []),
             ],
             values: (e) => {
               const r = byId.get(e.employeeId)
               return {
                 lastPromotion: r?.lastPromotion ?? null,
                 twoRatings: r?.ratings ?? null,
-                riskBand: r?.riskBand ?? null,
+                ...(riskShown ? { riskBand: r?.riskBand ?? null } : {}),
               }
             },
           },

@@ -22,7 +22,7 @@ import { parseTargetDraft, type TargetDraft, type TargetRule, targetDraft, targe
 
 /** Boxes without a width, for inputs sized by the caller (a width class can't override `w-full`). */
 export const INPUT_BOX =
-  'min-w-0 rounded-control bg-sheet px-2 py-1.5 text-[13px] text-ink shadow-[inset_0_0_0_1px_var(--rule-strong)] outline-none placeholder:text-muted focus-visible:shadow-[inset_0_0_0_2px_var(--focus)] aria-[invalid=true]:shadow-[inset_0_0_0_1px_var(--critical)]'
+  'min-w-0 rounded-control bg-sheet px-2 py-1.5 text-small text-ink shadow-[inset_0_0_0_1px_var(--rule-strong)] outline-none placeholder:text-muted focus-visible:shadow-[inset_0_0_0_2px_var(--focus)] aria-[invalid=true]:shadow-[inset_0_0_0_1px_var(--critical)]'
 
 export const INPUT = `w-full ${INPUT_BOX}`
 
@@ -41,11 +41,11 @@ export function FieldRow({
   return (
     <div className={cx('grid gap-x-4 gap-y-1 border-t border-rule py-3 sm:grid-cols-[132px_1fr]', className)}>
       {labelFor ? (
-        <label htmlFor={labelFor} className="text-[12px] font-semibold text-ink-2 sm:pt-0.5">
+        <label htmlFor={labelFor} className="text-meta font-semibold text-ink-2 sm:pt-0.5">
           {label}
         </label>
       ) : (
-        <span className="text-[12px] font-semibold text-ink-2 sm:pt-0.5">{label}</span>
+        <span className="text-meta font-semibold text-ink-2 sm:pt-0.5">{label}</span>
       )}
       <div className="min-w-0">{children}</div>
     </div>
@@ -55,7 +55,7 @@ export function FieldRow({
 /** "Changed" in the warning wash, beside a field that differs from its default. */
 export function ChangedMark({ label = 'Changed' }: { label?: string }) {
   return (
-    <span className="inline-flex h-5 shrink-0 items-center rounded-[3px] bg-warning-wash px-1.5 text-[11px] font-semibold text-ink">
+    <span className="inline-flex h-5 shrink-0 items-center rounded-chip bg-warning-wash px-1.5 text-label font-semibold text-ink">
       {label}
     </span>
   )
@@ -64,14 +64,14 @@ export function ChangedMark({ label = 'Changed' }: { label?: string }) {
 /** The default under a changed field, with the button that puts it back. */
 function DefaultLine({ text, onUse }: { text: string; onUse: () => void }) {
   return (
-    <div className="mt-1.5 flex flex-wrap items-start gap-x-2 gap-y-1 text-[12px] leading-snug text-muted">
+    <div className="mt-1.5 flex flex-wrap items-start gap-x-2 gap-y-1 text-meta leading-snug text-muted">
       <span className="min-w-0 flex-1 basis-60">
         Default: <span className="text-ink-2">{text}</span>
       </span>
       <button
         type="button"
         onClick={onUse}
-        className="shrink-0 rounded-[2px] font-medium text-link underline-offset-2 hover:underline"
+        className="shrink-0 rounded-mark font-medium text-link underline-offset-2 hover:underline"
       >
         Use default
       </button>
@@ -191,9 +191,9 @@ export function EditableText({
                 save()
               } else editKeys(save, close)(e)
             }}
-            className={cx(INPUT, 'resize-y leading-snug', field === 'formula' && 'font-mono text-[12px]')}
+            className={cx(INPUT, 'resize-y leading-snug', field === 'formula' && 'font-mono text-meta')}
           />
-          <p id={`${id}-hint`} className={cx('mt-1 text-[12px]', error ? 'text-bad-text' : 'text-muted')}>
+          <p id={`${id}-hint`} className={cx('mt-1 text-meta', error ? 'text-bad-text' : 'text-muted')}>
             {error ??
               (field === 'definition'
                 ? 'Plain sentences, sentence case. Ctrl+Enter saves, Escape cancels.'
@@ -213,16 +213,16 @@ export function EditableText({
           <div className="flex items-start gap-2">
             <p
               className={cx(
-                'min-w-0 flex-1 text-[13px] leading-snug whitespace-pre-line',
+                'min-w-0 flex-1 text-small leading-snug whitespace-pre-line',
                 value ? 'text-ink' : 'text-muted',
-                field === 'formula' && value && 'font-mono text-[12px]',
+                field === 'formula' && value && 'font-mono text-meta',
               )}
             >
               {value || EMPTY_TEXT[field]}
             </p>
             {changed && <ChangedMark />}
             {base.locked ? (
-              <span className="inline-flex shrink-0 items-center gap-1 text-[12px] text-muted">
+              <span className="inline-flex shrink-0 items-center gap-1 text-meta text-muted">
                 <IconLock className="size-3" /> Locked
               </span>
             ) : (
@@ -248,7 +248,7 @@ export function EditableText({
               }}
             />
           )}
-          {error && <p className="mt-1 text-[12px] text-bad-text">{error}</p>}
+          {error && <p className="mt-1 text-meta text-bad-text">{error}</p>}
         </div>
       )}
     </FieldRow>
@@ -329,7 +329,7 @@ export function TargetField({
         <div ref={formRef}>
           <div className="flex flex-wrap items-center gap-2">
             {fixedRule ? (
-              <span className="text-[13px] text-ink">{comparatorText(fixedRule)}</span>
+              <span className="text-small text-ink">{comparatorText(fixedRule)}</span>
             ) : (
               <Select
                 label={`Target rule for ${def.name}`}
@@ -360,15 +360,15 @@ export function TargetField({
                   }}
                   className={cx(INPUT_BOX, 'tnum h-7 w-[96px] py-0 text-right')}
                 />
-                {unit && <span className="text-[12px] text-muted">{unit}</span>}
+                {unit && <span className="text-meta text-muted">{unit}</span>}
               </span>
             )}
           </div>
-          <p className={cx('mt-1 text-[12px]', error ? 'text-bad-text' : 'text-muted')} role="status">
+          <p className={cx('mt-1 text-meta', error ? 'text-bad-text' : 'text-muted')} role="status">
             {error ?? [direction, targetHint(base)].filter(Boolean).join(' ')}
           </p>
           {!error && warning && (
-            <p className="mt-1 text-[12px] text-ink-2">
+            <p className="mt-1 text-meta text-ink-2">
               <span className="font-medium">Check the direction.</span> {warning}
             </p>
           )}
@@ -384,16 +384,16 @@ export function TargetField({
       ) : (
         <div>
           <div className="flex items-start gap-2">
-            <p className={cx('min-w-0 flex-1 text-[13px] leading-snug', target ? 'text-ink' : 'text-muted')}>
+            <p className={cx('min-w-0 flex-1 text-small leading-snug', target ? 'text-ink' : 'text-muted')}>
               {targetText(def, target)}
               {target && direction && <span className="text-muted"> · {direction}</span>}
               {targetDirectionWarning(def, target) && (
-                <span className="block text-[12px] text-ink-2">{targetDirectionWarning(def, target)}</span>
+                <span className="block text-meta text-ink-2">{targetDirectionWarning(def, target)}</span>
               )}
             </p>
             {changed && <ChangedMark />}
             {base.locked ? (
-              <span className="inline-flex shrink-0 items-center gap-1 text-[12px] text-muted">
+              <span className="inline-flex shrink-0 items-center gap-1 text-meta text-muted">
                 <IconLock className="size-3" /> Locked
               </span>
             ) : (
@@ -419,7 +419,7 @@ export function TargetField({
               }}
             />
           )}
-          {error && <p className="mt-1 text-[12px] text-bad-text">{error}</p>}
+          {error && <p className="mt-1 text-meta text-bad-text">{error}</p>}
         </div>
       )}
     </FieldRow>
@@ -437,7 +437,7 @@ function targetHint(def: Pick<MetricDef, 'targetRequired'>): string {
 export function StaticRow({ label, children }: { label: string; children: ReactNode }) {
   return (
     <FieldRow label={label}>
-      <p className="text-[13px] leading-snug text-ink">{children}</p>
+      <p className="text-small leading-snug text-ink">{children}</p>
     </FieldRow>
   )
 }

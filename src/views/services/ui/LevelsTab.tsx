@@ -108,7 +108,7 @@ export function LevelsTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext 
       render: (r) => (
         <>
           <ProcessId id={r.processId} />
-          <div className="mt-0.5 text-[12px] text-ink-2">{r.process}</div>
+          <div className="mt-0.5 text-meta text-ink-2">{r.process}</div>
         </>
       ),
     },
@@ -119,7 +119,7 @@ export function LevelsTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext 
       render: (r) => (
         <>
           {r.measure}
-          <div className="mt-0.5 text-[12px] text-muted">
+          <div className="mt-0.5 text-meta text-muted">
             {r.team}
             {r.basis === 'Atlas KPI' ? '' : ` · ${r.basis}`}
           </div>
@@ -151,7 +151,7 @@ export function LevelsTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext 
         r.status ? (
           <StatusPill severity={STATUS_SEVERITY[r.status]} label={r.status} />
         ) : (
-          <span className="text-[12px] text-muted">No data</span>
+          <span className="text-meta text-muted">No data</span>
         ),
     },
     {
@@ -162,7 +162,7 @@ export function LevelsTab({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext 
         r.caseSlaTarget ? (
           <>
             <Drill spec={caseSla(r)}>{fmt(r.caseSla, 'pct')}</Drill>
-            <div className="mt-0.5 text-[12px] text-muted">within {r.caseSlaTarget}</div>
+            <div className="mt-0.5 text-meta text-muted">within {r.caseSlaTarget}</div>
           </>
         ) : (
           <span className="text-muted">—</span>

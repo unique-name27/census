@@ -156,6 +156,7 @@ function writeSummary(
         ][])
       : []),
     ...(anyPay ? ([['Pay amounts', opts.showPay ? 'Included' : 'Left out']] as [string, string][]) : []),
+    ...(meta.modeLine ? ([['Mode', meta.modeLine]] as [string, string][]) : []),
     // Someone changed a definition, target or setting: the numbers may not use the standard ones.
     ...(changedDefs
       ? ([['Definitions', changedDefs.replace(/^Definitions changed/, 'Changed')]] as [string, string][])
@@ -299,7 +300,7 @@ const FONT = 'Archivo'
 const C = {
   ink: '12151A',
   ink2: '475060',
-  muted: '737B8A',
+  muted: '616A78',
   rule: 'DDE1E7',
   sheet2: 'F3F4F6',
   sheet3: 'E7E9ED',
@@ -387,6 +388,7 @@ function titleSlide(pptx: PptxGenJS, meta: ExportMeta) {
     meta.asOf ? `As of ${asOfLabel(meta.asOf)}` : '',
     meta.standard ? standardLine(meta.standard) : '',
     definitionsLineFor(meta) ?? '',
+    meta.modeLine ?? '',
   ].filter(Boolean)
   if (context.length)
     s.addText(

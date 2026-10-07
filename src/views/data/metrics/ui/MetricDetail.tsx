@@ -107,7 +107,7 @@ export function MetricDetail({
               id={`${slug}-name`}
               ref={headingRef}
               tabIndex={-1}
-              className="cut-head mt-1 rounded-[2px] text-[22px] leading-tight font-semibold outline-none focus-visible:outline-2 focus-visible:outline-focus"
+              className="cut-head mt-1 rounded-mark text-section leading-tight font-semibold outline-none focus-visible:outline-2 focus-visible:outline-focus"
             >
               {def.name}
             </h2>
@@ -124,7 +124,7 @@ export function MetricDetail({
               dataset={tier.limiting?.dataset}
             />
           ) : (
-            <span className="inline-flex h-6 items-center gap-1 rounded-[3px] bg-sheet-3 px-1.5 text-[12px] font-semibold text-ink-2">
+            <span className="inline-flex h-6 items-center gap-1 rounded-chip bg-sheet-3 px-1.5 text-meta font-semibold text-ink-2">
               {base.locked && <IconLock className="size-3" />}
               {base.locked
                 ? 'Privacy rule, locked'
@@ -140,7 +140,7 @@ export function MetricDetail({
             </Button>
           )}
         </div>
-        <p className="mt-3 text-[12px] text-muted">
+        <p className="mt-3 text-meta text-muted">
           Appears in{' '}
           {where.map((w, i) => (
             <span key={w.view}>
@@ -162,7 +162,7 @@ export function MetricDetail({
           .
         </p>
         {sources.length > 0 && (
-          <p className="mt-1 text-[12px] text-muted">
+          <p className="mt-1 text-meta text-muted">
             Also calculated with the settings of{' '}
             {sources.map((s, i) => (
               <span key={s.id}>

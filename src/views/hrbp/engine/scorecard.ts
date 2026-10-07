@@ -86,7 +86,7 @@ export interface Scorecard {
   rule: Readonly<HrbpSettings['offCompany']>
 }
 
-interface OrgDef {
+export interface OrgDef {
   key: string
   label: string
   sublabel: string
@@ -177,7 +177,8 @@ function metrics(
   }
 }
 
-function orgDefinitions(p: Prep): { label: string; dim: ScoreDim; defs: OrgDef[] } {
+/** The orgs one level down from the scope (the scorecard's rows), shared with the charts that group by them. */
+export function orgDefinitions(p: Prep): { label: string; dim: ScoreDim; defs: OrgDef[] } {
   const { ctx, people, asOf } = p
   // Direct reports of the leader the scope focuses on; a left-out leader cuts by business unit and so on.
   const leaderId = focusLeader(ctx.filters)

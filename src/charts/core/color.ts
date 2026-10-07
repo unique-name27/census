@@ -49,15 +49,25 @@ export function inkOn(t: ChartTheme, fill: string): string {
   return contrast(lf, luminance(dark)) >= contrast(lf, luminance(light)) ? dark : light
 }
 
-/** Sequential stops, light to dark in light mode (the tokens invert them for dark mode). */
-export function seqStops(t: ChartTheme): string[] {
+/**
+ * Sequential stops, light to dark in light mode (the tokens invert them for dark mode). With
+ * `darkest: 600` the ramp stops at --seq-600: for large cells (over 48 x 48px, such as a 9-box)
+ * so one cell never becomes the heaviest block on the page (docs/DESIGN-REFRESH.md 2.7).
+ */
+export function seqStops(t: ChartTheme, darkest: 600 | 700 = 700): string[] {
   const s = t.seq
-  return [s[100], s[200], s[300], s[400], s[500], s[600], s[700]]
+  const stops = [s[100], s[200], s[300], s[400], s[500], s[600], s[700]]
+  return darkest === 600 ? stops.slice(0, 6) : stops
 }
 
-/** Map a value in [lo, hi] onto the sequential ramp. */
-export function sequentialScale(t: ChartTheme, lo: number, hi: number): (v: number) => string {
-  const ramp = piecewise(interpolateLab, seqStops(t))
+/** Map a value in [lo, hi] onto the sequential ramp (capped at --seq-600 with `darkest: 600`). */
+export function sequentialScale(
+  t: ChartTheme,
+  lo: number,
+  hi: number,
+  darkest: 600 | 700 = 700,
+): (v: number) => string {
+  const ramp = piecewise(interpolateLab, seqStops(t, darkest))
   const span = hi - lo || 1
   return (v) => ramp(Math.min(1, Math.max(0, (v - lo) / span)))
 }

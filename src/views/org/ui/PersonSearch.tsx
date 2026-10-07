@@ -118,10 +118,10 @@ export function PersonSearch({
           onFocus={() => setOpen(true)}
           onBlur={() => window.setTimeout(() => setOpen(false), 120)}
           onKeyDown={onKeyDown}
-          className="h-8 w-full rounded-control bg-sheet pr-8 pl-8 text-[13px] text-ink shadow-[inset_0_0_0_1px_var(--rule-strong)] outline-none placeholder:text-muted focus:shadow-[inset_0_0_0_1px_var(--ink-2)] [&::-webkit-search-cancel-button]:hidden"
+          className="h-8 w-full rounded-control bg-sheet pr-8 pl-8 text-small text-ink shadow-[inset_0_0_0_1px_var(--rule-strong)] outline-none placeholder:text-muted focus:shadow-[inset_0_0_0_1px_var(--ink-2)] [&::-webkit-search-cancel-button]:hidden"
         />
         {slashKey && !q && (
-          <kbd className="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 rounded-[3px] px-1.5 font-mono text-[11px] text-muted shadow-[inset_0_0_0_1px_var(--rule-strong)]">
+          <kbd className="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 rounded-chip px-1.5 font-mono text-label text-muted shadow-[inset_0_0_0_1px_var(--rule-strong)]">
             /
           </kbd>
         )}
@@ -155,30 +155,30 @@ export function PersonSearch({
                   onMouseEnter={() => setActive(i)}
                   onClick={() => pick(h.id)}
                   className={cx(
-                    'mx-1 flex cursor-pointer items-center gap-2.5 rounded-[3px] px-2 py-1.5',
+                    'mx-1 flex cursor-pointer items-center gap-2.5 rounded-chip px-2 py-1.5',
                     i === active && 'bg-hover',
                   )}
                 >
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[13px] text-ink">{e.name}</span>
-                    <span className="block truncate text-[12px] text-muted">
+                    <span className="block truncate text-small text-ink">{e.name}</span>
+                    <span className="block truncate text-meta text-muted">
                       {e.jobTitle} · {e.department} · {e.location}
                     </span>
                   </span>
                   {note ? (
-                    <span className="shrink-0 text-[12px] text-muted">{note}</span>
+                    <span className="shrink-0 text-meta text-muted">{note}</span>
                   ) : orgSize(h.id) > 0 ? (
-                    <span className="tnum shrink-0 text-[12px] text-muted">
+                    <span className="tnum shrink-0 text-meta text-muted">
                       {plural(orgSize(h.id), 'person', 'people')}
                     </span>
                   ) : (
-                    <span className="shrink-0 font-mono text-[11px] text-muted">{e.level ?? ''}</span>
+                    <span className="shrink-0 font-mono text-label text-muted">{e.level ?? ''}</span>
                   )}
                 </div>
               )
             })}
             {hits.length === 0 && (
-              <div className="px-3 py-3 text-[13px] text-muted">No one matches “{q.trim()}”.</div>
+              <div className="px-3 py-3 text-small text-muted">No one matches “{q.trim()}”.</div>
             )}
           </div>
         </div>

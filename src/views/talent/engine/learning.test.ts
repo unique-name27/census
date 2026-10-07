@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Employee, LearningRecord } from '@/data/schema'
 import { buildBase } from './base'
+import { computeTalent } from './index'
 import { computeLearning } from './learning'
 import { course, ctxFor, emp } from './test-fixtures'
 
@@ -30,7 +31,7 @@ describe('computeLearning', () => {
   const r = computeLearning(buildBase(ctxFor({ employees: people, learning })))
 
   it('measures on time over assignments due in the window, for people employed on the due date', () => {
-    expect(r.current).toEqual({ rate: 0.75, due: 8, onTime: 6 })
+    expect(r.current).toEqual({ rate: 0.75, due: 8, onTime: 6, people: 8 })
     expect(r.prior.rate).toBeNull()
     expect(r.byCourse).toHaveLength(1)
     expect(r.byCourse[0]).toMatchObject({
@@ -109,9 +110,44 @@ describe('computeLearning', () => {
 
   it('handles no learning data', () => {
     const none = computeLearning(buildBase(ctxFor({ employees: people })))
-    expect(none.current).toEqual({ rate: null, due: 0, onTime: 0 })
+    expect(none.current).toEqual({ rate: null, due: 0, onTime: 0, people: 0 })
     expect(none.byCourse).toEqual([])
     expect(none.concentration).toBeNull()
     expect(none.hours).toEqual([])
+  })
+})
+
+describe('required training on time in a small org', () => {
+  // Four people with 22 assignments due between them: enough assignments, too few people. The rate
+  // would describe those four people, so it is hidden like every rate under the minimum of 5.
+  const four = Array.from({ length: 4 }, (_, i) => emp(`S${i}`))
+  const courses = [
+    'Code of conduct',
+    'Security basics',
+    'Export control',
+    'Harassment prevention',
+    'Privacy',
+    'Safety',
+  ]
+  const learning = four.flatMap((e, i) =>
+    courses
+      .slice(0, i < 2 ? 6 : 5)
+      .map((c) => course(e.employeeId, c, i % 2 ? {} : { completedDate: '2026-08-20' })),
+  )
+
+  it('hides the on-time share when fewer than 5 people have assignments due', () => {
+    expect(learning).toHaveLength(22)
+    const r = computeLearning(buildBase(ctxFor({ employees: four, learning })))
+    expect(r.current).toMatchObject({ due: 22, people: 4, rate: null })
+    for (const c of r.byCourse) expect(c.onTimeRate).toBeNull()
+    expect(r.trend.every((v) => v == null)).toBe(true)
+  })
+
+  it('suppresses the tile and opens no records behind its note', () => {
+    const m = computeTalent(ctxFor({ employees: four, learning }))
+    const tile = m.kpis.find((k) => k.id === 'talent-training-on-time')!
+    expect(tile.value).toBeNull()
+    expect(tile.suppressed).toBe(true)
+    expect(tile.noteDrill ?? null).toBeNull()
   })
 })

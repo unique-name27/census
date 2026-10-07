@@ -24,7 +24,7 @@ const hex = (c: string) => {
         .map((v) => Number(v).toString(16).padStart(2, '0'))
         .join('')
         .toUpperCase()
-    : '737B8A'
+    : '616A78'
 }
 
 /** The resolved colors the deck needs (light theme). */

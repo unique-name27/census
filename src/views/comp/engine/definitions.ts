@@ -23,8 +23,11 @@ export const FIGURE_METRIC: Readonly<Record<FigureId, CompMetricId>> = {
   'comp-compa-by-location': M.compaMedian,
   'comp-compa-by-level': M.compaMedian,
   'comp-compa-by-department': M.compaMedian,
+  'comp-pay-attrition': M.compaMedian,
+  'comp-compa-location-level': M.compaMedian,
   'comp-penetration-by-level': M.penetration,
   'comp-compa-by-tenure': M.compaRatio,
+  'comp-below-min-cause': M.belowMin,
   'comp-below-minimum': M.belowMin,
   'comp-above-maximum': M.aboveMax,
   'comp-compression': M.compression,
@@ -34,6 +37,7 @@ export const FIGURE_METRIC: Readonly<Record<FigureId, CompMetricId>> = {
   'comp-differentiation-by-department': M.differentiation,
   'comp-bonus-by-rating': M.bonus,
   'comp-equity-by-rating': M.equity,
+  'comp-market-vs-range': M.marketVsMid,
   'comp-market-by-family': M.marketGap,
   'comp-market-by-location': M.marketGap,
   'comp-market-by-level': M.marketGap,
@@ -58,6 +62,19 @@ export const DEF_LATEST_RATING: Definition = {
 export const DEF_ANNUAL_RATING: Definition = {
   term: 'Annual rating',
   text: 'The rating from the latest annual cycle, the one the payout followed.',
+}
+/** The charts of ratios and counts: the pay amounts switch does not change them. */
+export const DEF_NO_AMOUNTS: Definition = {
+  term: 'Pay amounts',
+  text: 'Ratios and counts only, so Show pay amounts does not change this chart.',
+}
+export const DEF_LEVEL_GROUPS: Definition = {
+  term: 'Level groups',
+  text: 'Levels are grouped so each cell holds enough people to show: L1-L2, L3-L4, L5-L6, M1 managers, M2 directors and E1-E3 executives.',
+}
+export const DEF_BELOW_CAUSE: Definition = {
+  term: 'Cause',
+  text: 'Promoted means a promotion in Job changes in the 12 months to the as-of date; it wins over hired, a hire date in those 12 months. Neither means paid below minimum for longer. Without Job changes at the data standard, the split is hired in the last 12 months or not.',
 }
 
 /* ───────── wording from the dictionary ───────── */
@@ -139,6 +156,18 @@ export function populationRow(m: Defs, r: CompRules, id: CompMetricId): Definiti
   return { term: 'Population', text: p ? `${p} ${anonymityText(r)}` : anonymityText(r) }
 }
 
+/** Voluntary attrition is People stats' metric: its row reads the dictionary the same way. */
+const VOLUNTARY_ID = 'hrbp.attrition.voluntary'
+function voluntaryRow(m: Defs): MetricDefinition[] {
+  const d = m.def(VOLUNTARY_ID)
+  if (!d) return []
+  return [
+    d.formula
+      ? { term: d.name, text: d.definition, formula: d.formula, metricId: VOLUNTARY_ID }
+      : { term: d.name, text: d.definition, metricId: VOLUNTARY_ID },
+  ]
+}
+
 /** Every figure's definitions panel, from the dictionary with your wording and the settings in force. */
 export function figureDefinitions(m: Defs, r: CompRules): Record<FigureId, Definition[]> {
   const row = (id: CompMetricId) => metricRow(m, r, id)
@@ -151,8 +180,11 @@ export function figureDefinitions(m: Defs, r: CompRules): Record<FigureId, Defin
     'comp-compa-by-location': compaGroup,
     'comp-compa-by-level': compaGroup,
     'comp-compa-by-department': compaGroup,
+    'comp-pay-attrition': [row(M.compaMedian), ...voluntaryRow(m), DEF_NO_AMOUNTS, pop(M.compaMedian)],
+    'comp-compa-location-level': [row(M.compaMedian), DEF_LEVEL_GROUPS, DEF_NO_AMOUNTS, pop(M.compaMedian)],
     'comp-penetration-by-level': [row(M.penetration), pop(M.penetration)],
     'comp-compa-by-tenure': [row(M.compaRatio), row(M.positionMix)],
+    'comp-below-min-cause': [row(M.belowMin), DEF_BELOW_CAUSE, DEF_NO_AMOUNTS],
     'comp-below-minimum': [row(M.belowMin), row(M.increaseToMin), DEF_FX],
     'comp-above-maximum': [row(M.aboveMax), row(M.overMax), DEF_FX],
     'comp-compression': [row(M.compression), row(M.compaRatio)],
@@ -162,6 +194,13 @@ export function figureDefinitions(m: Defs, r: CompRules): Record<FigureId, Defin
     'comp-differentiation-by-department': [row(M.differentiation), DEF_LATEST_RATING],
     'comp-bonus-by-rating': [row(M.bonus), DEF_ANNUAL_RATING],
     'comp-equity-by-rating': [row(M.equity), DEF_LATEST_RATING],
+    'comp-market-vs-range': [
+      row(M.marketVsMid),
+      row(M.compaMedian),
+      row(M.marketGap),
+      DEF_NO_AMOUNTS,
+      pop(M.marketGap),
+    ],
     'comp-market-by-family': marketBars,
     'comp-market-by-location': marketBars,
     'comp-market-by-level': marketBars,

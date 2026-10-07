@@ -6,6 +6,7 @@
 import { useState } from 'react'
 import { IconApps, IconExternal, IconPencil } from '@/components/icons'
 import { Button, Popover } from '@/components/ui'
+import { useAnalytics } from '@/data/context'
 import { openSettings, useCensus } from '@/data/store'
 import { hostOf, mergeTools, type Tool } from './tools'
 
@@ -18,12 +19,17 @@ const ROW =
   'group flex items-start gap-3 rounded-control px-2.5 py-2 text-left outline-none hover:bg-hover focus-visible:bg-hover'
 
 export function ToolsMenu() {
-  const tools = useTools()
+  // The links the mode shows (docs/ROLES.md, 3.7). Where links cannot be edited (Manager mode), a
+  // link with no URL is left out, and with no link left the button is too.
+  const { access } = useAnalytics()
+  const canEdit = access.can('tools:edit')
+  const tools = useTools().filter((t) => access.can(`tools:${t.id}`) && (canEdit || !!t.url))
   const [open, setOpen] = useState(false)
   const edit = () => {
     setOpen(false)
     openSettings('tools')
   }
+  if (!tools.length) return null
   return (
     <Popover
       open={open}
@@ -49,30 +55,32 @@ export function ToolsMenu() {
                 onClick={() => setOpen(false)}
               >
                 <span className="min-w-0 flex-1">
-                  <span className="flex items-center gap-1.5 text-[13px] font-semibold text-ink">
+                  <span className="flex items-center gap-1.5 text-small font-semibold text-ink">
                     {t.label}
                     <IconExternal className="size-3.5 text-muted group-hover:text-ink-2" />
                   </span>
-                  <span className="block text-[12px] text-ink-2">{t.description}</span>
-                  <span className="block truncate text-[11px] text-muted">{hostOf(t.url)}</span>
+                  <span className="block text-meta text-ink-2">{t.description}</span>
+                  <span className="block truncate text-label text-muted">{hostOf(t.url)}</span>
                 </span>
               </a>
             ) : (
               <button type="button" className={ROW} onClick={edit}>
                 <span className="min-w-0 flex-1">
-                  <span className="block text-[13px] font-semibold text-ink-2">{t.label}</span>
-                  <span className="block text-[12px] text-muted">No link yet. Add one in Settings.</span>
+                  <span className="block text-small font-semibold text-ink-2">{t.label}</span>
+                  <span className="block text-meta text-muted">No link yet. Add one in Settings.</span>
                 </span>
               </button>
             )}
           </li>
         ))}
       </ul>
-      <div className="mt-1 border-t border-rule pt-2">
-        <Button variant="ghost" size="sm" icon={<IconPencil />} onClick={edit}>
-          Edit links
-        </Button>
-      </div>
+      {canEdit && (
+        <div className="mt-1 border-t border-rule pt-2">
+          <Button variant="ghost" size="sm" icon={<IconPencil />} onClick={edit}>
+            Edit links
+          </Button>
+        </div>
+      )}
     </Popover>
   )
 }

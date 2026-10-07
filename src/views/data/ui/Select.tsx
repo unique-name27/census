@@ -33,7 +33,7 @@ export function Select({
         disabled={disabled}
         onChange={(e) => onChange(e.target.value)}
         className={cx(
-          'h-7 w-full min-w-0 cursor-pointer appearance-none truncate rounded-control pr-7 pl-2 text-[13px] text-ink outline-none transition-colors focus-visible:shadow-[inset_0_0_0_2px_var(--focus)] disabled:cursor-default disabled:opacity-45',
+          'h-7 w-full min-w-0 cursor-pointer appearance-none truncate rounded-control pr-7 pl-2 text-small text-ink outline-none transition-colors focus-visible:shadow-[inset_0_0_0_2px_var(--focus)] disabled:cursor-default disabled:opacity-45',
           tone === 'quiet'
             ? 'bg-transparent shadow-[inset_0_0_0_1px_var(--rule)] hover:bg-hover'
             : 'bg-sheet shadow-[inset_0_0_0_1px_var(--rule-strong)] hover:bg-sheet-2',

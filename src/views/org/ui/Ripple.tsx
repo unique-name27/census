@@ -28,7 +28,7 @@ export function RipplePreview({
   const a = ripple.action
   if (!ripple.ok) {
     return (
-      <div className="flex gap-2 rounded-control bg-critical-wash px-3 py-2.5 text-[13px]">
+      <div className="flex gap-2 rounded-control bg-critical-wash px-3 py-2.5 text-small">
         <SeverityIcon severity="critical" className="mt-0.5 size-4 shrink-0" />
         <div>
           <div className="font-semibold text-ink">Blocked</div>
@@ -69,7 +69,7 @@ export function RipplePreview({
   const what = a.kind === 'exit' ? `if ${name(a.personId)} left` : 'after the move'
 
   return (
-    <div className="space-y-3 text-[13px]">
+    <div className="space-y-3 text-small">
       <p className="text-ink">
         {a.kind === 'exit' ? (
           <>
@@ -93,7 +93,7 @@ export function RipplePreview({
         )}
       </p>
       {rows.length > 0 && (
-        <table className="w-full text-[13px]">
+        <table className="w-full text-small">
           <caption className="eyebrow mb-1 text-left">Direct reports</caption>
           <tbody>
             {rows.map((r) => {
@@ -114,7 +114,7 @@ export function RipplePreview({
                   </td>
                   <td
                     className={cx(
-                      'tnum w-10 py-1 text-right text-[12px]',
+                      'tnum w-10 py-1 text-right text-meta',
                       d === 0 ? 'text-muted' : 'text-ink-2',
                     )}
                   >
@@ -127,7 +127,7 @@ export function RipplePreview({
         </table>
       )}
       {ripple.rolledUp.length > 0 && (
-        <p className="text-[12px] text-ink-2">
+        <p className="text-meta text-ink-2">
           <Drill spec={list(ripple.rolledUp, `Direct reports of ${name(a.personId)} who roll up`)}>
             {plural(ripple.rolledUp.length, 'direct report')}
           </Drill>{' '}
@@ -136,7 +136,7 @@ export function RipplePreview({
         </p>
       )}
       {!compact && a.kind === 'move' && a.mode === 'team' && others.length > 0 && (
-        <div className="text-[12px] text-ink-2">
+        <div className="text-meta text-ink-2">
           <div className="eyebrow mb-0.5">Moving with them</div>
           <p>
             {others
@@ -156,7 +156,7 @@ export function RipplePreview({
         </div>
       )}
       {!compact && ripple.crossDept > 0 && (
-        <p className="text-[12px] text-ink-2">
+        <p className="text-meta text-ink-2">
           <Drill
             spec={list(
               ripple.crossDeptIds,
@@ -183,7 +183,7 @@ export function RipplePreview({
           {ripple.warnings.map((w) => (
             <li key={w} className="flex flex-col items-start gap-1">
               <StatusPill severity="warning" label="Check" />
-              <span className="text-[12px] text-ink-2">{w}</span>
+              <span className="text-meta text-ink-2">{w}</span>
             </li>
           ))}
         </ul>

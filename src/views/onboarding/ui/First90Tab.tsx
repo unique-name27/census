@@ -2,7 +2,8 @@
  * First 90 days: whether people were ready on day one, Form I-9 Section 2, check-ins, probation
  * decisions, early voluntary attrition and the day-30 onboarding pulse.
  */
-import { BarList, type Column, Figure, Lines } from '@/charts'
+import { S, useCan } from '@/access'
+import { BarList, type ChartNote, type Column, Figure, Lines } from '@/charts'
 import { Button, cx, Grid, goTo, KpiStrip, Readout, Section, spanClass } from '@/components'
 import { useAnalytics } from '@/data/context'
 import type { Employee } from '@/data/schema'
@@ -31,7 +32,8 @@ import {
   newHireSiteDrills,
   pulseRegionDrill,
 } from './drill'
-import { asOfNote, barTone, defs, hiddenNote, NeedData, NO_TASKS, shareTone, useOnboarding } from './shared'
+import { LateTasksHeatmap, TaskTimingChart } from './LateTasks'
+import { asOfNote, defs, hiddenNote, NeedData, NO_TASKS, shareTone, useOnboarding } from './shared'
 
 /** "7 of 9", or the group size alone when the group is under the anonymity minimum. */
 const ofText = (met: number | null, n: number): string =>
@@ -57,6 +59,11 @@ const fold =
 
 export function First90Tab() {
   const ctx = useAnalytics()
+  // Manager mode hides the late-task heatmap (HR and Developer only), so readiness by site takes the row.
+  const lateShown = useCan(S.figure('onboarding-late-tasks-by-region'))
+  // The day-30 pulse is a survey: where it is hidden (Manager mode) its section goes with it.
+  const pulseShown = useCan(S.figure('onboarding-pulse'))
+  const listeningShown = useCan(S.view('listening'))
   const m = useOnboarding()
   const b = m.base
   const f = m.first90
@@ -86,6 +93,15 @@ export function First90Tab() {
     { key: 'rate', label: 'Day-one readiness', format: 'pct' },
   ]
   const shown = monthRows.filter((r) => r.rate != null)
+  // The lowest month under target, marked on the chart (the readout's day-one finding, by month).
+  const lowest = shown.reduce<(typeof shown)[number] | null>(
+    (lo, r) => (r.rate != null && (!lo || (lo.rate ?? 1) > r.rate) ? r : lo),
+    null,
+  )
+  const dayOneNotes: ChartNote[] =
+    lowest?.rate != null && t.dayOne && lowest.rate < t.dayOne.value && shown.length >= 3
+      ? [{ at: lowest.month, text: `Lowest month, ${fmt(lowest.rate, 'pct0')}` }]
+      : []
   const values = shown.map((r) => r.rate as number)
   const floor = Math.max(0, Math.floor(Math.min(...values, t.dayOne?.value ?? 1) * 10) / 10 - 0.1)
 
@@ -277,7 +293,7 @@ export function First90Tab() {
                   }
                   yDomain={[floor, 1]}
                   xTicks="quarter"
-                  height={240}
+                  notes={dayOneNotes}
                   onSelect={(d) => drill(monthDrills.notReady(d))}
                 />
               </Figure>
@@ -288,8 +304,9 @@ export function First90Tab() {
 
       <Section
         title="Where day one slips"
-        dek="Day-one readiness by site, and whether the HRIS had each new hire entered three business days before the start (Atlas ON-03, moved here from HR ops)."
+        dek="Which day-one tasks run late and where, day-one readiness by site, when late tasks were finally done, and whether the HRIS had each new hire entered three business days before the start (Atlas ON-03, moved here from HR ops)."
       >
+        <LateTasksHeatmap />
         <Figure
           id="onboarding-day-one-by-site"
           uses={union(dayOneUses, SITE)}
@@ -299,7 +316,7 @@ export function First90Tab() {
           data={siteRows}
           columns={siteColumns}
           note={asOfNote(b.asOf, 'lowest first')}
-          span={6}
+          span={lateShown ? 5 : 12}
           empty={
             noTasks
               ? 'Upload Onboarding tasks to see this.'
@@ -319,12 +336,12 @@ export function First90Tab() {
             ref={
               t.dayOne ? { value: t.dayOne.value, label: `target ${fmt(t.dayOne.value, 'pct0')}` } : undefined
             }
-            tone={(d) => barTone(d.rate, t.dayOne?.value)}
             glyphTone={(d) => shareTone(d.rate, t.dayOne?.value)}
             nullNote={hiddenNote(min)}
             onSelect={(d) => drill(siteDrills.notReady(d.g))}
           />
         </Figure>
+        <TaskTimingChart />
         <Figure
           id="onboarding-new-hire-entered"
           uses={NEW_HIRE_TX}
@@ -345,7 +362,6 @@ export function First90Tab() {
             sort="none"
             domain={[0, 1]}
             secondary={(d) => ofText(d.onTime, d.due)}
-            tone={(d) => barTone(d.rate, null)}
             glyphTone={(d) => shareTone(d.rate, null)}
             nullNote={hiddenNote(min)}
             onSelect={(d) => drill(nhDrills.bar(d.g))}
@@ -392,7 +408,6 @@ export function First90Tab() {
                 ? { value: t.checkIns.value, label: `target ${fmt(t.checkIns.value, 'pct0')}` }
                 : undefined
             }
-            tone={(d) => barTone(d.rate, t.checkIns?.value)}
             glyphTone={(d) => shareTone(d.rate, t.checkIns?.value)}
             nullNote={hiddenNote(min)}
             onSelect={(d) => drill(ciDrills.checkIn.bar(d.g))}
@@ -434,7 +449,6 @@ export function First90Tab() {
                 ? { value: t.checkIns.value, label: `target ${fmt(t.checkIns.value, 'pct0')}` }
                 : undefined
             }
-            tone={(d) => barTone(d.rate, t.checkIns?.value)}
             glyphTone={(d) => shareTone(d.rate, t.checkIns?.value)}
             nullNote={hiddenNote(min)}
             onSelect={(d) => drill(ciDrills.department.bar(d.g))}
@@ -540,58 +554,68 @@ export function First90Tab() {
         </Figure>
       </Section>
 
-      <Section
-        title="What new starters say"
-        dek="One number from the day-30 onboarding pulse. The full survey, with every driver, is in Listening."
-        actions={
-          <Button size="sm" variant="ghost" onClick={() => goTo('listening', 'onboarding')}>
-            Open in Listening
-          </Button>
-        }
-      >
-        <Figure
-          id="onboarding-pulse"
-          uses={PULSE}
-          metric={M.pulse}
-          title={'Day-30 "I had what I needed" by region'}
-          subtitle={`Mean score on a 1 to 5 scale, answers given ${b.windowWords}`}
-          data={pulseRows}
-          columns={pulseColumns}
-          definitions={defs(ctx.metrics, [M.pulse])}
-          note={asOfNote(
-            b.asOf,
-            p.overall ? `${plural(p.overall.respondents, 'respondent')}` : null,
-            p.overall?.mean != null ? `company ${fmt(p.overall.mean, 'num2')}` : null,
-            p.target != null ? `target ${fmt(p.target, 'num1')}` : null,
-            `groups under ${s.surveyMin} respondents hidden`,
-          )}
-          span={6}
-          empty={
-            !b.hasSurveys
-              ? 'Upload Survey responses to see this.'
-              : p.overall?.suppressed
-                ? hiddenNote(s.surveyMin)
-                : pulseRows.length
-                  ? null
-                  : 'No day-30 pulse answers in this period.'
+      {pulseShown && (
+        <Section
+          title="What new starters say"
+          dek={
+            listeningShown
+              ? 'One number from the day-30 onboarding pulse. The full survey, with every driver, is in Listening.'
+              : 'One number from the day-30 onboarding pulse.'
+          }
+          actions={
+            listeningShown ? (
+              <Button size="sm" variant="ghost" onClick={() => goTo('listening', 'onboarding')}>
+                Open in Listening
+              </Button>
+            ) : undefined
           }
         >
-          <BarList
+          <Figure
+            id="onboarding-pulse"
+            uses={PULSE}
+            metric={M.pulse}
+            title={'Day-30 "I had what I needed" by region'}
+            subtitle={`Mean score on a 1 to 5 scale, answers given ${b.windowWords}`}
             data={pulseRows}
-            label="region"
-            value="mean"
-            format="num2"
-            domain={[1, 5]}
-            secondary={(d) => `${fmt(d.respondents, 'int')} respondents`}
-            ref={p.target != null ? { value: p.target, label: `target ${fmt(p.target, 'num1')}` } : undefined}
-            tone={(d) =>
-              d.mean != null && p.target != null && d.mean < p.target - 0.5 ? 'warning' : 'default'
+            columns={pulseColumns}
+            definitions={defs(ctx.metrics, [M.pulse])}
+            note={asOfNote(
+              b.asOf,
+              p.overall ? `${plural(p.overall.respondents, 'respondent')}` : null,
+              p.overall?.mean != null ? `company ${fmt(p.overall.mean, 'num2')}` : null,
+              p.target != null ? `target ${fmt(p.target, 'num1')}` : null,
+              `groups under ${s.surveyMin} respondents hidden`,
+            )}
+            span={6}
+            empty={
+              !b.hasSurveys
+                ? 'Upload Survey responses to see this.'
+                : p.overall?.suppressed
+                  ? hiddenNote(s.surveyMin)
+                  : pulseRows.length
+                    ? null
+                    : 'No day-30 pulse answers in this period.'
             }
-            nullNote={hiddenNote(s.surveyMin)}
-            onSelect={(d) => drill(pulseDrill(d))}
-          />
-        </Figure>
-      </Section>
+          >
+            <BarList
+              data={pulseRows}
+              label="region"
+              value="mean"
+              format="num2"
+              domain={[1, 5]}
+              secondary={(d) => `${fmt(d.respondents, 'int')} respondents`}
+              ref={
+                p.target != null ? { value: p.target, label: `target ${fmt(p.target, 'num1')}` } : undefined
+              }
+              glyphTone={(d) =>
+                d.mean != null && p.target != null && d.mean < p.target - 0.5 ? 'warning' : 'default'
+              }
+              nullNote={hiddenNote(s.surveyMin)}
+              onSelect={(d) => drill(pulseDrill(d))}
+            />
+          </Figure>
+        </Section>
+      )}
     </>
   )
 }

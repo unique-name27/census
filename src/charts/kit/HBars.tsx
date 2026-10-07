@@ -3,13 +3,26 @@
  * (`stack: 'normalize'`) for part-to-whole with long category names. Segment labels go inside
  * a segment only when they fit; the legend and tooltip carry the rest. Clicking a stacked
  * segment or a grouped bar drills that series (`onSelectSegment`), elsewhere the category.
+ * Up to two `notes` annotate a row (placed past the bar end when there is room); the chart is
+ * one tab stop whose arrow keys step through the bars (across series with Up and Down).
  */
 import * as Plot from '@observablehq/plot'
 import { DASH, type Format, fmt } from '@/lib/format'
 import { inkOn } from '../core/color'
+import type { KeyPoint } from '../core/keyboard'
 import type { LegendSpec } from '../core/legend'
-import { hoverBand, labelsMark, refRule, roundedBarsX, scalePos } from '../core/marks'
-import { maxTextWidth, textWidth, truncateText } from '../core/measure'
+import {
+  bandLabel,
+  bandLabelLines,
+  hoverBand,
+  labelsMark,
+  noteMark,
+  refRule,
+  roundedBarsX,
+  scalePos,
+} from '../core/marks'
+import { textWidth } from '../core/measure'
+import type { Box, ChartNote } from '../core/notes'
 import type { TipContent, TipRow } from '../core/tooltip'
 import {
   axisX,
@@ -20,6 +33,8 @@ import {
   PlotChart,
   type PlotElement,
   type PlotPointer,
+  plotBand,
+  plotPos,
 } from '../plot'
 import { useChartTheme } from '../theme'
 import { groupIndexAt, groupLayout, segmentAt } from './hit'
@@ -58,6 +73,8 @@ export interface HBarsProps<T extends object> extends Omit<ChartBaseProps<T>, 's
   labels?: boolean
   rowHeight?: number
   xDomain?: [number, number]
+  /** Up to two annotations tied to a row: `at` is its category; `value` defaults to the bar end. */
+  notes?: readonly ChartNote[]
   /**
    * Click-to-drill on one series: the row behind the stacked segment or grouped bar under the
    * pointer. Without it, such a click calls `onSelect` with that row (it still names the
@@ -88,6 +105,7 @@ export function HBars<T extends object>({
   labels,
   rowHeight,
   xDomain,
+  notes,
   onSelect,
   onSelectSegment,
   selectable,
@@ -140,8 +158,13 @@ export function HBars<T extends object>({
       normalize ? [0, 1] : xDomain,
     )
     const labelMax = Math.max(64, width * 0.34)
-    const shown = cats.map((c) => truncateText(c.label, labelMax, 12))
-    const marginLeft = Math.ceil(maxTextWidth(shown, 12)) + 14
+    // A label that would be cut breaks onto two lines instead (rows of 26px or more).
+    const band = bandLabelLines(
+      cats.map((c) => c.label),
+      labelMax,
+      pitch,
+    )
+    const marginLeft = Math.ceil(band.width) + 14
     const marginRight = Math.ceil(Math.max(12, textWidth(axis.format(axis.domain[1]), 11) / 2 + 4))
 
     const marks: Plot.Markish[] = [
@@ -216,13 +239,9 @@ export function HBars<T extends object>({
     marks.push(
       labelsMark(
         (scales, dims) =>
-          cats.map((c, i) => ({
-            x: dims.marginLeft - 10,
-            y: scalePos(scales, 'y', c.key),
-            anchor: 'end' as const,
-            parts: [{ text: shown[i], color: t.ink2, size: 12 }],
-            title: shown[i] === c.label ? undefined : c.label,
-          })),
+          cats.flatMap((c, i) =>
+            bandLabel(c.label, band.lines[i], dims.marginLeft - 10, scalePos(scales, 'y', c.key), t.ink2),
+          ),
         'category labels',
       ),
     )
@@ -246,6 +265,31 @@ export function HBars<T extends object>({
             }),
           'segment values',
         ),
+      )
+    }
+    if (notes?.length) {
+      marks.push(
+        noteMark(t, (scales) => {
+          const end = (c: Category<T>) =>
+            stacked
+              ? normalize
+                ? 1
+                : (c.total ?? 0)
+              : Math.max(0, ...c.cells.map((cell) => cell.value ?? 0))
+          const obstacles: Box[] = cats.map((c) => {
+            const x0 = scalePos(scales, 'x', 0)
+            const yc = scalePos(scales, 'y', c.key)
+            return { x: x0, y: yc - pitch / 2 + 2, w: scalePos(scales, 'x', end(c)) - x0 + 4, h: pitch - 4 }
+          })
+          const anchors = notes.flatMap((nt) => {
+            const c = cats.find((k) => k.key === String(nt.at) || k.label === String(nt.at))
+            if (!c) return []
+            const cell = nt.series ? c.cells.find((k) => k.series === nt.series) : null
+            const v = nt.value ?? cell?.value ?? end(c)
+            return [{ x: scalePos(scales, 'x', v) + 2, y: scalePos(scales, 'y', c.key), text: nt.text }]
+          })
+          return { anchors, obstacles }
+        }),
       )
     }
     marks.push(axisX(t, { ticks: axis.ticks, tickFormat: axis.format }))
@@ -325,8 +369,48 @@ export function HBars<T extends object>({
     return { title: c.label, rows, note: stacked && c.total == null ? HIDDEN_NOTE : lockedOf(c, part) }
   }
 
+  // Keyboard: rows top to bottom. With several series each row is a group: Left and Right step
+  // through its segments or bars, Up and Down move one row at a time (to the same series there).
+  const keyPoints = (plot: PlotElement): KeyPoint<Category<T>>[] => {
+    const cats = model.categories
+    const bw = plotBand(plot, 'y')
+    const bar = (
+      c: Category<T>,
+      part: string | null,
+      lo: number,
+      hi: number,
+      y: number,
+      h: number,
+      group?: string,
+    ) => {
+      const a = plotPos(plot, 'x', lo)
+      const b = plotPos(plot, 'x', hi)
+      return { datum: c, part, x: (a + b) / 2, y, w: Math.max(4, Math.abs(b - a)), h, group }
+    }
+    const thick = barInset(pitch, 24, 0.5).thickness
+    if (!multi)
+      return cats.map((c) => bar(c, null, 0, c.cells[0]?.value ?? 0, plotPos(plot, 'y', c.key), thick))
+    if (stacked)
+      return cats.flatMap((c) =>
+        model.series.flatMap((sr) => {
+          const s = segments.find((g) => g.cat === c.key && g.series === sr)
+          return s ? [bar(c, sr, s.lo, s.hi, plotPos(plot, 'y', c.key), thick, c.key)] : []
+        }),
+      )
+    const g = groupLayout(bw, n, bw - 12)
+    return cats.flatMap((c) =>
+      model.series.flatMap((sr, i) => {
+        const cell = c.cells.find((k) => k.series === sr && k.value != null)
+        if (!cell || cell.value == null) return []
+        const yc = plotPos(plot, 'y', c.key) - bw / 2 + g.start + i * (g.size + g.gap) + g.size / 2
+        return [bar(c, sr, 0, cell.value, yc, g.size, c.key)]
+      }),
+    )
+  }
+
   return (
     <PlotChart<Category<T>>
+      keyPoints={keyPoints}
       build={build}
       height={height}
       legend={legend}

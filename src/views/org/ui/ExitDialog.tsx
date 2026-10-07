@@ -68,7 +68,7 @@ export function ExitDialog({
       }
     >
       {x && (
-        <div className="space-y-5 text-[13px]">
+        <div className="space-y-5 text-small">
           <section>
             <h4 className="eyebrow mb-1.5">Their team</h4>
             {x.directs.length && e ? (
@@ -149,11 +149,11 @@ export function ExitDialog({
                               >
                                 {r.name}
                               </button>
-                              <span className="block truncate text-[12px] text-muted">
+                              <span className="block truncate text-meta text-muted">
                                 {r.jobTitle} · {r.level ?? ''}
                               </span>
                             </span>
-                            <span className="shrink-0 text-right text-[12px] text-ink-2">
+                            <span className="shrink-0 text-right text-meta text-ink-2">
                               {b.rating} {RATING_LABELS[b.rating]}
                               <span className="block text-muted">Potential {b.potential ?? DASH}</span>
                             </span>
@@ -173,7 +173,7 @@ export function ExitDialog({
                 </p>
               )}
               {x.cycle && x.unrated > 0 && (
-                <p className="mt-2 text-[12px] text-muted">
+                <p className="mt-2 text-meta text-muted">
                   <Drill
                     spec={list(
                       x.unratedIds,
@@ -187,7 +187,7 @@ export function ExitDialog({
               )}
             </section>
           )}
-          <p className="text-[12px] text-muted">
+          <p className="text-meta text-muted">
             This is a what-if. Nothing changes in the data
             {onAddToScenario ? ' unless you add it to the scenario, which also stays in this browser' : ''}.
           </p>

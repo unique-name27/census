@@ -2,6 +2,7 @@
  * Talent engine entry point: one pure function of the analytics context that the view memoizes,
  * and the cheap folder-tab headline.
  */
+import { S } from '@/access/surfaces'
 import type { Finding, Kpi } from '@/components/types'
 import type { AnalyticsContext } from '@/data/context'
 import { BELOW_STANDARD_TEXT, meetsStandard } from '@/data/quality'
@@ -9,6 +10,7 @@ import type { Datasets, ISODate } from '@/data/schema'
 import { fmt } from '@/lib/format'
 import type { Headline } from '../../types'
 import { buildBase, type FieldCoverage, type TalentBase } from './base'
+import { computeCharts, type TalentCharts } from './charts'
 import { buildDrills, type TalentDrills } from './drills'
 import { tagFindings } from './drillUses'
 import { buildFindings } from './findings'
@@ -37,6 +39,8 @@ export interface TalentModel {
   retention: RetentionResult
   overdue: OverdueResult
   learning: LearningResult
+  /** The charts added in the design refresh (exposure, rating change, by reviewer, overdue trend). */
+  charts: TalentCharts
   kpis: Kpi[]
   findings: Finding[]
   /** The records behind every number, opened on click. */
@@ -45,14 +49,24 @@ export interface TalentModel {
   uses: Record<TalentFigureId, Refs>
   /**
    * The flight-risk band meets the data standard, so the 9-box draws its high-risk overlay. Below
-   * it the overlay is left out (and said so) rather than hiding the whole 9-box.
+   * it the overlay is left out (and said so) rather than hiding the whole 9-box. False whenever
+   * `riskShown` is.
    */
   riskOverlay: boolean
+  /**
+   * The mode shows flight-risk scores about named people (`talent.retention.flightRisk`). Manager
+   * mode does not (docs/ROLES.md, 3.3): the 9-box, the roles table and the promotion list then
+   * read no score at all, so neither the screen, the records nor an export carries one.
+   */
+  riskShown: boolean
   /** "Not yet confirmed for production": why an overlay below the standard is left out. */
   belowStandard: string
 }
 
 const TALENT_DATASETS = ['reviews', 'succession', 'learning', 'employees', 'jobChanges', 'comp'] as const
+
+/** No flight-risk scores: what the named-people tables read where the mode hides them. */
+const NO_SCORES: RiskModel['scores'] = new Map()
 
 /**
  * The flight-risk model scores the whole company, so it only depends on the unscoped data, the
@@ -117,17 +131,31 @@ function riskFor(base: TalentBase): RiskModel {
 export function computeTalent(ctx: AnalyticsContext): TalentModel {
   const base = buildBase(ctx)
   const risk = riskFor(base)
+  // Scores about named people only where the mode shows them; Manager mode gets none at all.
+  const riskShown = ctx.access.can(S.metric(TALENT_METRIC.flightRisk))
+  const named = riskShown ? risk.scores : NO_SCORES
   const performance = computePerformance(base)
-  const nineBox = computeNineBox(base, risk.scores)
-  const succession = computeSuccession(base, risk.scores)
+  const nineBox = computeNineBox(base, named)
+  const succession = computeSuccession(base, named)
   const retention = computeRetention(base, risk)
-  const overdue = computeOverdue(base, risk.scores)
+  const overdue = computeOverdue(base, named)
   const learning = computeLearning(base)
-  const drill = buildDrills({ base, performance, nineBox, succession, retention, overdue, learning, risk })
+  const drill = buildDrills({
+    base,
+    performance,
+    nineBox,
+    succession,
+    retention,
+    overdue,
+    learning,
+    risk,
+    riskShown,
+  })
   const riskRefs = riskLineage(risk, ctx.all)
   const riskOverlay =
-    ctx.standard === 'bronze' ||
-    meetsStandard(ctx.quality.tierOf(riskRefs.risk, TALENT_DATASETS), ctx.standard)
+    riskShown &&
+    (ctx.standard === 'bronze' ||
+      meetsStandard(ctx.quality.tierOf(riskRefs.risk, TALENT_DATASETS), ctx.standard))
   const lineage = buildLineage({ has: base.has, ...riskRefs, riskOverlay })
   const inputs = { base, performance, succession, retention, overdue, learning, risk, drill, lineage }
   return {
@@ -142,11 +170,13 @@ export function computeTalent(ctx: AnalyticsContext): TalentModel {
     retention,
     overdue,
     learning,
+    charts: computeCharts(base, succession),
     kpis: buildKpis(inputs),
     findings: tagFindings(buildFindings(inputs)),
     drill,
     uses: lineage.figure,
     riskOverlay,
+    riskShown,
     belowStandard: BELOW_STANDARD_TEXT[ctx.standard],
   }
 }

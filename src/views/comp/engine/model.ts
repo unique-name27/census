@@ -14,6 +14,16 @@ import { daysBetween } from '@/lib/dates'
 import { minGroupOf } from '@/metrics/privacy'
 import type { MetricsApi } from '@/metrics/types'
 import {
+  type BelowCause,
+  belowMinByCause,
+  type CompaGrid,
+  compaGrid,
+  type FamilyPosition,
+  familyMarketPosition,
+  type PayAttrition,
+  payAttrition,
+} from './charts'
+import {
   type Bin,
   binBy,
   binDomain,
@@ -141,6 +151,10 @@ export interface CompModel {
     byLocation: CompaGroupRow[]
     byLevel: CompaGroupRow[]
     byDepartment: CompaGroupRow[]
+    /** Median compa-ratio against voluntary attrition, per location and per department. */
+    payAttrition: { location: PayAttrition; department: PayAttrition }
+    /** Median compa-ratio by location and level group. */
+    compaGrid: CompaGrid
   }
   ranges: {
     penetration: PenetrationRow[]
@@ -149,6 +163,8 @@ export interface CompModel {
     costToMin: { usd: number; skipped: number }
     tenure: TenureDot[]
     compression: CompressionRow[]
+    /** Below minimum by location and cause (promoted, hired, neither). */
+    belowCause: BelowCause
   }
   performance: {
     compaByRating: CompaByRatingRow[]
@@ -169,6 +185,8 @@ export interface CompModel {
     byLocation: MarketRow[]
     byLevel: MarketRow[]
     jobs: JobMarketRow[]
+    /** Job families: market median ÷ midpoint against median compa-ratio. */
+    familyPosition: FamilyPosition
   }
   cycle: {
     kpis: Kpi[]
@@ -232,6 +250,11 @@ export function computeComp(ctx: AnalyticsContext, settings?: CycleSettings): Co
   const valued = people.filter((p) => p.compa != null)
   const proposed = people.filter((p) => p.merit != null)
   const below = belowMinimum(people)
+  const promotionsShown = meetsFor(ctx)(PROMOTED)
+  const companyMedian = safeMedian(
+    values(company.people, (p) => p.compa),
+    min,
+  )
 
   const performance = {
     compaByRating: compaByRating(people, min),
@@ -271,6 +294,7 @@ export function computeComp(ctx: AnalyticsContext, settings?: CycleSettings): Co
     costToMin: costToMinimum(below),
     tenure: tenureDots(people),
     compression: compression(people, rules.compression.minGroup, rules.compression.gap),
+    belowCause: belowMinByCause(people, promotionsShown),
   }
   const market = {
     total: marketTotal(people, 'All', min),
@@ -282,15 +306,13 @@ export function computeComp(ctx: AnalyticsContext, settings?: CycleSettings): Co
     ),
     byLevel: tagDim('level', marketByLevel(people, min)),
     jobs: jobsBelowMarket(people, 15, min),
+    familyPosition: familyMarketPosition(people, min),
   }
   const overview = {
     hist: histDomain ? binBy(valued, (p) => p.compa!, histDomain[0], histDomain[1], COMPA_STEP) : [],
     histDomain,
     median: safeMedian(compas, min),
-    companyMedian: safeMedian(
-      values(company.people, (p) => p.compa),
-      min,
-    ),
+    companyMedian,
     people: personRows(people),
     positionByBu: tagDim(
       'businessUnit',
@@ -310,6 +332,11 @@ export function computeComp(ctx: AnalyticsContext, settings?: CycleSettings): Co
       'department',
       compaBy(people, (p) => p.department, s, undefined, min),
     ),
+    payAttrition: {
+      location: payAttrition(ctx, people, 'location', min, companyMedian),
+      department: payAttrition(ctx, people, 'department', min, companyMedian),
+    },
+    compaGrid: compaGrid(people, min),
   }
 
   const scopeLabel = ctx.isCompany ? 'Whole company' : ctx.scopeLabel
@@ -335,7 +362,7 @@ export function computeComp(ctx: AnalyticsContext, settings?: CycleSettings): Co
     company,
     isCompany: ctx.isCompany,
     showPay: ctx.showPay,
-    promotionsShown: meetsFor(ctx)(PROMOTED),
+    promotionsShown,
     belowStandard: BELOW_STANDARD_TEXT[ctx.standard],
     overview,
     ranges,

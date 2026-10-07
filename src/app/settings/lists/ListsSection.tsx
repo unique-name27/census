@@ -82,12 +82,10 @@ function Picker({
                 )}
               >
                 <span className="flex w-full items-center gap-2">
-                  <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-ink">
-                    {i.label}
-                  </span>
+                  <span className="min-w-0 flex-1 truncate text-small font-semibold text-ink">{i.label}</span>
                   <ListStatusChip official={i.official} />
                 </span>
-                <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12px] text-ink-2">
+                <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-meta text-ink-2">
                   {valuesText(i)}
                   {i.notOnList > 0 && (
                     <StatusPill
@@ -126,10 +124,10 @@ function ImportPreview({
       className="flex flex-col gap-3 rounded-control bg-sheet-2 px-3.5 py-3"
     >
       <div>
-        <h3 id={`${ids}-title`} className="text-[13px] font-semibold text-ink">
+        <h3 id={`${ids}-title`} className="text-small font-semibold text-ink">
           Import the Official lists workbook
         </h3>
-        <p className="mt-0.5 text-[12px] leading-snug text-ink-2">
+        <p className="mt-0.5 text-meta leading-snug text-ink-2">
           {plan.total
             ? `${plural(plan.total, 'change')} will apply as one change you can undo. Renames change the list only; to rename the values in your data too, use Map to… on each list.`
             : 'Nothing in the file differs from the lists in force.'}
@@ -137,8 +135,8 @@ function ImportPreview({
       </div>
       {plan.lists.map((p) => (
         <div key={p.id} className="flex flex-col gap-1 border-t border-rule pt-2">
-          <span className="text-[13px] font-semibold text-ink">{listDef(p.id).label}</span>
-          <ul className="flex flex-col gap-0.5 text-[12px] leading-snug">
+          <span className="text-small font-semibold text-ink">{listDef(p.id).label}</span>
+          <ul className="flex flex-col gap-0.5 text-meta leading-snug">
             {p.lines.map((l, i) => (
               <li key={`${l.kind}-${i}`} className={l.error ? 'text-ink-2' : 'text-ink'}>
                 {l.error ? (
@@ -158,20 +156,20 @@ function ImportPreview({
             ))}
           </ul>
           {p.notInFile > 0 && (
-            <p className="text-[12px] text-muted">
+            <p className="text-meta text-muted">
               {plural(p.notInFile, 'value')} on the list but not in the file{' '}
               {p.notInFile === 1 ? 'stays' : 'stay'} as {p.notInFile === 1 ? 'it is' : 'they are'}.
             </p>
           )}
           {lists[p.id].status === 'proposed' && p.lines.some((l) => !l.error) && (
-            <p className="text-[12px] text-muted">
+            <p className="text-meta text-muted">
               The list stays proposed: it checks nothing until you make it official.
             </p>
           )}
         </div>
       ))}
       {plan.ignored.length > 0 && (
-        <p className="text-[12px] text-muted">
+        <p className="text-meta text-muted">
           Sheets Census does not know were left out: {plan.ignored.join(', ')}.
         </p>
       )}
@@ -196,15 +194,15 @@ function Changes() {
   const shown = all ? state.log : state.log.slice(0, 5)
   return (
     <section aria-labelledby={`${ids}-title`} className="flex flex-col gap-1.5 border-t border-rule pt-4">
-      <h3 id={`${ids}-title`} className="text-[13px] font-semibold text-ink">
+      <h3 id={`${ids}-title`} className="text-small font-semibold text-ink">
         Changes to the lists
       </h3>
       <ul className="flex flex-col">
         {shown.map((c) => (
           <li key={c.id} className="flex items-start gap-3 border-t border-rule py-2 first:border-t-0">
             <div className="min-w-0 flex-1">
-              <p className="text-[13px] leading-snug text-ink">{c.what}</p>
-              <p className="text-[12px] text-muted">
+              <p className="text-small leading-snug text-ink">{c.what}</p>
+              <p className="text-meta text-muted">
                 {c.by ?? 'You'}, {whenText(c.at)}
               </p>
             </div>
@@ -354,7 +352,7 @@ export function ListsSection() {
         />
       </div>
       {unsaved && (
-        <p role="status" className="rounded-control bg-warning-wash px-3.5 py-2.5 text-[13px] text-ink">
+        <p role="status" className="rounded-control bg-warning-wash px-3.5 py-2.5 text-small text-ink">
           Your changes to the lists could not be saved in this browser (its storage is full or blocked). They
           last until you close this tab: export the workbook to keep them.
         </p>

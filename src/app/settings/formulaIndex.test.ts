@@ -142,7 +142,9 @@ describe('sections and groups', () => {
       'Compensation',
       'Compliance',
       'Listening',
+      'AI in HR',
       'Action center',
+      'Data room',
       'Rules and settings',
     ])
     expect(sections.reduce((n, s) => n + s.count, 0)).toBe(rows.length)
@@ -253,7 +255,7 @@ describe('search and filters', () => {
     expect(views[0]).toBe('scorecard')
     expect(views).toContain('actions')
     expect(views).toContain('data')
-    expect(views).not.toContain('ai')
+    expect(views).toContain('ai')
   })
 
   it('counts what is shown', () => {

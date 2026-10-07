@@ -45,6 +45,7 @@ export function servicesDefinitions(m: Pick<MetricsApi, 'def'>, cfg: ServicesSet
   const bands = cfg.atRisk
   return {
     opened: def(M.opened),
+    rate: def(M.rate),
     backlog: def(M.backlog),
     aged: def(M.aged),
     resolutionSla: def(M.resolutionSla, `Target ${pctWords(cfg.resolutionTarget)}.`),

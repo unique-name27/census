@@ -97,27 +97,30 @@ export const Card = memo(function Card(p: CardProps) {
       )}
       style={pos(card)}
     >
-      <span
-        aria-hidden="true"
-        className="absolute inset-x-0 top-0 h-[3px] rounded-t-sheet"
-        style={{ background: p.color }}
-      />
       <div className="flex min-h-0 flex-1 flex-col px-3 pt-2.5 pb-2">
         <div className="flex items-baseline gap-2">
-          <span className="cut-head min-w-0 flex-1 truncate text-[14px] leading-[18px] font-semibold text-ink">
+          <span className="cut-head min-w-0 flex-1 truncate text-body leading-[18px] font-semibold text-ink">
             {name}
           </span>
-          {e?.level && <span className="shrink-0 font-mono text-[11px] text-muted">{e.level}</span>}
+          {e?.level && <span className="shrink-0 font-mono text-label text-muted">{e.level}</span>}
         </div>
-        <div className="truncate text-[12px] leading-4 text-ink-2">
+        <div className="truncate text-meta leading-4 text-ink-2">
           {e ? e.jobTitle : 'Everyone active on the as-of date'}
         </div>
         {e && (
-          <div className="truncate text-[11px] leading-4 text-muted">
-            {e.department} · {e.location}
+          <div className="flex min-w-0 items-center gap-1.5 text-label leading-4 text-muted">
+            {/* The business unit's color as the legend's 8px swatch, not a rail across the card. */}
+            <span
+              aria-hidden="true"
+              className="size-2 shrink-0 rounded-mark"
+              style={{ background: p.color }}
+            />
+            <span className="truncate">
+              {e.department} · {e.location}
+            </span>
           </div>
         )}
-        <div className="mt-auto flex items-center gap-1.5 text-[11px] leading-4 text-ink-2">
+        <div className="mt-auto flex items-center gap-1.5 text-label leading-4 text-ink-2">
           {counts && <Counts {...p} name={name} />}
           {contingent && <span className="text-muted">{contingent}</span>}
           {newHire && <span className="text-muted">New hire</span>}
@@ -133,7 +136,7 @@ export const Card = memo(function Card(p: CardProps) {
         </div>
       </div>
       {p.drop === 'blocked' && (
-        <span className="absolute -top-2.5 right-2 inline-flex h-5 items-center gap-1 rounded-[3px] bg-sheet px-1.5 text-[11px] font-semibold text-ink shadow-[0_0_0_1px_var(--critical)]">
+        <span className="absolute -top-2.5 right-2 inline-flex h-5 items-center gap-1 rounded-chip bg-sheet px-1.5 text-label font-semibold text-ink shadow-[0_0_0_1px_var(--critical)]">
           <IconCritical className="size-3 text-critical" />
           Blocked
         </span>
@@ -147,7 +150,7 @@ export const Card = memo(function Card(p: CardProps) {
             ev.stopPropagation()
             p.onToggle(card.id)
           }}
-          className="tnum absolute -bottom-2.5 left-1/2 inline-flex h-5 min-w-7 -translate-x-1/2 items-center justify-center gap-0.5 rounded-control bg-sheet px-1.5 text-[11px] font-semibold text-ink-2 shadow-[inset_0_0_0_1px_var(--rule-strong)] hover:bg-sheet-2 hover:text-ink"
+          className="tnum absolute -bottom-2.5 left-1/2 inline-flex h-5 min-w-7 -translate-x-1/2 items-center justify-center gap-0.5 rounded-control bg-sheet px-1.5 text-label font-semibold text-ink-2 shadow-[inset_0_0_0_1px_var(--rule-strong)] hover:bg-sheet-2 hover:text-ink"
         >
           {p.expanded ? <Minus /> : <>+{e && p.directs > 0 ? p.directs : ''}</>}
         </button>
@@ -269,13 +272,13 @@ function ReqCard({
       style={pos(card)}
     >
       <span className="eyebrow">Open role</span>
-      <span className="cut-head truncate text-[13px] leading-[18px] font-semibold text-ink-2">
+      <span className="cut-head truncate text-small leading-[18px] font-semibold text-ink-2">
         {req?.jobTitle ?? 'Requisition'}
       </span>
-      <span className="truncate text-[11px] leading-4 text-muted">
+      <span className="truncate text-label leading-4 text-muted">
         {[req?.level, req?.location].filter(Boolean).join(' · ')}
       </span>
-      <span className="mt-auto truncate text-[11px] leading-4 text-muted">
+      <span className="mt-auto truncate text-label leading-4 text-muted">
         <span className="font-mono">{req?.reqId}</span>
         {req ? ` · opened ${formatDate(req.openedDate)}` : ''}
         {req && req.openings > 1 ? ` · ${req.openings} openings` : ''}

@@ -34,7 +34,7 @@ export function DrillNesting({ children }: { children: ReactNode }) {
 
 /** Dotted underline that firms up on hover: clickable without shouting. */
 export const DRILL_CLASS =
-  'cursor-pointer rounded-[2px] underline decoration-dotted decoration-rule-strong decoration-1 underline-offset-[3px] hover:decoration-ink hover:decoration-solid focus-visible:decoration-solid'
+  'cursor-pointer rounded-mark underline decoration-dotted decoration-rule-strong decoration-1 underline-offset-[3px] hover:decoration-ink hover:decoration-solid focus-visible:decoration-solid'
 
 export function Drill({
   spec,

@@ -5,7 +5,16 @@
 import type { Severity } from '@/components/types'
 import type { ISODate, Requisition } from '@/data/schema'
 import type { Window } from '@/data/scope'
-import { addMonths, daysBetween, monthKey, monthStart, monthsBetween } from '@/lib/dates'
+import {
+  addDays,
+  addMonths,
+  daysBetween,
+  monthKey,
+  monthStart,
+  monthsBetween,
+  quarterStart,
+} from '@/lib/dates'
+import { monthPoints } from '@/lib/people'
 import { median } from '@/lib/stats'
 import { inWin, isOpenAt } from './prepare'
 import { defaultSettings } from './settings'
@@ -361,4 +370,238 @@ export function recruiterLoad(
   })
   out.sort((a, b) => b.openReqs - a.openReqs || b.active - a.active || a.recruiter.localeCompare(b.recruiter))
   return { rows: out, teamMedianWait: team, teamMedianOpen: teamOpen, teamMedianActive: teamActive }
+}
+
+/* ───────── open reqs at each month end ───────── */
+
+/** The org dimension the month-end chart stacks by: business unit, or department inside one unit. */
+export type MonthEndDim = 'businessUnit' | 'department'
+
+/** Series past the eighth fold into this one (no filter can name it). */
+export const OTHER_SERIES = 'Other'
+
+export interface MonthEndReqRow {
+  /** "YYYY-MM" of the month end (the last point is the as-of date itself). */
+  month: string
+  /** The snapshot date: the month's last day, or the as-of date for the last point. */
+  date: ISODate
+  /** The business unit or department; "Other" for the folded ones, "Not set" when blank. */
+  group: string
+  reqs: number
+  /** The reqs open on that date (for the drill panel; not exported). */
+  list: Requisition[]
+  /** The groups folded into "Other" (empty otherwise). */
+  folded: string[]
+}
+
+export interface MonthEndReqs {
+  dim: MonthEndDim
+  /** Series in stacking order: the largest first, "Other" last. */
+  groups: string[]
+  /**
+   * One row per month end and group with any open req (zeros left out), except a month end with
+   * no open req at all, which keeps a zero row per group so its column keeps its place on the
+   * time axis.
+   */
+  rows: MonthEndReqRow[]
+  /** Every month end with its total, oldest first (the column totals; for notes and tests). */
+  totals: { month: string; date: ISODate; reqs: number; list: Requisition[] }[]
+}
+
+/**
+ * Reqs open at each of the last `n` month ends (`isOpenAt`, the Open reqs KPI's rule, so reqs on
+ * hold are not counted), by business unit, or by department when every req in scope sits in one
+ * business unit. The `maxGroups` largest groups over the whole span keep their own series; the
+ * rest fold into "Other".
+ */
+export function openReqsByMonthEnd(
+  reqs: readonly Requisition[],
+  asOf: ISODate,
+  n = 24,
+  maxGroups = 8,
+): MonthEndReqs {
+  const units = new Set(reqs.map((r) => r.businessUnit || NOT_SET_GROUP))
+  const dim: MonthEndDim = units.size <= 1 ? 'department' : 'businessUnit'
+  const groupOf = (r: Requisition) => (dim === 'department' ? r.department : r.businessUnit) || NOT_SET_GROUP
+  const dates = monthPoints(asOf, n)
+  const totals = dates.map((date) => {
+    const list = reqs.filter((r) => isOpenAt(r, date))
+    return { month: monthKey(date), date, reqs: list.length, list }
+  })
+  // Rank groups by open-req months over the span, so the series order is stable across months.
+  const weight = new Map<string, number>()
+  for (const t of totals) for (const r of t.list) weight.set(groupOf(r), (weight.get(groupOf(r)) ?? 0) + 1)
+  const ranked = [...weight].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([g]) => g)
+  const fold = ranked.length > maxGroups
+  const kept = new Set(fold ? ranked.slice(0, maxGroups - 1) : ranked)
+  const folded = fold ? ranked.filter((g) => !kept.has(g)) : []
+  const seriesOf = (r: Requisition) => (kept.has(groupOf(r)) ? groupOf(r) : OTHER_SERIES)
+  const groups = [...ranked.filter((g) => kept.has(g)), ...(fold ? [OTHER_SERIES] : [])]
+  const rows: MonthEndReqRow[] = []
+  for (const t of totals) {
+    const by = new Map<string, Requisition[]>()
+    for (const r of t.list) {
+      const g = seriesOf(r)
+      const arr = by.get(g)
+      if (arr) arr.push(r)
+      else by.set(g, [r])
+    }
+    for (const g of groups) {
+      const list = by.get(g)
+      if (list?.length || !t.list.length)
+        rows.push({
+          month: t.month,
+          date: t.date,
+          group: g,
+          reqs: list?.length ?? 0,
+          list: list ?? [],
+          folded: g === OTHER_SERIES ? folded : [],
+        })
+    }
+  }
+  return { dim, groups, rows, totals }
+}
+
+/** The bucket for a blank business unit or department (no filter can name it). */
+const NOT_SET_GROUP = 'Not set'
+
+/* ───────── median time to fill by quarter ───────── */
+
+/** Level bands for the quarterly trend: L1 to L4, and L5 and above (M and E levels included). */
+export const TTF_BANDS = [
+  { name: 'L1 to L4', levels: ['L1', 'L2', 'L3', 'L4'] },
+  { name: 'L5 and above', levels: ['L5', 'L6', 'M1', 'M2', 'E1', 'E2', 'E3'] },
+] as const satisfies readonly { name: string; levels: readonly string[] }[]
+
+export const ALL_REQS = 'All reqs'
+
+export interface TtfQuarterRow {
+  /** Last day of the quarter (or the window end for the quarter in progress): the x position. */
+  quarterEnd: ISODate
+  quarterStart: ISODate
+  /** "Q3 2026". */
+  quarter: string
+  /** "All reqs" or a level band. */
+  series: string
+  /** The band's levels; empty for all reqs. */
+  levels: readonly string[]
+  /** Median days to fill; null when fewer reqs than the anonymity minimum were filled. */
+  days: number | null
+  reqs: number
+  /** The filled reqs measured; empty when the median is hidden, so it never drills. */
+  filled: Requisition[]
+}
+
+/**
+ * Median time to fill for reqs filled in each of the last `n` quarters to `end`, for every req
+ * and for each level band. `days` is the clock in force (`b.ttf`). A quarter with fewer filled
+ * reqs than the anonymity minimum in a series shows no median (a gap in the line).
+ */
+export function ttfByQuarter(
+  reqs: readonly Requisition[],
+  end: ISODate,
+  o: { n?: number; days?: (r: Requisition) => number; minGroup?: number } = {},
+): TtfQuarterRow[] {
+  const days = o.days ?? ttfDays
+  const minGroup = o.minGroup ?? defaultSettings().minGroup
+  const out: TtfQuarterRow[] = []
+  for (const q of quarterSpans(end, o.n ?? 8)) {
+    const filled = filledIn(reqs, q)
+    const series: { name: string; levels: readonly string[]; list: Requisition[] }[] = [
+      { name: ALL_REQS, levels: [], list: filled },
+      ...TTF_BANDS.map((band) => ({
+        name: band.name,
+        levels: band.levels,
+        list: filled.filter((r) => !!r.level && (band.levels as readonly string[]).includes(r.level)),
+      })),
+    ]
+    for (const s of series) {
+      const shown = s.list.length >= minGroup
+      out.push({
+        quarterEnd: q.end,
+        quarterStart: q.start,
+        quarter: q.label,
+        series: s.name,
+        levels: s.levels,
+        days: shown ? median(s.list.map(days)) : null,
+        reqs: s.list.length,
+        filled: shown ? s.list : [],
+      })
+    }
+  }
+  return out
+}
+
+/** The last `n` calendar quarters to `end`, oldest first; the last one stops at `end`. */
+function quarterSpans(end: ISODate, n: number): { start: ISODate; end: ISODate; label: string }[] {
+  const out: { start: ISODate; end: ISODate; label: string }[] = []
+  let qs = quarterStart(end)
+  for (let i = 0; i < n; i++) {
+    const qe = addDays(addMonths(qs, 3), -1)
+    out.unshift({
+      start: qs,
+      end: qe < end ? qe : end,
+      label: `Q${Math.floor(Number(qs.slice(5, 7)) / 3) + 1} ${qs.slice(0, 4)}`,
+    })
+    qs = addMonths(qs, -3)
+  }
+  return out
+}
+
+/* ───────── open reqs by age and candidates past the screen ───────── */
+
+export interface ReqAgeDot {
+  reqId: string
+  title: string | null
+  /** "REQ-4414 Principal SerDes Design Engineer", for the dot's label and tooltip. */
+  label: string
+  department: string | null
+  location: string | null
+  level: string | null
+  priority: string | null
+  daysOpen: number
+  /** Active candidates past the screen: hiring manager, onsite and offer stages. */
+  pastScreen: number
+  active: number
+  health: string
+  /**
+   * In the corner the chart is about: open longer than the empty-funnel age with nobody past the
+   * screen now (every empty funnel is here, and so are reqs whose later candidates have left).
+   */
+  corner: boolean
+  /** The color follows what is plotted: the corner is critical, lacking a next step a warning. */
+  tone: 'default' | 'warning' | 'critical'
+  /** The open req row behind the dot (for the drill panel; not exported). */
+  row: OpenReqRow
+}
+
+/**
+ * One dot per open req: days open against active candidates past the screen now, colored by the
+ * same two numbers (critical past `emptyDays` with nobody past the screen), else amber when
+ * candidates lack a next step.
+ */
+export function reqAgeDots(
+  rows: readonly OpenReqRow[],
+  emptyDays: number = defaultSettings().emptyFunnelDays,
+): ReqAgeDot[] {
+  return rows.map((r) => {
+    const pastScreen = r.hiringManagerStage + r.onsite + r.offer
+    const corner = r.daysOpen > emptyDays && pastScreen === 0
+    return {
+      reqId: r.reqId,
+      title: r.title,
+      label: r.title ? `${r.reqId} ${r.title}` : r.reqId,
+      department: r.department,
+      location: r.location,
+      level: r.level,
+      priority: r.priority,
+      daysOpen: r.daysOpen,
+      pastScreen,
+      active: r.active,
+      health: r.health,
+      corner,
+      tone: corner ? 'critical' : r.lacking > 0 ? 'warning' : 'default',
+      row: r,
+    }
+  })
 }

@@ -4,6 +4,7 @@
  * tier badge opens the dataset's Quality panel in the Datasets tab.
  */
 import { Figure } from '@/charts'
+import { TABLE_HEAD } from '@/components/styles'
 import { TierBadge } from '@/components/tier/TierBadge'
 import { cx } from '@/components/ui'
 import type { AnalyticsContext } from '@/data/context'
@@ -71,7 +72,7 @@ export function DataUsed({
   /** Why the metric has the tier it has, or what it reads when it names no fields. */
   tierNote: string | null
 }) {
-  const th = 'eyebrow py-1.5 pr-3 font-semibold'
+  const th = `${TABLE_HEAD} py-1.5 pr-3`
   return (
     <Figure
       id={`data-metrics-${metricId.replace(/\./g, '-')}-data`}
@@ -90,12 +91,12 @@ export function DataUsed({
       note={tierNote ?? undefined}
     >
       {rows.length === 0 ? (
-        <p className="text-[13px] text-ink-2">
+        <p className="text-small text-ink-2">
           {tierNote ?? 'This is a rule about how Census treats data, not a number computed from it.'}
         </p>
       ) : (
         <div className="scroll-x">
-          <table className="w-full border-collapse text-[13px]">
+          <table className="w-full border-collapse text-small">
             <caption className="sr-only">Fields this metric reads, with their tier and fill rate</caption>
             <thead>
               <tr className="border-b border-rule text-left">
@@ -123,15 +124,15 @@ export function DataUsed({
                     <span className="block font-semibold text-ink">
                       {r.field}
                       {r.limiting && (
-                        <span className="ml-1.5 text-[11px] font-medium text-muted">sets the tier</span>
+                        <span className="ml-1.5 text-label font-medium text-muted">sets the tier</span>
                       )}
                     </span>
-                    <span className="block text-[12px] text-muted">
+                    <span className="block text-meta text-muted">
                       {r.datasetLabel}
                       {r.scope ? ` · ${r.scope}` : ''}
                     </span>
                     {r.capReason && (
-                      <span className="mt-0.5 block text-[12px] leading-snug text-ink-2">{r.capReason}</span>
+                      <span className="mt-0.5 block text-meta leading-snug text-ink-2">{r.capReason}</span>
                     )}
                   </th>
                   <td className="py-2 pr-3">
@@ -153,7 +154,7 @@ export function DataUsed({
                       r.fillText
                     )}
                     {r.blank > 0 && (
-                      <span className="block text-[11px] text-muted">
+                      <span className="block text-label text-muted">
                         <Count ctx={ctx} row={r} kind="blank" n={r.blank}>
                           {`${fmt(r.blank, 'int')} blank`}
                         </Count>

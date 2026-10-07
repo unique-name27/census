@@ -2,6 +2,7 @@
  * Everything Census knows about one person, for the person card at the end of every drill.
  * Pure; reads the unscoped datasets so the card is complete whatever the filters are.
  */
+import { personInLock } from '@/access/records'
 import type { AnalyticsContext } from '@/data/context'
 import { type Employee, type JobChange, LEVEL_LABELS, type Review } from '@/data/schema'
 import { isActiveAt, isEmployee } from '@/data/scope'
@@ -27,14 +28,43 @@ export interface PersonSummary {
   openCases: number
   overdueTraining: number
   successorFor: string[]
+  /**
+   * Manager mode, someone outside the manager's org (a recruiter, the manager's own manager): the
+   * card shows name, title, department and "Outside … org" only, and every list here is empty.
+   */
+  outside?: boolean
+  /** Manager mode, someone in the org: no compa-ratio and no open HR cases count (docs/ROLES.md, 3.12). */
+  limited?: boolean
 }
 
 export function personSummary(
-  ctx: Pick<AnalyticsContext, 'org' | 'asOf' | 'all'>,
+  ctx: Pick<AnalyticsContext, 'org' | 'asOf' | 'all'> & Partial<Pick<AnalyticsContext, 'access'>>,
   employeeId: string,
 ): PersonSummary | null {
   const e = ctx.org.byId.get(employeeId)
   if (!e) return null
+  const left = !!e.terminationDate && e.terminationDate <= ctx.asOf
+  const status: PersonSummary['status'] = left ? 'Left' : isActiveAt(e, ctx.asOf) ? 'Active' : 'Not started'
+  const levelLabel = e.level ? (LEVEL_LABELS[e.level] ?? e.level) : null
+  if (!personInLock(employeeId, ctx.access))
+    return {
+      employee: e,
+      status,
+      levelLabel,
+      tenureYears: tenureYears(e, ctx.asOf),
+      chain: [],
+      directs: [],
+      orgSize: 0,
+      orgContingent: 0,
+      reviews: [],
+      jobChanges: [],
+      compaRatio: null,
+      openCases: 0,
+      overdueTraining: 0,
+      successorFor: [],
+      outside: true,
+    }
+  const limited = !!ctx.access?.lock
   const chain: Employee[] = []
   const seen = new Set([e.employeeId])
   let m = e.managerId ? ctx.org.byId.get(e.managerId) : undefined
@@ -47,18 +77,22 @@ export function personSummary(
   const org = activeOrg(ctx, e.employeeId)
   const orgSize = org.length
   const orgContingent = org.filter((p) => !isEmployee(p)).length
+  // Manager mode: the manager's own potential, proposed ratings and succession status stay with HR
+  // (docs/ROLES.md, 4.5); their final ratings show.
+  const lock = ctx.access?.lock
+  const self = !!lock && lock.managerId === employeeId
   const reviews = ctx.all.reviews
     .filter((r) => r.employeeId === employeeId)
+    .map((r) => (self ? { ...r, potential: null, preCalibrationRating: null } : r))
     .sort((a, b) => (a.cycleDate < b.cycleDate ? 1 : -1))
   const jobChanges = ctx.all.jobChanges
     .filter((j) => j.employeeId === employeeId)
     .sort((a, b) => (a.effectiveDate < b.effectiveDate ? 1 : -1))
-  const comp = ctx.all.comp.find((c) => c.employeeId === employeeId)
-  const left = !!e.terminationDate && e.terminationDate <= ctx.asOf
+  const comp = limited ? undefined : ctx.all.comp.find((c) => c.employeeId === employeeId)
   return {
     employee: e,
-    status: left ? 'Left' : isActiveAt(e, ctx.asOf) ? 'Active' : 'Not started',
-    levelLabel: e.level ? (LEVEL_LABELS[e.level] ?? e.level) : null,
+    status,
+    levelLabel,
     tenureYears: tenureYears(e, ctx.asOf),
     chain,
     directs,
@@ -67,10 +101,23 @@ export function personSummary(
     reviews,
     jobChanges,
     compaRatio: comp && comp.rangeMid > 0 ? comp.baseSalary / comp.rangeMid : null,
-    openCases: openCases(ctx, employeeId).length,
+    openCases: limited ? 0 : openCases(ctx, employeeId).length,
     overdueTraining: overdueRequired(ctx, employeeId).length,
-    successorFor: [
-      ...new Set(ctx.all.succession.filter((s) => s.successorId === employeeId).map((s) => s.roleTitle)),
-    ],
+    // In Manager mode, only roles inside the org other than the manager's own: a plan for a role
+    // above the manager, or for theirs, is not the manager's to see.
+    successorFor: self
+      ? []
+      : [
+          ...new Set(
+            ctx.all.succession
+              .filter(
+                (s) =>
+                  s.successorId === employeeId &&
+                  (!lock || (lock.orgIds.has(s.incumbentId) && s.incumbentId !== lock.managerId)),
+              )
+              .map((s) => s.roleTitle),
+          ),
+        ],
+    ...(limited ? { limited: true } : {}),
   }
 }

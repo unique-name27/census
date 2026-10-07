@@ -9,7 +9,7 @@ import { customPeriodText, describeFocus } from '@/components/filterLabels'
 import { toast } from '@/components/toast'
 import { currentEntry } from '@/data/address'
 import { type FilterMode, type Filters, type OrgIndex, PERIOD_LABELS, sameFilters } from '@/data/scope'
-import { useCensus } from '@/data/store'
+import { guardFilters, useCensus } from '@/data/store'
 import { groupName, mergeFilter, namedScopeLabel } from './filter'
 import { useDrillStore } from './store'
 import type { DrillFilter } from './types'
@@ -38,7 +38,8 @@ export function focusScope(patch: DrillFilter, opts: FocusOptions): boolean {
   const nameOf = (id: string) => opts.org.byId.get(id)?.name
   const st = useCensus.getState()
   const before = st.filters
-  const next = opts.next ?? mergeFilter(before, patch, opts.mode)
+  // Through the mode's clamp first, so a scope it would undo is "already showing", not a no-op entry.
+  const next = guardFilters(opts.next ?? mergeFilter(before, patch, opts.mode))
   useDrillStore.getState().close()
   const name = opts.mode || opts.label ? groupName(patch, nameOf, opts.label) : describeFocus(patch, nameOf)
   if (sameFilters(before, next)) {

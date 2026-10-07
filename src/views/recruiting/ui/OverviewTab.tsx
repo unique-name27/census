@@ -3,7 +3,7 @@
  * acceptance, and where requisitions sit. Every number opens the records behind it.
  */
 import { useMemo } from 'react'
-import { BarList, type Column, Columns, Figure, Lines } from '@/charts'
+import { BarList, type ChartNote, type Column, Columns, Figure, Lines, shortNote } from '@/charts'
 import { Button, cx, Grid, goTo, KpiStrip, Readout, Section, spanClass } from '@/components'
 import { useAnalytics } from '@/data/context'
 import { drill } from '@/drill'
@@ -12,6 +12,7 @@ import { fmt, plural } from '@/lib/format'
 import {
   hiresMonthDrill,
   lackingKpiDrill,
+  monthEndReqsDrill,
   nextStateDrill,
   openReqsDrill,
   pipelineCellDrill,
@@ -22,7 +23,7 @@ import { FIGURE_USES } from '../engine/lineage'
 import { FIGURE_METRICS } from '../engine/metricLinks'
 import { STATE_NAME } from '../engine/nextStep'
 import type { PipelineCell } from '../engine/pipeline'
-import type { OpenByDeptRow, TtfRow } from '../engine/reqs'
+import { type MonthEndReqRow, type OpenByDeptRow, OTHER_SERIES, type TtfRow } from '../engine/reqs'
 import type { QuarterAcceptance } from '../engine/sources'
 import { NEXT_STATES } from '../engine/types'
 import { RM } from '../metrics'
@@ -39,7 +40,7 @@ import {
   ttfSpan,
   windowText,
 } from './common'
-import { openReqsDepartmentDrill, ttfDrill } from './drill'
+import { openReqsByMonthEndDrill, openReqsDepartmentDrill, ttfDrill } from './drill'
 import { useRecruiting } from './hooks'
 import { PipelineBars } from './PipelineBars'
 
@@ -117,15 +118,53 @@ export function OverviewTab() {
   // An open req older than the old req setting (Open req age) marks its department amber.
   const ageTone = (d: { oldest: number }) => (d.oldest > oldReqDays ? 'warning' : 'default')
   const hiresTotal = m.hiresByMonth.reduce((s, r) => s + r.hires, 0)
+  // Annotations: the chart says what the readout says. Offer acceptance takes its note from the
+  // finding that cites it; the monthly offers mark their busiest month when it is the latest.
+  const accFinding = m.findings.find((f) => f.id === 'rec-offer-acceptance')
+  const accText = accFinding ? shortNote(accFinding.title, 'Offer acceptance') : null
+  const lastQuarter = accRows.at(-1)
+  const accNotes: ChartNote[] =
+    accText && lastQuarter?.rate != null ? [{ at: lastQuarter.quarterEnd, text: accText }] : []
+  const peak = m.hiresByMonth.reduce<(typeof m.hiresByMonth)[number] | null>(
+    (best, r) => (!best || r.hires > best.hires ? r : best),
+    null,
+  )
+  const hiresNotes: ChartNote[] =
+    peak && peak === m.hiresByMonth.at(-1) && m.hiresByMonth.length >= 12 && peak.hires > 0
+      ? [{ at: peak.month, text: `${fmt(peak.hires, 'int')}, the most in ${m.hiresByMonth.length} months` }]
+      : []
+  // Open reqs at each month end, stacked by business unit (by department inside one unit). A
+  // segment opens that group's reqs open on the date, with the group as the filter; a click
+  // elsewhere in a column opens every req open on the date.
+  const monthEnd = m.openReqsMonthEnd
+  const dimWord = monthEnd.dim === 'department' ? 'Department' : 'Business unit'
+  const monthEndDrill = openReqsByMonthEndDrill(b, monthEnd.dim)
+  const columnDrill = (r: Pick<MonthEndReqRow, 'month'>) => {
+    const t = monthEnd.totals.find((x) => x.month === r.month)
+    return drillIf(t?.reqs, () => (t ? monthEndReqsDrill(b, t.date, t.list) : null))
+  }
+  const openPeak = monthEnd.totals.reduce<(typeof monthEnd.totals)[number] | null>(
+    (best, t) => (!best || t.reqs > best.reqs ? t : best),
+    null,
+  )
+  const openNotes: ChartNote[] =
+    openPeak && openPeak.reqs > 0 && openPeak !== monthEnd.totals[0]
+      ? [{ at: openPeak.month, text: `${fmt(openPeak.reqs, 'int')} open on ${formatDate(openPeak.date)}` }]
+      : []
 
   return (
     <Grid>
       <KpiStrip kpis={kpis} />
       {/* Full width on tablets (the right column is too), and sticky on desktop so a readout
           shorter than the right column doesn't leave a hole under it. */}
-      <Readout findings={m.findings} span={4} className={cx(TABLET_FULL, 'lg:sticky lg:top-4')} />
+      {/* Phones: the lead figure comes first, then the readout, then the sections (max-md:order). */}
+      <Readout
+        findings={m.findings}
+        span={4}
+        className={cx(TABLET_FULL, 'lg:sticky lg:top-4 max-md:order-1')}
+      />
       {/* The right column stacks the lead figure and two short sections, so it runs as long as the readout. */}
-      <div className={cx(spanClass(8), 'min-w-0')}>
+      <div className={cx(spanClass(8), 'min-w-0 max-md:contents')}>
         <Grid>
           <Figure
             id="recruiting-pipeline-today"
@@ -172,7 +211,7 @@ export function OverviewTab() {
                 extra: 'The chart marks these candidates with the diamond.',
               }),
             ]}
-            note={`${plural(b.actives.length, 'active candidate')} · click a segment or a count to see the candidates · ${asOfNote(b.asOf)}`}
+            note={`${plural(b.actives.length, 'active candidate')} · ${asOfNote(b.asOf)}`}
           >
             <PipelineBars
               stages={m.pipeline}
@@ -186,6 +225,7 @@ export function OverviewTab() {
 
         <Section
           title="Hiring"
+          className="max-md:order-2"
           dek={`How many offers were accepted each month, and whether candidates are saying yes as often as before. Two years to ${formatDate(b.window.end)}.`}
         >
           <Figure
@@ -218,6 +258,7 @@ export function OverviewTab() {
               xType="month"
               format="int"
               labels={false}
+              notes={hiresNotes}
               onSelect={(d) => drill(() => hiresMonthDrill(b, d))}
               ariaLabel="Offers accepted by month"
             />
@@ -265,6 +306,7 @@ export function OverviewTab() {
               y="rate"
               format="pct0"
               xTicks="quarter"
+              notes={accNotes}
               onSelect={(d) => drill(quarterDrill(d.q))}
               ariaLabel="Offer acceptance by quarter"
             />
@@ -273,8 +315,61 @@ export function OverviewTab() {
 
         <Section
           title="Requisitions"
+          className="max-md:order-2"
+          align="start"
           dek={`Open reqs on ${formatDate(b.asOf)}, and how long reqs filled ${windowText(b.window)} took.`}
         >
+          <Figure
+            id="recruiting-open-reqs-month-end"
+            uses={FIGURE_USES['recruiting-open-reqs-month-end']}
+            metric={FIGURE_METRICS['recruiting-open-reqs-month-end']}
+            title={`Open reqs at month end by ${dimWord.toLowerCase()}`}
+            subtitle={`Requisitions open on each of the last 24 month ends, ending ${formatDate(b.asOf)}`}
+            data={monthEnd.rows}
+            columns={
+              [
+                { key: 'date', label: 'Month end', format: 'date' },
+                { key: 'group', label: dimWord },
+                { key: 'reqs', label: 'Open reqs', format: 'int', drill: monthEndDrill },
+              ] satisfies Column<MonthEndReqRow>[]
+            }
+            span={12}
+            empty={
+              b.reqs.length
+                ? monthEnd.rows.length
+                  ? null
+                  : 'No req was open on any of the last 24 month ends.'
+                : NEED_REQS
+            }
+            definitions={[
+              defOf(b, RM.openReqs, {
+                term: 'Open reqs at month end',
+                extra: monthEnd.groups.includes(OTHER_SERIES)
+                  ? 'Each column counts the reqs open on that month end; the last column is the as-of date. The smallest groups are combined as Other.'
+                  : 'Each column counts the reqs open on that month end; the last column is the as-of date.',
+              }),
+            ]}
+            note={`Reqs on hold not counted · ${asOfNote(b.asOf)}`}
+          >
+            <Columns
+              data={monthEnd.rows}
+              x="month"
+              y="reqs"
+              series="group"
+              seriesOrder={monthEnd.groups}
+              stack
+              xType="month"
+              format="int"
+              labels={false}
+              notes={openNotes}
+              selectable={(d) =>
+                d.reqs > 0 || (monthEnd.totals.find((x) => x.month === d.month)?.reqs ?? 0) > 0
+              }
+              onSelect={(d) => drill(columnDrill(d))}
+              onSelectSegment={(d) => drill(monthEndDrill(d))}
+              ariaLabel={`Open reqs at month end by ${dimWord.toLowerCase()}`}
+            />
+          </Figure>
           <Figure
             id="recruiting-open-reqs-department"
             uses={FIGURE_USES['recruiting-open-reqs-department']}
@@ -313,7 +408,7 @@ export function OverviewTab() {
               value="open"
               format="int"
               top={12}
-              tone={ageTone}
+              glyphTone={ageTone}
               secondary={(d) => `oldest ${fmt(d.oldest, 'days')}`}
               onSelect={(d) => drill(deptDrill(d))}
               onSelectOther={(rows) =>

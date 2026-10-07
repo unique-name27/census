@@ -49,7 +49,7 @@ export function ImportDialog() {
       }
     >
       {read && (
-        <div className="flex flex-col gap-3 text-[13px]">
+        <div className="flex flex-col gap-3 text-small">
           {n > 0 ? (
             <>
               <p className="text-ink">
@@ -57,7 +57,7 @@ export function ImportDialog() {
                 {read.skipped ? `, ${plural(read.skipped, 'row')} left out` : ''}. They replace the{' '}
                 {plural(current, 'agent')} in this browser's catalog. You can undo right after.
               </p>
-              <ul className="flex flex-wrap gap-x-4 gap-y-1 text-[12px] text-ink-2">
+              <ul className="flex flex-wrap gap-x-4 gap-y-1 text-meta text-ink-2">
                 {groupByArea(read.agents).map((g) => (
                   <li key={g.area}>
                     {AREA_LABEL[g.area]} <span className="tnum text-muted">{g.agents.length}</span>
@@ -71,13 +71,13 @@ export function ImportDialog() {
           {read.issues.length > 0 && (
             <div>
               <h3 className="eyebrow">What to check</h3>
-              <ul className="mt-1 list-disc space-y-1 pl-4 text-[12px] leading-snug text-ink-2 marker:text-muted">
+              <ul className="mt-1 list-disc space-y-1 pl-4 text-meta leading-snug text-ink-2 marker:text-muted">
                 {read.issues.slice(0, MAX_ISSUES).map((i, k) => (
                   <li key={k}>{i.message}</li>
                 ))}
               </ul>
               {read.issues.length > MAX_ISSUES && (
-                <p className="mt-1 text-[12px] text-muted">
+                <p className="mt-1 text-meta text-muted">
                   And {plural(read.issues.length - MAX_ISSUES, 'more note')}.
                 </p>
               )}
@@ -116,7 +116,7 @@ export function ResetDialog() {
         </>
       }
     >
-      <p className="text-[13px] text-ink">
+      <p className="text-small text-ink">
         This replaces the {plural(current, 'agent')} in this browser's catalog with the{' '}
         {plural(SAMPLE_AGENTS.length, 'sample agent')}. You can undo right after.
       </p>

@@ -19,6 +19,8 @@ export interface HelpPrefs {
   welcomeDismissed: boolean
   /** Tours finished to the last step, by id. */
   completed: readonly string[]
+  /** My team's welcome line (Manager mode) was dismissed; set only once it is. */
+  managerWelcomeDismissed?: true
 }
 
 const DEFAULT_PREFS: HelpPrefs = { welcomeDismissed: false, completed: [] }
@@ -31,6 +33,7 @@ export function parsePrefs(raw: string | null): HelpPrefs {
     if (!v || typeof v !== 'object') return DEFAULT_PREFS
     return {
       welcomeDismissed: v.welcomeDismissed === true,
+      ...(v.managerWelcomeDismissed === true ? { managerWelcomeDismissed: true as const } : {}),
       completed: Array.isArray(v.completed)
         ? [...new Set(v.completed.filter((x): x is string => typeof x === 'string'))]
         : [],
@@ -76,19 +79,22 @@ interface HelpState {
   query: string
   /** Changes on every open request, so asking again lands on the requested article. */
   nonce: number
+  /** A line at the top of the sheet's list ("That article is not shown in this mode."). */
+  notice: string | null
   tour: TourRun | null
   prefs: HelpPrefs
   /** Where focus goes when the tour ends and its opener is gone. */
   lastEnded: { id: string; how: TourEnd; nonce: number } | null
 
-  openHelp: (articleId?: string | null) => void
+  openHelp: (articleId?: string | null, notice?: string | null) => void
   closeHelp: () => void
   showArticle: (id: string | null) => void
   setQuery: (q: string) => void
   startTour: (id: string) => void
   goToStep: (index: number) => void
   endTour: (how: TourEnd) => void
-  dismissWelcome: () => void
+  /** Dismiss the welcome line: HR mode's on the Scorecard (default) or Manager mode's on My team. */
+  dismissWelcome: (which?: 'hr' | 'manager') => void
   /** Re-read the remembered prefs (another tab changed them). */
   reloadPrefs: () => void
 }
@@ -98,14 +104,15 @@ export const useHelp = create<HelpState>((set, get) => ({
   articleId: null,
   query: '',
   nonce: 0,
+  notice: null,
   tour: null,
   prefs: loadPrefs(),
   lastEnded: null,
 
-  openHelp(articleId = null) {
+  openHelp(articleId = null, notice = null) {
     // Every open starts from a clean search: an old query would hide the home links (tours,
     // Report a problem, What's new) and give "Back to results" for an unrelated search.
-    set((s) => ({ open: true, articleId, query: '', nonce: s.nonce + 1 }))
+    set((s) => ({ open: true, articleId, query: '', nonce: s.nonce + 1, notice }))
   },
   closeHelp() {
     set({ open: false })
@@ -154,8 +161,11 @@ export const useHelp = create<HelpState>((set, get) => ({
       lastEnded: { id: t.id, how, nonce: (s.lastEnded?.nonce ?? 0) + 1 },
     }))
   },
-  dismissWelcome() {
-    const prefs = { ...get().prefs, welcomeDismissed: true }
+  dismissWelcome(which = 'hr') {
+    const prefs: HelpPrefs =
+      which === 'manager'
+        ? { ...get().prefs, managerWelcomeDismissed: true }
+        : { ...get().prefs, welcomeDismissed: true }
     savePrefs(prefs)
     set({ prefs })
   },
@@ -175,6 +185,7 @@ if (typeof window !== 'undefined')
   })
 
 /** Imperative helpers for event handlers. */
-export const openHelp = (articleId?: string | null): void => useHelp.getState().openHelp(articleId)
+export const openHelp = (articleId?: string | null, notice?: string | null): void =>
+  useHelp.getState().openHelp(articleId, notice)
 export const closeHelp = (): void => useHelp.getState().closeHelp()
 export const startTour = (id: string): void => useHelp.getState().startTour(id)

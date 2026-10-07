@@ -138,7 +138,7 @@ export function ownersDrill(open: readonly OpenAction[], ctx: Ctx): DrillSpec<'a
     title: 'Owners of open items',
     subtitle: `${ctx.scopeLabel} · as of ${formatDate(ctx.asOf)}`,
     rows: ownerRows(open, ctx),
-    note: 'Everyone open items wait on, a person once even when they own items in two groups. Select a count of open items to see them.',
+    note: 'Everyone open items wait on, a person once even when they own items in two groups.',
     ...(uses.length ? { uses } : {}),
   })
 }

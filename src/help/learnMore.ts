@@ -15,6 +15,7 @@ const BY_PREFIX: Readonly<Record<string, string>> = {
   comp: 'view-comp',
   compliance: 'view-compliance',
   listening: 'view-listening',
+  ai: 'view-ai',
   actions: 'view-actions',
   quality: 'data-tiers',
 }
@@ -27,6 +28,9 @@ const BY_ID: Readonly<Record<string, string>> = {
   'privacy.immigrationDetails': 'privacy-immigration',
   'privacy.surveyAnswers': 'privacy-surveys',
   'privacy.surveyManagerCuts': 'privacy-surveys',
+  // The Data room's own charts.
+  'data.coverage.byMonth': 'data-loading',
+  'data.quality.metricTiers': 'data-quality-tab',
 }
 
 /** Every article id this module can return (tests check each one exists). */

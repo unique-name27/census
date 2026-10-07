@@ -43,7 +43,7 @@ function Fact({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="min-w-0 border-l border-rule pl-4">
       <dt className="eyebrow">{label}</dt>
-      <dd className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[14px] text-ink">{children}</dd>
+      <dd className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-body text-ink">{children}</dd>
     </div>
   )
 }
@@ -65,7 +65,8 @@ export function LinkedSurvey({
   const ctx = useAnalytics()
   const h = useMemo(() => linkedHeadline(ctx, survey), [ctx, survey])
   const program = programOf.get(survey)
-  if (!program || !ctx.all.surveyResponses.length) return null
+  // A mode that hides Listening (Manager mode) shows no survey here either, section and all.
+  if (!program || !ctx.all.surveyResponses.length || !ctx.access.can('view:listening')) return null
 
   const tab = h?.tab ?? program.tab
   const metricId = h?.metricId ?? scoreMetric(program)
@@ -120,7 +121,7 @@ export function LinkedSurvey({
         {h && (
           <div className="flex flex-wrap items-end gap-x-10 gap-y-4">
             <div className="min-w-0">
-              <div className="cut-head text-[40px] leading-none font-semibold text-ink">
+              <div className="cut-head text-display leading-none font-semibold text-ink">
                 {shown ? (
                   <Drill spec={h.drill} label={`${headlineSentence(h)}: show the grouped results`}>
                     {fmt(h.value, h.format)}
@@ -129,7 +130,7 @@ export function LinkedSurvey({
                   <span className="text-muted">{DASH}</span>
                 )}
               </div>
-              <div className="mt-1.5 text-[12px] text-muted">
+              <div className="mt-1.5 text-meta text-muted">
                 {shown ? (
                   scaleText(h)
                 ) : (

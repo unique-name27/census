@@ -47,6 +47,8 @@ export const M = {
   readinessByOwner: 'onboarding.upcoming.readinessByOwner',
   calendar: 'onboarding.upcoming.calendar',
   dayOne: 'onboarding.first90.dayOneReadiness',
+  taskTiming: 'onboarding.first90.taskTiming',
+  lateByPlace: 'onboarding.first90.lateTaskByPlace',
   i9: 'onboarding.first90.i9Section2',
   training: 'onboarding.first90.training30',
   checkIns: 'onboarding.first90.checkIns',
@@ -55,6 +57,7 @@ export const M = {
   newHireEntered: 'onboarding.first90.newHireEntered',
   pulse: 'onboarding.first90.pulseReady',
   vsPlan: 'onboarding.plan.vsPlan',
+  vsPlanByMonth: 'onboarding.plan.vsPlanByMonth',
   committed: 'onboarding.plan.committed',
   forecast: 'onboarding.plan.forecast',
   gap: 'onboarding.plan.gap',
@@ -457,6 +460,36 @@ const entries: MetricInput[] = [
     ],
   },
   {
+    id: M.taskTiming,
+    name: 'When day-one tasks were finished',
+    definition:
+      'For one day-one task, the days from the start date to the date it was completed, for people who started in the period: negative is before the first day. The due day comes from the checklist. Tasks still open are counted, not placed.',
+    formula: 'completed date − start date, by task',
+    population:
+      'Day-one tasks of employees who started in the period. Not needed is left out. Hidden when fewer starters than the anonymity minimum have the task.',
+    window: PERIOD,
+    unit: 'days',
+    goodDirection: 'down',
+    uses: union(STARTERS, TASKS),
+    dependsOn: [M.dayOne],
+    owner: OWNER,
+  },
+  {
+    id: M.lateByPlace,
+    name: 'Late day-one tasks by place',
+    definition:
+      'For one day-one task in one region or site, the share of people who started in the period whose task was done after its due date, or was still open past it on the as-of date.',
+    formula: 'starts with the task late ÷ starts with the task, by task and place',
+    population:
+      'Day-one tasks of employees who started in the period. Not needed is left out. A place with fewer starters than the anonymity minimum is hidden.',
+    window: PERIOD,
+    unit: 'pct',
+    goodDirection: 'down',
+    uses: union(STARTERS, TASKS, SITE, ['employees.country']),
+    dependsOn: [M.dayOne],
+    owner: OWNER,
+  },
+  {
     id: M.checkIns,
     name: 'Check-ins on time',
     definition:
@@ -589,6 +622,21 @@ const entries: MetricInput[] = [
         DEFAULTS.onPlanBand,
       ),
     ],
+  },
+  {
+    id: M.vsPlanByMonth,
+    name: 'Starts against plan by month',
+    definition:
+      'For one business unit (or department, inside one unit) and one month of the plan year, the people who started that month minus the starts the plan lines put in it. Below zero is behind plan.',
+    formula: 'actual starts − planned starts, by unit and month',
+    population:
+      'Plan lines of the latest plan version; employees (not contractors or interns) whose hire date falls in the month, to the as-of date.',
+    window: PLAN_YEAR,
+    unit: 'int',
+    goodDirection: null,
+    uses: union(PLAN, ACTUAL),
+    dependsOn: [M.vsPlan],
+    owner: OWNER,
   },
   {
     id: M.committed,

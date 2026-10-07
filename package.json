@@ -4,15 +4,15 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "vite --port 8820 --strictPort",
-    "build": "vite build",
-    "build:single": "vite build --mode single && node scripts/copy-single.mjs",
-    "preview": "vite preview --port 8821",
+    "dev": "node --max-semi-space-size=64 node_modules/vite/bin/vite.js --port 8820 --strictPort",
+    "build": "node --max-semi-space-size=64 node_modules/vite/bin/vite.js build",
+    "build:single": "node --max-semi-space-size=64 node_modules/vite/bin/vite.js build --mode single && node scripts/copy-single.mjs",
+    "preview": "node --max-semi-space-size=64 node_modules/vite/bin/vite.js preview --port 8821",
     "typecheck": "tsc --noEmit -p .",
     "test": "vitest run",
     "lint": "biome check src",
     "verify": "node scripts/verify.mjs",
-    "build:artifact": "vite build --mode single && node scripts/build-artifact.mjs",
+    "build:artifact": "node --max-semi-space-size=64 node_modules/vite/bin/vite.js build --mode single && node scripts/build-artifact.mjs",
     "deploy": "npm run build:single && node scripts/deploy-pages.mjs"
   },
   "dependencies": {

@@ -204,7 +204,8 @@ export function PipelineBars({ stages, cellDrill, stageDrill, stateDrill, lackin
               viewBox={`0 0 ${W} ${height}`}
               role="group"
               aria-label="Active candidates by stage and next-step state"
-              style={{ display: 'block', fontFamily: t.font }}
+              // Shrinks with its sheet until the next measure, so it never pushes the page sideways.
+              style={{ display: 'block', fontFamily: t.font, maxWidth: '100%', height: 'auto' }}
             >
               <line x1={labelW} x2={labelW} y1={0} y2={height - 2} stroke={t.axis} strokeWidth={1} />
               {stages.map((s, row) => {

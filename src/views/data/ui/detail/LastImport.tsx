@@ -86,12 +86,12 @@ export function LastImport({
   return (
     <div>
       <h4 className="eyebrow">{heading}</h4>
-      <p className="mt-1.5 text-[13px]">
+      <p className="mt-1.5 text-small">
         {log.fileName}
         {log.sheetName ? ` › ${log.sheetName}` : ''}
         {log.importedAt && <span className="text-muted"> · {formatDate(log.importedAt.slice(0, 10))}</span>}
       </p>
-      <p className="mt-0.5 text-[12px] text-ink-2">
+      <p className="mt-0.5 text-meta text-ink-2">
         {facts.map((f, i) => (
           <span key={f.key}>
             {i > 0 && ' · '}
@@ -106,7 +106,7 @@ export function LastImport({
             const n = found?.records.length ?? 0
             const rowsText = `${fmt(n, 'int')} ${rowsWord(n)}`
             return (
-              <li key={issueGroupKey(m)} className="flex gap-2 text-[13px]">
+              <li key={issueGroupKey(m)} className="flex gap-2 text-small">
                 <SeverityIcon severity={actionSeverity(m.action)} className="mt-0.5 size-3.5 shrink-0" />
                 <span>
                   <DrillSentence
@@ -122,13 +122,13 @@ export function LastImport({
             )
           })}
           {summaries.length > 5 && (
-            <li className="pl-5.5 text-[12px] text-muted">
+            <li className="pl-5.5 text-meta text-muted">
               {summaries.length - 5} more kinds of change in the log.
             </li>
           )}
         </ul>
       ) : (
-        <p className="mt-2 flex items-center gap-2 text-[13px] text-ink-2">
+        <p className="mt-2 flex items-center gap-2 text-small text-ink-2">
           <IconGood className="size-3.5 text-good" />
           Every row imported as it was.
         </p>
@@ -144,7 +144,7 @@ export function LastImport({
         </Button>
       )}
       {log.truncated > 0 && (
-        <p className="mt-1.5 text-[12px] text-muted">
+        <p className="mt-1.5 text-meta text-muted">
           The first {fmt(issues.length, 'int')} issues are kept; {fmt(log.truncated, 'int')} more were not
           stored.
         </p>

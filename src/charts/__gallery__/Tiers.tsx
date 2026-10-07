@@ -36,8 +36,8 @@ export function TierGallery({ onOpen }: { onOpen: (what: string) => void }) {
         aria-label="Tier badges"
         className="col-span-12 rounded-sheet bg-sheet px-4 py-3.5 lg:col-span-6"
       >
-        <h3 className="cut-head text-[15px] font-semibold">Tier badges</h3>
-        <p className="mt-0.5 text-[13px] text-ink-2">
+        <h3 className="cut-head text-title font-semibold">Tier badges</h3>
+        <p className="mt-0.5 text-small text-ink-2">
           Medal and word, so the tier never relies on color. Hover or focus to read why; click opens the
           dataset in the Data room.
         </p>
@@ -61,7 +61,7 @@ export function TierGallery({ onOpen }: { onOpen: (what: string) => void }) {
         aria-label="Held back"
         className="col-span-12 rounded-sheet bg-sheet px-4 py-3.5 lg:col-span-6"
       >
-        <h3 className="cut-head mb-3 text-[15px] font-semibold">Below the data standard</h3>
+        <h3 className="cut-head mb-3 text-title font-semibold">Below the data standard</h3>
         <HeldBackState held={HELD} tier="bronze" onPreview={() => setPreview(true)} />
       </section>
       <Figure

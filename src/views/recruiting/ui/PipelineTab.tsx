@@ -21,6 +21,7 @@ import { RM } from '../metrics'
 import { useRecruitingUi } from '../state'
 import { ActionQueue } from './ActionQueue'
 import { asOfNote, defOf, drillIf, NEED_CANDIDATES, NoRecruitingData, windowText } from './common'
+import { DecisionsByManager } from './DecisionsByManager'
 import { useRecruiting } from './hooks'
 import { RiverChart } from './RiverChart'
 
@@ -211,8 +212,7 @@ export function PipelineTab() {
             ) : (
               '0'
             )}{' '}
-            applications received {windowText(b.window)} went. Click a ribbon, a stage or a number to see
-            those candidates.
+            applications received {windowText(b.window)} went.
           </>
         }
       >
@@ -255,7 +255,7 @@ export function PipelineTab() {
           title="Who needs to act"
           dek="Candidates who lack a next step (past the usual time), grouped by who owns it. Interview decisions sit with the hiring manager; copy a note to send each owner their list."
         >
-          <ActionQueue base={b} groups={m.queue} />
+          <ActionQueue base={b} groups={m.queue} aside={<DecisionsByManager base={b} rows={m.decisions} />} />
         </Section>
       </div>
 
@@ -374,7 +374,7 @@ export function PipelineTab() {
               extra: `Cells with fewer than ${minGroup} steps are left blank.`,
             }),
           ]}
-          note={`Click a cell to see the steps behind it · cells under ${minGroup} steps are blank and hidden · ${asOfNote(b.asOf)}`}
+          note={`Cells under ${minGroup} steps are blank and hidden · ${asOfNote(b.asOf)}`}
         >
           <Heatmap
             data={m.speed}

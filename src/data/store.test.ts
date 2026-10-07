@@ -237,7 +237,7 @@ describe('store', () => {
     expect(S.parseHash('#recruiting.pipeline')).toEqual({ view: 'recruiting', tab: 'pipeline' })
     expect(S.parseHash('#nowhere')).toBeNull()
     expect(S.HOME_VIEW).toBe('scorecard')
-    expect(S.PAGE_VIEWS).toEqual(['data', 'actions'])
+    expect(S.PAGE_VIEWS).toEqual(['data', 'actions', 'dev'])
     // Every folder tab is a route.
     for (const v of ['scorecard', 'compliance', 'listening'] as const) expect(S.ROUTE_VIEWS).toContain(v)
   })

@@ -107,12 +107,10 @@ export function DiffPanel({
       aria-labelledby="org-diff-title"
       className={cx(spanClass(7), 'rounded-sheet bg-sheet px-4 pt-3.5 pb-4')}
     >
-      <h3 id="org-diff-title" className="cut-head text-[15px] leading-snug font-semibold">
+      <h3 id="org-diff-title" className="cut-head text-title leading-snug font-semibold">
         Scenario compared with today
       </h3>
-      <p className="mt-0.5 text-[13px] text-ink-2">
-        What the moves change against the org on the as-of date. Click a number to list the people.
-      </p>
+      <p className="mt-0.5 text-small text-ink-2">What the moves change against the org on the as-of date.</p>
 
       <dl className="mt-3 grid grid-cols-2 gap-px overflow-hidden rounded-control bg-rule sm:grid-cols-3">
         <Tile
@@ -163,9 +161,7 @@ export function DiffPanel({
       </dl>
 
       {empty ? (
-        <p className="mt-4 text-[13px] text-muted">
-          No changes yet. Drag a card onto a new manager to start.
-        </p>
+        <p className="mt-4 text-small text-muted">No changes yet. Drag a card onto a new manager to start.</p>
       ) : (
         <div className="mt-4 grid gap-x-6 gap-y-4 sm:grid-cols-2">
           <List
@@ -243,9 +239,9 @@ export function DiffPanel({
             <h4 className="eyebrow mb-1.5" title={define(ORG_METRIC.layers)}>
               People per layer
             </h4>
-            <table className="w-full text-[12px]">
+            <table className="w-full text-meta">
               <thead>
-                <tr className="text-[11px] text-muted">
+                <tr className="text-label text-muted">
                   <th scope="col" className="pb-0.5 text-left font-normal">
                     <span className="sr-only">Layer</span>
                   </th>
@@ -289,14 +285,14 @@ export function DiffPanel({
             <button
               type="button"
               onClick={onClearBlocked}
-              className="ml-auto text-[12px] text-link hover:underline"
+              className="ml-auto text-meta text-link hover:underline"
             >
               Clear
             </button>
           </div>
           <ul className="space-y-2">
             {blocked.slice(0, 5).map((b, i) => (
-              <li key={i} className="flex gap-2 text-[12px]">
+              <li key={i} className="flex gap-2 text-meta">
                 <SeverityIcon severity="critical" className="mt-0.5 size-3.5 shrink-0" />
                 <span>
                   <span className="font-medium text-ink">{describe(b)}.</span>{' '}
@@ -347,13 +343,13 @@ function Tile({
   const changed = before !== undefined && b !== a
   return (
     <div className="bg-sheet px-3 py-2" title={title}>
-      <dt className="text-[11px] text-muted">{label}</dt>
-      <dd className="cut-head mt-0.5 text-[20px] font-semibold text-ink">
+      <dt className="text-label text-muted">{label}</dt>
+      <dd className="cut-head mt-0.5 text-section font-semibold text-ink">
         {value !== undefined ? (
           link(value, drill)
         ) : changed ? (
           <span className="tnum">
-            <span className="text-[14px] font-normal text-muted">{link(b, drillBefore)} → </span>
+            <span className="text-body font-normal text-muted">{link(b, drillBefore)} → </span>
             {link(a, drillAfter)}
           </span>
         ) : (
@@ -385,10 +381,10 @@ function List({
 }) {
   const ids = items.map((it) => it.id)
   let body: ReactNode
-  if (!items.length) body = <p className="text-[12px] text-muted">{empty}</p>
+  if (!items.length) body = <p className="text-meta text-muted">{empty}</p>
   else
     body = (
-      <ul className="space-y-0.5 text-[13px]">
+      <ul className="space-y-0.5 text-small">
         {items.slice(0, 6).map((it) => (
           <li key={it.id} className="flex items-baseline gap-2">
             <button
@@ -398,11 +394,11 @@ function List({
             >
               {it.text}
             </button>
-            {it.note && <span className="shrink-0 text-[12px] text-muted">{it.note}</span>}
+            {it.note && <span className="shrink-0 text-meta text-muted">{it.note}</span>}
           </li>
         ))}
         {items.length > 6 && (
-          <li className="text-[12px] text-muted">
+          <li className="text-meta text-muted">
             and <Drill spec={() => drillOf(ids.slice(6))}>{fmt(items.length - 6, 'int')} more</Drill>
           </li>
         )}

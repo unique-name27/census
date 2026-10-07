@@ -105,7 +105,7 @@ export function OrgSection({ model }: { model: MappingModel }) {
       <Figure
         id="data-map-org-diagram"
         title="Business units and departments"
-        subtitle={`${intText(units)} business units and ${intText(depts)} departments, by active headcount as of ${asOfText}. Click a bar or ribbon to see the people.`}
+        subtitle={`${intText(units)} business units and ${intText(depts)} departments, by active headcount as of ${asOfText}.`}
         data={orgRows}
         columns={orgColumns}
         definitions={DEFINITIONS}

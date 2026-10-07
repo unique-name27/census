@@ -34,6 +34,7 @@ import {
   lengthByReason,
   lengthStat,
   type OnLeaveRow,
+  onePerPerson,
   onLeaveAt,
   onLeaveByReason,
   onLeaveByUnit,
@@ -173,7 +174,8 @@ function leaveKpis(m: LeaveModel, x: LeaveInputs): Kpi[] {
 
   /* on leave now */
   const nowCount = groupCount(m.now, min)
-  const before = onLeaveAt(m.facts, x.prior.end)
+  // The tile counts people; its lists show one leave per person (latest start).
+  const before = onePerPerson(onLeaveAt(m.facts, x.prior.end))
   const beforeCount = groupCount(before, min)
   const soFar = median(m.now.map((f) => daysBetween(f.start, x.asOf)))
   const sparkDates = monthEndPoints(x.asOf, 12)
@@ -220,7 +222,7 @@ function leaveKpis(m: LeaveModel, x: LeaveInputs): Kpi[] {
       uses: LEAVE.onLeave,
       drill: nowCount
         ? () =>
-            leaveDrill(s, m.now, {
+            leaveDrill(s, onePerPerson(m.now), {
               title: 'On leave now',
               subtitle: asOfSub(s),
               columns: ['expected', 'days'],

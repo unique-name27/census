@@ -1,4 +1,4 @@
-import { BarList, type Column, Columns, Figure, Lines } from '@/charts'
+import { BarList, type ChartNote, type Column, Columns, Figure, Lines } from '@/charts'
 import { cx, Grid, KpiStrip, Readout, spanClass } from '@/components'
 import type { AnalyticsContext } from '@/data/context'
 import { drill } from '@/drill'
@@ -61,6 +61,15 @@ export function Overview({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext }
   const firstMonth = formatMonth(`${m.months[0]}-01`)
   const lastMonth = formatMonth(`${m.months[m.months.length - 1]}-01`)
   const slaRows = m.slaMonths.filter((r) => r.opened > 0)
+  // The month furthest under the SLA target, marked on the chart.
+  const slaLow = slaRows.reduce<(typeof slaRows)[number] | null>(
+    (lo, r) => (r.slaRate != null && (!lo || (lo.slaRate ?? 1) > r.slaRate) ? r : lo),
+    null,
+  )
+  const slaNotes: ChartNote[] =
+    slaLow?.slaRate != null && slaLow.slaRate < slaTarget && slaRows.length >= 3
+      ? [{ at: slaLow.month, text: `Lowest month, ${fmt(slaLow.slaRate, 'pct0')}` }]
+      : []
   const slaValues = slaRows.flatMap((r) => (r.slaRate == null ? [] : [r.slaRate]))
   const txRows = m.txMonths.filter((r) => r.due > 0)
   const txValues = txRows.flatMap((r) => (r.rate == null ? [] : [r.rate]))
@@ -263,7 +272,8 @@ export function Overview({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext }
   return (
     <Grid>
       <KpiStrip kpis={m.kpis} />
-      <Readout findings={m.findings} span={4} />
+      {/* Phones: the figures beside the readout come first, then the readout. */}
+      <Readout findings={m.findings} span={4} className="max-md:order-1" />
       {m.hasCases ? (
         <div className={cx(spanClass(8), 'flex flex-col gap-4')}>
           <Figure
@@ -301,7 +311,8 @@ export function Overview({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext }
               onSelectSegment={(d) => drill(segmentCases(d))}
             />
           </Figure>
-          <Grid>
+          {/* Sheets keep their own heights: the SLA line is much shorter than the category list. */}
+          <Grid className="items-start">
             <Figure
               id="services-sla-by-month"
               uses={m.uses['services-sla-by-month']}
@@ -333,7 +344,7 @@ export function Overview({ m, ctx }: { m: ServicesModel; ctx: AnalyticsContext }
                 ref={{ value: slaTarget, label: `target ${pctWords(slaTarget)}` }}
                 yDomain={[floorFor(slaValues, slaTarget), 1]}
                 xTicks="quarter"
-                height={240}
+                notes={slaNotes}
                 onSelect={(d) => drill(slaMonth(d))}
               />
             </Figure>

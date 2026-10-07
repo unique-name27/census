@@ -22,6 +22,15 @@ export function withFeatureTabs(view: ViewDef, features: Features): ViewDef {
   return { ...view, tabs: view.tabs.filter((t) => !t.feature || features[t.feature]) }
 }
 
+/**
+ * The view with only the tabs the mode shows (docs/ROLES.md, 6.5), beside `withFeatureTabs`; the
+ * shell applies both. The same object when every tab is shown.
+ */
+export function withAccessTabs(view: ViewDef, access: Pick<AnalyticsContext['access'], 'can'>): ViewDef {
+  const tabs = view.tabs.filter((t) => access.can(`tab:${view.key}.${t.key}`))
+  return tabs.length === view.tabs.length ? view : { ...view, tabs }
+}
+
 /** The live number printed on a view's folder tab. Must be cheap to compute. */
 export interface Headline {
   value: string
@@ -133,6 +142,12 @@ export interface ActionItem {
   note?: string
   /** The fields the item is computed from, so the Action center gates it on the data standard. */
   uses?: readonly FieldRef[]
+  /**
+   * What kind of work it is, in a plain category-level label ("Interview decision", "Case past
+   * target"; never a subcategory or a person). The Action center groups by it ("What is waiting,
+   * by kind"); without it the kind comes from the id, else the view label.
+   */
+  kind?: string
 }
 
 export interface ViewDef {

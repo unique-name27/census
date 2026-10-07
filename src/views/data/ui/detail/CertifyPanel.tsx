@@ -6,6 +6,7 @@
  */
 import { useId, useState } from 'react'
 import { IconClose, IconCritical, IconGood, IconWarning } from '@/components/icons'
+import { TABLE_HEAD } from '@/components/styles'
 import { TierBadge } from '@/components/tier/TierBadge'
 import { toast } from '@/components/toast'
 import { Button, cx, StatusPill } from '@/components/ui'
@@ -69,7 +70,7 @@ function ControlResult({
   const hidden = !!CONTROL_METRICS[metric]?.pay && !showPay
   const c = checkControl(expected, actual, tolerance)
   return (
-    <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-ink-2">
+    <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-meta text-ink-2">
       <span>
         In the data:{' '}
         <span className="tnum text-ink">
@@ -111,7 +112,7 @@ function DraftRow({
     <li className="rounded-control bg-sheet-2 px-3 py-2.5">
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] md:grid-cols-[minmax(0,1.1fr)_minmax(0,1.2fr)_120px_80px_auto]">
         <span className="block min-w-0">
-          <span className="block text-[12px] font-medium text-ink-2" aria-hidden="true">
+          <span className="block text-meta font-medium text-ink-2" aria-hidden="true">
             Number
           </span>
           <Select
@@ -128,7 +129,7 @@ function DraftRow({
           </Select>
         </span>
         <label className="block min-w-0">
-          <span className="block text-[12px] font-medium text-ink-2">Label</span>
+          <span className="block text-meta font-medium text-ink-2">Label</span>
           <input
             value={draft.label}
             onChange={(e) => onChange({ ...draft, label: e.target.value })}
@@ -137,7 +138,7 @@ function DraftRow({
           />
         </label>
         <label className="block min-w-0">
-          <span className="block text-[12px] font-medium text-ink-2">Expected</span>
+          <span className="block text-meta font-medium text-ink-2">Expected</span>
           <input
             value={draft.expected}
             inputMode="decimal"
@@ -149,7 +150,7 @@ function DraftRow({
           />
         </label>
         <label className="block min-w-0">
-          <span className="block text-[12px] font-medium text-ink-2">Allowed, %</span>
+          <span className="block text-meta font-medium text-ink-2">Allowed, %</span>
           <input
             value={draft.tolerance}
             inputMode="decimal"
@@ -179,7 +180,7 @@ function DraftRow({
         />
       </div>
       {message && (
-        <p id={`${id}-e`} className="mt-1 text-[12px] text-bad-text">
+        <p id={`${id}-e`} className="mt-1 text-meta text-bad-text">
           {message}
         </p>
       )}
@@ -250,7 +251,7 @@ function CertifyForm({
       <h4 className="eyebrow">Certify this version</h4>
       <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2">
         <label htmlFor={nameId} className="block min-w-0">
-          <span className="block text-[12px] font-medium text-ink-2">Certified by</span>
+          <span className="block text-meta font-medium text-ink-2">Certified by</span>
           <input
             id={nameId}
             value={name}
@@ -261,7 +262,7 @@ function CertifyForm({
           />
         </label>
         <label htmlFor={noteId} className="block min-w-0 sm:col-span-2">
-          <span className="block text-[12px] font-medium text-ink-2">Note (optional)</span>
+          <span className="block text-meta font-medium text-ink-2">Note (optional)</span>
           <textarea
             id={noteId}
             value={note}
@@ -273,8 +274,8 @@ function CertifyForm({
         </label>
       </div>
       <div className="mt-4">
-        <p className="text-[13px] font-medium">Control totals (optional)</p>
-        <p className="mt-0.5 text-[12px] text-muted">
+        <p className="text-small font-medium">Control totals (optional)</p>
+        <p className="mt-0.5 text-meta text-muted">
           Numbers from the system of record that the data must match within the allowed difference, 0.5% by
           default. A total that does not reconcile keeps the dataset below gold.
         </p>
@@ -300,7 +301,7 @@ function CertifyForm({
         </Button>
       </div>
       {outcome && (
-        <p className="mt-4 flex gap-2 text-[13px] text-ink-2">
+        <p className="mt-4 flex gap-2 text-small text-ink-2">
           {off > 0 || ready.goldAlsoNeeds.length > 0 ? (
             <IconWarning className="mt-0.5 size-3.5 shrink-0 text-warning" />
           ) : (
@@ -313,7 +314,7 @@ function CertifyForm({
         <Button type="submit" variant="primary" disabled={!canCertify}>
           Certify
         </Button>
-        <span className="text-[12px] text-muted">
+        <span className="text-meta text-muted">
           A local record in this browser, not a sign-in. It ends when the data is replaced.
         </span>
       </div>
@@ -334,27 +335,27 @@ function Certified({ row, version, data }: { row: ManifestRow; version: DatasetV
   return (
     <div className="mt-5 border-t border-rule pt-4">
       <h4 className="eyebrow">Certification</h4>
-      <p className="mt-1.5 text-[13px]">
+      <p className="mt-1.5 text-small">
         {certificationText(version, ctx.asOf.slice(0, 4))}
         {cert.asOf && <span className="text-ink-2"> for data as of {formatDate(cert.asOf)}</span>}.
       </p>
-      {cert.note && <p className="mt-1 max-w-[70ch] text-[13px] text-ink-2">“{cert.note}”</p>}
+      {cert.note && <p className="mt-1 max-w-[70ch] text-small text-ink-2">“{cert.note}”</p>}
       {totals.length > 0 && (
         <div className="scroll-x mt-3">
-          <table className="w-full border-collapse text-[13px] sm:min-w-[520px]">
+          <table className="w-full border-collapse text-small sm:min-w-[520px]">
             <caption className="sr-only">Control totals of the certification</caption>
             <thead>
               <tr className="border-b border-rule text-left">
-                <th scope="col" className="eyebrow py-1.5 pr-3 font-semibold">
+                <th scope="col" className={`${TABLE_HEAD} py-1.5 pr-3`}>
                   Control total
                 </th>
-                <th scope="col" className="eyebrow py-1.5 pr-3 text-right font-semibold">
+                <th scope="col" className={`${TABLE_HEAD} py-1.5 pr-3 text-right`}>
                   Expected
                 </th>
-                <th scope="col" className="eyebrow py-1.5 pr-3 text-right font-semibold">
+                <th scope="col" className={`${TABLE_HEAD} py-1.5 pr-3 text-right`}>
                   In the data
                 </th>
-                <th scope="col" className="eyebrow py-1.5 font-semibold">
+                <th scope="col" className={`${TABLE_HEAD} py-1.5`}>
                   Result
                 </th>
               </tr>
@@ -368,7 +369,7 @@ function Certified({ row, version, data }: { row: ManifestRow; version: DatasetV
                   <tr key={`${t.metric}|${t.label}`} className="border-b border-rule last:border-b-0">
                     <td className="py-1.5 pr-3 align-top">
                       {t.label}
-                      <span className="block text-[11px] text-muted">
+                      <span className="block text-label text-muted">
                         {CONTROL_METRICS[t.metric]?.label} · within {fmt(t.tolerance, 'pct')}
                       </span>
                     </td>
@@ -391,7 +392,7 @@ function Certified({ row, version, data }: { row: ManifestRow; version: DatasetV
             </tbody>
           </table>
           {totals.some((t) => CONTROL_METRICS[t.metric]?.pay) && !showPay && (
-            <p className="mt-1 text-[12px] text-muted">
+            <p className="mt-1 text-meta text-muted">
               Pay amounts are off, so pay totals show only whether they reconcile.
             </p>
           )}
@@ -401,7 +402,7 @@ function Certified({ row, version, data }: { row: ManifestRow; version: DatasetV
         <fieldset className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-control bg-sheet-2 px-3 py-2.5">
           <legend className="sr-only">Confirm revoking</legend>
           <IconWarning className="size-4 shrink-0 text-warning" />
-          <p className="min-w-0 flex-1 basis-[240px] text-[13px]">{revokeText(row.label, tier)}</p>
+          <p className="min-w-0 flex-1 basis-[240px] text-small">{revokeText(row.label, tier)}</p>
           <span className="flex gap-2">
             <Button variant="ghost" onClick={() => setAsking(false)}>
               Cancel
@@ -434,24 +435,24 @@ function History({ row, version }: { row: ManifestRow; version: DatasetVersion }
   return (
     <div>
       <h4 className="eyebrow">Versions</h4>
-      <p className="mt-1 text-[12px] text-muted">
+      <p className="mt-1 text-meta text-muted">
         The current version and up to three before it. Each load is a new version.
       </p>
       <ol className="mt-2 space-y-2.5">
         {rows.map((h) => (
-          <li key={h.versionId} className="border-l-2 border-rule pl-3 text-[13px]">
+          <li key={h.versionId} className="border-l-2 border-rule pl-3 text-small">
             <p className="flex flex-wrap items-baseline gap-x-2">
               <span className="font-semibold">{h.current ? 'Current' : 'Earlier'}</span>
               <span className="min-w-0 break-words text-ink-2">{h.source}</span>
             </p>
-            <p className="tnum text-[12px] text-ink-2">
+            <p className="tnum text-meta text-ink-2">
               {h.loaded !== '—' ? `Loaded ${h.loaded} · ` : ''}
               {fmt(h.rows, 'int')} {h.rows === 1 ? 'row' : 'rows'}
             </p>
-            <p className="text-[12px] text-ink-2">
+            <p className="text-meta text-ink-2">
               {h.mapping} · {h.certification}
             </p>
-            {h.note && !h.current && <p className="text-[12px] text-muted">“{h.note}”</p>}
+            {h.note && !h.current && <p className="text-meta text-muted">“{h.note}”</p>}
           </li>
         ))}
       </ol>
@@ -480,7 +481,7 @@ export function CertifyPanel({
       <div className="min-w-0 lg:col-span-8">
         <div className="flex flex-wrap items-center gap-3">
           <TierBadge tier={dq.tier} explain={ctx.quality.explain(row.key)} />
-          <p className="text-[13px] text-ink-2">
+          <p className="text-small text-ink-2">
             {certified
               ? 'Certified for this version. Replacing the data ends the certification.'
               : dq.tier === 'none'
@@ -491,7 +492,7 @@ export function CertifyPanel({
         <h4 className="eyebrow mt-5">Checklist</h4>
         <RuleList rules={certifyChecklist(rules)} ds={row} data={data} className="mt-2" />
         {!certified && !ready.canCertify && dq.tier !== 'none' && (
-          <p className="mt-3 flex gap-2 text-[13px]">
+          <p className="mt-3 flex gap-2 text-small">
             <IconCritical className="mt-0.5 size-3.5 shrink-0 text-critical" />
             Certifying needs every silver check to pass first:{' '}
             {ready.blocking.map((r) => r.label.toLowerCase()).join(', ')}.

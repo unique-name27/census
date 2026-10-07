@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { BarList, type Column, Columns, Figure, HBars } from '@/charts'
-import { Section, Segmented } from '@/components'
+import { Grid, Section, Segmented } from '@/components'
 import { useAnalytics } from '@/data/context'
 import { LEVELS } from '@/data/schema'
 import { Drill, drill } from '@/drill/Drill'
@@ -15,6 +15,7 @@ import { CONTINGENT, type CountRow } from '../engine/workforce'
 import { ID } from './defs'
 import { drillWhen, growthDrill, headcountDrill, type MixDim, mixDrill, mixGroupDrill } from './drill'
 import { EngineeringStat } from './EngineeringStat'
+import { HeadcountByOrg } from './Trends'
 
 /** Group, employees (each count opens the people) and share, for a headcount breakdown. */
 function countCols(p: Prep, dim: CountDim, label: string): Column<CountRow>[] {
@@ -66,6 +67,11 @@ export function Workforce({ m }: { m: HrbpModel }) {
 
   return (
     <>
+      {/* The lead figure: how the composition moved over two years, before where people are today. */}
+      <Grid>
+        <HeadcountByOrg m={m} />
+      </Grid>
+
       <Section
         title="Where people are"
         dek={`Active employees on ${asOf} by department, site, level and tenure. ${
@@ -302,7 +308,7 @@ export function Workforce({ m }: { m: HrbpModel }) {
             <>
               <EngineeringStat share={eng.share} reference={eng.reference} />
               {/* The counts behind the share, each opening its people. */}
-              <p className="mt-2 text-[13px] text-ink-2">
+              <p className="mt-2 text-small text-ink-2">
                 <Drill
                   spec={() => engineeringSpec(p, engRow)}
                   label={`Show the ${eng.engineering} employees in engineering`}

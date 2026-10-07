@@ -300,8 +300,8 @@ describe('changing a setting changes the numbers built on it', () => {
     const v = (m: HrbpModel) => tile(m, 'voluntary').value as number
     expect(v(on)).toBeGreaterThan(0)
     expect(v(off)).toBeCloseTo(v(on) / 4, 12)
-    expect(tile(on, 'voluntary').note).toMatch(/, annualized$/)
-    expect(tile(off, 'voluntary').note).not.toMatch(/annualized/)
+    expect(tile(on, 'voluntary').formula).toMatch(/, annualized\.$/)
+    expect(tile(off, 'voluntary').formula).not.toMatch(/annualized/)
     const q = (m: HrbpModel) =>
       m.attrition.quarters.find((r) => r.quarter === "Q3 '26" && r.type === 'Voluntary')!
     expect(q(off).rate).toBeCloseTo(q(on).rate! / 4, 12)

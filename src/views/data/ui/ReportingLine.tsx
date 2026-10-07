@@ -24,8 +24,8 @@ export function ReportingLine({ className }: { className?: string }) {
         className,
       )}
     >
-      <p className="flex min-w-0 flex-1 basis-[360px] flex-wrap items-center gap-x-2 gap-y-1 text-[13px]">
-        <span className="eyebrow">Reporting date</span>
+      <p className="flex min-w-0 flex-1 basis-[360px] flex-wrap items-center gap-x-2 gap-y-1 text-small">
+        <span className="font-medium text-ink-2">Reporting date:</span>
         <span>
           <span className="font-semibold">{formatDate(ctx.asOf)}</span>
           <span className="text-ink-2">, {basis}. Windows such as the last 12 months end here.</span>
@@ -34,8 +34,8 @@ export function ReportingLine({ className }: { className?: string }) {
           Change in Settings
         </Button>
       </p>
-      <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px]">
-        <span className="eyebrow">Pay amounts</span>
+      <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-small">
+        <span className="font-medium text-ink-2">Pay amounts:</span>
         <span className="text-ink-2">
           {showPay ? 'Shown and exported for this session' : 'Hidden and left out of downloads'}
         </span>

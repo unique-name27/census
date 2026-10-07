@@ -26,6 +26,7 @@ export const M = {
   licenseStatus: 'compliance.export.licenseStatus',
   policyAcks: 'compliance.training.policyAcks',
   deadlines: 'compliance.deadlines.upcoming',
+  calendar: 'compliance.deadlines.calendar',
   overdueRule: 'compliance.readout.reverificationOverdue',
   i9Rule: 'compliance.readout.i9Late',
   clusterRule: 'compliance.readout.expiryCluster',
@@ -351,6 +352,20 @@ export const metrics: MetricDef[] = defineMetrics('compliance', [
         366,
       ),
     ],
+  },
+  {
+    id: M.calendar,
+    name: 'Statutory calendar by month',
+    definition:
+      'Entries of the Atlas statutory calendar in each of the next 12 months, for each jurisdiction where someone in scope works, so payroll and people operations can see the heavy months ahead. Monthly entries count in every month; an entry without a named day counts in its month.',
+    formula: 'calendar entries falling in the month, per jurisdiction with active people',
+    population:
+      'Jurisdictions of the sites of employees active at the as-of date (contractors and interns are reported separately). US federal entries apply wherever someone works at a US site.',
+    window: 'The 12 calendar months after the as-of month.',
+    unit: 'int',
+    goodDirection: null,
+    uses: USES.deadlines,
+    owner: OWNER.legal,
   },
   {
     id: M.overdueRule,

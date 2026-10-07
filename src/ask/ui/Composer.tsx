@@ -53,7 +53,7 @@ export function Composer({
   }
   const hintId = 'ask-composer-hint'
   return (
-    <form onSubmit={submit} className="border-t border-rule bg-page px-5 pt-3 pb-3">
+    <form onSubmit={submit} className="border-t border-rule bg-sheet px-5 pt-3 pb-3">
       <div className="flex items-end gap-2 rounded-control bg-sheet p-1.5 pl-3 shadow-[inset_0_0_0_1px_var(--rule-strong)] focus-within:shadow-[inset_0_0_0_2px_var(--focus)]">
         <label htmlFor="ask-composer" className="sr-only">
           Ask a question
@@ -73,7 +73,7 @@ export function Composer({
             e.preventDefault()
             submit()
           }}
-          className="min-h-7 flex-1 resize-none bg-transparent py-1 text-[14px] leading-snug text-ink outline-none placeholder:text-muted"
+          className="min-h-7 flex-1 resize-none bg-transparent py-1 text-body leading-snug text-ink outline-none placeholder:text-muted"
           style={{ maxHeight: MAX_HEIGHT }}
         />
         {/* Separate keys: Stop and Ask are different buttons, never one reused element. */}
@@ -94,7 +94,7 @@ export function Composer({
           </Button>
         )}
       </div>
-      <p id={hintId} className="mt-1.5 flex flex-wrap gap-x-3 text-[11px] text-muted">
+      <p id={hintId} className="mt-1.5 flex flex-wrap gap-x-3 text-label text-muted">
         {/* Touch keyboards have no Shift+Enter: their Enter key reads Send. */}
         <span className="hidden [@media(pointer:fine)]:inline">Enter to ask, Shift+Enter for a new line</span>
         <span>{model.label}</span>

@@ -204,6 +204,14 @@ export const IconApps = (p: P) => (
     <rect x="9.25" y="9.25" width="4.25" height="4.25" rx=".75" />
   </Svg>
 )
+/** Three dots: more actions behind one button (the masthead on phones). Filled dots. */
+export const IconMore = (p: P) => (
+  <Svg {...p}>
+    <circle cx="3.5" cy="8" r="1" fill="currentColor" />
+    <circle cx="8" cy="8" r="1" fill="currentColor" />
+    <circle cx="12.5" cy="8" r="1" fill="currentColor" />
+  </Svg>
+)
 export const IconPencil = (p: P) => (
   <Svg {...p}>
     <path d="M10.5 3 13 5.5 6 12.5H3.5V10z" />
@@ -213,5 +221,17 @@ export const IconGear = (p: P) => (
   <Svg {...p}>
     <path d="M6.59 3.1 6.97 1.48h2.06l.38 1.62 1.06.44 1.41-.88 1.46 1.46-.88 1.41.44 1.06 1.62.38v2.06l-1.62.38-.44 1.06.88 1.41-1.46 1.46-1.41-.88-1.06.44-.38 1.62H6.97l-.38-1.62-1.06-.44-1.41.88-1.46-1.46.88-1.41-.44-1.06-1.62-.38V6.97l1.62-.38.44-1.06-.88-1.41 1.46-1.46 1.41.88Z" />
     <circle cx="8" cy="8" r="2.1" />
+  </Svg>
+)
+/** A pin: this mode keeps this fixed (the Manager mode org). Never a lock: modes are not security. */
+export const IconPin = (p: P) => (
+  <Svg {...p}>
+    <path d="M6 2.5h4M6.75 2.5v4L4.5 9h7l-2.25-2.5v-4M8 9v4.5" />
+  </Svg>
+)
+/** Angle brackets: the Developer page. */
+export const IconCode = (p: P) => (
+  <Svg {...p}>
+    <path d="m5.5 4.5-3.5 3.5 3.5 3.5M10.5 4.5l3.5 3.5-3.5 3.5" />
   </Svg>
 )

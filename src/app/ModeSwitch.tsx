@@ -29,7 +29,7 @@ export function ModeSwitch({
           { value: 'exclude', label: 'Exclude' },
         ]}
       />
-      <span className="min-w-0 text-[12px] leading-tight text-muted">{hint}</span>
+      <span className="min-w-0 text-meta leading-tight text-muted">{hint}</span>
     </div>
   )
 }

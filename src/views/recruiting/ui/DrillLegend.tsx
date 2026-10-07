@@ -26,10 +26,10 @@ function Swatch({ color, shape = 'rect' }: { color: string; shape?: LegendShape 
   }
   const size =
     shape === 'line'
-      ? 'h-[2px] w-3.5 rounded-[1px]'
+      ? 'h-[2px] w-3.5 rounded-mark'
       : shape === 'dot'
         ? 'size-2 rounded-full'
-        : 'size-2.5 rounded-[2px]'
+        : 'size-2.5 rounded-mark'
   return (
     <span aria-hidden="true" className={cx('inline-block shrink-0', size)} style={{ background: color }} />
   )
@@ -37,7 +37,7 @@ function Swatch({ color, shape = 'rect' }: { color: string; shape?: LegendShape 
 
 export function DrillLegend({ items, className }: { items: readonly DrillLegendItem[]; className?: string }) {
   return (
-    <ul className={cx('flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px] text-ink-2', className)}>
+    <ul className={cx('flex flex-wrap items-center gap-x-4 gap-y-1 text-meta text-ink-2', className)}>
       {items.map((it) => (
         <li key={it.label} className="inline-flex items-center gap-1.5">
           <Swatch color={it.color} shape={it.shape} />

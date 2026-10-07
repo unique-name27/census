@@ -36,7 +36,7 @@ function CopyPrompt({ prompt, agent }: { prompt: string; agent: string }) {
   }
   return (
     <li className="flex items-start gap-2 rounded-control bg-sheet-2 py-1.5 pr-1 pl-2.5">
-      <p className="min-w-0 flex-1 py-0.5 text-[13px] leading-snug text-ink">{prompt}</p>
+      <p className="min-w-0 flex-1 py-0.5 text-small leading-snug text-ink">{prompt}</p>
       <Button
         size="sm"
         variant="ghost"
@@ -62,7 +62,7 @@ function CopyPrompt({ prompt, agent }: { prompt: string; agent: string }) {
 
 function Bullets({ items }: { items: readonly string[] }) {
   return (
-    <ul className="mt-1 list-disc space-y-0.5 pl-4 text-[13px] leading-snug text-ink marker:text-muted">
+    <ul className="mt-1 list-disc space-y-0.5 pl-4 text-small leading-snug text-ink marker:text-muted">
       {items.map((t, i) => (
         <li key={i}>{t}</li>
       ))}
@@ -84,10 +84,10 @@ export function AgentCard({ agent, className }: { agent: Agent; className?: stri
     >
       <header className="flex items-start gap-2 px-4 pt-3.5">
         <div className="min-w-0 flex-1">
-          <h4 id={titleId} className="cut-head text-[16px] leading-snug font-semibold text-ink">
+          <h4 id={titleId} className="cut-head text-title leading-snug font-semibold text-ink">
             {agent.name}
           </h4>
-          <p className="mt-0.5 text-[12px] text-muted">For {audiencePhrase(agent.audience)}</p>
+          <p className="mt-0.5 text-meta text-muted">For {audiencePhrase(agent.audience)}</p>
         </div>
         <div className="-mr-1.5 flex shrink-0 items-center gap-1">
           <AgentStatusPill status={agent.status} />
@@ -106,7 +106,7 @@ export function AgentCard({ agent, className }: { agent: Agent; className?: stri
         </div>
       </header>
 
-      <p className="mt-2 px-4 text-[13px] leading-snug text-ink-2">{agent.description}</p>
+      <p className="mt-2 px-4 text-small leading-snug text-ink-2">{agent.description}</p>
 
       <div className="mt-3 flex flex-col gap-3 px-4">
         <section>
@@ -129,7 +129,7 @@ export function AgentCard({ agent, className }: { agent: Agent; className?: stri
         )}
       </div>
 
-      <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 px-4 text-[12px] leading-snug">
+      <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 px-4 text-meta leading-snug">
         {agent.dataSources.length > 0 && (
           <>
             <dt className="text-muted">Data</dt>
@@ -158,7 +158,7 @@ export function AgentCard({ agent, className }: { agent: Agent; className?: stri
               <IconExternal className="size-3.5" />
             </a>
           ) : (
-            <span className="text-[13px] text-muted">No Glean link yet</span>
+            <span className="text-small text-muted">No Glean link yet</span>
           )}
           {sampleLink && <Tag tone="outline">Sample link</Tag>}
         </footer>

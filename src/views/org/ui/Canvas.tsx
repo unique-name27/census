@@ -6,7 +6,15 @@
  * Arrow keys follow the treeview pattern. In the sandbox, dragging a card onto another card
  * proposes a move.
  */
-import { type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import {
+  type CSSProperties,
+  type ReactNode,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import { flushSync } from 'react-dom'
 import { IconButton } from '@/components'
 import { cx } from '@/components/ui'
@@ -53,6 +61,8 @@ export interface CanvasProps {
   /** The requisition behind an open-role placeholder card; the card opens it on click. */
   reqDrill?: (reqId: string) => DrillSource
   className?: string
+  /** Inline size, e.g. a height fitted to the tree. */
+  style?: CSSProperties
 }
 
 interface View {
@@ -68,6 +78,8 @@ const CHUNK = 512
 const MIN_K = 0.08
 const MAX_K = 2
 const clampK = (k: number) => Math.min(MAX_K, Math.max(MIN_K, k))
+/** The least zoom the chart opens at, so 14px names render at 12px or larger. */
+export const OPEN_K = 0.85
 /** Pixels per wheel line and page, for wheel events that report lines or pages. */
 const wheelScale = (ev: WheelEvent) => (ev.deltaMode === 1 ? 16 : ev.deltaMode === 2 ? 400 : 1)
 const TREE_KEYS = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Enter', ' ', 'Home', 'End'])
@@ -171,9 +183,10 @@ export function Canvas(p: CanvasProps) {
     if (!size.w) return
     const placeKey = `${p.rootId}|${p.placeKey ?? ''}`
     const place = () => {
-      // Fit the width when it can be done at a readable size; otherwise start at the root.
+      // Open readable: at 85% or more (card names at 12px or larger), the top of the tree centered;
+      // a chart that fits the width at full size opens at 100%.
       const fitK = (size.w - 2 * PAD) / Math.max(1, p.layout.width)
-      const k = clampK(Math.min(1, Math.max(size.w < 640 ? 0.6 : 0.55, fitK)))
+      const k = clampK(Math.min(1, Math.max(OPEN_K, fitK)))
       setView(topView(k))
     }
     const pending = pendingCenter.current
@@ -655,6 +668,7 @@ export function Canvas(p: CanvasProps) {
         panning ? 'cursor-grabbing' : 'cursor-grab',
         p.className,
       )}
+      style={p.style}
     >
       <div
         role="tree"
@@ -697,7 +711,7 @@ export function Canvas(p: CanvasProps) {
         )}
       >
         {hint && (
-          <span className="max-w-[90%] rounded-control bg-ink px-2.5 py-1 text-center text-[12px] text-on-ink">
+          <span className="max-w-[90%] rounded-control bg-ink px-2.5 py-1 text-center text-meta text-on-ink">
             {hint}
           </span>
         )}
@@ -706,7 +720,7 @@ export function Canvas(p: CanvasProps) {
       {ghost && (
         <div
           aria-hidden="true"
-          className="pointer-events-none absolute z-10 rounded-control bg-ink px-2 py-1 text-[12px] font-medium whitespace-nowrap text-on-ink shadow-(--shadow-pop)"
+          className="pointer-events-none absolute z-10 rounded-control bg-ink px-2 py-1 text-meta font-medium whitespace-nowrap text-on-ink shadow-(--shadow-pop)"
           style={{ left: ghost.x + 12, top: ghost.y + 12 }}
         >
           {ghost.label}
@@ -722,7 +736,7 @@ export function Canvas(p: CanvasProps) {
             <path d="M4 8h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
           </svg>
         </IconButton>
-        <span className="tnum w-11 text-center text-[12px] text-ink-2" aria-live="polite">
+        <span className="tnum w-11 text-center text-meta text-ink-2" aria-live="polite">
           {Math.round(view.k * 100)}%
         </span>
         <IconButton label="Zoom in" size="sm" onClick={zoomBtn(1.25)}>
@@ -734,7 +748,7 @@ export function Canvas(p: CanvasProps) {
         <button
           type="button"
           onClick={fit}
-          className="h-7 rounded-control px-2 text-[12px] font-medium text-ink-2 hover:bg-hover hover:text-ink"
+          className="h-7 rounded-control px-2 text-meta font-medium text-ink-2 hover:bg-hover hover:text-ink"
         >
           Fit
         </button>
@@ -748,7 +762,7 @@ export function Canvas(p: CanvasProps) {
               setView({ k: 1, x: size.w / 2 - (c.x + c.w / 2), y: size.h / 3 - (c.y + c.h / 2) }, true)
             } else setView(topView(1), true)
           }}
-          className="h-7 rounded-control px-2 text-[12px] font-medium text-ink-2 hover:bg-hover hover:text-ink"
+          className="h-7 rounded-control px-2 text-meta font-medium text-ink-2 hover:bg-hover hover:text-ink"
         >
           100%
         </button>

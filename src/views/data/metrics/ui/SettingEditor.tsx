@@ -47,7 +47,7 @@ function NumberBox({
         }}
         className={NUM}
       />
-      {unit && <span className="text-[12px] text-muted">{unit}</span>}
+      {unit && <span className="text-meta text-muted">{unit}</span>}
     </span>
   )
 }
@@ -96,9 +96,9 @@ export function SettingEditor({
   let control: ReactNode
   if (locked)
     control = (
-      <p className="flex items-center gap-1.5 text-[13px] text-ink">
+      <p className="flex items-center gap-1.5 text-small text-ink">
         {formatParam(param, current)}
-        <span className="inline-flex items-center gap-1 text-[12px] text-muted">
+        <span className="inline-flex items-center gap-1 text-meta text-muted">
           <IconLock className="size-3" /> Locked
         </span>
       </p>
@@ -143,7 +143,7 @@ export function SettingEditor({
       <div className="flex flex-wrap gap-x-3 gap-y-2">
         {RATING_KEYS.map((k: RatingKey) => (
           <div key={k} className="flex flex-col gap-0.5">
-            <span className="text-[11px] text-muted">
+            <span className="text-label text-muted">
               {k} {RATING_LABELS[k]}
             </span>
             <NumberBox
@@ -169,7 +169,7 @@ export function SettingEditor({
           onChange={(v) => setDraft({ kind: 'range', values: [v, draft.values[1]] })}
           onEnter={() => canApply && save()}
         />
-        <span className="text-[12px] text-muted">to</span>
+        <span className="text-meta text-muted">to</span>
         <NumberBox
           value={draft.values[1]}
           label={`${param.label}, high end`}
@@ -201,10 +201,10 @@ export function SettingEditor({
     >
       <div className="flex items-start gap-2">
         <div className="min-w-0 flex-1">
-          <p id={`${id}-label`} className="text-[13px] font-semibold text-ink">
+          <p id={`${id}-label`} className="text-small font-semibold text-ink">
             {param.label}
           </p>
-          <p className="mt-0.5 max-w-[62ch] text-[12px] leading-snug text-ink-2">{param.description}</p>
+          <p className="mt-0.5 max-w-[62ch] text-meta leading-snug text-ink-2">{param.description}</p>
         </div>
         {changed && <ChangedMark />}
       </div>
@@ -236,11 +236,11 @@ export function SettingEditor({
         )}
       </div>
       {error && (
-        <p className="mt-1 text-[12px] text-bad-text" role="alert">
+        <p className="mt-1 text-meta text-bad-text" role="alert">
           {error}
         </p>
       )}
-      <p className="mt-1.5 flex flex-wrap items-start gap-x-2 gap-y-0.5 text-[12px] leading-snug text-muted">
+      <p className="mt-1.5 flex flex-wrap items-start gap-x-2 gap-y-0.5 text-meta leading-snug text-muted">
         <span>
           Default: <span className="text-ink-2">{formatParam(param, param.default)}</span>
         </span>
@@ -253,7 +253,7 @@ export function SettingEditor({
           <button
             type="button"
             onClick={restoreDefault}
-            className="rounded-[2px] font-medium text-link underline-offset-2 hover:underline"
+            className="rounded-mark font-medium text-link underline-offset-2 hover:underline"
           >
             Use default
           </button>

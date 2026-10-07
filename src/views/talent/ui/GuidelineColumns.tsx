@@ -1,7 +1,8 @@
 /**
  * Rating distribution against the guideline: one column per rating for the actual share, with the
  * guideline drawn as a short ink tick across the column instead of a second, equally heavy bar.
- * The gap between the column top and the tick is the story.
+ * The gap between the column top and the tick is the story. One tab stop: arrow keys step through
+ * the ratings and Enter opens a column's records, as on the kit charts.
  */
 import * as Plot from '@observablehq/plot'
 import {
@@ -16,6 +17,8 @@ import {
   numericAxis,
   type PlotBuildContext,
   PlotChart,
+  plotBand,
+  plotPos,
   scalePos,
   seriesColor,
   type TipContent,
@@ -138,6 +141,21 @@ export function GuidelineColumns({
       tip={tip}
       selectable={drillFor ? (d) => drillFor(d) != null : undefined}
       onSelect={drillFor ? (d) => drill(drillFor(d)) : undefined}
+      // Keyboard: one stop per rating, left to right; the outline wraps the column and its tick.
+      keyPoints={(plot) => {
+        const barW = Math.min(24, plotBand(plot, 'x') * 0.5)
+        const base = plotPos(plot, 'y', 0)
+        return data.map((d) => {
+          const top = plotPos(plot, 'y', Math.max(d.share ?? 0, d.guideline))
+          return {
+            datum: d,
+            x: plotPos(plot, 'x', d.label),
+            y: (top + base) / 2,
+            w: barW + 8,
+            h: Math.max(4, base - top),
+          }
+        })
+      }}
       ariaLabel={ariaLabel}
     />
   )

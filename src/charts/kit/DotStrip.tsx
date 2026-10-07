@@ -10,7 +10,7 @@ import { toneColor } from '../core/color'
 import { HOVER_CLASS, labelsMark, refRule } from '../core/marks'
 import { maxTextWidth, truncateText } from '../core/measure'
 import type { TipContent } from '../core/tooltip'
-import { axisX, gridX, housePlot, type PlotBuildContext, PlotChart } from '../plot'
+import { axisX, gridX, housePlot, type PlotBuildContext, PlotChart, type PlotElement, plotPos } from '../plot'
 import { jitter } from './prepare'
 import { extent, numericAxis } from './scale'
 import { type ChartBaseProps, type Key, numAt, orderedKeys, type RefLine, type Tone, textAt } from './shared'
@@ -181,13 +181,33 @@ export function DotStrip<T extends object>({
       title: d.label || d.group,
       rows: [
         { value: fmt(d.x, xFormat), label: d.label ? d.group : undefined },
-        ...(showMedian && m ? [{ value: fmt(m.m, xFormat), label: 'group median', strong: false }] : []),
+        // A median of whole counts can fall halfway (3.5 reports): one decimal, never rounded to 4.
+        ...(showMedian && m
+          ? [{ value: fmt(m.m, xFormat === 'int' ? 'num1' : xFormat), label: 'group median', strong: false }]
+          : []),
       ],
     }
   }
 
+  // Keyboard: one row at a time (Up and Down between rows), dots left to right.
+  const keyPoints = (plot: PlotElement) =>
+    groups.flatMap((g) =>
+      dots
+        .filter((d) => d.group === g)
+        .sort((a, b) => a.x - b.x)
+        .map((d) => ({
+          datum: d,
+          x: plotPos(plot, 'x', d.x),
+          y: plotPos(plot, 'y', d.y),
+          w: 8,
+          h: 8,
+          group: g,
+        })),
+    )
+
   return (
     <PlotChart<Dot<T>>
+      keyPoints={keyPoints}
       build={build}
       height={height}
       tip={tip}

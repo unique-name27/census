@@ -49,13 +49,16 @@ export function useCollected(): CollectedState | null {
   return { value: latest.value, stale: latest.ctx !== ctx }
 }
 
-/** Open items across every view for the masthead button; null until they are known. */
-export function useOpenActionCount(): number | null {
+/**
+ * Open items across every view for the masthead button; null until they are known. With
+ * `'critical'`, only the critical ones (the button's tooltip).
+ */
+export function useOpenActionCount(only?: 'critical'): number | null {
   const state = useCollected()
   const marks = useActionMarks((s) => s.marks)
   const now = useNow()
   if (!state) return null
   let n = 0
-  for (const a of state.value.items) if (isOpen(a.id, marks, now)) n++
+  for (const a of state.value.items) if (isOpen(a.id, marks, now) && (!only || a.item.severity === only)) n++
   return n
 }

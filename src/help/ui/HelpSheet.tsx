@@ -6,6 +6,7 @@
  */
 import { Dialog as BDialog } from '@base-ui/react/dialog'
 import { type ReactNode, type Ref, useEffect, useMemo, useRef, useState } from 'react'
+import { ARTICLE_NOT_SHOWN } from '@/access/copy'
 import { IconCheck, IconChevronRight, IconClose, IconCopy, IconSearch } from '@/components/icons'
 import { toast } from '@/components/toast'
 import { Button, cx } from '@/components/ui'
@@ -14,6 +15,14 @@ import { useCensus } from '@/data/store'
 import { plural } from '@/lib/format'
 import { METRICS } from '@/metrics/catalog'
 import { metricHref, openMetricDefinition } from '@/views/data/metrics/open'
+import {
+  articleInMode,
+  articleShown,
+  articlesInMode,
+  glossaryInMode,
+  homeTourOf,
+  tourInMode,
+} from '../access'
 import { ARTICLES, articleById, articleForRoute, articlesIn } from '../articles'
 import { buildGlossary } from '../glossary'
 import { buildIndex, RESULT_LIMIT, search } from '../search'
@@ -58,11 +67,11 @@ function Row({
     <li>
       <button type="button" className={ROW} onClick={onClick}>
         <span className="min-w-0 flex-1">
-          <span className="block text-[13px] font-semibold text-ink">{title}</span>
-          {detail && <span className="mt-0.5 block text-[12px] leading-snug text-ink-2">{detail}</span>}
+          <span className="block text-small font-semibold text-ink">{title}</span>
+          {detail && <span className="mt-0.5 block text-meta leading-snug text-ink-2">{detail}</span>}
         </span>
         {done && (
-          <span className="mt-0.5 inline-flex shrink-0 items-center gap-1 text-[12px] text-muted">
+          <span className="mt-0.5 inline-flex shrink-0 items-center gap-1 text-meta text-muted">
             <IconCheck className="size-3.5" />
             Done
           </span>
@@ -110,7 +119,7 @@ function ShowAll({
 }) {
   return (
     <div className="flex items-center justify-between gap-2 px-2.5 pt-1">
-      <span className="text-[12px] text-muted">
+      <span className="text-meta text-muted">
         Showing {shown} of {total} {noun}
       </span>
       <Button size="sm" variant="ghost" onClick={onClick}>
@@ -145,7 +154,7 @@ function ReportProblem() {
       </Button>
       {manual && (
         <div className="mt-2">
-          <p className="text-[12px] text-ink-2">
+          <p className="text-meta text-ink-2">
             The browser did not allow copying. Select the text below and copy it.
           </p>
           <textarea
@@ -154,7 +163,7 @@ function ReportProblem() {
             rows={8}
             aria-label="Problem report"
             onFocus={(e) => e.currentTarget.select()}
-            className="mt-1 w-full rounded-control bg-sheet p-2 font-mono text-[11px] text-ink shadow-[inset_0_0_0_1px_var(--rule-strong)]"
+            className="mt-1 w-full rounded-control bg-sheet p-2 font-mono text-label text-ink shadow-[inset_0_0_0_1px_var(--rule-strong)]"
           />
         </div>
       )}
@@ -166,13 +175,20 @@ function Home() {
   const route = useCensus((s) => s.route)
   const completed = useHelp((s) => s.prefs.completed)
   const show = useHelp((s) => s.showArticle)
-  const here = articleForRoute(route.view, route.tab)
-  const pageTour = tourForRoute(route.view)
+  const notice = useHelp((s) => s.notice)
+  // The mode decides which articles and tours are listed (docs/ROLES.md, 3.8).
+  const { access } = useAnalytics()
+  const found = articleForRoute(route.view, route.tab)
+  const here = found && articleShown(access, found.id) ? articleInMode(access, found) : null
+  const pageTour = tourInMode(access, tourForRoute(route.view))
+  const tours = TOURS.map((t) => tourInMode(access, t)).filter((t): t is NonNullable<typeof t> => !!t)
+  const homeTour = homeTourOf(access.mode)
   return (
     <div className="pb-6">
       <div className="px-5 pt-1 pb-4">
+        {notice && <p className="mb-3 rounded-control bg-sheet-2 px-3 py-2 text-small text-ink">{notice}</p>}
         <div className="flex flex-wrap gap-2">
-          <Button size="sm" variant="primary" onClick={() => startTour('getting-started')}>
+          <Button size="sm" variant="primary" onClick={() => startTour(homeTour)}>
             Take the tour
           </Button>
           {here && (
@@ -191,7 +207,7 @@ function Home() {
           <ReportProblem />
         </div>
       </div>
-      <div className="mx-3 rounded-sheet bg-sheet">
+      <div className="border-t border-rule">
         {(here || pageTour) && (
           <Group title="This page">
             {here && <Row title={here.title} detail={here.summary} onClick={() => show(here.id)} />}
@@ -206,35 +222,46 @@ function Home() {
           </Group>
         )}
         <Group title="Guided tours">
-          {TOURS.filter((t) => t.id !== pageTour?.id).map((t) => (
-            <Row
-              key={t.id}
-              title={t.title}
-              detail={`${t.summary} ${t.steps.length} steps.`}
-              done={completed.includes(t.id)}
-              onClick={() => startTour(t.id)}
-            />
-          ))}
-        </Group>
-        {HELP_GROUPS.map((g) => (
-          <Group key={g.key} title={g.label}>
-            {articlesIn(g.key).map((a) => (
-              <Row key={a.id} title={a.title} detail={a.summary} onClick={() => show(a.id)} />
+          {tours
+            .filter((t) => t.id !== pageTour?.id)
+            .map((t) => (
+              <Row
+                key={t.id}
+                title={t.title}
+                detail={`${t.summary} ${t.steps.length} steps.`}
+                done={completed.includes(t.id)}
+                onClick={() => startTour(t.id)}
+              />
             ))}
-          </Group>
-        ))}
+        </Group>
+        {HELP_GROUPS.map((g) => {
+          // A group the mode leaves empty (Your data, in Manager mode) is not listed at all.
+          const list = articlesInMode(access, articlesIn(g.key))
+          return list.length ? (
+            <Group key={g.key} title={g.label}>
+              {list.map((a) => (
+                <Row key={a.id} title={a.title} detail={a.summary} onClick={() => show(a.id)} />
+              ))}
+            </Group>
+          ) : null
+        })}
       </div>
     </div>
   )
 }
 
 function Results({ query }: { query: string }) {
-  const { metrics } = useAnalytics()
+  const { metrics, access } = useAnalytics()
   const show = useHelp((s) => s.showArticle)
-  // Built from the definitions in force, so your wording is searchable too.
+  // Built from the definitions in force, so your wording is searchable too; only the articles and
+  // metrics the mode shows.
   const index = useMemo(
-    () => buildIndex(ARTICLES, buildGlossary(METRICS.map((m) => metrics.def(m.id) ?? m))),
-    [metrics],
+    () =>
+      buildIndex(
+        articlesInMode(access, ARTICLES),
+        glossaryInMode(access, buildGlossary(METRICS.map((m) => metrics.def(m.id) ?? m))),
+      ),
+    [metrics, access],
   )
   // "Show all" holds for the query it was chosen on; a new query starts capped again.
   const [all, setAll] = useState<{ articles: string | null; terms: string | null }>({
@@ -270,12 +297,12 @@ function Results({ query }: { query: string }) {
           : `${plural(totals.articles, 'article')} and ${plural(totals.terms, 'definition')} found`}
       </p>
       {none ? (
-        <p className="px-2.5 py-3 text-[13px] text-ink-2">
+        <p className="px-2.5 py-3 text-small text-ink-2">
           Nothing matches "{query.trim()}". Try fewer or shorter words, or clear the search to browse every
           article.
         </p>
       ) : (
-        <div className="rounded-sheet bg-sheet">
+        <div>
           {found.articles.length > 0 && (
             <Group
               title="Articles"
@@ -326,12 +353,12 @@ function Results({ query }: { query: string }) {
                       closeHelp()
                       openMetricDefinition(e.id)
                     }}
-                    className={cx(LINK_CLASS, 'text-[13px]')}
+                    className={cx(LINK_CLASS, 'text-small')}
                   >
                     {e.term}
                   </a>
-                  <span className="ml-2 text-[12px] text-muted">{e.where}</span>
-                  <p className="mt-0.5 text-[12px] leading-snug text-ink-2">{e.definition}</p>
+                  <span className="ml-2 text-meta text-muted">{e.where}</span>
+                  <p className="mt-0.5 text-meta leading-snug text-ink-2">{e.definition}</p>
                 </li>
               ))}
             </Group>
@@ -349,7 +376,11 @@ export function HelpSheet() {
   const query = useHelp((s) => s.query)
   const setQuery = useHelp((s) => s.setQuery)
   const show = useHelp((s) => s.showArticle)
-  const article = articleById(articleId)
+  // An article the mode hides opens the list with a line saying so (docs/ROLES.md, 3.8).
+  const { access } = useAnalytics()
+  const asked = articleById(articleId)
+  const article = asked && articleShown(access, asked.id) ? articleInMode(access, asked) : null
+  const notShown = !!asked && !article
   const searchRef = useRef<HTMLInputElement>(null)
   const articleTitleRef = useRef<HTMLHeadingElement>(null)
   const bodyRef = useRef<HTMLDivElement>(null)
@@ -366,7 +397,7 @@ export function HelpSheet() {
     return () => window.clearTimeout(timer)
   }, [open, nonce, articleId])
 
-  const tourOfArticle = tourById(article?.tour)
+  const tourOfArticle = tourInMode(access, tourById(article?.tour))
   return (
     <BDialog.Root open={open} onOpenChange={(o) => !o && closeHelp()}>
       <BDialog.Portal>
@@ -374,10 +405,10 @@ export function HelpSheet() {
         <BDialog.Popup
           initialFocus={() => (useHelp.getState().articleId ? articleTitleRef.current : searchRef.current)}
           finalFocus={returnFocus}
-          className="fixed top-0 right-0 bottom-0 z-50 flex w-[min(560px,100vw)] flex-col bg-page pt-[env(safe-area-inset-top,0px)] pb-[env(safe-area-inset-bottom,0px)] text-ink shadow-(--shadow-pop) outline-none transition-transform duration-200 ease-out data-[ending-style]:translate-x-6 data-[ending-style]:opacity-0 data-[starting-style]:translate-x-6 data-[starting-style]:opacity-0"
+          className="fixed top-0 right-0 bottom-0 z-50 flex w-[min(560px,100vw)] flex-col bg-sheet pt-[env(safe-area-inset-top,0px)] pb-[env(safe-area-inset-bottom,0px)] text-ink shadow-(--shadow-pop) outline-none transition-transform duration-200 ease-out data-[ending-style]:translate-x-6 data-[ending-style]:opacity-0 data-[starting-style]:translate-x-6 data-[starting-style]:opacity-0"
         >
           <div className="flex items-center gap-2 px-5 pt-3.5 pb-2">
-            <BDialog.Title className="cut-head flex-1 text-[22px] leading-tight font-semibold">
+            <BDialog.Title className="cut-head flex-1 text-section leading-tight font-semibold">
               Help
             </BDialog.Title>
             <BDialog.Close
@@ -401,7 +432,7 @@ export function HelpSheet() {
                 value={query}
                 onChange={(e) => setQuery(e.currentTarget.value)}
                 placeholder="Search help and definitions"
-                className="h-9 w-full rounded-control bg-sheet pr-2 pl-8.5 text-[14px] text-ink shadow-[inset_0_0_0_1px_var(--rule-strong)] outline-none placeholder:text-muted focus-visible:shadow-[inset_0_0_0_2px_var(--focus)]"
+                className="h-9 w-full rounded-control bg-sheet pr-2 pl-8.5 text-body text-ink shadow-[inset_0_0_0_1px_var(--rule-strong)] outline-none placeholder:text-muted focus-visible:shadow-[inset_0_0_0_2px_var(--focus)]"
               />
             </label>
           </div>
@@ -421,7 +452,7 @@ export function HelpSheet() {
                 {query.trim() ? 'Back to results' : 'All help'}
               </Button>
               {tourOfArticle && (
-                <span className="ml-auto truncate pr-2 text-[12px] text-muted">
+                <span className="ml-auto truncate pr-2 text-meta text-muted">
                   Tour: {tourOfArticle.title}
                 </span>
               )}
@@ -433,7 +464,14 @@ export function HelpSheet() {
             ) : query.trim() ? (
               <Results query={query} />
             ) : (
-              <Home />
+              <>
+                {notShown && (
+                  <p className="mx-5 mb-3 rounded-control bg-sheet-2 px-3 py-2 text-small">
+                    {ARTICLE_NOT_SHOWN}
+                  </p>
+                )}
+                <Home />
+              </>
             )}
           </div>
         </BDialog.Popup>

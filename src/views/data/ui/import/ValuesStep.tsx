@@ -4,6 +4,7 @@
  * column choices, so the same file maps the same way next time.
  */
 import { IconCheck } from '@/components/icons'
+import { TABLE_HEAD } from '@/components/styles'
 import { cx } from '@/components/ui'
 import type { ValueSummary } from '@/data/import'
 import type { FieldDef } from '@/data/schema'
@@ -45,8 +46,8 @@ function ValueTable({ item, draft, vf }: { item: SessionSheet; draft: Draft; vf:
   return (
     <section aria-label={vf.field.label}>
       <h3 className="flex flex-wrap items-baseline gap-x-2">
-        <span className="cut-head text-[16px] font-semibold">{vf.field.label}</span>
-        <span className="text-[12px] text-muted">
+        <span className="cut-head text-title font-semibold">{vf.field.label}</span>
+        <span className="text-meta text-muted">
           from “{vf.header}” · {fmt(vf.summaries.length, 'int')}{' '}
           {vf.summaries.length === 1 ? 'value' : 'values'}
           {open > 0
@@ -57,16 +58,16 @@ function ValueTable({ item, draft, vf }: { item: SessionSheet; draft: Draft; vf:
         </span>
       </h3>
       <div className="scroll-x mt-1.5">
-        <table className="w-full min-w-[520px] border-collapse text-[13px]">
+        <table className="w-full min-w-[520px] border-collapse text-small">
           <thead>
             <tr className="border-b border-rule text-left">
-              <th scope="col" className="eyebrow w-[40%] py-1.5 pr-3 font-semibold">
+              <th scope="col" className={`${TABLE_HEAD} w-[40%] py-1.5 pr-3`}>
                 Value in the file
               </th>
-              <th scope="col" className="eyebrow w-[12%] py-1.5 pr-3 text-right font-semibold">
+              <th scope="col" className={`${TABLE_HEAD} w-[12%] py-1.5 pr-3 text-right`}>
                 Rows
               </th>
-              <th scope="col" className="eyebrow py-1.5 font-semibold">
+              <th scope="col" className={`${TABLE_HEAD} py-1.5`}>
                 Imports as
               </th>
             </tr>
@@ -110,10 +111,10 @@ function ValueTable({ item, draft, vf }: { item: SessionSheet; draft: Draft; vf:
                             </option>
                           ))}
                         </Select>
-                        {e.fixed && <span className="text-[12px] text-muted">Your fix</span>}
+                        {e.fixed && <span className="text-meta text-muted">Your fix</span>}
                       </span>
                     ) : e.open ? (
-                      <span className="text-[13px]">Not recognized; left blank. Correct it in the file.</span>
+                      <span className="text-small">Not recognized; left blank. Correct it in the file.</span>
                     ) : (
                       <span className="inline-flex items-center gap-1.5">
                         <IconCheck className="size-3.5 text-good" />
@@ -142,13 +143,13 @@ export function ValuesStep({
 }) {
   if (!fields.length)
     return (
-      <p className="text-[13px] text-ink-2">
+      <p className="text-small text-ink-2">
         This sheet has no list, level or yes/no columns to check. Continue to the check.
       </p>
     )
   return (
     <div className="space-y-7">
-      <p className="max-w-[70ch] text-[13px] text-ink-2">
+      <p className="max-w-[70ch] text-small text-ink-2">
         Each value below is read into the list Census uses. Values it does not recognize are highlighted and
         stay blank unless you pick what they mean.
       </p>

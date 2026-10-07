@@ -4,6 +4,7 @@
  * ask composed per needed action); the table beside it is the exportable queue itself. Every
  * count and every row opens the candidates behind it in the drill panel.
  */
+import type { ReactNode } from 'react'
 import { type Column, Figure } from '@/charts'
 import { Button, cx, IconClose, IconCopy, SeverityIcon, spanClass, toast } from '@/components'
 import { Drill } from '@/drill'
@@ -91,8 +92,8 @@ function OwnersPanel({
       className={cx(spanClass(4), TABLET_FULL, 'flex flex-col self-start rounded-sheet bg-sheet')}
     >
       <header className="border-b border-rule px-4 pt-3.5 pb-2.5">
-        <h3 className="cut-head text-[15px] leading-snug font-semibold">Who owns the next step</h3>
-        <p className="mt-0.5 text-[13px] leading-snug text-ink-2">
+        <h3 className="cut-head text-title leading-snug font-semibold">Who owns the next step</h3>
+        <p className="mt-0.5 text-small leading-snug text-ink-2">
           {total > 0 ? (
             <Drill
               spec={() => activeDrill(b, all, { title: 'Action queue: candidates lacking a next step' })}
@@ -103,12 +104,11 @@ function OwnersPanel({
           ) : (
             plural(total, 'candidate')
           )}{' '}
-          across {plural(groups.length, 'owner')}. Select an owner to filter the queue; select a count to see
-          their candidates. Copy a note to send an owner their list.
+          across {plural(groups.length, 'owner')}. Copy a note to send an owner their list.
         </p>
       </header>
       {groups.length === 0 ? (
-        <p className="px-4 py-4 text-[13px] text-ink-2">No active candidate lacks a next step.</p>
+        <p className="px-4 py-4 text-small text-ink-2">No active candidate lacks a next step.</p>
       ) : (
         <ul className="max-h-[560px] overflow-y-auto py-1">
           {groups.map((g) => {
@@ -126,14 +126,14 @@ function OwnersPanel({
                   )}
                 >
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[13px] font-semibold text-ink">{g.owner}</span>
-                    <span className="block truncate text-[12px] text-muted">
+                    <span className="block truncate text-small font-semibold text-ink">{g.owner}</span>
+                    <span className="block truncate text-meta text-muted">
                       {g.role} · oldest {fmt(g.oldest, 'days')}
                     </span>
                   </span>
                 </button>
                 {g.red > 0 && (
-                  <span className="inline-flex items-center gap-1 text-[12px] text-ink-2">
+                  <span className="inline-flex items-center gap-1 text-meta text-ink-2">
                     <SeverityIcon severity="critical" className="size-3" />
                     <Drill
                       spec={() => queueOwnerDrill(b, g, true)}
@@ -147,7 +147,7 @@ function OwnersPanel({
                 )}
                 <Drill
                   spec={() => queueOwnerDrill(b, g)}
-                  className="tnum min-w-7 text-right text-[13px] font-semibold text-ink"
+                  className="tnum min-w-7 text-right text-small font-semibold text-ink"
                   label={`Show the ${plural(g.items.length, 'candidate')} owned by ${g.owner}`}
                 >
                   {g.items.length}
@@ -173,13 +173,13 @@ function OwnersPanel({
 
 function Chip({ label, onClear }: { label: string; onClear: () => void }) {
   return (
-    <span className="inline-flex h-6 items-center gap-0.5 rounded-[3px] bg-sheet-3 pr-0.5 pl-2 text-[12px] font-medium text-ink-2">
+    <span className="inline-flex h-6 items-center gap-0.5 rounded-chip bg-sheet-3 pr-0.5 pl-2 text-meta font-medium text-ink-2">
       {label}
       <button
         type="button"
         aria-label={`Remove filter ${label}`}
         onClick={onClear}
-        className="inline-flex size-5 items-center justify-center rounded-[3px] text-muted hover:bg-hover hover:text-ink"
+        className="inline-flex size-5 items-center justify-center rounded-chip text-muted hover:bg-hover hover:text-ink"
       >
         <IconClose className="size-3" />
       </button>
@@ -187,7 +187,16 @@ function Chip({ label, onClear }: { label: string; onClear: () => void }) {
   )
 }
 
-export function ActionQueue({ base: b, groups }: { base: RecruitingBase; groups: QueueGroup[] }) {
+export function ActionQueue({
+  base: b,
+  groups,
+  aside,
+}: {
+  base: RecruitingBase
+  groups: QueueGroup[]
+  /** A figure under the owners panel, in the same span-4 column beside the queue. */
+  aside?: ReactNode
+}) {
   const owner = useRecruitingUi((s) => s.owner)
   const filterOwner = useRecruitingUi((s) => s.filterOwner)
   const asOf = b.asOf
@@ -197,7 +206,14 @@ export function ActionQueue({ base: b, groups }: { base: RecruitingBase; groups:
   const chips = owner != null && <Chip label={`Owner: ${owner}`} onClear={() => filterOwner(null)} />
   return (
     <>
-      <OwnersPanel base={b} groups={groups} total={rows.length} />
+      {aside ? (
+        <div className={cx(spanClass(4), TABLET_FULL, 'flex min-w-0 flex-col gap-4 self-start')}>
+          <OwnersPanel base={b} groups={groups} total={rows.length} />
+          {aside}
+        </div>
+      ) : (
+        <OwnersPanel base={b} groups={groups} total={rows.length} />
+      )}
       <Figure
         id="recruiting-action-queue"
         uses={FIGURE_USES['recruiting-action-queue']}

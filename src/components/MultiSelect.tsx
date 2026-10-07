@@ -82,11 +82,11 @@ export function MultiSelect({
             <span>{label}</span>
             {selected > 0 &&
               (excluded ? (
-                <span className="inline-flex h-4 items-center justify-center rounded-[3px] px-1 text-[11px] font-semibold text-ink shadow-[inset_0_0_0_1px_var(--ink)]">
+                <span className="inline-flex h-4 items-center justify-center rounded-chip px-1 text-label font-semibold text-ink shadow-[inset_0_0_0_1px_var(--ink)]">
                   not {selected}
                 </span>
               ) : (
-                <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-[3px] bg-ink px-1 text-[11px] font-semibold text-on-ink">
+                <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-chip bg-ink px-1 text-label font-semibold text-on-ink">
                   {selected}
                 </span>
               ))}
@@ -108,7 +108,7 @@ export function MultiSelect({
                 className={SEARCH_INPUT}
               />
             </div>
-            <Combobox.Empty className="text-[13px] text-muted empty:hidden">
+            <Combobox.Empty className="text-small text-muted empty:hidden">
               <div className="px-3 py-3">No matches.</div>
             </Combobox.Empty>
             <Combobox.List className="max-h-[min(320px,calc(var(--available-height)-90px))] overflow-y-auto overscroll-contain py-1 empty:p-0">
@@ -121,7 +121,7 @@ export function MultiSelect({
                 >
                   <span
                     aria-hidden="true"
-                    className="flex size-4 shrink-0 items-center justify-center rounded-[3px] text-on-ink shadow-[inset_0_0_0_1.5px_var(--rule-strong)] group-data-[selected]:bg-ink group-data-[selected]:shadow-none"
+                    className="flex size-4 shrink-0 items-center justify-center rounded-chip text-on-ink shadow-[inset_0_0_0_1.5px_var(--rule-strong)] group-data-[selected]:bg-ink group-data-[selected]:shadow-none"
                   >
                     <IconCheck
                       className="size-3 opacity-0 group-data-[selected]:opacity-100"
@@ -130,7 +130,7 @@ export function MultiSelect({
                   </span>
                   <span className="min-w-0 flex-1 truncate">{o.label ?? o.value}</span>
                   {o.count != null && (
-                    <span className="tnum shrink-0 text-[12px] text-muted">
+                    <span className="tnum shrink-0 text-meta text-muted">
                       {/* Excluding, a value's count is who it leaves out. */}
                       {excluded ? `leaves out ${fmt(o.count, 'int')}` : fmt(o.count, 'int')}
                     </span>
@@ -138,9 +138,9 @@ export function MultiSelect({
                 </Combobox.Item>
               )}
             </Combobox.List>
-            {note && <p className="border-t border-rule px-3 py-1.5 text-[12px] text-muted">{note}</p>}
+            {note && <p className="border-t border-rule px-3 py-1.5 text-meta text-muted">{note}</p>}
             <div className="flex items-center justify-between border-t border-rule py-1.5 pr-1.5 pl-3">
-              <span className="text-[12px] text-muted">
+              <span className="text-meta text-muted">
                 {selected ? `${selected} ${excluded ? 'left out' : 'selected'}` : 'None selected'}
               </span>
               <Button size="sm" variant="ghost" disabled={!selected} onClick={() => onChange([])}>

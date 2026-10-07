@@ -297,7 +297,7 @@ function ChangeList({
       uses={['employees.businessUnit', 'employees.jobFunction']}
     >
       {audit.length === 0 ? (
-        <p className="text-[13px] text-ink-2">
+        <p className="text-small text-ink-2">
           No changes yet. Move a department, assign a job family to a function, or merge spellings, and the
           change appears here with who made it and when.
         </p>
@@ -311,8 +311,8 @@ function ChangeList({
               return (
                 <li key={a.id} className="flex flex-wrap items-start gap-x-3 gap-y-1 py-2.5 first:pt-0">
                   <div className="min-w-0 flex-1 basis-64">
-                    <p className="text-[13px] leading-snug text-ink">{a.what}</p>
-                    <p className="mt-0.5 text-[12px] text-muted">
+                    <p className="text-small leading-snug text-ink">{a.what}</p>
+                    <p className="mt-0.5 text-meta text-muted">
                       {whenText(a.at)} · by {byWho(a.by)}
                       {changed != null && !reason && (
                         <>
@@ -331,7 +331,7 @@ function ChangeList({
                       )}
                     </p>
                     {reason && (
-                      <p className="mt-1 flex items-start gap-1.5 text-[12px] text-ink-2">
+                      <p className="mt-1 flex items-start gap-1.5 text-meta text-ink-2">
                         <StatusPill severity="warning" label="Not applied" />
                         <span>{reason}</span>
                       </p>

@@ -29,7 +29,7 @@ import type { BenchScope, BenchTableRow, CoverageRow, HipoGroupRow, RoleRow } fr
 
 export type NineBoxRow = Omit<NineBoxCell, 'people'>
 
-/** `risk` false leaves out the flight-risk overlay (below the data standard). */
+/** `risk` false leaves out the flight-risk overlay (below the data standard, or hidden by the mode). */
 export const nineBoxColumns = (d: TalentDrills, risk = true): Column<NineBoxRow>[] => {
   const all = (r: NineBoxRow) => d.nineBox(r.performance, r.potential, 'all')
   const cols: Column<NineBoxRow>[] = [
@@ -177,9 +177,13 @@ export const ROLE_COLUMNS: Column<RoleRow>[] = [
   { key: 'status', label: 'Bench' },
 ]
 
+/** `risk` false leaves out the model's flight-risk band (Manager mode hides scores about named people). */
+const roleBase = (risk: boolean): Column<RoleRow>[] =>
+  risk ? ROLE_COLUMNS : ROLE_COLUMNS.filter((c) => c.key !== 'modelRisk')
+
 /** The roles table: successor counts open the bench behind them. */
-export const roleColumns = (d: TalentDrills): Column<RoleRow>[] =>
-  ROLE_COLUMNS.map((c) =>
+export const roleColumns = (d: TalentDrills, risk = true): Column<RoleRow>[] =>
+  roleBase(risk).map((c) =>
     c.key === 'successors'
       ? { ...c, drill: (r: RoleRow) => d.roleBench(r.roleId, null) }
       : c.key === 'readyNow'
@@ -187,13 +191,15 @@ export const roleColumns = (d: TalentDrills): Column<RoleRow>[] =>
         : c,
   )
 
-export const ROLE_DETAIL_COLUMNS: Column[] = [
-  ...(ROLE_COLUMNS as Column[]),
+export const roleDetailColumns = (risk = true): Column[] => [
+  ...(roleBase(risk) as Column[]),
   { key: 'incumbentId', label: 'Incumbent ID' },
   { key: 'businessUnit', label: 'Business unit' },
   { key: 'successorNames', label: 'Successors named' },
   { key: 'updatedDate', label: 'Plan updated', format: 'date' },
 ]
+
+export const ROLE_DETAIL_COLUMNS: Column[] = roleDetailColumns()
 
 export const benchColumns = (d: TalentDrills, scope: BenchScope): Column<BenchTableRow>[] => [
   { key: 'businessUnit', label: 'Business unit' },

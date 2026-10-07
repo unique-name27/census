@@ -69,7 +69,7 @@ describe('labels', () => {
     expect(text.rightToWork).toBe('Compliance')
     // Every view's declared datasets are listed as feeding it. The scorecard reads the views'
     // summaries, not the datasets, so it is never listed.
-    for (const v of VIEWS.filter((x) => x.key !== 'scorecard'))
+    for (const v of VIEWS.filter((x) => x.key !== 'scorecard' && x.key !== 'team'))
       for (const d of v.datasets) expect(rows.find((r) => r.key === d)?.feeds).toContain(v.key)
   })
 

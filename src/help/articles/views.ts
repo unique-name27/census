@@ -8,6 +8,94 @@ const MEETING = 'Questions to ask in a meeting'
 
 export const VIEW_ARTICLES: readonly HelpArticle[] = [
   {
+    id: 'view-team',
+    group: 'views',
+    title: 'My team',
+    summary: "One manager's org on one page: people, hiring, starts, talent and what waits on them.",
+    keywords: [
+      'manager',
+      'my org',
+      'my team',
+      'team page',
+      'direct reports',
+      'manager mode',
+      'span',
+      'starts',
+      'successors',
+      'overdue training',
+    ],
+    route: { view: 'team' },
+    tour: 'view-team',
+    metrics: [
+      'hrbp.headcount.employees',
+      'hrbp.attrition.voluntary',
+      'hrbp.attrition.regretted',
+      'hrbp.attrition.firstYear',
+      'hrbp.workforce.tenure',
+      'hrbp.org.span',
+      'recruiting.reqs.open',
+      'recruiting.pipeline.activeCandidates',
+      'onboarding.upcoming.starts',
+      'onboarding.upcoming.readiness',
+      'talent.performance.ratingDistribution',
+      'talent.succession.criticalCoverage',
+      'talent.learning.requiredOnTime',
+      'talent.learning.overdue',
+      'actions.items.open',
+    ],
+    body: [
+      {
+        p: "My team is Manager mode's home: one manager's org on one page. Every number is the producing view's own, for the org, so it matches People stats, Recruiting, Onboarding and Talent, and every number opens the people and records behind it.",
+      },
+      { h: 'Key figures and what needs attention' },
+      {
+        ul: [
+          'Key figures: headcount, voluntary and regretted attrition against the company, open reqs, starts in the next 30 days, required training on time, and the open items the org owns. Each tile opens the tab that explains it.',
+          'What needs attention: up to six findings from People stats, Recruiting, Onboarding and Talent for the org, critical first, each tagged with its view and "Open in" to go there.',
+          'Headcount over time: employees at each month end for two years, the year before in gray.',
+        ],
+      },
+      { h: 'People' },
+      {
+        ul: [
+          'Hires and exits by month, and attrition against the company: voluntary, regretted and first-year. Company bars are a comparison only and open no records.',
+          'Tenure, people by level, and direct reports per manager, against the company median span. A glyph and a word mark an Overloaded, Heavy or Light span.',
+        ],
+      },
+      { h: 'Hiring' },
+      {
+        ul: [
+          "Pipeline today: active candidates on the org's reqs by stage and next step, as on [Recruiting, Pipeline](route:recruiting.pipeline).",
+          'Starts by week: who starts in each of the next weeks, by day-one readiness (Ready, On track, Behind, Not ready).',
+          'Open reqs and upcoming starts, one row each, with their health or readiness.',
+        ],
+      },
+      { h: 'Talent' },
+      {
+        ul: [
+          'Ratings in the latest cycle against the guideline.',
+          "Critical roles by their best successor's readiness, and each critical role with its bench. A successor outside the org shows by readiness only.",
+          'Required training on time by course, and every overdue assignment.',
+        ],
+      },
+      { h: 'Waiting on this org' },
+      {
+        p: "The open items the leader or someone in their org owns, anywhere in the company, the leader's own first. The [Action center](route:actions) lists them all, with a note to copy for each owner.",
+      },
+      { h: MEETING },
+      {
+        ul: [
+          'Which manager has the most direct reports, and is anyone carrying too many?',
+          'Who starts in the next two weeks without their day-one tasks done?',
+          'Which critical role has no successor ready, and who could be developed for it?',
+        ],
+      },
+      {
+        note: 'An org of fewer than 5 employees shows counts and lists, but rates are hidden to protect anonymity. My team shows no pay, survey results, HR ops cases, compliance details, exit reasons or flight-risk scores.',
+      },
+    ],
+  },
+  {
     id: 'view-scorecard',
     group: 'views',
     title: 'Scorecard',
@@ -34,6 +122,21 @@ export const VIEW_ARTICLES: readonly HelpArticle[] = [
       {
         p: 'The Scorecard is where Census opens. It answers one question for the monthly people review: how is each practice doing against its targets, and what needs attention first?',
       },
+      { h: 'At the top' },
+      {
+        ul: [
+          'Targets met: how many measures with a target meet it, and a bar split into Met, Watch, Missed, No target and Not shown. Click a part of the bar to list its measures; each value opens its records.',
+          'Key figures: headcount, voluntary attrition, open reqs and critical open items, each opening the tab that explains it.',
+          'Measures against target: every measure as a bar on its own scale with its target as a tick. "Furthest from target" puts the biggest misses first. Click a bar for its records, or a measure name to open its view.',
+        ],
+      },
+      { h: 'How the workforce is moving and where the pressure is' },
+      {
+        ul: [
+          'Headcount over time, hires and exits by month, and voluntary and regretted attrition by quarter.',
+          'Voluntary attrition by business unit against the company, the pipeline today, and where open items wait by owner group and due date.',
+        ],
+      },
       { h: 'People scorecard' },
       {
         p: "One row per measure, two or three for each practice: Recruiting, Onboarding, People stats, HR ops, Talent, Compensation, Compliance and Listening. Each row shows the value, the target, the status, the change, a trend line and the tier badge. The values come from each view's own calculation, so they always match the view.",
@@ -55,7 +158,7 @@ export const VIEW_ARTICLES: readonly HelpArticle[] = [
       },
       { h: 'Monthly people report' },
       {
-        p: "The header button builds the report as a PowerPoint deck or an Excel workbook: the scorecard, the top findings and each practice's lead chart, stamped with the scope, window, as-of date and data standard.",
+        p: "The header button builds the report as a PowerPoint deck or an Excel workbook: targets met by practice, the scorecard, the top findings and each practice's lead chart, stamped with the scope, window, as-of date and data standard.",
       },
       { h: MEETING },
       {
@@ -84,10 +187,10 @@ export const VIEW_ARTICLES: readonly HelpArticle[] = [
       'pipeline',
       'time to fill',
       'offers',
-      'sources',
       'bottleneck',
       'next step',
     ],
+    keywordsWhere: [{ surface: 'tab:recruiting.sources', words: ['sources', 'decline reasons'] }],
     route: { view: 'recruiting' },
     tour: 'view-recruiting',
     metrics: [
@@ -105,7 +208,11 @@ export const VIEW_ARTICLES: readonly HelpArticle[] = [
       },
       { h: 'Overview' },
       {
-        p: 'Key figures: open reqs, offers accepted, median time to fill, median time to hire, offer acceptance, candidates lacking a next step, and hires against the hiring plan (which opens Onboarding, Hiring plan). The lead chart, Pipeline today, shows active candidates at each stage by their next-step state.',
+        p: 'Key figures: open reqs, offers accepted, median time to fill, median time to hire, offer acceptance and candidates lacking a next step. The lead chart, Pipeline today, shows active candidates at each stage by their next-step state.',
+      },
+      {
+        p: 'Hires vs plan compares hires with the hiring plan and opens Onboarding, Hiring plan.',
+        surface: 'tab:onboarding.plan',
       },
       { h: 'Pipeline' },
       {
@@ -121,9 +228,13 @@ export const VIEW_ARTICLES: readonly HelpArticle[] = [
       },
       { h: 'Requisitions' },
       {
-        p: 'Open requisitions with their health (Empty funnel, a number lacking a next step, or On track), open req age, reqs opened and filled by month, time to fill by department and recruiter load.',
+        p: 'Open requisitions with their health (Empty funnel, a number lacking a next step, or On track), open req age, reqs opened and filled by month and time to fill by department.',
       },
-      { h: 'Sources & offers' },
+      {
+        p: 'Recruiter load shows the open reqs and active candidates each recruiter holds.',
+        surface: 'figure:recruiting-recruiter-load',
+      },
+      { h: 'Sources & offers', surface: 'tab:recruiting.sources' },
       {
         p: 'Source effectiveness, applications by source by month, offer acceptance by location, why offers were declined, why candidates left the process, and what candidates say from the candidate experience survey.',
       },
@@ -133,8 +244,11 @@ export const VIEW_ARTICLES: readonly HelpArticle[] = [
           'Which stage is the bottleneck this month, and in which department?',
           'Which candidates are waiting on an interview decision, and can the panel decide this week?',
           'Which open reqs have an empty funnel after 30 days?',
-          'Is offer acceptance falling anywhere, and what reasons do candidates give?',
         ],
+      },
+      {
+        ul: ['Is offer acceptance falling anywhere, and what reasons do candidates give?'],
+        surface: 'tab:recruiting.sources',
       },
     ],
   },
@@ -143,17 +257,26 @@ export const VIEW_ARTICLES: readonly HelpArticle[] = [
     group: 'views',
     title: 'Onboarding',
     summary: 'Who starts in the next 90 days, will they be ready on day one, and are we hiring to plan?',
+    without: [
+      {
+        surface: 'tab:onboarding.plan',
+        summary:
+          'Who starts in the next 90 days, will they be ready on day one, and how are the first 90 days going?',
+      },
+    ],
     keywords: [
       'new hires',
       'starts',
       'day one',
       'readiness',
-      'i-9',
       'probation',
       'check-ins',
-      'hiring plan',
       'renege',
       'preboarding',
+    ],
+    keywordsWhere: [
+      { surface: 'tab:onboarding.plan', words: ['hiring plan'] },
+      { surface: 'metric:onboarding.first90.i9Section2', words: ['i-9'] },
     ],
     route: { view: 'onboarding' },
     tour: 'view-onboarding',
@@ -168,7 +291,11 @@ export const VIEW_ARTICLES: readonly HelpArticle[] = [
     ],
     body: [
       {
-        p: 'Onboarding answers: who starts in the next 90 days, will each of them be ready on day one, are we hiring to plan, and how are the first 90 days going? It reads the Onboarding tasks and Hiring plan datasets when they are loaded, and shows what it can without them.',
+        p: 'Onboarding answers: who starts in the next 90 days, will each of them be ready on day one, and how are the first 90 days going? It reads the Onboarding tasks dataset when it is loaded, and shows what it can without it.',
+      },
+      {
+        p: 'The Hiring plan tab answers whether hiring is on plan, from the Hiring plan dataset.',
+        surface: 'tab:onboarding.plan',
       },
       { h: 'Upcoming starts' },
       {
@@ -179,9 +306,17 @@ export const VIEW_ARTICLES: readonly HelpArticle[] = [
       },
       { h: 'First 90 days' },
       {
-        p: 'Day-one readiness, I-9 Section 2 on time, required training within 30 days, check-ins on time, probation decisions overdue and early voluntary attrition (within 90 days). Day-one readiness by site, check-ins by department, probation decisions due, early leavers by department and hiring manager, and what new starters say in the day-30 pulse.',
+        p: 'Day-one readiness, required training within 30 days, check-ins on time, probation decisions overdue and early voluntary attrition (within 90 days). Day-one readiness by site, check-ins by department, probation decisions due, and early leavers by department and hiring manager.',
       },
-      { h: 'Hiring plan' },
+      {
+        p: 'I-9 Section 2 on time is the share of US starts whose Section 2 was completed by its deadline.',
+        surface: 'metric:onboarding.first90.i9Section2',
+      },
+      {
+        p: 'What new starters say shows one number from the day-30 onboarding pulse, by region.',
+        surface: 'figure:onboarding-pulse',
+      },
+      { h: 'Hiring plan', surface: 'tab:onboarding.plan' },
       {
         p: 'Plan, actual, committed and forecast starts by month; plan coverage by business unit and department with On plan, Behind or Ahead; planned roles with no open req; and open reqs not in the plan. When several plan versions are loaded, the latest is used and named.',
       },
@@ -190,12 +325,19 @@ export const VIEW_ARTICLES: readonly HelpArticle[] = [
         ul: [
           'Who starts next week without a cleared background check or a laptop?',
           'Which owner (IT, Facilities, People operations, Trade compliance or the manager) is behind on day-one tasks?',
-          'Which business units are behind plan, and do the missing roles have open reqs?',
           'Are reneges concentrated in one location?',
         ],
       },
       {
-        note: 'Without Onboarding tasks, readiness numbers show "—" with "No onboarding tasks loaded", never 0%. Without a Hiring plan, the Hiring plan tab shows how to load one.',
+        ul: ['Which business units are behind plan, and do the missing roles have open reqs?'],
+        surface: 'tab:onboarding.plan',
+      },
+      {
+        note: 'Without Onboarding tasks, readiness numbers show "—" with "No onboarding tasks loaded", never 0%.',
+      },
+      {
+        note: 'Without a Hiring plan, the Hiring plan tab shows how to load one.',
+        surface: 'tab:onboarding.plan',
       },
     ],
   },
@@ -247,7 +389,7 @@ export const VIEW_ARTICLES: readonly HelpArticle[] = [
           'Org design: span of control, layers, the manager table with its flags, single-report chains and what teams say about their managers.',
         ],
       },
-      { h: 'Copy talking points' },
+      { h: 'Copy talking points', surface: 'header:hrbp' },
       {
         p: 'The header button copies five to seven plain-text bullets for a leader 1:1: headcount and change, voluntary attrition against the company with the top reason, where regretted exits cluster, first-year attrition, promotion rate and the top finding.',
       },
@@ -270,18 +412,9 @@ export const VIEW_ARTICLES: readonly HelpArticle[] = [
     group: 'views',
     title: 'Org chart',
     summary: 'Who reports to whom, how each team is shaped, and what a reorganization would change.',
-    keywords: [
-      'reporting lines',
-      'tree',
-      'hierarchy',
-      'reorg',
-      'sandbox',
-      'scenario',
-      'span',
-      'org slides',
-      'find a person',
-      'manager',
-    ],
+    without: [{ surface: 'tab:org.sandbox', summary: 'Who reports to whom and how each team is shaped.' }],
+    keywords: ['reporting lines', 'tree', 'hierarchy', 'span', 'org slides', 'find a person', 'manager'],
+    keywordsWhere: [{ surface: 'tab:org.sandbox', words: ['reorg', 'sandbox', 'scenario', 'simulate exit'] }],
     route: { view: 'org' },
     tour: 'view-org',
     metrics: [
@@ -310,19 +443,19 @@ export const VIEW_ARTICLES: readonly HelpArticle[] = [
       {
         p: 'Flags in this org lists every flag as a table. Org slides builds a PowerPoint slide per leader with their direct org.',
       },
-      { h: 'Reorg sandbox' },
+      { h: 'Reorg sandbox', surface: 'tab:org.sandbox' },
       {
         p: 'Try a reorganization without touching the data. Drag a card onto the person who should become their manager, or select a card and use "Move to…". Choose whether a move takes the person\'s whole org or just the person. Every change is listed with Undo and Redo (Ctrl+Z and Ctrl+Shift+Z), and the panel shows who changes manager, which spans change, layers and blocked moves. Moving someone under a person in their own reporting line is blocked. Export scenario writes the moves and the resulting roster to Excel.',
       },
       { h: MEETING },
       {
-        ul: [
-          'Which managers have one report, or twelve or more?',
-          'Where would a move leave a manager with no reports, or add a layer?',
-          'Who could step up if a leader left?',
-        ],
+        ul: ['Which managers have one report, or twelve or more?', 'Who could step up if a leader left?'],
       },
-      { note: 'Scenarios stay in this browser. The datasets are never changed.' },
+      {
+        ul: ['Where would a move leave a manager with no reports, or add a layer?'],
+        surface: 'tab:org.sandbox',
+      },
+      { note: 'Scenarios stay in this browser. The datasets are never changed.', surface: 'tab:org.sandbox' },
     ],
   },
   {
@@ -400,6 +533,12 @@ export const VIEW_ARTICLES: readonly HelpArticle[] = [
     title: 'Talent',
     summary:
       'Is performance assessed fairly, do critical roles have successors, who might we lose, and is training done?',
+    without: [
+      {
+        surface: 'tab:talent.retention',
+        summary: 'Is performance assessed fairly, do critical roles have successors, and is training done?',
+      },
+    ],
     keywords: [
       'performance',
       'ratings',
@@ -408,12 +547,11 @@ export const VIEW_ARTICLES: readonly HelpArticle[] = [
       'nine box',
       'potential',
       'succession',
-      'flight risk',
-      'retention',
       'learning',
       'training',
       'high performers',
     ],
+    keywordsWhere: [{ surface: 'tab:talent.retention', words: ['flight risk', 'retention'] }],
     route: { view: 'talent' },
     tour: 'view-talent',
     metrics: [
@@ -431,7 +569,11 @@ export const VIEW_ARTICLES: readonly HelpArticle[] = [
       },
       { h: 'Overview' },
       {
-        p: 'Rated in the latest cycle, high performers (rated 4 or 5, against a 35% guideline), high potentials, critical roles covered, regretted exits of high performers, required training on time and key talent at risk. The 9-box shows performance against potential; click a cell to see the people in it.',
+        p: 'Rated in the latest cycle, high performers (rated 4 or 5, against a 35% guideline), high potentials, critical roles covered, regretted exits of high performers and required training on time. The 9-box shows performance against potential; click a cell to see the people in it.',
+      },
+      {
+        p: 'Key talent at risk counts the people rated 4 or 5 whose flight-risk score is in the high band, and the 9-box marks how many of each box are in that band.',
+        surface: 'tab:talent.retention',
       },
       { h: 'Performance' },
       {
@@ -441,7 +583,7 @@ export const VIEW_ARTICLES: readonly HelpArticle[] = [
       {
         p: "Critical and key roles with their best successor's readiness (Covered, Thin or No successor), bench strength by business unit, and high potentials by level and business unit.",
       },
-      { h: 'Retention risk' },
+      { h: 'Retention risk', surface: 'tab:talent.retention' },
       {
         p: "Each person's flight-risk score from 0 to 100 adds up plain factors: time since last promotion, tenure in the 1 to 3 year peak, a rating drop, a high rating without promotion, attrition in their department, a new manager, peers leaving and a low compa-ratio. Each factor gives points and a reason. The back-test scores everyone as of 12 months ago and shows how many in each band then left, so you can judge whether the model separates leavers from stayers.",
       },
@@ -454,12 +596,16 @@ export const VIEW_ARTICLES: readonly HelpArticle[] = [
         ul: [
           'Is any business unit rating well above the guideline?',
           'Which critical roles have no successor ready now, and is the incumbent at risk?',
-          'Which key people at high risk need a stay conversation this month?',
           'Which required courses are overdue, and where?',
         ],
       },
       {
+        ul: ['Which key people at high risk need a stay conversation this month?'],
+        surface: 'tab:talent.retention',
+      },
+      {
         note: 'The flight-risk score is a prompt for a conversation, not a prediction about a person. Read the reasons, not just the band.',
+        surface: 'tab:talent.retention',
       },
     ],
   },

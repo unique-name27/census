@@ -196,7 +196,7 @@ export function AskSection() {
         hint="Create a key in the Claude Console. It is never part of the settings file, Report a problem, exports or the page address."
       >
         <div className="flex w-full flex-col gap-2">
-          <p ref={lineRef} tabIndex={-1} className="rounded-[2px] text-[13px] text-ink-2 outline-none">
+          <p ref={lineRef} tabIndex={-1} className="rounded-mark text-small text-ink-2 outline-none">
             {keyLine(stored, maskKey)}
           </p>
           {stored && (
@@ -224,7 +224,7 @@ export function AskSection() {
               </Button>
             </div>
           )}
-          <p role="status" className="text-[12px] leading-snug empty:hidden">
+          <p role="status" className="text-meta leading-snug empty:hidden">
             {check.state === 'ok' && (
               <span className="inline-flex items-start gap-1.5 text-ink-2">
                 <SeverityIcon severity="good" className="mt-px size-3.5 shrink-0" />
@@ -276,7 +276,7 @@ export function AskSection() {
               aria-describedby={problem ? `${keyId}-problem` : undefined}
               className={cx(
                 INPUT,
-                'w-full font-mono text-[12px] sm:w-auto sm:min-w-0 sm:flex-1',
+                'w-full font-mono text-meta sm:w-auto sm:min-w-0 sm:flex-1',
                 !show && MASKS_TEXT && '[-webkit-text-security:disc]',
               )}
             />
@@ -295,7 +295,7 @@ export function AskSection() {
             </Button>
           </div>
           {problem && (
-            <p id={`${keyId}-problem`} role="alert" className="text-[12px] text-bad-text">
+            <p id={`${keyId}-problem`} role="alert" className="text-meta text-bad-text">
               {problem}
             </p>
           )}
@@ -341,7 +341,7 @@ export function AskSection() {
               data-settings-focus={WORKSPACE_FIELD}
               aria-invalid={wsProblem ? true : undefined}
               aria-describedby={wsProblem ? `${wsId}-hint ${wsId}-problem` : `${wsId}-hint`}
-              className={cx(INPUT, 'w-full font-mono text-[12px] sm:w-auto sm:min-w-0 sm:flex-1')}
+              className={cx(INPUT, 'w-full font-mono text-meta sm:w-auto sm:min-w-0 sm:flex-1')}
             />
             <Button ref={wsSaveRef} size="sm" variant="primary" onClick={saveWorkspace} disabled={!wsDirty}>
               Save workspace ID
@@ -353,22 +353,22 @@ export function AskSection() {
             )}
           </div>
           {wsProblem && (
-            <p id={`${wsId}-problem`} role="alert" className="text-[12px] text-bad-text">
+            <p id={`${wsId}-problem`} role="alert" className="text-meta text-bad-text">
               {wsProblem}
             </p>
           )}
         </div>
       </Field>
       <fieldset className="flex flex-col gap-1.5">
-        <legend className="text-[13px] font-semibold text-ink">Model</legend>
-        <p className="text-[12px] leading-snug text-muted">
+        <legend className="text-small font-semibold text-ink">Model</legend>
+        <p className="text-meta leading-snug text-muted">
           Opus gives the most careful answers; Sonnet and Haiku answer faster.
         </p>
         <div className="mt-1 flex flex-col gap-1">
           {MODELS.map((m) => (
             <label
               key={m.id}
-              className="flex cursor-pointer items-center gap-2 rounded-control px-1 py-1 text-[13px] text-ink hover:bg-hover"
+              className="flex cursor-pointer items-center gap-2 rounded-control px-1 py-1 text-small text-ink hover:bg-hover"
             >
               <input
                 type="radio"
@@ -381,21 +381,21 @@ export function AskSection() {
                 className="size-3.5 accent-(--ink)"
               />
               <span>{m.label}</span>
-              <span className="text-[12px] text-muted">{m.note}</span>
+              <span className="text-meta text-muted">{m.note}</span>
             </label>
           ))}
         </div>
       </fieldset>
       <div className="flex flex-col gap-1.5">
-        <h3 className="text-[13px] font-semibold text-ink">What is sent</h3>
-        <ul className="flex list-disc flex-col gap-1 pl-5 text-[13px] leading-snug text-ink-2 marker:text-muted">
+        <h3 className="text-small font-semibold text-ink">What is sent</h3>
+        <ul className="flex list-disc flex-col gap-1 pl-5 text-small leading-snug text-ink-2 marker:text-muted">
           {WHAT_IS_SENT.map((s) => (
             <li key={s}>{s}</li>
           ))}
         </ul>
       </div>
       {import.meta.env.DEV && (
-        <p className="rounded-control bg-sheet-2 px-3 py-2 text-[12px] leading-snug text-ink-2">
+        <p className="rounded-control bg-sheet-2 px-3 py-2 text-meta leading-snug text-ink-2">
           Development build: the test key <code className="font-mono">sk-ant-test-fake-0000</code> answers
           from a scripted Claude that runs real Census tools, with no network.
         </p>

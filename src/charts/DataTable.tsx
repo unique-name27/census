@@ -4,6 +4,13 @@
  * search, paging ("Show all N rows"), clickable rows and a status cell (icon + hidden word) per row.
  * Cells open the records behind them (`Column.drill`) or a link in a new tab (`Column.href`).
  * Pay-amount columns are dropped unless pay amounts are switched on.
+ *
+ * One table style everywhere (docs/DESIGN-REFRESH.md 2.8): sentence-case headers in text-meta
+ * 500 ink-2 over a rule-strong hairline; rows 36px (32px with `density="compact"`, the drill
+ * panel) divided by hairlines, no zebra; numbers right-aligned with tabular figures; text cells
+ * clamp at two lines with the full value in a tooltip, so a long job title never makes a row
+ * three lines tall. On phones the first column stays pinned while the table scrolls sideways
+ * inside its sheet (`pinFirst`, default true).
  */
 import { type KeyboardEvent, useState } from 'react'
 import { IconArrowDown, IconArrowUp, IconSearch } from '@/components/icons'
@@ -53,8 +60,28 @@ export interface DataTableProps<T extends object> {
   maxHeight?: number
   rowKey?: (row: T, index: number) => string
   emptyText?: string
+  /** Row height: 36px (default) or 32px ('compact', for dense lists such as the drill panel). */
+  density?: 'default' | 'compact'
+  /** Keep the first column in view while the table scrolls sideways on phones (default true). */
+  pinFirst?: boolean
   className?: string
 }
+
+/**
+ * The narrowest a text cell may get: long text keeps about half its length per line, so two
+ * lines show most of it ("What is open", "Blocking item"); short text stays compact. In a compact
+ * table (the drill panel) names, departments and managers stay on one line and only long values
+ * such as job titles may take two, so rows stay 32px; the table scrolls sideways instead.
+ */
+export function textMinWidth(value: string, compact = false): string {
+  if (compact) return value.length <= 32 ? 'whitespace-nowrap' : 'min-w-[30ch]'
+  if (value.length > 48) return 'min-w-[26ch]'
+  if (value.length > 24) return 'min-w-[16ch]'
+  return 'min-w-[6ch]'
+}
+
+/** Text longer than this gets its full value as a tooltip (it may be clamped at two lines). */
+const CLAMP_TITLE = 24
 
 const SEVERITY_WORD: Record<Severity, string> = {
   critical: 'Critical',
@@ -91,6 +118,8 @@ export function DataTable<T extends object>({
   maxHeight,
   rowKey,
   emptyText = 'No rows to show.',
+  density = 'default',
+  pinFirst = true,
   className,
 }: DataTableProps<T>) {
   const { showPay } = useAnalytics()
@@ -148,7 +177,16 @@ export function DataTable<T extends object>({
 
   const th =
     'sticky top-0 z-[1] border-b border-rule-strong bg-sheet py-1.5 px-2 first:pl-0 last:pr-0 align-bottom'
-  const td = 'border-b border-rule py-1.5 px-2 first:pl-0 last:pr-0 align-middle'
+  const td = cx(
+    'border-b border-rule px-2 first:pl-0 last:pr-0 align-middle',
+    density === 'compact' ? 'h-8 py-1' : 'h-9 py-1.5',
+  )
+  // Phones: the first column stays put (with the sheet behind it) while the rest scroll. With a
+  // status cell, both stay: the status icon at the left edge and the first column beside it.
+  const pin = pinFirst ? 'max-md:sticky max-md:left-0 max-md:bg-sheet' : ''
+  const pinNext = pinFirst ? 'max-md:sticky max-md:left-6 max-md:bg-sheet' : ''
+  const pinHead = pinFirst ? 'max-md:z-[2]' : ''
+  const firstPin = rowTone ? pinNext : pin
 
   return (
     <div className={cx('min-w-0', className)}>
@@ -165,11 +203,11 @@ export function DataTable<T extends object>({
               }}
               placeholder={typeof search === 'string' ? search : 'Search rows'}
               aria-label={typeof search === 'string' ? search : 'Search rows'}
-              className="h-7 w-full rounded-control bg-sheet-2 pr-2 pl-7 text-[13px] text-ink outline-none placeholder:text-muted focus-visible:shadow-[inset_0_0_0_1px_var(--rule-strong)]"
+              className="h-7 w-full rounded-control bg-sheet-2 pr-2 pl-7 text-small text-ink outline-none placeholder:text-muted focus-visible:shadow-[inset_0_0_0_1px_var(--rule-strong)]"
             />
           </label>
           {q && (
-            <span className="tnum text-[12px] text-muted" aria-live="polite">
+            <span className="tnum text-meta text-muted" aria-live="polite">
               {list.length.toLocaleString('en-US')} of {rows.length.toLocaleString('en-US')} rows
             </span>
           )}
@@ -179,12 +217,20 @@ export function DataTable<T extends object>({
         className={cx('scroll-x relative', scrollHeight !== undefined && 'overflow-y-auto')}
         style={scrollHeight ? { maxHeight: scrollHeight } : undefined}
       >
-        <table className="w-full border-separate border-spacing-0 text-[13px] leading-snug">
+        <table
+          className={cx(
+            'w-full border-separate border-spacing-0 leading-snug',
+            density === 'compact' ? 'text-meta' : 'text-small',
+          )}
+        >
           {caption && <caption className="sr-only">{caption}</caption>}
           <thead>
             <tr>
               {rowTone && (
-                <th scope="col" className={cx(th, 'w-6')}>
+                <th
+                  scope="col"
+                  className={cx(th, 'w-6 min-w-6 text-meta font-medium text-ink-2', pin, pinHead)}
+                >
                   <span className="sr-only">Status</span>
                 </th>
               )}
@@ -199,8 +245,9 @@ export function DataTable<T extends object>({
                     aria-sort={active ? (sort.dir === 'asc' ? 'ascending' : 'descending') : undefined}
                     className={cx(
                       th,
-                      'cut-head text-[12px] font-semibold whitespace-nowrap text-ink-2',
+                      'text-meta font-medium whitespace-nowrap text-ink-2',
                       right ? 'text-right' : 'text-left',
+                      i === 0 && cx(firstPin, pinHead),
                     )}
                     style={c.width ? { width: `${c.width}ch` } : undefined}
                   >
@@ -209,7 +256,7 @@ export function DataTable<T extends object>({
                         type="button"
                         onClick={() => toggleSort(c.key, numeric)}
                         className={cx(
-                          'group inline-flex items-center gap-1 rounded-[2px] hover:text-ink',
+                          'group inline-flex items-center gap-1 rounded-mark hover:text-ink',
                           right && 'flex-row-reverse',
                           active && 'text-ink',
                         )}
@@ -249,7 +296,7 @@ export function DataTable<T extends object>({
                   className={cx(clickable && 'cursor-pointer hover:bg-hover focus-visible:bg-hover')}
                 >
                   {rowTone && (
-                    <td className={td}>
+                    <td className={cx(td, 'min-w-6', pin)}>
                       {tone && (
                         <span className="inline-flex align-middle">
                           <SeverityIcon severity={tone} />
@@ -258,32 +305,53 @@ export function DataTable<T extends object>({
                       )}
                     </td>
                   )}
-                  {cols.map((c, i) => (
-                    <td
-                      key={c.key}
-                      className={cx(
-                        td,
-                        aligns[i] === 'right' ? 'tnum text-right whitespace-nowrap' : 'text-left',
-                        isIdColumn(c.key) && formats[i] === 'text'
-                          ? 'font-mono text-[12px] whitespace-nowrap text-ink-2'
-                          : 'text-ink',
-                      )}
-                    >
-                      {c.drill || c.href ? (
-                        <ActionCell column={c} row={row}>
-                          {text(row, i)}
+                  {cols.map((c, i) => {
+                    const value = text(row, i)
+                    const right = aligns[i] === 'right'
+                    const id = isIdColumn(c.key) && formats[i] === 'text'
+                    const body =
+                      c.drill || c.href ? (
+                        <ActionCell column={c} row={row} clamp={!right && !id}>
+                          {value}
                         </ActionCell>
                       ) : (
-                        text(row, i)
-                      )}
-                    </td>
-                  ))}
+                        value
+                      )
+                    return (
+                      <td
+                        key={c.key}
+                        className={cx(
+                          td,
+                          right ? 'tnum text-right whitespace-nowrap' : 'text-left',
+                          id ? 'font-mono text-meta whitespace-nowrap text-ink-2' : 'text-ink',
+                          i === 0 && firstPin,
+                        )}
+                      >
+                        {right || id ? (
+                          body
+                        ) : (
+                          // Text clamps at two lines (left-aligned, a drill button too); the full
+                          // value is in the tooltip. Long text keeps a readable width, since the
+                          // table scrolls sideways rather than squeeze it into a tall column.
+                          <span
+                            className={cx(
+                              'line-clamp-2 max-w-[40ch]',
+                              textMinWidth(value, density === 'compact'),
+                            )}
+                            title={value.length > CLAMP_TITLE ? value : undefined}
+                          >
+                            {body}
+                          </span>
+                        )}
+                      </td>
+                    )
+                  })}
                 </tr>
               )
             })}
             {!shown.length && (
               <tr>
-                <td colSpan={cols.length + (rowTone ? 1 : 0)} className="py-4 text-[13px] text-muted">
+                <td colSpan={cols.length + (rowTone ? 1 : 0)} className="py-4 text-small text-muted">
                   {q ? 'No rows match your search.' : emptyText}
                 </td>
               </tr>
@@ -297,7 +365,7 @@ export function DataTable<T extends object>({
             <button
               type="button"
               onClick={() => setExtra((n) => n + PAGE_STEP)}
-              className="rounded-[2px] text-[13px] font-medium text-link hover:underline"
+              className="rounded-mark text-small font-medium text-link hover:underline"
             >
               Show {PAGE_STEP.toLocaleString('en-US')} more
             </button>
@@ -305,12 +373,12 @@ export function DataTable<T extends object>({
           <button
             type="button"
             onClick={() => setExtra(Number.POSITIVE_INFINITY)}
-            className="rounded-[2px] text-[13px] font-medium text-link hover:underline"
+            className="rounded-mark text-small font-medium text-link hover:underline"
           >
             Show all {list.length.toLocaleString('en-US')} rows
           </button>
           {hidden > PAGE_STEP && (
-            <span className="tnum text-[12px] text-muted">
+            <span className="tnum text-meta text-muted">
               Showing {shown.length.toLocaleString('en-US')} of {list.length.toLocaleString('en-US')}
             </span>
           )}
@@ -327,10 +395,13 @@ export function DataTable<T extends object>({
 function ActionCell<T extends object>({
   column,
   row,
+  clamp,
   children,
 }: {
   column: Column<T>
   row: T
+  /** A text cell: the drill button clamps at two lines and starts at the left like the text. */
+  clamp?: boolean
   children: string
 }) {
   const action = cellAction(column, row, children)
@@ -349,7 +420,11 @@ function ActionCell<T extends object>({
   }
   if (action?.kind === 'drill') {
     return (
-      <Drill spec={action.source} label={`${column.label}: ${children}. Show the records`}>
+      <Drill
+        spec={action.source}
+        label={`${column.label}: ${children}. Show the records`}
+        className={clamp ? 'line-clamp-2 text-left' : undefined}
+      >
         {children}
       </Drill>
     )

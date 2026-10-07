@@ -147,9 +147,13 @@ export const FIGURE_USES = {
   'recruiting-offer-acceptance-quarter': OUTCOME,
   'recruiting-open-reqs-department': uses(OPEN_REQ, REQ_DIM.department),
   'recruiting-time-to-fill-level': uses(FILLED_REQ, REQ_DIM.level),
+  'recruiting-open-reqs-month-end': uses(OPEN_REQ, ['requisitions.businessUnit'], REQ_DIM.department),
   // Pipeline
   'recruiting-candidate-flow': uses(COHORT, STAGE_REACHED),
   'recruiting-action-queue': uses(NEXT_STEP, OWNER),
+  'recruiting-decisions-by-hiring-manager': uses(NEXT_STEP, APP_DIM.hiringManager, [
+    'requisitions.hiringManagerId',
+  ]),
   'recruiting-stage-conversion': uses(COHORT, STAGE_REACHED),
   'recruiting-waiting-time': NEXT_STEP,
   'recruiting-speed-heatmap': STAGE_DATES,
@@ -164,8 +168,16 @@ export const FIGURE_USES = {
     'requisitions.recruiter',
   ]),
   'recruiting-open-req-age': uses(OPEN_REQ, ['requisitions.jobTitle', 'requisitions.department']),
+  'recruiting-req-age-vs-pipeline': uses(OPEN_REQ, REQ_JOIN, STAGE_REACHED, NEXT_STEP, [
+    'requisitions.jobTitle',
+    'requisitions.priority',
+    'requisitions.department',
+    'requisitions.location',
+    'requisitions.level',
+  ]),
   'recruiting-reqs-opened-filled': FILLED_REQ,
   'recruiting-time-to-fill-department': uses(FILLED_REQ, REQ_DIM.department),
+  'recruiting-time-to-fill-quarter': uses(FILLED_REQ, REQ_DIM.level),
   'recruiting-recruiter-load': uses(OPEN_REQ, NEXT_STEP, HIRES, APP_DIM.recruiter),
   // Sources & offers
   'recruiting-source-effectiveness': uses(COHORT, OUTCOME, APP_DIM.source),

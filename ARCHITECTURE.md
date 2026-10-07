@@ -53,15 +53,38 @@ Tokens live in `src/styles/tokens.css` and are mapped to Tailwind utilities in
 `src/styles/index.css` (`bg-page`, `bg-sheet`, `bg-sheet-2`, `text-ink`, `text-ink-2`, `text-muted`,
 `border-rule`, `border-rule-strong`, `bg-hover`, `text-link`, `bg-s1`…`bg-s8`, status
 `good/warning/serious/critical` with `-wash` and `-text` variants, `rounded-sheet` (6px),
-`rounded-control` (4px)). Never use raw Tailwind palette colors (`gray-500`, `blue-600`, …) or literal hex
-in components; always tokens. Both light and dark themes come from the tokens automatically.
+`rounded-control` (4px), `rounded-chip` (3px: tags, pills, badges, chips, menu items), `rounded-mark`
+(2px: inline focus outlines on links and drill numbers, small swatches)). No other radius values.
+Never use raw Tailwind palette colors (`gray-500`, `blue-600`, …) or literal hex in components;
+always tokens. Both light and dark themes come from the tokens automatically.
+
+Surfaces (docs/DESIGN-REFRESH.md 2.1): light `--page #e8eaee` under `--sheet #fbfbfc`; dark `--page
+#0a0c0f` under `--sheet #181c22` (`--sheet-2 #1f242b`, `--sheet-3 #272d35`). `--muted` is `#616a78` in
+light so 11 to 12px muted text reaches 4.5:1 on the page and both sheet tones
+(`src/styles/tierTokens.test.ts` checks it in every theme block).
 
 Typography: one family, **Archivo** (variable, with a width axis). Body 14px / 1.45. Headings,
 tab labels, KPI values and figure titles use the semi-condensed cut: class `cut-head`
-(font-stretch 84%) with weight 600-650. Small uppercase labels use class `eyebrow`. Use
-`tnum` (tabular figures) only for numbers that align in columns (tables, axis ticks), not on big
-standalone values. IDs (employee, req, case IDs) use `font-mono` at 12px. Type scale: 11 / 12 / 13 / 14 /
-16 / 20 / 28 / 40 px. No other fonts, no serif.
+(font-stretch 84%) with weight 600-650. Section eyebrows use class `eyebrow` (never table headers:
+those are sentence case, `TABLE_HEAD` in `src/components/styles.ts`). Use `tnum` (tabular figures)
+only for numbers that align in columns (tables, axis ticks), not on big standalone values. IDs
+(employee, req, case IDs) use `font-mono` at 12px. No other fonts, no serif.
+
+Type scale: one class per job, defined in `src/styles/index.css` `@theme`; each sets size and line
+height. `src/styles/typeScale.test.ts` fails on any arbitrary `text-[Npx]` or `rounded-[Npx]` (the
+18px wordmark is the one exception).
+
+| Class | Size / line height | Use |
+|---|---|---|
+| `text-label` | 11 / 1.35 | tier word, tags, pills, axis ticks, dense legends |
+| `text-meta` | 12 / 1.4 | notes, deltas, scope extras, drill-panel cells, tooltips, table headers |
+| `text-small` | 13 / 1.45 | subtitles, deks, table cells, buttons, finding detail |
+| `text-body` | 14 / 1.45 | body text, readout headlines (600) |
+| `text-title` | 16 / 1.3 | every sheet title (600, `cut-head`) |
+| `text-section` | 20 / 1.2 | Section headings, side-sheet titles, wide folder-tab numbers |
+| `text-page-title` | 28 / 1.1 | view title (h1), KPI values (`text-page` is the page color, not a size) |
+| `text-display` | 40 / 1.05 | person card and Data room big numbers |
+| `text-hero` | 48 / 1.0 | one hero figure per role home page, nowhere else |
 
 Layout and surfaces:
 
@@ -72,6 +95,14 @@ Layout and surfaces:
   `var(--gutter)`. Max content width 1440px.
 - Don't put cards inside cards. Don't put a colored accent rail on the side of anything. Don't round
   everything to 12px+. Don't use gradients, glows, glassmorphism or emoji. Don't center page content.
+- Side sheets (drill panel, Settings, Ask, Help) are one surface: `bg-sheet`, parts divided by
+  hairlines, titles `text-section`. Empty, held-back and loading states are plain text on the sheet
+  (a muted 16px icon), never a filled box inside it. Loading shows the sheets at their final size
+  with their titles and one status line (`Pending` from `@/components`); while a newer analytics
+  context is computed, `useAnalyticsPending()` is true and Figure and KpiStrip hold their old
+  render at 60% opacity.
+- Spacing is a 4px rhythm: 4, 8, 12, 16 (grid gap, sheet inset on phones), 20 (sheet inset from
+  1024px), 40 (between sections). Figure insets: `px-4 lg:px-5`, header `pt-4`, body `pt-3 pb-5`.
 - Buttons are compact (28-32px tall), `rounded-control`, ink text; the primary button is ink fill with
   `text-on-ink`. Icons are simple 16px strokes (1.5px) drawn inline as SVG (see `src/components/icons.tsx`).
 - Interactive things look interactive: hover wash `bg-hover`, visible focus ring (global
@@ -90,6 +121,19 @@ Charts (also read the dataviz rules summarized here):
   in `--s1`, the rest in `--deemph`) when the story is about one thing.
 - Never a dual-axis chart. Never a pie for close values (donuts only for ≤ 4 part-to-whole, prefer
   stacked bars). Legend for ≥ 2 series; direct-label selectively (endpoint, extreme), never every point.
+- Status fill rule: a status color fills a whole bar only when status is the figure's subject (due
+  state, readiness, approval status). Elsewhere a flagged bar keeps its series color and carries the
+  status glyph beside its value (`BarList glyphTone`, not `tone`).
+- Annotations: up to two short notes per chart (`notes` on Lines, Columns, HBars, BarList; type
+  `ChartNote`), each tied to a datum and taken from the finding that cites the chart's metric
+  (`shortNote(finding.title, subject)`). A note that has no free place is dropped; the tooltip and
+  table still carry the number.
+- Keyboard: every kit chart is one tab stop. Arrow keys move through the data in reading order (Left
+  and Right along a series, Up and Down across series or rows) and show the tooltip at the datum,
+  Enter or Space drills, Escape clears. Custom Plot visuals get the same by passing `keyPoints` to
+  `PlotChart` (`plotPos(plot, 'x', v)` gives pixel positions).
+- Heights: lead figure 280px plot (220px on phones), standard 220px (180px), the kit's default;
+  `useChartHeight('lead')` from `@/components/useNarrow`. Time axes always show at least three labels.
 - Every chart has a hover tooltip and a table view (the `Figure` frame provides the table view).
 - Every chart is wrapped in `<Figure>` which provides title, subtitle, table toggle, definition
   popover and the export menu (CSV, Excel, PNG, SVG, copy). **No chart may be rendered outside a
@@ -140,7 +184,7 @@ documented in `src/data/sample/README.md`. Its as-of date is `SAMPLE_AS_OF` = 20
 - `src/data/scope.ts`: `Filters`, `periodWindows()`, `scopeDatasets()`, `buildOrgIndex()`,
   `subtreeIds()`, `isEmployee()`, `isActiveAt()`, `resolveAsOf()`.
 - `src/data/context.tsx`: `useAnalytics(): AnalyticsContext` =
-  `{ asOf, window, prior, filters, scopeLabel, isCompany, data (scoped), all (unscoped), org, sources, isSample, showPay }`.
+  `{ asOf, window, prior, filters, scopeLabel, isCompany, data (scoped), all (unscoped), org, sources, isSample, showPay, access }`.
 
 Engines read `ctx.data` for the scoped population and `ctx.all` for company benchmarks. Org filters
 are already applied to `ctx.data`; **period filtering is each engine's job** using `ctx.window` and
@@ -152,6 +196,48 @@ includes). `ctx.scopeLabel` can read "Whole company except Sales"; inside a sent
 The address holds route and scope (`#view.tab?…`, `src/data/urlScope.ts`); one writer (`src/app/address.ts`)
 keeps it in step. Move with `goTo` / `navigate`; change filters with `setFilters` (scope changes collapse into
 one history entry; pass `{ history: 'push' }` for a one-step change). Saved views: `src/data/savedViews.ts`.
+
+## Modes: HR, Manager and Developer (docs/ROLES.md)
+
+An open switch (the masthead's Mode button, Settings > Mode), kept in this browser at `census:mode`, never in
+the address or the settings file. It shapes Census for how it is used; it is not security, and no copy may say
+it is. One pure policy in `src/access/` (`decide(mode, surface, at?)`: shown, limited or hidden) answers every
+surface; read the declaration guide at the top of `src/access/index.ts`. In short:
+
+- Ask through `ctx.access` (`ctx.access.can(S.metric(id))`, `ctx.access.lock`) or the hooks (`useCan`,
+  `useAccess`, `useLock` from `@/access`), never the mode store, so off-screen renders get their own answers.
+- A **figure** is judged by its `id` (view-key prefix) and `metric`, a **KPI** and a **finding** by `metricId`;
+  `Figure`, `KpiStrip` and `Readout` hide what the mode hides. A new figure that shows pay amounts, surveys, HR
+  ops cases, compliance details or orgs outside the scope goes on the Manager hide lists in `policy.ts` in the
+  same change, with the access matrix snapshot updated (`npx vitest run src/access -u`).
+- A new **view** or **tab** is hidden in Manager mode until `MANAGER_VIEWS` / `MANAGER_TABS` name it (Manager
+  mode is an allowlist); HR and Developer show it at once. The shell drops hidden tabs (`withAccessTabs`),
+  folder tabs come from `folderViews(ctx.access)`, and `navigate` redirects a hidden route to the mode's home.
+- Links to another view use `<RouteLink view tab>` (plain text when hidden) or `useRouteShown(view, tab)`.
+- Manager mode's org is a lock, not a filter value: every filter change goes through `clampFilters` (the store's
+  filter guard), records are kept to the org by `inLock`, and `ctx.isCompany` is always false there.
+
+### The Developer page (`#dev`, `src/dev/`, docs/ROLES.md part 5)
+
+Lazy-loaded, Developer mode only. Tabs: Overview (the Developer home, docs/DESIGN-REFRESH.md 4.3), Inventory,
+Access, Ask tools, State, Timings; sub-addresses use the colon form (`#dev.inventory:figures`, `#dev.ask:query_records`,
+`src/dev/tabs.ts`). Its figures describe the app, not people: ids `dev-…`, `gate={false}`, no metric dictionary entry
+unless one already exists (`quality.rules.*`), and numbers open inventory rows, Data room entries or data records.
+
+- **What a figure declares is tracked, rows or not:** the figure registry has `track(facts)` / `tracked()` beside
+  `register` (`FigureFacts` in `src/charts/types.ts`: id, title, metric, uses, gated, rows, tier, image, and a KPI
+  strip's or readout's items). Exports never read it. `renderWholeView` returns `facts` per tab; the figure scan
+  (`src/dev/scan.ts`) and the contract checks (`src/dev/contract.ts`) read it.
+- **Timings:** `timed(name, fn)` and `recordSince(name, start)` from `src/lib/timing.ts` write `census:` User Timing
+  measures only while Developer mode is on (`connectAccess` sets the flag). Wrapped today: `census:context`,
+  `census:quality`, `census:headline:<view>`, `census:actions:<view>`, `census:drill:<kind>`, `census:ask:<tool>`,
+  `census:export:<view>` (and the scorecard's own `census:scorecard:<view>`).
+- **Errors this session:** `logDevError` in `src/app/devlog.ts` (a ring buffer of 100, in memory) is fed by the view
+  error boundary, the scorecard's summaries, the Action center's views and Ask's tools.
+- **Storage keys:** a new `census:` key goes in `STORAGE_KEYS` (`src/dev/storageKeys.ts`); a test scans the source and
+  fails on one that is not described. A new keyboard shortcut goes in `SHORTCUTS` (`src/dev/shortcuts.ts`).
+- **Debug overlays:** kept at `census:dev`; `DevLayer` (mounted by the shell) handles Alt+Shift+D and loads
+  `DevOverlay`. KPI tiles, figures and findings carry `data-metric`.
 
 ## Metric conventions
 
@@ -215,7 +301,9 @@ Always use these instead of re-implementing them, so a number means the same thi
 ```
 
 `tableOnly` renders `data` as a sortable table instead of a chart (for tables that should still be
-exportable). Figures register with the view's figure registry so "Export view" includes them.
+exportable). `emptyAction` adds one control under the empty message ("Open the Data room"); `emptyHeight`
+(default 220) keeps an empty figure as tall as its chart; `variant="compact"` keeps the title and the export
+menu only (small summary figures, as in the drill panel). Figures register with the view's figure registry so "Export view" includes them.
 
 ### Chart kit (`import { BarList, Columns, Lines, … } from '@/charts'`)
 
@@ -233,7 +321,10 @@ and accept `onSelect(datum)` for click-to-drill. Accessors are property names of
 | `Scatter` | two measures per entity | `x`, `y`, `r?`, `tone?`, `label?` (labels a few), `xFormat`, `yFormat`, `refX?`, `refY?` |
 | `DotStrip` | one dot per item along a value axis, grouped by row | `x`, `y`, `tone?`, `xFormat`, `ref?` |
 | `RangeBars` | ranges with a marker (salary range, quartiles) | `y`, `min`, `max`, `mid?`, `value?`, `q1?`, `q3?`, `format` |
-| `Sparkline` | tiny trend for tiles and tables | `values`, `width?`, `height?` |
+| `Sparkline` | tiny trend for tiles and tables | `values`, `width?`, `height?`, `target?` (1px ink-2 rule) |
+| `BulletList` | measures against target, one row each on its own scale (0 to 1.15 x max of value and target) | `data`, `label`, `value`, `target`, `format: (row, v) => string`, `status?: (row) => {tone, label}`, `group?`, `onSelect`, `onSelectLabel` |
+| `TrendGrid` | small multiples, one cell per measure, each on its own y scale, target rule | `series: TrendSeries[]` (`id`, `name`, `values`, `periods?`, `target?`, `format`), `onSelect(s, i)`; export `trendGridRows(series)` with `TREND_GRID_COLUMNS` |
+| `StatusSplit` | one 100% bar of status counts in fixed order (met, watch, missed, no target, not shown) | `counts`, `labels?`, `unit?`, `onSelect(key)` |
 | `Meter` | a ratio against a target | `value` (0-1), `target?`, `tone?` |
 
 Domain-specific visuals (recruiting flow sankey, 9-box grid, funnel, etc.) are built by the view
@@ -252,8 +343,12 @@ stamps). Pay columns are dropped unless `showPay`.
 
 Already written (lead): `Button`, `IconButton`, `Menu` (items API), `Popover`, `Tip` (tooltip), `TooltipProvider`,
 `Segmented`, `Switch`, `StatusPill`, `SeverityIcon`, `Tag`, `cx` in `src/components/ui.tsx`, and the icon set in
-`src/components/icons.tsx` (`IconDownload`, `IconTable`, `IconInfo`, …). Built by the shell builder: `KpiStrip` (`kpis: Kpi[]`),
-`Readout` (`findings: Finding[]`), `Section` (`title`, `dek?`, children in a 12-col grid), `Grid`, `EmptyState`,
+`src/components/icons.tsx` (`IconDownload`, `IconTable`, `IconInfo`, …). Built by the shell builder: `KpiStrip` (`kpis: Kpi[]`,
+`span?` default 12; tiles on a five-row subgrid: label with tier and info, value, change, target in full, one short
+note; phones show four tiles and "Show all n"), `Readout` (`findings: Finding[]`, `limit?` default 4, phones 2,
+`variant?: 'compact'` for home pages; meta line with practice tag and tier above each headline), `Pending`
+(`title`, `span`, `height`, `message`, or `frames`: sheets at final size while a page prepares), `Section` (`title`,
+`dek?`, children in a 12-col grid), `Grid`, `EmptyState`,
 `MultiSelect`, `Dialog`, `toast()`. `DataTable` (`columns`, `rows`, sortable, `onRowClick`, `rowTone`, `maxRows`) is in
 `@/charts` (chart builder). `Kpi` and `Finding` shapes are in
 `src/components/types.ts`.
@@ -299,3 +394,10 @@ sample stories are detected and every number is finite or null. UI calls the eng
 Overview tab layout for every view: KPI strip (5-7 tiles) → row with Readout (span 4) and the lead
 figure (span 8) → sections of figures. Deeper tabs: a short section dek explaining what the tab
 answers, then figures and tables.
+
+## Tooling note: Node crash while compiling
+
+On Node 24.14 the React Compiler step (Babel) can crash Node with 0xC0000409 at random while
+compiling the whole app (dev server or build). Every npm script that runs Vite starts Node with
+`--max-semi-space-size=64`, which stops it; run Vite through those scripts (`npm run dev`,
+`npm run build`, `npm run build:single`), not `npx vite`.

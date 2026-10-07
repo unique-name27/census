@@ -75,6 +75,14 @@ function stepKind(x: ActiveItem): string {
   return `schedule-${STAGE_KEY[x.stage]}`
 }
 
+/** The kind of work, for the Action center's "What is waiting, by kind". */
+const KIND: Record<string, string> = {
+  decision: 'Interview decision',
+  'offer-answer': 'Offer awaiting an answer',
+  review: 'Application to review',
+  offer: 'Offer to send',
+}
+
 /** The day an item turns overdue (red): past it, it is overdue. */
 function dueOf(b: RecruitingBase, x: ActiveItem): ISODate {
   const r = b.settings.aging
@@ -128,6 +136,7 @@ function candidateItem(b: RecruitingBase, x: ActiveItem, look: OwnerLookup): Act
   const named = x.owner != null
   return {
     id: `recruiting:${stepKind(x)}:${a.id}`,
+    kind: KIND[stepKind(x)] ?? 'Interview to schedule',
     ownerRole: ROLE[named ? x.ownerRole : 'Unassigned'],
     // The hiring manager by the req's ID; a recruiter or coordinator by name when on the roster.
     ownerId: !named ? null : x.ownerRole === 'Hiring manager' ? (a.hiringManagerId ?? null) : look(x.owner),
@@ -153,6 +162,7 @@ function funnelItem(b: RecruitingBase, row: OpenReqRow, look: OwnerLookup): Acti
   const manager = row.hiringManager ?? 'the hiring manager'
   return {
     id: `recruiting:empty-funnel:${row.reqId}`,
+    kind: 'Empty funnel',
     ownerRole: 'recruiter',
     ownerId: look(row.recruiter),
     ownerName: row.recruiter ?? UNASSIGNED_OWNER,

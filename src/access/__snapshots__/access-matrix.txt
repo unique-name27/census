@@ -1,0 +1,341 @@
+Surface                                        Dev       HR        Manager   How
+--------------------------------------------------------------------------------
+view:team                                      Shown     Hidden    Shown     HR: HR mode leaves out the developer surfaces and My team.
+view:scorecard                                 Shown     Shown     Hidden    Manager: It judges the whole people function, including pay, HR ops and compliance.
+view:recruiting                                Shown     Shown     Limited   Manager: Sources & offers, recruiter load and hiring manager satisfaction are hidden.
+view:onboarding                                Shown     Shown     Limited   Manager: The hiring plan and I-9 measures are hidden.
+view:hrbp                                      Shown     Shown     Limited   Manager: Survey numbers and Copy talking points are hidden.
+view:org                                       Shown     Shown     Limited   Manager: Rooted at the manager; the Reorg sandbox is hidden.
+view:services                                  Shown     Shown     Hidden    Manager: Cases, transactions and leave are HR ops records.
+view:talent                                    Shown     Shown     Limited   Manager: Retention risk and key talent at risk are hidden.
+view:comp                                      Shown     Shown     Hidden    Manager: Compensation stays with total rewards and HR.
+view:compliance                                Shown     Shown     Hidden    Manager: Compliance records stay with HR.
+view:listening                                 Shown     Shown     Hidden    Manager: Survey results stay with HR.
+view:ai                                        Shown     Shown     Hidden    Manager: The agent catalog is for the HR team.
+tab:team.overview                              Shown     Hidden    Shown     HR: HR mode leaves out the developer surfaces and My team.
+tab:scorecard.overview                         Shown     Shown     Hidden    Manager: Its view is not shown in Manager mode.
+tab:recruiting.overview                        Shown     Shown     Limited   Manager: The "Hires vs plan" tile is hidden.
+tab:recruiting.pipeline                        Shown     Shown     Shown
+tab:recruiting.requisitions                    Shown     Shown     Limited   Manager: Recruiter load and hiring manager satisfaction are hidden.
+tab:recruiting.sources                         Shown     Shown     Hidden    Manager: Sourcing analytics are TA's.
+tab:onboarding.upcoming                        Shown     Shown     Shown
+tab:onboarding.first90                         Shown     Shown     Limited   Manager: I-9 Section 2 on time, new hires entered by day -3 and the day-30 pulse are hidden.
+tab:onboarding.plan                            Shown     Shown     Hidden    Manager: Plan versions are a finance and TA artifact.
+tab:hrbp.overview                              Shown     Shown     Shown
+tab:hrbp.workforce                             Shown     Shown     Shown
+tab:hrbp.attrition                             Shown     Shown     Limited   Manager: The exit survey number is hidden.
+tab:hrbp.movement                              Shown     Shown     Shown
+tab:hrbp.org                                   Shown     Shown     Limited   Manager: Manager feedback (a survey) is hidden.
+tab:org.chart                                  Shown     Shown     Limited   Manager: Rooted at the manager, with nothing above them.
+tab:org.sandbox                                Shown     Shown     Hidden    Manager: Reorg scenarios are worked through with the HRBP.
+tab:services.overview                          Shown     Shown     Hidden    Manager: Its view is not shown in Manager mode.
+tab:services.cases                             Shown     Shown     Hidden    Manager: Its view is not shown in Manager mode.
+tab:services.transactions                      Shown     Shown     Hidden    Manager: Its view is not shown in Manager mode.
+tab:services.leave                             Shown     Shown     Hidden    Manager: Its view is not shown in Manager mode.
+tab:services.levels                            Shown     Shown     Hidden    Manager: Its view is not shown in Manager mode.
+tab:talent.overview                            Shown     Shown     Limited   Manager: The key talent at risk tile, table and finding are hidden.
+tab:talent.performance                         Shown     Shown     Shown
+tab:talent.succession                          Shown     Shown     Limited   Manager: Successors outside the org show by readiness only.
+tab:talent.retention                           Shown     Shown     Hidden    Manager: Flight-risk scores about named people stay with HR.
+tab:talent.learning                            Shown     Shown     Limited   Manager: Training evaluation (a survey) is hidden.
+tab:comp.overview                              Shown     Shown     Hidden    Manager: Its view is not shown in Manager mode.
+tab:comp.ranges                                Shown     Shown     Hidden    Manager: Its view is not shown in Manager mode.
+tab:comp.performance                           Shown     Shown     Hidden    Manager: Its view is not shown in Manager mode.
+tab:comp.market                                Shown     Shown     Hidden    Manager: Its view is not shown in Manager mode.
+tab:comp.cycle                                 Shown     Shown     Hidden    Manager: Its view is not shown in Manager mode.
+tab:compliance.overview                        Shown     Shown     Hidden    Manager: Its view is not shown in Manager mode.
+tab:compliance.work                            Shown     Shown     Hidden    Manager: Its view is not shown in Manager mode.
+tab:compliance.export                          Shown     Shown     Hidden    Manager: Its view is not shown in Manager mode.
+tab:compliance.deadlines                       Shown     Shown     Hidden    Manager: Its view is not shown in Manager mode.
+tab:listening.overview                         Shown     Shown     Hidden    Manager: Its view is not shown in Manager mode.
+tab:listening.candidates                       Shown     Shown     Hidden    Manager: Its view is not shown in Manager mode.
+tab:listening.onboarding                       Shown     Shown     Hidden    Manager: Its view is not shown in Manager mode.
+tab:listening.stay-exit                        Shown     Shown     Hidden    Manager: Its view is not shown in Manager mode.
+tab:listening.managers                         Shown     Shown     Hidden    Manager: Its view is not shown in Manager mode.
+tab:listening.services                         Shown     Shown     Hidden    Manager: Its view is not shown in Manager mode.
+tab:listening.engagement                       Shown     Shown     Hidden    Manager: Its view is not shown in Manager mode.
+tab:ai.agents                                  Shown     Shown     Hidden    Manager: Its view is not shown in Manager mode.
+page:actions                                   Shown     Shown     Limited   Manager: Items from the shown views, for the org.
+page:data                                      Shown     Shown     Hidden    Manager: The Data room is HR's.
+page:dev                                       Shown     Hidden    Hidden    HR: HR mode leaves out the developer surfaces and My team. Manager: Developer mode only.
+data:datasets                                  Shown     Shown     Hidden    Manager: The Data room is not shown in Manager mode.
+data:quality                                   Shown     Shown     Hidden    Manager: The Data room is not shown in Manager mode.
+data:metrics                                   Shown     Shown     Hidden    Manager: The Data room is not shown in Manager mode.
+data:mapping                                   Shown     Shown     Hidden    Manager: The Data room is not shown in Manager mode.
+data-panel:raw                                 Shown     Shown     Hidden    Manager: The Data room is not shown in Manager mode.
+data-panel:mapping                             Shown     Shown     Hidden    Manager: The Data room is not shown in Manager mode.
+data-panel:quality                             Shown     Shown     Hidden    Manager: The Data room is not shown in Manager mode.
+data-panel:certify                             Shown     Shown     Hidden    Manager: The Data room is not shown in Manager mode.
+masthead:wordmark                              Shown     Shown     Limited   Manager: Goes to My team.
+masthead:company                               Shown     Shown     Shown
+masthead:mode                                  Shown     Shown     Limited   Manager: Reads "Manager:" and the manager's name.
+masthead:pay-tags                              Shown     Shown     Hidden    Manager: Pay amounts and immigration details are off in this mode.
+masthead:tools                                 Shown     Shown     Limited   Manager: Lists only the links shown in this mode; hidden when none is left.
+masthead:actions                               Shown     Shown     Limited   Manager: Counts the items Manager mode lists.
+masthead:data                                  Shown     Shown     Hidden    Manager: The Data room is HR's.
+masthead:dev                                   Shown     Hidden    Hidden    HR: HR mode leaves out the developer surfaces and My team. Manager: Developer mode only.
+masthead:settings                              Shown     Shown     Limited   Manager: Lists only the sections shown in this mode.
+masthead:ask                                   Shown     Shown     Limited   Manager: Locked to the org: Manager mode views, datasets and leaders only.
+masthead:help                                  Shown     Shown     Limited   Manager: Lists only the articles and tours shown in this mode.
+masthead:skip                                  Shown     Shown     Shown
+header:team                                    Shown     Shown     Shown
+header:scorecard                               Shown     Shown     Hidden    Manager: Its view is not shown in Manager mode.
+header:recruiting                              Shown     Shown     Shown
+header:onboarding                              Shown     Shown     Shown
+header:hrbp                                    Shown     Shown     Hidden    Manager: Copy talking points is written for an HRBP to use with a leader.
+header:org                                     Shown     Shown     Shown
+header:services                                Shown     Shown     Hidden    Manager: Its view is not shown in Manager mode.
+header:talent                                  Shown     Shown     Shown
+header:comp                                    Shown     Shown     Hidden    Manager: Its view is not shown in Manager mode.
+header:compliance                              Shown     Shown     Hidden    Manager: Its view is not shown in Manager mode.
+header:listening                               Shown     Shown     Hidden    Manager: Its view is not shown in Manager mode.
+header:ai                                      Shown     Shown     Hidden    Manager: Its view is not shown in Manager mode.
+header:scope                                   Shown     Shown     Limited   Manager: The scope line starts with the pin and names the org.
+header:about                                   Shown     Shown     Limited   Manager: Follows the view's article.
+header:agents                                  Shown     Shown     Hidden    Manager: AI in HR is not shown in this mode.
+settings:mode                                  Shown     Shown     Limited   Manager: With "Change manager…".
+settings:display                               Shown     Shown     Shown
+settings:data                                  Shown     Shown     Hidden    Manager: The data standard and reporting date are HR's.
+settings:formulas                              Shown     Shown     Limited   Manager: Metrics of the shown views only, without links to Metric definitions.
+settings:lists                                 Shown     Shown     Hidden    Manager: The official lists are HR's.
+settings:privacy                               Shown     Shown     Hidden    Manager: The views these switches change are hidden; all three are off.
+settings:ask                                   Shown     Shown     Shown
+settings:compensation                          Shown     Shown     Hidden    Manager: Its view is not shown in Manager mode.
+settings:tools                                 Shown     Shown     Hidden    Manager: The related tool links are HR's.
+settings:device                                Shown     Shown     Limited   Manager: Clear everything only; settings files are hidden.
+settings:device-files                          Shown     Shown     Hidden    Manager: Team configuration is HR's.
+tools:pipeline                                 Shown     Shown     Hidden    Manager: The pipeline dashboard is TA's.
+tools:lattice                                  Shown     Shown     Shown
+tools:toolkit                                  Shown     Shown     Shown
+tools:catalog                                  Shown     Shown     Hidden    Manager: The process catalog and Atlas links are HR's.
+tools:edit                                     Shown     Shown     Hidden    Manager: Links are edited in Settings, Related tools, which this mode hides.
+help:article:what-census-is                    Shown     Shown     Shown
+help:article:moving-around                     Shown     Shown     Shown
+help:article:reading-a-number                  Shown     Shown     Shown
+help:article:clicking-down                     Shown     Shown     Shown
+help:article:exporting                         Shown     Shown     Shown
+help:article:ask-census                        Shown     Shown     Shown
+help:article:modes                             Shown     Shown     Shown
+help:article:view-team                         Shown     Hidden    Shown     HR: HR mode leaves out the developer surfaces and My team.
+help:article:view-scorecard                    Shown     Shown     Hidden    Manager: Not shown in Manager mode.
+help:article:view-recruiting                   Shown     Shown     Shown
+help:article:view-onboarding                   Shown     Shown     Shown
+help:article:view-hrbp                         Shown     Shown     Shown
+help:article:view-org                          Shown     Shown     Shown
+help:article:view-services                     Shown     Shown     Hidden    Manager: Not shown in Manager mode.
+help:article:view-talent                       Shown     Shown     Shown
+help:article:view-comp                         Shown     Shown     Hidden    Manager: Not shown in Manager mode.
+help:article:view-compliance                   Shown     Shown     Hidden    Manager: Not shown in Manager mode.
+help:article:view-listening                    Shown     Shown     Hidden    Manager: Not shown in Manager mode.
+help:article:view-ai                           Shown     Shown     Hidden    Manager: Not shown in Manager mode.
+help:article:view-actions                      Shown     Shown     Shown
+help:article:data-loading                      Shown     Shown     Hidden    Manager: Not shown in Manager mode.
+help:article:data-mapping                      Shown     Shown     Hidden    Manager: Not shown in Manager mode.
+help:article:data-categories                   Shown     Shown     Hidden    Manager: Not shown in Manager mode.
+help:article:data-official-lists               Shown     Shown     Hidden    Manager: Not shown in Manager mode.
+help:article:data-tiers                        Shown     Shown     Hidden    Manager: Not shown in Manager mode.
+help:article:data-certify                      Shown     Shown     Hidden    Manager: Not shown in Manager mode.
+help:article:data-quality-tab                  Shown     Shown     Hidden    Manager: Not shown in Manager mode.
+help:article:data-wrong                        Shown     Shown     Hidden    Manager: Not shown in Manager mode.
+help:article:definitions-how                   Shown     Shown     Limited   Manager: Its Data room links read as text.
+help:article:glossary                          Shown     Shown     Limited   Manager: Metrics shown in this mode only.
+help:article:privacy-browser                   Shown     Shown     Shown
+help:article:privacy-pay                       Shown     Shown     Hidden    Manager: Not shown in Manager mode.
+help:article:privacy-small-groups              Shown     Shown     Shown
+help:article:privacy-er                        Shown     Shown     Hidden    Manager: Not shown in Manager mode.
+help:article:privacy-surveys                   Shown     Shown     Hidden    Manager: Not shown in Manager mode.
+help:article:privacy-immigration               Shown     Shown     Hidden    Manager: Not shown in Manager mode.
+help:article:privacy-sample                    Shown     Shown     Shown
+help:article:shortcuts                         Shown     Shown     Shown
+help:article:report-problem                    Shown     Shown     Shown
+help:article:troubleshooting                   Shown     Shown     Shown
+help:article:faq                               Shown     Shown     Shown
+help:article:whats-new                         Shown     Shown     Shown
+help:article:developer-tools                   Shown     Hidden    Hidden    HR: HR mode leaves out the developer surfaces and My team. Manager: Not shown in Manager mode.
+help:tour:getting-started                      Shown     Shown     Hidden    Manager: Not shown in Manager mode.
+help:tour:manager-start                        Shown     Hidden    Shown     HR: HR mode leaves out the developer surfaces and My team.
+help:tour:view-team                            Shown     Hidden    Shown     HR: HR mode leaves out the developer surfaces and My team.
+help:tour:own-data                             Shown     Shown     Hidden    Manager: Not shown in Manager mode.
+help:tour:quality-definitions                  Shown     Shown     Hidden    Manager: Not shown in Manager mode.
+help:tour:view-scorecard                       Shown     Shown     Hidden    Manager: Not shown in Manager mode.
+help:tour:view-recruiting                      Shown     Shown     Limited   Manager: Steps on hidden tabs or controls are skipped.
+help:tour:view-onboarding                      Shown     Shown     Limited   Manager: Steps on hidden tabs or controls are skipped.
+help:tour:view-hrbp                            Shown     Shown     Limited   Manager: Steps on hidden tabs or controls are skipped.
+help:tour:view-org                             Shown     Shown     Limited   Manager: Steps on hidden tabs or controls are skipped.
+help:tour:view-services                        Shown     Shown     Hidden    Manager: Not shown in Manager mode.
+help:tour:view-talent                          Shown     Shown     Limited   Manager: Steps on hidden tabs or controls are skipped.
+help:tour:view-comp                            Shown     Shown     Hidden    Manager: Not shown in Manager mode.
+help:tour:view-compliance                      Shown     Shown     Hidden    Manager: Not shown in Manager mode.
+help:tour:view-listening                       Shown     Shown     Hidden    Manager: Not shown in Manager mode.
+help:tour:view-ai                              Shown     Shown     Hidden    Manager: Not shown in Manager mode.
+help:tour:view-actions                         Shown     Shown     Limited   Manager: Steps on hidden tabs or controls are skipped.
+help:tour:developer-tools                      Shown     Hidden    Hidden    HR: HR mode leaves out the developer surfaces and My team. Manager: Not shown in Manager mode.
+help:search                                    Shown     Shown     Limited   Manager: Covers the shown articles and the glossary of shown metrics.
+help:shortcuts                                 Shown     Shown     Shown
+help:report                                    Shown     Shown     Limited   Manager: Adds "Mode: Manager (manager set, name left out)".
+help:whats-new                                 Shown     Shown     Shown
+help:links                                     Shown     Shown     Limited   Manager: Links to hidden targets read as plain text.
+help:learn-more                                Shown     Shown     Limited   Manager: Shown when its article is shown in this mode.
+ask                                            Shown     Shown     Limited   Manager: Off with a plain reason when the org has fewer than the anonymity minimum of employees.
+ask:get_context                                Shown     Shown     Limited   Manager: Locked to the org: Manager mode views, datasets and leaders only.
+ask:find_metrics                               Shown     Shown     Limited   Manager: Metrics of the shown views after the hide lists.
+ask:view_summary                               Shown     Shown     Limited   Manager: Recruiting, Onboarding, People stats and Talent; hidden figures dropped.
+ask:compare_groups                             Shown     Shown     Limited   Manager: The same views; by leader lists leaders inside the org only.
+ask:query_records                              Shown     Shown     Limited   Manager: The eight Manager mode datasets only.
+ask:explain_quality                            Shown     Shown     Hidden    Manager: Not sent to Claude, and refused if called.
+ask:open_items                                 Shown     Shown     Limited   Manager: The items Manager mode lists.
+ask:console                                    Shown     Hidden    Hidden    HR: HR mode leaves out the developer surfaces and My team. Manager: Developer mode only.
+filter:saved-views                             Shown     Shown     Limited   Manager: Every view applies through the pin; one whose page is hidden opens My team.
+filter:period                                  Shown     Shown     Shown
+filter:leader                                  Shown     Shown     Limited   Manager: Pinned to the manager; leaders inside the org can be picked.
+filter:exclude                                 Shown     Shown     Hidden    Manager: The leader filter has no Include / Exclude switch in this mode.
+filter:chain                                   Shown     Shown     Limited   Manager: Starts at the manager; nobody above.
+filter:lists                                   Shown     Shown     Limited   Manager: Values and counts from the org.
+filter:in-scope                                Shown     Shown     Limited   Manager: Counts people in the org.
+filter:standard                                Shown     Shown     Limited   Manager: Read only: the saved data standard.
+filter:lens                                    Shown     Shown     Hidden    Manager: The quality lens is off in this mode.
+filter:chips                                   Shown     Shown     Shown
+filter:reset                                   Shown     Shown     Limited   Manager: Returns to the manager's whole org and the default period.
+export:figure                                  Shown     Shown     Limited   Manager: Shown figures only; no Edit definition.
+export:view                                    Shown     Shown     Limited   Manager: Shown tabs and figures only, with a Manager mode line.
+export:link                                    Shown     Shown     Shown
+export:monthly-report                          Shown     Shown     Hidden    Manager: Its view is not shown in Manager mode.
+export:org-slide                               Shown     Shown     Shown
+export:reorg                                   Shown     Shown     Hidden    Manager: Its view is not shown in Manager mode.
+export:talking-points                          Shown     Shown     Hidden    Manager: Written for an HRBP to use with a leader.
+export:action-list                             Shown     Shown     Shown
+export:records                                 Shown     Shown     Limited   Manager: The rows the panel lists.
+export:drill-spec                              Shown     Hidden    Hidden    HR: HR mode leaves out the developer surfaces and My team. Manager: Developer mode only.
+export:ask                                     Shown     Shown     Shown
+export:data-room                               Shown     Shown     Hidden    Manager: The Data room is HR's.
+export:formulas                                Shown     Shown     Limited   Manager: The shown metrics only.
+drill:employees                                Shown     Shown     Limited   Manager: Rows about people outside the org are left out.
+drill:jobChanges                               Shown     Shown     Limited   Manager: Rows about people outside the org are left out.
+drill:requisitions                             Shown     Shown     Limited   Manager: Rows about people outside the org are left out.
+drill:candidates                               Shown     Shown     Limited   Manager: Rows about people outside the org are left out.
+drill:cases                                    Shown     Shown     Hidden    Manager: These records are not shown in Manager mode.
+drill:transactions                             Shown     Shown     Hidden    Manager: These records are not shown in Manager mode.
+drill:reviews                                  Shown     Shown     Limited   Manager: Rows about people outside the org are left out.
+drill:succession                               Shown     Shown     Limited   Manager: Rows about people outside the org are left out.
+drill:learning                                 Shown     Shown     Limited   Manager: Rows about people outside the org are left out.
+drill:comp                                     Shown     Shown     Hidden    Manager: These records are not shown in Manager mode.
+drill:hiringPlan                               Shown     Shown     Hidden    Manager: These records are not shown in Manager mode.
+drill:onboardingTasks                          Shown     Shown     Limited   Manager: Rows about people outside the org are left out.
+drill:rightToWork                              Shown     Shown     Hidden    Manager: These records are not shown in Manager mode.
+drill:surveyResponses                          Shown     Shown     Hidden    Manager: These records are not shown in Manager mode.
+drill:surveyItems                              Shown     Shown     Hidden    Manager: These records are not shown in Manager mode.
+drill:surveyGroups                             Shown     Shown     Hidden    Manager: These records are not shown in Manager mode.
+drill:leaveGroups                              Shown     Shown     Hidden    Manager: These records are not shown in Manager mode.
+drill:actionItems                              Shown     Shown     Limited   Manager: Rows about people outside the org are left out.
+drill:actionOwners                             Shown     Shown     Limited   Manager: Rows about people outside the org are left out.
+dataset:employees                              Shown     Shown     Shown
+dataset:jobChanges                             Shown     Shown     Shown
+dataset:requisitions                           Shown     Shown     Shown
+dataset:candidates                             Shown     Shown     Shown
+dataset:cases                                  Shown     Shown     Hidden    Manager: Not one of the datasets Manager mode reads.
+dataset:transactions                           Shown     Shown     Hidden    Manager: Not one of the datasets Manager mode reads.
+dataset:reviews                                Shown     Shown     Shown
+dataset:succession                             Shown     Shown     Shown
+dataset:learning                               Shown     Shown     Shown
+dataset:comp                                   Shown     Shown     Hidden    Manager: Not one of the datasets Manager mode reads.
+dataset:hiringPlan                             Shown     Shown     Hidden    Manager: Not one of the datasets Manager mode reads.
+dataset:onboardingTasks                        Shown     Shown     Shown
+dataset:rightToWork                            Shown     Shown     Hidden    Manager: Not one of the datasets Manager mode reads.
+dataset:surveyResponses                        Shown     Shown     Hidden    Manager: Not one of the datasets Manager mode reads.
+dataset:surveyItems                            Shown     Shown     Hidden    Manager: Not one of the datasets Manager mode reads.
+person:inside-org                              Shown     Shown     Limited   Manager: No compa-ratio; open items show overdue required courses only.
+person:outside-org                             Shown     Shown     Limited   Manager: Name, title, department and "Outside … org" only, with no actions.
+person:compa-ratio                             Shown     Shown     Hidden    Manager: Compensation is not part of Manager mode.
+person:open-cases                              Shown     Shown     Hidden    Manager: HR ops cases are not part of Manager mode.
+person:chain-links                             Shown     Shown     Limited   Manager: Names above the manager read as plain text.
+person:focus                                   Shown     Shown     Limited   Manager: For people inside the org.
+person:org-chart                               Shown     Shown     Limited   Manager: For people inside the org.
+person:row-open                                Shown     Shown     Limited   Manager: Rows open only people inside the org.
+focus:filter-to                                Shown     Shown     Limited   Manager: Offered only when the result stays inside the org.
+focus:leave-out                                Shown     Shown     Limited   Manager: Offered only when the result stays inside the org.
+focus:leave-out-leader                         Shown     Shown     Hidden    Manager: Leaving out a leader would leave the org.
+focus:finding                                  Shown     Shown     Limited   Manager: Offered only when the result stays inside the org.
+shortcut:help                                  Shown     Shown     Shown
+shortcut:ask                                   Shown     Shown     Limited   Manager: The sheet explains when Ask is off.
+shortcut:keys                                  Shown     Shown     Shown
+shortcut:tabs                                  Shown     Shown     Limited   Manager: Arrows move over the shown tabs only.
+shortcut:org                                   Shown     Shown     Limited   Manager: Inside the org.
+shortcut:tour                                  Shown     Shown     Shown
+shortcut:dev-overlays                          Shown     Hidden    Hidden    HR: HR mode leaves out the developer surfaces and My team. Manager: Developer mode only.
+overlay:figures                                Shown     Hidden    Hidden    HR: HR mode leaves out the developer surfaces and My team. Manager: Developer mode only.
+overlay:tours                                  Shown     Hidden    Hidden    HR: HR mode leaves out the developer surfaces and My team. Manager: Developer mode only.
+overlay:metrics                                Shown     Hidden    Hidden    HR: HR mode leaves out the developer surfaces and My team. Manager: Developer mode only.
+figure:recruiting-recruiter-load               Shown     Shown     Hidden    Manager: On the Manager mode figure list.
+figure:recruiting-candidate-survey             Shown     Shown     Hidden    Manager: On the Manager mode figure list.
+figure:recruiting-hiring-manager-survey        Shown     Shown     Hidden    Manager: On the Manager mode figure list.
+figure:onboarding-new-hire-entered             Shown     Shown     Hidden    Manager: On the Manager mode figure list.
+figure:onboarding-pulse                        Shown     Shown     Hidden    Manager: On the Manager mode figure list.
+figure:hrbp-exit-survey                        Shown     Shown     Hidden    Manager: On the Manager mode figure list.
+figure:hrbp-manager-feedback                   Shown     Shown     Hidden    Manager: On the Manager mode figure list.
+figure:talent-key-talent-top                   Shown     Shown     Hidden    Manager: On the Manager mode figure list.
+figure:talent-key-talent-at-risk               Shown     Shown     Hidden    Manager: On the Manager mode figure list.
+figure:talent-stay-interviews                  Shown     Shown     Hidden    Manager: On the Manager mode figure list.
+figure:talent-training-evaluation              Shown     Shown     Hidden    Manager: On the Manager mode figure list.
+figure:talent-rating-by-manager                Shown     Shown     Hidden    Manager: On the Manager mode figure list.
+figure:recruiting-time-to-fill-quarter         Shown     Shown     Hidden    Manager: On the Manager mode figure list.
+figure:onboarding-late-tasks-by-region         Shown     Shown     Hidden    Manager: On the Manager mode figure list.
+figure:onboarding-task-timing                  Shown     Shown     Hidden    Manager: On the Manager mode figure list.
+figure:team-kpis                               Shown     Hidden    Shown     HR: HR mode leaves out the developer surfaces and My team.
+figure:team-readout                            Shown     Hidden    Shown     HR: HR mode leaves out the developer surfaces and My team.
+figure:team-headcount-trend                    Shown     Hidden    Shown     HR: HR mode leaves out the developer surfaces and My team.
+figure:team-hires-exits                        Shown     Hidden    Shown     HR: HR mode leaves out the developer surfaces and My team.
+figure:team-attrition-vs-company               Shown     Hidden    Shown     HR: HR mode leaves out the developer surfaces and My team.
+figure:team-tenure                             Shown     Hidden    Shown     HR: HR mode leaves out the developer surfaces and My team.
+figure:team-levels                             Shown     Hidden    Shown     HR: HR mode leaves out the developer surfaces and My team.
+figure:team-span                               Shown     Hidden    Shown     HR: HR mode leaves out the developer surfaces and My team.
+figure:team-pipeline                           Shown     Hidden    Shown     HR: HR mode leaves out the developer surfaces and My team.
+figure:team-start-calendar                     Shown     Hidden    Shown     HR: HR mode leaves out the developer surfaces and My team.
+figure:team-open-reqs                          Shown     Hidden    Shown     HR: HR mode leaves out the developer surfaces and My team.
+figure:team-starts-table                       Shown     Hidden    Shown     HR: HR mode leaves out the developer surfaces and My team.
+figure:team-rating-mix                         Shown     Hidden    Shown     HR: HR mode leaves out the developer surfaces and My team.
+figure:team-succession                         Shown     Hidden    Shown     HR: HR mode leaves out the developer surfaces and My team.
+figure:team-training-by-course                 Shown     Hidden    Shown     HR: HR mode leaves out the developer surfaces and My team.
+figure:team-training-overdue                   Shown     Hidden    Shown     HR: HR mode leaves out the developer surfaces and My team.
+figure:team-critical-roles                     Shown     Hidden    Shown     HR: HR mode leaves out the developer surfaces and My team.
+figure:team-waiting                            Shown     Hidden    Shown     HR: HR mode leaves out the developer surfaces and My team.
+figure:scorecard-standing                      Shown     Shown     Hidden    Manager: Its view is not shown in Manager mode.
+figure:scorecard-measures                      Shown     Shown     Hidden    Manager: Its view is not shown in Manager mode.
+figure:scorecard-findings                      Shown     Shown     Hidden    Manager: Its view is not shown in Manager mode.
+figure:scorecard-headcount                     Shown     Shown     Hidden    Manager: Its view is not shown in Manager mode.
+figure:scorecard-flow                          Shown     Shown     Hidden    Manager: Its view is not shown in Manager mode.
+figure:scorecard-attrition-trend               Shown     Shown     Hidden    Manager: Its view is not shown in Manager mode.
+figure:scorecard-attrition-bu                  Shown     Shown     Hidden    Manager: Its view is not shown in Manager mode.
+figure:scorecard-pipeline                      Shown     Shown     Hidden    Manager: Its view is not shown in Manager mode.
+figure:scorecard-items                         Shown     Shown     Hidden    Manager: Its view is not shown in Manager mode.
+figure:scorecard-people                        Shown     Shown     Hidden    Manager: Its view is not shown in Manager mode.
+metric:onboarding.first90.i9Section2           Shown     Shown     Hidden    Manager: On the Manager mode metric list.
+metric:onboarding.first90.newHireEntered       Shown     Shown     Hidden    Manager: On the Manager mode metric list.
+metric:onboarding.first90.pulseReady           Shown     Shown     Hidden    Manager: On the Manager mode metric list.
+metric:recruiting.recruiters.load              Shown     Shown     Hidden    Manager: On the Manager mode metric list.
+metric:recruiting.offers.declineReasons        Shown     Shown     Hidden    Manager: On the Manager mode metric list.
+metric:recruiting.offers.acceptanceByLocation  Shown     Shown     Hidden    Manager: On the Manager mode metric list.
+metric:recruiting.data.reqMatch                Shown     Shown     Hidden    Manager: On the Manager mode metric list.
+metric:talent.retention.flightRisk             Shown     Shown     Hidden    Manager: On the Manager mode metric list.
+metric:talent.retention.keyTalent              Shown     Shown     Hidden    Manager: On the Manager mode metric list.
+metric:talent.retention.riskBands              Shown     Shown     Hidden    Manager: On the Manager mode metric list.
+metric:talent.retention.backTest               Shown     Shown     Hidden    Manager: On the Manager mode metric list.
+metric:talent.retention.riskDrivers            Shown     Shown     Hidden    Manager: On the Manager mode metric list.
+metric:talent.finding.keyTalent                Shown     Shown     Hidden    Manager: On the Manager mode metric list.
+metric:talent.performance.byReviewer           Shown     Shown     Hidden    Manager: On the Manager mode metric list.
+metric:scorecard.*                             Shown     Shown     Hidden    Manager: On the Manager mode metric list.
+metric:services.*                              Shown     Shown     Hidden    Manager: On the Manager mode metric list.
+metric:comp.*                                  Shown     Shown     Hidden    Manager: On the Manager mode metric list.
+metric:compliance.*                            Shown     Shown     Hidden    Manager: On the Manager mode metric list.
+metric:listening.*                             Shown     Shown     Hidden    Manager: On the Manager mode metric list.
+metric:ai.*                                    Shown     Shown     Hidden    Manager: On the Manager mode metric list.
+metric:onboarding.plan.*                       Shown     Shown     Hidden    Manager: On the Manager mode metric list.
+metric:recruiting.sources.*                    Shown     Shown     Hidden    Manager: On the Manager mode metric list.
+metric:org.scenario.*                          Shown     Shown     Hidden    Manager: On the Manager mode metric list.
+item:onboarding:i9:                            Shown     Shown     Hidden    Manager: An I-9 item is a Compliance measure.
+ui:error-details                               Shown     Hidden    Hidden    HR: HR mode leaves out the developer surfaces and My team. Manager: Developer mode only.
+ui:tier-badge                                  Shown     Shown     Limited   Manager: Glyph, word and hover explanation; not a button.
+ui:edit-definition                             Shown     Shown     Hidden    Manager: The metric dictionary is in the Data room.
+ui:kpi-delta-company                           Shown     Shown     Hidden    Manager: A company comparison opens no records: the company's records are not listed.
+ui:route-link                                  Shown     Shown     Limited   Manager: A link to a page this mode hides reads as plain text.
+ui:actions-team                                Shown     Shown     Limited   Manager: The pinned org replaces the "My team" picker; narrowing to a leader inside it works.
+org:simulate-exit                              Shown     Shown     Hidden    Manager: An exit what-if is a reorg scenario, worked through with the HRBP.

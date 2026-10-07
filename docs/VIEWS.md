@@ -183,6 +183,56 @@ missed measures with each practice lead this month."
 - Cost on the sample: the summaries take about 190 ms warm and 430 ms on a cold first run in
   Node; in the browser the scorecard's own share is about 110 to 150 ms because the views' models
   are cached per context. Each run records `census:scorecard:<view>` User Timing entries.
+- Chart-led home (docs/DESIGN-REFRESH.md 4.1, docs/ROLES.md 2.1; `ui/Band.tsx`, `ui/Sections.tsx`,
+  engine `engine/band.ts`, ids in `engine/figures.ts`). Top row: Targets met (`scorecard-standing`,
+  span 4: the one `text-hero` number "4 of 21" and a `StatusSplit`; a segment lists its measures,
+  each value opening `kpi.drill`) beside the key figures (span 8: People stats' Headcount and
+  Voluntary attrition, Recruiting's Open reqs and the Action center's Critical open items, each
+  tile opening its own view's tab). Then Measures against target (`scorecard-measures`, span 8,
+  `BulletList` grouped by practice, or "Furthest from target" ranked in watch margins, which is
+  CHARTS.md's Gap to target; the table view adds the signed gap in the measure's unit, and the
+  metric id in Developer mode) beside Top findings (compact readout, 5 before "Show more"). Section
+  "How the workforce is moving": Headcount over time, Hires and exits by month, Voluntary and
+  regretted attrition by quarter (`scorecard-attrition-trend`). Section "Where the pressure is":
+  Voluntary attrition by business unit against the company (glyph at the readout rule's gap,
+  "Filter to" a unit), Recruiting's Pipeline today, and Where open items wait (the Action center's
+  collection for the context, in idle time; HBars by owner group stacked by due state). Section
+  "People scorecard": the table, unchanged, as the record. The monthly report's deck opens with a
+  "Targets met by practice" slide. Not built: Measure trends (TrendGrid) and Places named across
+  practices: the KPI sparks are per-period values without dates or records (their last point is
+  not the scorecard's value), and grouping findings needs a findings drill kind.
+
+---
+
+## My team (`team`)
+
+Manager mode's home (docs/ROLES.md 2.2, docs/DESIGN-REFRESH.md 4.2); in Developer mode it opens by
+address with a leader in the filter row, and asks for one without. Code: `src/views/team/`
+(`engine/` composes the producing views' models, `ui/` the page, ids in `engine/figures.ts`). No
+`summary` and no `actions`. Every figure carries the producing view's metric, so the access rules
+apply to it unchanged, and reads that view's model for the scope (in Manager mode the manager's
+org): nothing is counted a second way.
+
+- Key figures (`team-kpis`): People stats' Headcount, Voluntary and Regretted attrition (vs company),
+  Recruiting's Open reqs, Onboarding's Starts in the next 30 days, Talent's Required training on
+  time, each the view's own tile pointed at its tab; then Waiting on this org (the Action center's
+  open items the leader or someone in the org owns, from `collectActions` in idle time).
+- What needs attention (`team-readout`, compact, up to 6): People stats', Recruiting's,
+  Onboarding's and Talent's findings ranked like the Scorecard's, after Manager mode's hide lists in
+  every mode; beside it Headcount over time (lead).
+- People: Hires and exits by month; Attrition against the company (HBars grouped: voluntary,
+  regretted, first-year; "This org" in slot 1 opens the tile's leavers, "Company" in gray opens
+  nothing); Tenure; People by level; Direct reports per manager (BarList, the 12 widest drawn,
+  company median span as the reference, glyph and word for Overloaded, Heavy and Light).
+- Hiring: Pipeline today (Recruiting's figure and records); Starts by week (Columns stacked by
+  day-one readiness, status colors); Open reqs and Upcoming starts (tables).
+- Talent: Ratings against the guideline (Talent's figure); Critical roles by successor readiness;
+  Required training on time by course (six courses and "Other courses (k)", recounted); Overdue
+  training and Critical roles (tables; successors outside the org by readiness only).
+- Waiting on this org (`team-waiting`): the items one by one, the leader's own first, at most 10.
+- Privacy: no pay, survey results, HR ops cases, compliance details, exit reasons or flight-risk
+  scores (a source test keeps those reads out); an org under 5 employees sees counts and lists and
+  the anonymity line, with every rate "—". Welcome line: "New to My team?" with the manager tour.
 
 ---
 
@@ -277,6 +327,16 @@ emphasize the source with the largest change), Offer acceptance by location (Bar
 ref), Why offers were declined (BarList of rejection reasons for Declined), Why candidates left the
 process (HBars: rejected vs withdrawn reasons by stage).
 
+Added in the design refresh (docs/CHARTS.md): Open reqs at month end (Overview, top of
+Requisitions; Columns stacked by business unit, or by department when the scope sits in one unit,
+24 month ends, `openReqsByMonthEnd`; a segment carries its unit as the filter), Interview decisions
+waiting (Pipeline, under the owners panel; BarList by hiring manager, top 10 and Other, glyph for
+overdue or to watch; new metric `recruiting.pipeline.awaitingDecision`; no filter, a hiring
+manager's own reqs are not an org), Open reqs by age and candidates past the screen
+(Requisitions; Scatter, one dot per open req, empty funnels red and named; a dot opens its req),
+Median time to fill by quarter (Requisitions; Lines, all reqs and L1 to L4 / L5 and above, 8
+quarters, target rule; a point carries the quarter and the band's levels; hidden in Manager mode).
+
 ---
 
 ## Onboarding (`onboarding`)
@@ -368,6 +428,17 @@ minimum), and one number from Listening: day-30 "I had what I needed", linking t
 Hiring plan: Plan vs actual (lead, Lines, cumulative by month: plan, actual, committed, forecast
 de-emphasized), Plan coverage (tableOnly with status pills), Planned roles with no requisition
 (tableOnly), Open reqs not in the plan (tableOnly, backfills on their own).
+
+Added in the design refresh (docs/CHARTS.md): Countdown to day one (Upcoming starts, top of Ready
+for day one; DotStrip of starts in the look-ahead by days to go and the team holding the blocking
+item, colored by readiness with a legend; in Manager mode a background check or screening reads
+"With People ops" / "With Trade compliance" in the table and the records), Late day-one tasks by
+task and region (First 90 days; Heatmap with a Region / Site switch, cells under the anonymity
+minimum hidden; a region carries its sites as the filter), When day-one tasks were finished (First
+90 days; Histogram of days from start to completion for one task, on-time band and first-day rule;
+new metric `onboarding.first90.taskTiming`), Starts against plan by unit and month (Hiring plan,
+section Month by month; diverging Heatmap of actual minus planned starts, by department inside
+one unit). The two First 90 days figures are HR and Developer only.
 
 ### Findings
 
@@ -462,6 +533,17 @@ Org design: Span of control (Columns: 1, 2, 3-5, 6-8, 9-11, 12+), Layers by busi
 regretted exits 12 mo, flag Overloaded ≥ 12 / Heavy ≥ 9 / Light < 3 / New < 12 mo / Healthy),
 Single-report chains (tableOnly), KPIs for mean/median span, manager ratio, layers on this tab via a
 small KpiStrip.
+
+Added in the design refresh (docs/CHARTS.md; engine `engine/trends.ts`, computed per tab on first
+use): Attrition, rolling 12 months (`hrbp-attrition-trailing`, Overview beside Hires and exits;
+Lines over 24 month ends, voluntary or regretted, company line in gray under an org filter;
+`hrbp.attrition.trailing12`), Headcount by business unit over time (`hrbp-headcount-by-org-trend`,
+Workforce lead; Columns stacked by the scorecard's one-level-down groups, at most 7 plus Other;
+`hrbp.headcount.employees`), How long new hires stay (`hrbp-cohort-retention`, Attrition; Columns
+grouped, three yearly hire cohorts at 3/6/12/18/24 months, only hires whose checkpoint has passed;
+`hrbp.attrition.cohortRetention`), New manager in the last 12 months (`hrbp-manager-changes`,
+Movement under Time since last promotion; BarList by group with company ref;
+`hrbp.movement.managerChange`). All four show in Manager mode, inside the org.
 
 ---
 
@@ -662,6 +744,16 @@ Learning: Required training on time by course (BarList with 95% ref), Overdue by
 department (Heatmap, share overdue), Completions by month (Columns), Learning hours per employee by
 business unit (BarList), Overdue assignments (tableOnly).
 
+Added in the design refresh (engine `engine/charts.ts`): Succession exposure
+(`talent-succession-exposure`, Succession lead beside Bench strength; Heatmap of roles by the
+incumbent's risk of loss and the best successor's readiness; a picked cell narrows the roles table;
+`talent.succession.exposure`), Rating change since the last annual cycle (`talent-rating-change`,
+Performance; Heatmap 5 × 5; `talent.performance.ratingChange`), Share rated 4-5 by reviewer
+(`talent-rating-by-manager`, Performance > Calibration; DotStrip by the reviewer's business unit,
+reviewers with 5 or more rated; hidden in Manager mode; `talent.performance.byReviewer`), Required
+training overdue at each month end (`talent-overdue-trend`, Learning lead; Columns stacked by course;
+`talent.learning.overdueAtMonthEnd`).
+
 ---
 
 ## Compensation (`comp`)
@@ -735,6 +827,13 @@ Merit cycle: Merit spend vs budget by business unit (BarList with budget ref; am
 only when showPay), Merit distribution (Histogram), Guideline exceptions (tableOnly, rowTone),
 Promotions in this cycle (stat + table), Total rewards mix by level (HBars normalize: base, target
 bonus, equity; shares only).
+
+Added in the design refresh (engine `engine/charts.ts`, ratios and counts only): Pay position and
+voluntary attrition (`comp-pay-attrition`, Overview "Pay and retention"; Scatter by location or
+department), Median compa-ratio by location and level (`comp-compa-location-level`, Heatmap diverging
+around 1.00, cells under 5 hidden), Pay or the range (`comp-market-vs-range`, Market lead; Scatter of
+job families, market median ÷ midpoint against median compa-ratio), Below range minimum by location
+and cause (`comp-below-min-cause`, Ranges lead; HBars stacked promoted / hired / neither).
 
 ---
 
@@ -1023,6 +1122,13 @@ any number (items whose `uses` fall below it are hidden, with a count of how man
   nagging verb is replaced by "Could you let me know where this stands?". At most 25 items; the
   rest are counted.
 - **Views must not import `@/views/actions` from their `index.tsx`**: it reads the view registry.
+- **Design refresh charts** (`engine/charts.ts`, `ui/Charts.tsx`): When items fall due (Columns,
+  ten due bands from 8+ weeks overdue to no due date, stacked by severity), Who has the most
+  waiting (BarList, top 12 owners and Other, glyph for critical or overdue), What is waiting, by
+  kind (HBars stacked by due bucket, top 12 kinds and Other). Kinds come from `ActionItem.kind`
+  (Recruiting and Onboarding set it), else the id (`engine/kind.ts`), else the view label; a
+  sample test fails when an item has no named kind. Page order: key figures, due timeline with
+  top owners, by kind with by view, then Where items wait at full width.
 
 ---
 ## Org chart (`org`)
@@ -1060,6 +1166,14 @@ title, manager, level, department, location, directs, total org) so CSV/Excel wo
 of the visible chart; and an "Org slide" export (PowerPoint, one slide per selected leader with
 their direct org, like the old tool's slide builder) using pptxgenjs. Large orgs: virtualize or
 collapse by default below depth 3 so 1,500 people stay fast.
+
+Team shape (design refresh, engine `engine/shape.ts`), between the chart and the flags table, follows
+the chart root and the dimming filters: People at each layer (`org-shape-layers`, HBars stacked
+managers / individual contributors / contractors and interns; `org.layers.count`), Span of each
+manager (`org-span-by-layer`, DotStrip by layer, wide and narrow spans emphasized;
+`org.person.directReports`), Orgs under each direct report (`org-team-sizes`, HBars stacked with open
+roles when that switch is on; `org.person.totalOrg`), Tenure mix by org (`org-tenure-mix`, 100%
+HBars on the ordinal ramp, orgs under 5 folded; `org.team.tenureMix`).
 
 ---
 

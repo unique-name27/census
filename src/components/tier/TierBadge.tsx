@@ -5,6 +5,7 @@
  */
 import type { ReactNode } from 'react'
 import { openDatasetQuality } from '@/app/datasetFocus'
+import { useAnalyticsIfAny } from '@/data/context'
 import { TIER_LABEL, type Tier } from '@/data/quality/tier'
 import { type DatasetKey, datasetDef } from '@/data/schema'
 import { cx, Tip } from '../ui'
@@ -74,7 +75,9 @@ export interface TierBadgeProps {
 
 export function TierBadge({ tier, explain, dataset, onOpen, compact, className }: TierBadgeProps) {
   const word = TIER_LABEL[tier]
-  const open = onOpen ?? (dataset ? () => openDatasetQuality(dataset) : null)
+  // Where the Data room is not shown (Manager mode), the badge explains itself but opens nothing.
+  const dataRoom = useAnalyticsIfAny()?.access.can('page:data') ?? true
+  const open = onOpen ?? (dataset && dataRoom ? () => openDatasetQuality(dataset) : null)
   const body = (
     <>
       <MedalGlyph tier={tier} className={compact ? 'size-3' : 'size-3.5'} />
@@ -82,10 +85,10 @@ export function TierBadge({ tier, explain, dataset, onOpen, compact, className }
     </>
   )
   const look = cx(
-    'inline-flex shrink-0 items-center whitespace-nowrap rounded-[3px] leading-none select-none',
+    'inline-flex shrink-0 items-center whitespace-nowrap rounded-chip leading-none select-none',
     compact
-      ? 'h-5 gap-1 px-1 text-[11px] font-medium text-ink-2'
-      : cx('h-6 gap-1.5 px-1.5 text-[12px] font-semibold text-ink', WASH[tier]),
+      ? 'h-5 gap-1 px-1 text-label font-medium text-ink-2'
+      : cx('h-6 gap-1.5 px-1.5 text-meta font-semibold text-ink', WASH[tier]),
     className,
   )
   const detail = explain ? withoutTierPrefix(explain) : null

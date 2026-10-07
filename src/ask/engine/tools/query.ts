@@ -634,12 +634,28 @@ function groupsCutByExclusion(
   return out
 }
 
+/** The person fields Manager mode may group by (owners and the reporting line). */
+const MANAGER_PERSON_GROUPS: ReadonlySet<string> = new Set([
+  'employees.managerId',
+  'requisitions.hiringManager',
+  'requisitions.recruiter',
+  'candidates.recruiter',
+  'candidates.coordinator',
+])
+
 export function queryRecords(rt: ToolRuntime, raw: unknown): ToolOutput {
   const input = inputOf(raw)
   const bad = unknownKeys(input, ['dataset', 'where', 'group_by', 'measures', 'filters', 'sort', 'limit'])
   if (bad) return fail(bad)
   const d = queryDataset(String(input.dataset ?? ''))
-  if (!d) return fail(`dataset must be one of ${QUERY_DATASETS.map((x) => x.key).join(', ')}.`)
+  // Manager mode reads eight datasets (docs/ROLES.md, 3.3); the others are refused in plain words.
+  const access = rt.base.access
+  const readable = QUERY_DATASETS.filter((x) => !access || access.can(`dataset:${x.key}`))
+  if (!d) return fail(`dataset must be one of ${readable.map((x) => x.key).join(', ')}.`)
+  if (!readable.includes(d))
+    return fail(
+      `${d.label} is not available in Manager mode. Datasets: ${readable.map((x) => x.key).join(', ')}.`,
+    )
   const s = scopedCtx(rt, input.filters)
   if (!s.ok) return fail(s.error)
   const ctx = s.ctx
@@ -666,6 +682,9 @@ export function queryRecords(rt: ToolRuntime, raw: unknown): ToolOutput {
   for (const g of groupRaw) {
     const p = parseGroupBy(d, g)
     if (typeof p === 'string') return fail(p)
+    // Manager mode groups by a person only as an owner: manager, hiring manager, recruiter, coordinator.
+    if (access?.lock && p.field.kind === 'person' && !MANAGER_PERSON_GROUPS.has(`${d.key}.${p.field.name}`))
+      return fail(`Grouping by ${p.field.label.toLowerCase()} is not available in Manager mode.`)
     groupBy.push(p)
   }
   const measureRaw =
