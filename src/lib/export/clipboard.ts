@@ -2,15 +2,15 @@
  * "Copy table": tab-separated text with a header row, ready to paste into Excel or Google
  * Sheets. Values use the same parse-friendly plain form as CSV (12.4%, ISO dates).
  */
-import { plainText, visibleColumns } from './columns'
+import { type MoneyOpts, moneyShown, plainText, visibleColumns } from './columns'
 import { guardFormula } from './csv'
 import type { ExportTable } from './types'
 
 /** Tabs and line breaks inside a cell would split it; flatten them to spaces. */
 const flatten = (s: string) => guardFormula(s.replace(/[\t\r\n]+/g, ' '))
 
-export function toTsv(table: Pick<ExportTable, 'columns' | 'rows'>, opts: { showPay: boolean }): string {
-  const cols = visibleColumns(table.columns, opts.showPay)
+export function toTsv(table: Pick<ExportTable, 'columns' | 'rows'>, opts: MoneyOpts): string {
+  const cols = visibleColumns(table.columns, moneyShown(opts))
   const lines = [cols.map((c) => flatten(c.label)).join('\t')]
   for (const row of table.rows) {
     lines.push(
@@ -51,7 +51,7 @@ export async function writeClipboard(text: string): Promise<void> {
 /** Copy a table as TSV. Resolves to the number of data rows copied. */
 export async function copyTable(
   table: Pick<ExportTable, 'columns' | 'rows'>,
-  opts: { showPay: boolean },
+  opts: MoneyOpts,
 ): Promise<number> {
   await writeClipboard(toTsv(table, opts))
   return table.rows.length

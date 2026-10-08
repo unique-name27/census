@@ -10,7 +10,7 @@ import type { AnalyticsContext } from '@/data/context'
 import { CASE_OPEN_STATUSES } from '@/data/schema'
 import type { Window } from '@/data/scope'
 import { dateOf, monthsBetween } from '@/lib/dates'
-import { monthPoints } from '@/lib/people'
+import { headcountAt, monthPoints } from '@/lib/people'
 import type { Headline } from '@/views/types'
 import { M } from '../metrics'
 import {
@@ -101,6 +101,11 @@ export interface ServicesModel {
    * executives can't be read case by case.
    */
   small: boolean
+  /**
+   * The scope holds fewer active employees than the anonymity minimum (the Action center's rule):
+   * employee relations cases are then not even counted, so a small team never learns of one.
+   */
+  smallScope: boolean
   /** What the drill-downs need (off in a small scope); see engine/drills.ts. */
   scope: DrillScope
   caseCols: CaseColumns
@@ -265,6 +270,7 @@ export function compute(ctx: AnalyticsContext): ServicesModel {
     people,
     settings,
     small,
+    smallScope: !ctx.isCompany && headcountAt(ctx.data.employees, asOf) < min,
     scope,
     caseCols,
     txCols,

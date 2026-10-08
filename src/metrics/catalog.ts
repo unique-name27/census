@@ -17,6 +17,7 @@ import { metrics as recruiting } from '@/views/recruiting/metrics'
 import { metrics as scorecard } from '@/views/scorecard/metrics'
 import { metrics as services } from '@/views/services/metrics'
 import { metrics as talent } from '@/views/talent/metrics'
+import { BUDGET_METRIC_DEFS } from './budget'
 import { COMP_CYCLE_METRICS } from './compCycle'
 import { PRIVACY_METRICS } from './privacy'
 import { QUALITY_METRICS } from './quality'
@@ -59,7 +60,8 @@ export const METRICS: readonly MetricDef[] = withRequired(
     ...PRIVACY_METRICS,
     ...QUALITY_METRICS,
   ],
-  COMP_CYCLE_METRICS,
+  // The cycle settings, and actual against budget (src/lib/budget.ts), whatever the comp view registers.
+  [...COMP_CYCLE_METRICS, ...BUDGET_METRIC_DEFS],
 )
 
 export const CATALOG: MetricCatalog = catalogOf(METRICS)

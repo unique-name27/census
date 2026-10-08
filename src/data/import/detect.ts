@@ -87,6 +87,17 @@ const SHEET_ALIASES: Record<DatasetKey, string[]> = {
     'survey export',
   ],
   surveyItems: ['questions', 'question bank', 'survey questions', 'items', 'item map'],
+  budget: [
+    'budget',
+    'headcount budget',
+    'hc budget',
+    'cost budget',
+    'personnel budget',
+    'workforce budget',
+    'opex budget',
+    'operating budget',
+    'budget lines',
+  ],
 }
 
 function nameAffinity(sheetName: string, def: DatasetDef): number {

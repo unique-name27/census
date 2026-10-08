@@ -16,6 +16,8 @@
  *
  * Renders nothing while no survey answers are loaded at all, so a team without survey data sees
  * no empty sections; with answers loaded but none for this survey in scope, the figure says so.
+ * Renders nothing, section and all, where the mode hides the survey's Listening tab
+ * (`surveyShown`, docs/ROLES-V2.md 4.2), not only where it hides Listening.
  */
 import { type ReactNode, useMemo } from 'react'
 import { type Column, Figure } from '@/charts'
@@ -24,6 +26,7 @@ import { useAnalytics } from '@/data/context'
 import type { SurveyType } from '@/data/schema'
 import { Drill } from '@/drill/Drill'
 import { DASH, fmt } from '@/lib/format'
+import { surveyShown } from './api'
 import { programOf, TAB_LABEL } from './engine/catalog'
 import {
   changeText,
@@ -65,8 +68,8 @@ export function LinkedSurvey({
   const ctx = useAnalytics()
   const h = useMemo(() => linkedHeadline(ctx, survey), [ctx, survey])
   const program = programOf.get(survey)
-  // A mode that hides Listening (Manager mode) shows no survey here either, section and all.
-  if (!program || !ctx.all.surveyResponses.length || !ctx.access.can('view:listening')) return null
+  // A mode that hides the survey's Listening tab shows no survey here either, section and all.
+  if (!program || !ctx.all.surveyResponses.length || !surveyShown(ctx, survey)) return null
 
   const tab = h?.tab ?? program.tab
   const metricId = h?.metricId ?? scoreMetric(program)

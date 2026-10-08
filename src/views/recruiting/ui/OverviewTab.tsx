@@ -453,7 +453,7 @@ export function OverviewTab() {
                 extra: `Levels with fewer than ${minGroup} filled reqs show no median.`,
               }),
             ]}
-            note={`${plural(b.filled.length, 'req')} filled · company median ${fmt(m.companyTtf, 'days')} · ${asOfNote(b.asOf)}`}
+            note={`${plural(b.filled.length, 'req')} filled · ${b.bench.note} median ${fmt(m.companyTtf, 'days')} · ${asOfNote(b.asOf)}`}
           >
             <BarList
               data={m.ttfByLevel}
@@ -464,7 +464,7 @@ export function OverviewTab() {
               secondary={(d) => `${d.reqs} filled`}
               ref={
                 m.companyTtf != null
-                  ? { value: m.companyTtf, label: `Company ${fmt(m.companyTtf, 'days')}` }
+                  ? { value: m.companyTtf, label: `${b.bench.label} ${fmt(m.companyTtf, 'days')}` }
                   : undefined
               }
               nullNote={`Fewer than ${minGroup} reqs filled`}

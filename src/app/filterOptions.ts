@@ -5,8 +5,18 @@
  * population as `headcountAt` in src/lib/people.ts.
  */
 
+import type { Mode } from '@/access/modes'
+import { clampFilters } from '@/access/scopes/clamp'
 import { type Employee, type ISODate, LEVEL_LABELS, type Level, levelIndex } from '@/data/schema'
-import { employeeMatcher, type Filters, isActiveAt, isEmployee, type OrgIndex } from '@/data/scope'
+import {
+  DEFAULT_FILTERS,
+  employeeMatcher,
+  type Filters,
+  isActiveAt,
+  isEmployee,
+  isExcluded,
+  type OrgIndex,
+} from '@/data/scope'
 import { formatDate, formatMonthShort, isCalendarDate, isValidDate } from '@/lib/dates'
 
 export type DimensionKey = 'businessUnit' | 'department' | 'location' | 'level'
@@ -87,6 +97,16 @@ export function dimensionOptions(
 }
 
 /**
+ * Whether a list filter offers its Include / Exclude switch in a mode: where the mode's clamp keeps
+ * an exclusion. Finance filters by whole business units, so its clamp turns one into no filter and
+ * its business unit menu is include only (docs/ROLES-V2.md 2.3 and 2.5).
+ */
+export function offersExclude(mode: Mode, key: DimensionKey): boolean {
+  const probe: Filters = { ...DEFAULT_FILTERS, [key]: ['probe'], modes: { [key]: 'exclude' } }
+  return isExcluded(clampFilters(probe, null, mode), key)
+}
+
+/**
  * For each dimension, who the rest of the filter row lets through: the leader's org and every
  * other dimension's choice, leaving out the dimension's own (so its options can still widen it).
  */
@@ -150,6 +170,36 @@ export function leaderOptions(
       name: e.name || e.employeeId,
       title: e.jobTitle ?? '',
       size: scoped ? (scoped.get(e.employeeId) ?? 0) : size,
+    })
+  }
+  return out.sort((a, b) => b.size - a.size || a.name.localeCompare(b.name))
+}
+
+/**
+ * Inside a business unit or region scope (docs/ROLES-V2.md 2.5): leaders with `minReports` or more
+ * active employees inside the scope (themselves left out), largest first. Someone above the scope
+ * whose org holds it qualifies, as the clamp allows. With `within` (the rest of the filter row),
+ * each size counts the scope's people it lets through: who would be in scope after picking them.
+ */
+export function scopedLeaderOptions(
+  index: OrgIndex,
+  asOf: ISODate,
+  inScope: (e: Employee) => boolean,
+  minReports = 3,
+  within?: (e: Employee) => boolean,
+): LeaderOption[] {
+  const inside = orgSizes(index, asOf, inScope)
+  const sized = within ? orgSizes(index, asOf, (e) => inScope(e) && within(e)) : inside
+  const out: LeaderOption[] = []
+  for (const e of index.byId.values()) {
+    if (!isActiveAt(e, asOf)) continue
+    const reports = (inside.get(e.employeeId) ?? 0) - (counted(e, asOf) && inScope(e) ? 1 : 0)
+    if (reports < minReports) continue
+    out.push({
+      id: e.employeeId,
+      name: e.name || e.employeeId,
+      title: e.jobTitle ?? '',
+      size: sized.get(e.employeeId) ?? 0,
     })
   }
   return out.sort((a, b) => b.size - a.size || a.name.localeCompare(b.name))

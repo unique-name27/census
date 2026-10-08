@@ -1,7 +1,7 @@
 /**
  * Census data model.
  *
- * Fifteen datasets, each one Excel sheet. Employee-keyed datasets join to the roster by `employeeId`
+ * Sixteen datasets, each one Excel sheet. Employee-keyed datasets join to the roster by `employeeId`
  * and inherit its org dimensions (business unit, department, location, level, manager chain) for
  * filtering. Dates are ISO strings: `YYYY-MM-DD` for dates and `YYYY-MM-DDTHH:mm` for case
  * timestamps. Enumerated values are stored in the canonical spellings defined below; importers
@@ -1111,6 +1111,34 @@ export interface HiringPlanLine {
 }
 
 /**
+ * One line of the headcount and cost budget (docs/ROLES-V2.md, "Decisions made"): a month and an
+ * org, either a whole business unit, a department or a cost center, with the headcount and the
+ * cost budgeted for it. Headcount counts employees at the month end (contractors and interns are
+ * not headcount). The cost is a pay-type amount: Finance sees it only as totals over groups of 5
+ * or more people (docs/ROLES-V2.md 3.2), and every other mode only with "Show pay amounts" on.
+ */
+export interface BudgetLine {
+  /** First day of the budgeted month (YYYY-MM-01). */
+  period: ISODate
+  businessUnit: string
+  /** Blank for a line that budgets the whole business unit. */
+  department?: string | null
+  /** Blank for a line that budgets a whole department or business unit. */
+  costCenter?: string | null
+  /** Employees budgeted at the month end. */
+  budgetHeadcount: number
+  /**
+   * The month's budgeted workforce cost in `currency`: employees' base pay and target bonus, and
+   * contractors. One month's cost, not the year's.
+   */
+  budgetCost?: number | null
+  /** ISO code of `budgetCost`'s currency; blank reads as USD. */
+  currency?: string | null
+  /** e.g. "FY27 budget"; the views read the latest version when several are loaded. */
+  planVersion?: string | null
+}
+
+/**
  * One onboarding task for one person: a pre-hire or new employee (`employeeId`) or an accepted
  * candidate who is not in the roster yet (`applicationId`). At least one of the two is set.
  */
@@ -1197,6 +1225,7 @@ export interface Datasets {
   rightToWork: RightToWork[]
   surveyResponses: SurveyResponse[]
   surveyItems: SurveyItem[]
+  budget: BudgetLine[]
 }
 export type DatasetKey = keyof Datasets
 export const DATASET_KEYS: DatasetKey[] = [
@@ -1215,15 +1244,20 @@ export const DATASET_KEYS: DatasetKey[] = [
   'rightToWork',
   'surveyResponses',
   'surveyItems',
+  'budget',
 ]
 
-/** Datasets added for Onboarding, Compliance and Listening. The sample may leave them empty. */
+/**
+ * Datasets added for Onboarding, Compliance, Listening and Finance's budget. The sample may leave
+ * them empty.
+ */
 export const OPTIONAL_DATASETS: readonly DatasetKey[] = [
   'hiringPlan',
   'onboardingTasks',
   'rightToWork',
   'surveyResponses',
   'surveyItems',
+  'budget',
 ]
 
 /** Every dataset with no rows. */
@@ -1295,6 +1329,7 @@ export interface DatasetDef {
 }
 
 export type ViewKey =
+  | 'home'
   | 'team'
   | 'scorecard'
   | 'recruiting'
@@ -1310,6 +1345,8 @@ export type ViewKey =
 
 /** Folder-tab labels, in folder-tab order. */
 export const VIEW_LABEL: Record<ViewKey, string> = {
+  // The role homes (docs/ROLES-V2.md, part 5): CHRO and the practice and partner roles open here.
+  home: 'Home',
   team: 'My team',
   scorecard: 'Scorecard',
   recruiting: 'Recruiting',
@@ -1626,7 +1663,7 @@ export const DATASETS: DatasetDef[] = [
     label: 'Requisitions',
     sheet: 'Requisitions',
     description: 'Job requisitions from the ATS. Time to fill runs from opened date to filled date.',
-    usedBy: ['team', 'scorecard', 'recruiting', 'onboarding', 'org', 'listening'],
+    usedBy: ['team', 'scorecard', 'recruiting', 'onboarding', 'org', 'comp', 'listening'],
     rowKey: ['reqId'],
     fields: [
       f(
@@ -2931,6 +2968,122 @@ export const DATASETS: DatasetDef[] = [
         'number',
         ['target', 'goal', 'benchmark', 'target score'],
         'Target mean on the item’s scale, e.g. 4.0 on 1-5.',
+      ),
+    ],
+  },
+  {
+    key: 'budget',
+    label: 'Headcount and cost budget',
+    sheet: 'Budget',
+    description:
+      'Optional: budgeted headcount and cost by month, for each business unit, department or cost center. Finance sees the cost as totals only.',
+    usedBy: ['scorecard', 'comp'],
+    rowKey: ['planVersion', 'period', 'businessUnit', 'department', 'costCenter'],
+    fields: [
+      f(
+        'period',
+        'Period',
+        'date',
+        [
+          'period',
+          'month',
+          'budget month',
+          'budget period',
+          'fiscal month',
+          'fiscal period',
+          'posting period',
+          'plan month',
+          'period start',
+          'month start',
+        ],
+        'Budgeted month. A full date or a month such as "Nov 2026" or "2026-11".',
+        { required: true },
+      ),
+      f(
+        'businessUnit',
+        'Business unit',
+        'string',
+        ['business unit', 'bu', 'business group', 'division', 'organization', 'segment'],
+        'Business unit the line budgets.',
+        { required: true },
+      ),
+      f(
+        'department',
+        'Department',
+        'string',
+        ['department', 'dept', 'team', 'org unit', 'function'],
+        'Department the line budgets. Blank for a line that budgets the whole business unit.',
+      ),
+      f(
+        'costCenter',
+        'Cost center',
+        'string',
+        [
+          'cost center',
+          'cost centre',
+          'cc',
+          'cost center code',
+          'cost centre code',
+          'cost center id',
+          'cc code',
+          'cost object',
+        ],
+        'Cost center code, as in Employees. Blank for a line that budgets a whole department or business unit.',
+      ),
+      f(
+        'budgetHeadcount',
+        'Budget headcount',
+        'number',
+        [
+          'budget headcount',
+          'budgeted headcount',
+          'headcount budget',
+          'budget hc',
+          'budgeted hc',
+          'hc budget',
+          'budget fte',
+          'budgeted fte',
+          'headcount',
+          'hc',
+        ],
+        'Employees budgeted at the month end. Contractors and interns are not headcount.',
+        { required: true },
+      ),
+      f(
+        'budgetCost',
+        'Budget cost',
+        'money',
+        [
+          'budget cost',
+          'budgeted cost',
+          'cost budget',
+          'budget amount',
+          'budget',
+          'personnel cost',
+          'personnel cost budget',
+          'people cost',
+          'workforce cost',
+          'labor cost',
+          'labour cost',
+          'compensation budget',
+          'salary budget',
+        ],
+        'The month’s budgeted cost of the line: employees’ base pay and target bonus, and contractors. One month, not the year, in the currency of the Currency column.',
+        { recommended: true, pay: true },
+      ),
+      f(
+        'currency',
+        'Currency',
+        'string',
+        ['currency', 'currency code', 'ccy', 'curr', 'budget currency', 'reporting currency'],
+        'ISO currency code of the budget cost, such as USD. Blank reads as USD.',
+      ),
+      f(
+        'planVersion',
+        'Plan version',
+        'string',
+        ['plan version', 'version', 'budget version', 'scenario', 'plan name', 'budget name'],
+        'Budget version, such as "FY27 budget". When several are loaded, the latest is read.',
       ),
     ],
   },

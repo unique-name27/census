@@ -44,7 +44,9 @@ describe('folder tabs', () => {
       'listening',
       'ai',
     ])
-    expect(VIEWS.map((v) => v.key)).toEqual(VIEW_KEYS)
+    // The Home view (docs/ROLES-V2.md part 5) is a view key before it is built (8.9, stage 4).
+    const built = VIEW_KEYS.filter((k) => k !== 'home' || VIEWS.some((v) => v.key === 'home'))
+    expect(VIEWS.map((v) => v.key)).toEqual(built)
     for (const v of VIEWS) expect(v.label, v.key).toBe(VIEW_LABEL[v.key])
   })
 

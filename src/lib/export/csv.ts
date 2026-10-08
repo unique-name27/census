@@ -6,10 +6,10 @@
  * with an apostrophe. Numbers are written as numbers and are never prefixed.
  */
 import type { ExportMeta } from '@/charts/types'
-import { plainText, visibleColumns } from './columns'
+import { type MoneyOpts, moneyShown, plainText, visibleColumns } from './columns'
 import { definitionsLineFor } from './definitions'
 import { downloadBlob, MIME } from './download'
-import { dataLine, fileStem, metaLine, stampLine } from './names'
+import { dataLine, fileStem, metaLine, modeLines, stampLine } from './names'
 import type { ExportOptions, ExportTable } from './types'
 
 const FORMULA_START = /^[=+\-@\t\r]/
@@ -32,11 +32,8 @@ export interface CsvOptions {
   bom?: boolean
 }
 
-export function toCsv(
-  table: Pick<ExportTable, 'columns' | 'rows'>,
-  opts: { showPay: boolean } & CsvOptions,
-): string {
-  const cols = visibleColumns(table.columns, opts.showPay)
+export function toCsv(table: Pick<ExportTable, 'columns' | 'rows'>, opts: MoneyOpts & CsvOptions): string {
+  const cols = visibleColumns(table.columns, moneyShown(opts))
   const lines: string[] = []
   for (const p of opts.preamble ?? []) lines.push(csvField(p))
   if (opts.preamble?.length) lines.push('')
@@ -55,7 +52,10 @@ export function toCsv(
   return `${opts.bom === false ? '' : '﻿'}${lines.join('\r\n')}\r\n`
 }
 
-/** Title and context lines for a CSV: title, subtitle, scope and window, data standard and tier, stamp. */
+/**
+ * Title and context lines for a CSV: title, subtitle, scope and window, data standard and tier,
+ * the mode lines (outside HR and Developer), stamp.
+ */
 export function csvPreamble(table: ExportTable, meta: ExportMeta): string[] {
   return [
     table.title ?? table.name,
@@ -63,6 +63,7 @@ export function csvPreamble(table: ExportTable, meta: ExportMeta): string[] {
     metaLine(meta),
     dataLine(meta.standard, table.tier, table.withheld) ?? '',
     definitionsLineFor(meta) ?? '',
+    ...modeLines(meta),
     stampLine(meta),
   ].filter(Boolean)
 }

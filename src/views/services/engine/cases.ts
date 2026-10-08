@@ -13,10 +13,12 @@
  * timeliness only).
  */
 
-import { CASE_OPEN_STATUSES, MIN_GROUP } from '@/data/schema'
+import { CASE_OPEN_STATUSES, type ISODate, MIN_GROUP } from '@/data/schema'
 import type { Window } from '@/data/scope'
+import { ms } from '@/lib/dates'
+import { plural } from '@/lib/format'
 import { groupBy, mean, median, quantile } from '@/lib/stats'
-import { type CaseFact, inWin, openStatusLabel } from './facts'
+import { asOfEnd, type CaseFact, inWin, openStatusLabel } from './facts'
 import { defaultSettings } from './settings'
 import {
   foldGroups,
@@ -306,6 +308,93 @@ export function agedCases(facts: readonly CaseFact[], minAge = defaultSettings()
       }
     })
     .sort((a, b) => b.ageDays - a.ageDays)
+}
+
+/* ───────────── open cases (HR ops' My list) ───────────── */
+
+/** Where an open case stands against its resolution target at the end of the as-of day. */
+export type SlaState = 'Within target' | 'Due within 24 h' | 'Past target' | 'No target'
+
+export const SLA_STATES: readonly SlaState[] = [
+  'Past target',
+  'Due within 24 h',
+  'Within target',
+  'No target',
+]
+
+/** An open case's SLA state: past its resolution target, inside the last 24 hours of it, or within it. */
+export function slaStateOf(f: Pick<CaseFact, 'openedAt' | 'resolutionTarget'>, asOf: ISODate): SlaState {
+  if (f.resolutionTarget == null) return 'No target'
+  const left = ms(f.openedAt) + f.resolutionTarget * 3_600_000 - asOfEnd(asOf)
+  return left < 0 ? 'Past target' : left <= 24 * 3_600_000 ? 'Due within 24 h' : 'Within target'
+}
+
+export interface OpenCaseRow {
+  caseId: string
+  category: string
+  /** Atlas process ID ("ER-02"), when the case names one. */
+  processId: string | null
+  team: string
+  assignee: string | null
+  priority: string | null
+  opened: ISODate
+  ageDays: number | null
+  sla: SlaState
+  channel: string | null
+  /** The case, for its drill (not exported). */
+  fact: CaseFact
+}
+
+export interface OpenCases {
+  /** Open cases, oldest first; employee relations cases are never rows. Empty in a small scope. */
+  rows: OpenCaseRow[]
+  /** Open employee relations cases, counted; null when the scope holds fewer than the minimum. */
+  privateOpen: number | null
+  /** "3 employee relations cases are open. They are counted, never listed."; null with `privateOpen`. */
+  privateNote: string | null
+}
+
+/**
+ * HR ops' open case queue (docs/ROLES-V2.md 5.8, My list "Open cases"): every case open at the end
+ * of the as-of day, oldest first, with its SLA state. Employee relations cases are never rows: one
+ * line counts them, whether 0 or not, and is left out entirely when the scope holds fewer people
+ * than the anonymity minimum (the Action center's rule). A scope behind too few people lists no
+ * rows at all, as every row-level list in HR ops.
+ */
+export function openCaseRows(m: {
+  cases: readonly CaseFact[]
+  asOf: ISODate
+  small: boolean
+  smallScope: boolean
+}): OpenCases {
+  const open = m.cases.filter((f) => f.open)
+  const privateOpen = m.smallScope ? null : open.filter(isRowPrivate).length
+  const rows: OpenCaseRow[] = m.small
+    ? []
+    : open
+        .filter((f) => !isRowPrivate(f))
+        .map((f) => ({
+          caseId: f.caseId,
+          category: f.category,
+          processId: f.processId,
+          team: f.team,
+          assignee: f.assignee,
+          priority: f.record.priority ?? null,
+          opened: f.opened,
+          ageDays: f.ageDays,
+          sla: slaStateOf(f, m.asOf),
+          channel: f.channel,
+          fact: f,
+        }))
+        .sort((a, b) => a.fact.openedAt.localeCompare(b.fact.openedAt) || a.caseId.localeCompare(b.caseId))
+  return {
+    rows,
+    privateOpen,
+    privateNote:
+      privateOpen == null
+        ? null
+        : `${plural(privateOpen, 'employee relations case')} ${privateOpen === 1 ? 'is' : 'are'} open. They are counted, never listed.`,
+  }
 }
 
 export interface AgedPrivateRow {

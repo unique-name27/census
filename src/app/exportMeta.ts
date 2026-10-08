@@ -1,7 +1,9 @@
 /**
- * Labels the shell stamps on screens and exports: company line, dataset provenance and the
- * ExportMeta header for workbooks and decks. Pure.
+ * Labels the shell stamps on screens and exports: company line, dataset provenance, the
+ * ExportMeta header for workbooks and decks, and the mode an off-screen export renders in. Pure.
  */
+import type { AccessContext, AccessInput } from '@/access/context'
+import { EVERY_RECRUITER } from '@/access/modes'
 import type { ExportMeta } from '@/charts/types'
 import type { DataStandard } from '@/data/quality/tier'
 import { DATASET_KEYS, type DatasetKey, datasetDef } from '@/data/schema'
@@ -78,8 +80,10 @@ export function buildExportMeta(args: {
   standard?: DataStandard
   /** False for a view that reads no datasets (AI in HR): no scope, window, as-of or standard lines. */
   readsData?: boolean
-  /** The mode line a whole-view export carries ("Made in Manager mode for Priya Raman's org."). */
+  /** The mode line every export carries outside HR and Developer ("Made in HRBP mode for APAC."). */
   modeLine?: string
+  /** Finance mode's cost line, in place of the "Pay amounts" line (`modeMeta`). */
+  costLine?: string
 }): ExportMeta {
   const meta: ExportMeta = {
     view: args.viewLabel,
@@ -92,6 +96,34 @@ export function buildExportMeta(args: {
     company: args.isSample ? args.sampleCompany : 'Company data',
     ...(args.standard && { standard: args.standard }),
     ...(args.modeLine && { modeLine: args.modeLine }),
+    ...(args.costLine && { costLine: args.costLine }),
   }
   return args.readsData === false ? withoutDataContext(meta) : meta
+}
+
+/**
+ * The mode and picks that rebuild this access context in an off-screen render (a whole-view
+ * export lays the other tabs out in the same mode, scope included): the scope's pick, "Every
+ * recruiter" for Recruiter mode with no scope, and the remembered pick of a scope whose pick is
+ * gone (so the render holds nobody too).
+ */
+export function accessInputOf(access: Pick<AccessContext, 'mode' | 'scope'>): AccessInput {
+  const s = access.scope
+  if (!s)
+    return access.mode === 'recruiter'
+      ? { mode: 'recruiter', picks: { recruiter: { name: EVERY_RECRUITER, id: null } } }
+      : { mode: access.mode }
+  switch (s.kind) {
+    case 'org':
+      return { mode: access.mode, picks: { managerId: s.managerId || null } }
+    case 'unit':
+      return { mode: access.mode, picks: { unit: s.label || null } }
+    case 'region':
+      return { mode: access.mode, picks: { region: s.label || null } }
+    case 'reqs':
+      return {
+        mode: access.mode,
+        picks: { recruiter: s.recruiter ? { name: s.recruiter, id: s.recruiterId } : null },
+      }
+  }
 }

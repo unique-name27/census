@@ -45,6 +45,7 @@ export const CATEGORIES: readonly CategoryDef[] = [
     'employees.businessUnit',
     'requisitions.businessUnit',
     'hiringPlan.businessUnit',
+    'budget.businessUnit',
   ]),
   c('department', 'Department', 'org', [
     'employees.department',
@@ -52,8 +53,9 @@ export const CATEGORIES: readonly CategoryDef[] = [
     'jobChanges.fromDepartment',
     'jobChanges.toDepartment',
     'hiringPlan.department',
+    'budget.department',
   ]),
-  c('costCenter', 'Cost center', 'org', ['employees.costCenter']),
+  c('costCenter', 'Cost center', 'org', ['employees.costCenter', 'budget.costCenter']),
   // Every company has its own sites, so locations and countries have no fixed list.
   c('location', 'Location', 'org', [
     'employees.location',

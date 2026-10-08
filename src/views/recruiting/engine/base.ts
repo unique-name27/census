@@ -34,6 +34,12 @@ export interface RecruitingBase {
   /** "Whole company", "Design Verification · Hsinchu": the scope line for drill subtitles. */
   scopeLabel: string
   isCompany: boolean
+  /**
+   * What the scoped numbers are compared with (docs/ROLES-V2.md 2.6): the company, or in Recruiter
+   * mode's reqs scope "all reqs". `label` heads a reference line ("Company 45 d", "All reqs 45 d");
+   * `words` goes in a sentence ("vs 45 d for the company", "vs 45 d for all reqs").
+   */
+  bench: { label: string; words: string; note: string }
   /** The unscoped roster, to link hires to the employee they became (drill person cards). */
   roster: readonly Employee[]
   reqs: Requisition[]
@@ -121,6 +127,10 @@ export function computeBase(ctx: AnalyticsContext): RecruitingBase {
     windowWords,
     scopeLabel: ctx.scopeLabel,
     isCompany: ctx.isCompany,
+    bench:
+      ctx.access.scope?.kind === 'reqs'
+        ? { label: 'All reqs', words: 'all reqs', note: 'all reqs' }
+        : { label: 'Company', words: 'the company', note: 'company' },
     roster: ctx.all.employees,
     reqs,
     apps,

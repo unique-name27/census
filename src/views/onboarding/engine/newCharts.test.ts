@@ -188,7 +188,7 @@ describe('late day-one tasks by task and region', () => {
 
   it('shares late per task and region, hiding a region under the anonymity minimum', () => {
     const cells = lateByTaskAndPlace(f.readinessTasks, 'region', 5)
-    const apac = cells.find((c) => c.place === 'Asia Pacific')!
+    const apac = cells.find((c) => c.place === 'APAC')!
     expect([apac.n, apac.late, apac.share]).toEqual([6, 3, 0.5])
     const emea = cells.find((c) => c.place === 'EMEA')!
     expect([emea.n, emea.late, emea.share, emea.items]).toEqual([2, null, null, []])
@@ -198,13 +198,13 @@ describe('late day-one tasks by task and region', () => {
 
   it('a region cell offers "Filter to" its sites, named as the region', () => {
     const cells = lateByTaskAndPlace(f.readinessTasks, 'region', 5)
-    const apac = cells.find((c) => c.place === 'Asia Pacific')!
-    const spec = resolveDrill(lateCellDrill(b, ctx.all.employees, 'region', lateUses)(apac))
+    const apac = cells.find((c) => c.place === 'APAC')!
+    const spec = resolveDrill(lateCellDrill(b, 'region', lateUses)(apac))
     expect(spec?.filter?.location).toEqual(['Bengaluru'])
-    expect(spec?.filterLabel).toBe('Asia Pacific')
+    expect(spec?.filterLabel).toBe('APAC')
   })
 
-  it('on the sample: cells recount from the raw tasks, and laptops were late for 51 of 124 in Asia Pacific', () => {
+  it('on the sample: cells recount from the raw tasks, and laptops were late for 51 of 124 in APAC', () => {
     const ctx = sampleContext()
     const m = computeOnboardingUncached(ctx)
     const min = m.base.settings.minGroup
@@ -221,7 +221,7 @@ describe('late day-one tasks by task and region', () => {
       expect(c.late, `${c.task} ${c.place}`).toBe(raw.length >= min ? late.length : null)
       if (c.late) expect(lateTasksDrill(m.base, c)?.rows.length).toBe(c.late)
     }
-    const laptop = cells.find((c) => c.task === 'Laptop shipped' && c.place === 'Asia Pacific')!
+    const laptop = cells.find((c) => c.task === 'Laptop shipped' && c.place === 'APAC')!
     expect([laptop.late, laptop.n]).toEqual([51, 124])
     expect(lateTaskNames(m.first90.readinessTasks)[0]).toBe('Laptop shipped')
   })
@@ -232,7 +232,7 @@ describe('late day-one tasks by task and region', () => {
       rows: (c) => lateByTaskAndPlace(computeOnboardingUncached(c).first90.readinessTasks, 'region', 5),
       key: (c) => `${c.task}|${c.place}`,
       value: (c) => c.share,
-      drill: (c, ctx) => lateCellDrill(onboardingBase(ctx), ctx.all.employees, 'region', lateUses)(c),
+      drill: (c, ctx) => lateCellDrill(onboardingBase(ctx), 'region', lateUses)(c),
       kind: 'rate',
     })
   })

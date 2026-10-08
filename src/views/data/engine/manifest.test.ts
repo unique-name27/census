@@ -60,7 +60,7 @@ describe('labels', () => {
     const text = Object.fromEntries(rows.map((r) => [r.key, r.feedsText]))
     expect(text.jobChanges).toBe('Onboarding, People stats, Org chart, Talent, Compensation')
     expect(text.comp).toBe('Talent, Compensation')
-    expect(text.requisitions).toBe('Recruiting, Onboarding, Org chart, Listening')
+    expect(text.requisitions).toBe('Recruiting, Onboarding, Org chart, Compensation, Listening')
     expect(text.reviews).toBe('People stats, Org chart, Talent, Compensation')
     // Recruiting reads requisitions and candidates only.
     expect(text.employees).toBe(
@@ -166,9 +166,11 @@ describe('the sample company in the Data room', () => {
       rightToWork: 1682,
       surveyResponses: 19963,
       surveyItems: 40,
+      // Finance's budget: 92 cost centers by 12 months.
+      budget: 1104,
     })
-    expect(manifestSummary(rows).text).toBe(`69,837 rows across ${DATASET_KEYS.length} datasets`)
-    expect(manifestSummary(rows).totalRows).toBe(69_837)
+    expect(manifestSummary(rows).text).toBe(`70,941 rows across ${DATASET_KEYS.length} datasets`)
+    expect(manifestSummary(rows).totalRows).toBe(70_941)
   })
 
   it('finds every required field filled and nothing to flag', () => {

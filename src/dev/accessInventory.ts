@@ -3,6 +3,7 @@
  * the matrix test reads, so Developer > Access shows exactly the snapshot's rows. Pure.
  */
 import { type AccessInventory, accessMatrix, type MatrixRow } from '@/access/matrix'
+import type { Mode } from '@/access/modes'
 import { DEFAULT_TOOLS } from '@/app/tools'
 import { ALL_TOOL_NAMES } from '@/ask/engine/tools'
 import { DATASET_KEYS } from '@/data/schema'
@@ -38,7 +39,7 @@ export const accessRows = (views: readonly ViewDef[]): MatrixRow[] => accessMatr
 export type AccessFilter = {
   kind: string
   /** 'all', or a mode to show only its non-shown rows. */
-  mode: 'all' | 'developer' | 'hr' | 'manager'
+  mode: 'all' | Mode
   decision: 'all' | 'shown' | 'limited' | 'hidden'
   differ: boolean
   query: string
@@ -57,7 +58,7 @@ export function filterAccessRows(rows: readonly MatrixRow[], f: AccessFilter): M
   const q = f.query.trim().toLowerCase()
   return rows.filter((r) => {
     if (f.kind !== 'all' && r.kind !== f.kind) return false
-    const decisions = f.mode === 'all' ? [r.developer, r.hr, r.manager] : [r[f.mode]]
+    const decisions = f.mode === 'all' ? [r.developer, r.hr, r.manager] : [r.decisions[f.mode]]
     if (f.decision !== 'all' && !decisions.some((d) => d.access === f.decision)) return false
     if (f.differ && r.developer.access === r.hr.access && r.hr.access === r.manager.access) return false
     if (q && !`${r.surface} ${r.kind} ${r.hr.how ?? ''} ${r.manager.how ?? ''}`.toLowerCase().includes(q))

@@ -9,6 +9,7 @@
  *
  * Pure functions of the analytics context; no React.
  */
+import type { RegionIndex } from '@/access/scopes/regions'
 import {
   type Candidate,
   type Employee,
@@ -21,31 +22,19 @@ import {
 } from '@/data/schema'
 import { addBusinessDays, addDays, addMonths, daysBetween } from '@/lib/dates'
 import { inWindow, isEmployee } from '@/lib/people'
+import { matchPreHires, normalizeName } from '@/lib/starts'
 import type { OnboardingSettings } from './settings'
 
 /* ───────────── places ───────────── */
 
-const REGION_NAME: Record<string, string> = { APAC: 'Asia Pacific', EMEA: 'EMEA', Americas: 'Americas' }
-
-/** The region of a site in words ("Asia Pacific"), or null for an unknown site. */
-export function regionOf(location: string | null | undefined): string | null {
-  const s = location ? siteByLocation.get(location) : undefined
-  return s ? (REGION_NAME[s.region] ?? s.region) : null
-}
-
 /**
- * The sites of a region that people work at (`employees`) or that `extra` names, sorted; null when
- * none. A region is the set of its sites for the filters ("Filter to Asia Pacific").
+ * The sites of a region in the loaded data, from the one region index (docs/ROLES-V2.md 1.3: the
+ * Locations list in force, so a region has one name everywhere, "APAC"); null when none. A region
+ * is the set of its sites for the filters ("Filter to APAC").
  */
-export function regionSites(
-  employees: readonly { location: string | null }[],
-  region: string,
-  extra: readonly (string | null | undefined)[] = [],
-): string[] | null {
-  const out = new Set<string>()
-  for (const e of employees) if (e.location && regionOf(e.location) === region) out.add(e.location)
-  for (const l of extra) if (l && regionOf(l) === region) out.add(l)
-  return out.size ? [...out].sort() : null
+export function regionSites(regions: RegionIndex, region: string): string[] | null {
+  const sites = regions.sitesOf(region)
+  return sites.length ? [...sites] : null
 }
 
 /** The country of a site, or the record's own country. */
@@ -220,19 +209,12 @@ export interface Start {
   tasks: TaskView[]
 }
 
-/** Lowercase, no accents, punctuation or single-letter initials: "Sanjay B. Krishnan" → "sanjay krishnan". */
-export function normalizeName(name: string): string {
-  return name
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, ' ')
-    .split(' ')
-    .filter((w) => w.length > 1)
-    .join(' ')
-}
+/** Moved to `@/lib/starts` (docs/ROLES-V2.md, 2.2): Recruiter mode's scope matches starts by the same rule. */
+export { isAccepted, normalizeName } from '@/lib/starts'
 
 export interface StartSources {
+  /** The one region index (`ctx.regions`): each location's region. */
+  regions: RegionIndex
   employees: readonly Employee[]
   candidates: readonly Candidate[]
   reqs: ReadonlyMap<string, Requisition>
@@ -267,7 +249,7 @@ export function startOf(
     department: employee?.department ?? req?.department ?? null,
     location,
     country,
-    region: regionOf(location),
+    region: src.regions.regionOf(location),
     us: isUsSite(location, country),
     hiringManager: req?.hiringManager ?? manager?.name ?? null,
     hiringManagerId: req?.hiringManagerId ?? employee?.managerId ?? null,
@@ -278,6 +260,14 @@ export function startOf(
   }
 }
 
+/**
+ * The record key Action center items about a start use: the application ID when the accepted
+ * candidate is known, else the employee ID. A start's `key` turns from the application ID to the
+ * employee ID when the HRIS enters the hire; this one does not, so a handled or snoozed mark
+ * survives the hire (docs/ACTION-CENTER-AUDIT.md 4.2).
+ */
+export const itemKeyOf = (s: Pick<Start, 'candidate' | 'key'>): string => s.candidate?.applicationId || s.key
+
 export interface UpcomingPeople {
   /** Upcoming starts, soonest first. */
   starts: Start[]
@@ -287,45 +277,23 @@ export interface UpcomingPeople {
   unknownStart: Candidate[]
 }
 
-/** An accepted offer: status Hired with an offer accepted date. */
-export const isAccepted = (c: Candidate): boolean => c.status === 'Hired' && !!c.hiredDate
-
-/** Upcoming starts from the pre-hires and accepted offers given (already scoped). */
+/**
+ * Upcoming starts from the pre-hires and accepted offers given (already scoped). Pre-hires and
+ * accepted offers are paired by `matchPreHires` (`@/lib/starts`).
+ */
 export function upcomingPeople(src: StartSources, unknownLookbackDays: number): UpcomingPeople {
   const { asOf } = src
-  const preHires = src.employees.filter((e) => e.hireDate > asOf)
-  const byName = new Map<string, Employee[]>()
-  for (const e of preHires) {
-    const k = normalizeName(e.name)
-    const list = byName.get(k)
-    if (list) list.push(e)
-    else byName.set(k, [e])
-  }
-  const matched = new Map<string, Candidate>()
-  const duplicates: Candidate[] = []
-  const solo: Candidate[] = []
-  const unknownStart: Candidate[] = []
+  const { preHires, matched, duplicates, solo, noStart } = matchPreHires(
+    src.employees,
+    src.candidates,
+    src.reqs,
+    asOf,
+    src.settings.dedupDays,
+  )
   const lookback = addDays(asOf, -unknownLookbackDays)
-  for (const c of src.candidates) {
-    if (!isAccepted(c)) continue
-    if (!c.startDate) {
-      if (c.hiredDate! > lookback && c.hiredDate! <= asOf && !startedAs(c, src.employees))
-        unknownStart.push(c)
-      continue
-    }
-    if (c.startDate <= asOf) continue
-    const req = src.reqs.get(c.reqId)
-    const twin = (byName.get(normalizeName(c.candidateName)) ?? []).find(
-      (e) =>
-        !matched.has(e.employeeId) &&
-        Math.abs(daysBetween(e.hireDate, c.startDate!)) <= src.settings.dedupDays &&
-        (!req?.department || e.department === req.department),
-    )
-    if (twin) {
-      matched.set(twin.employeeId, c)
-      duplicates.push(c)
-    } else solo.push(c)
-  }
+  const unknownStart = noStart.filter(
+    (c) => c.hiredDate! > lookback && c.hiredDate! <= asOf && !startedAs(c, src.employees),
+  )
   const starts = [
     ...preHires.map((e) => startOf(src, e, matched.get(e.employeeId) ?? null, e.hireDate)),
     ...solo.map((c) => startOf(src, null, c, c.startDate!)),

@@ -3,18 +3,30 @@
  * or snoozed, filter, group by owner, count, write notes and rows. See docs/VIEWS.md, Action center.
  */
 export {
+  type BelowStandard,
+  browserIdle,
   type CollectError,
   type Collected,
+  CollectSuperseded,
+  cachedCollect,
   collectActions,
+  collectPlan,
   compareActions,
+  foldMatters,
   type HiddenReason,
+  type Idle,
   isPrivateItem,
+  isSuperseded,
   isTeamName,
   type OpenAction,
+  runView,
+  scheduleCollect,
   type TeamRelation,
   usesOf,
+  type ViewRun,
   type ViewSource,
   withoutLeader,
+  withoutScope,
 } from './collect'
 export { DUE_BUCKETS, type DueBucket, daysToDue, dueBucket, dueBucketLabel, dueText } from './due'
 export {
@@ -26,11 +38,19 @@ export {
   type WaitingOn,
 } from './filters'
 export { groupByOwner, type OwnerBlock, type OwnerGroup, ownerCount } from './group'
+export { KIND_LABEL, kindOf } from './kind'
 export {
+  hashKey,
   type ItemStatus,
   isOpen,
   type Mark,
   type Marks,
+  type MarksState,
+  type MarkTarget,
+  markKeyOf,
+  marksFile,
+  mergeMarks,
+  readMarksFile,
   STORAGE_KEY,
   snapshotOf,
   statusOf,
@@ -40,6 +60,17 @@ export {
   withSnoozed,
 } from './marks'
 export { askOf, composeNote, DEFAULT_ASK, greeting, NAGGING, NOTE_MAX_ITEMS } from './note'
+export {
+  lensFor,
+  listHeader,
+  NEEDS_SHOWN,
+  nothingWaiting,
+  practiceOf,
+  type RoleView,
+  roleView,
+  showsLists,
+  whereOf,
+} from './roles'
 export {
   drillRows,
   EXPORT_COLUMNS,
@@ -51,6 +82,7 @@ export {
   statusText,
 } from './rows'
 export { type ActionSettings, settingsOf } from './settings'
+export { BLOCKS_PERSON, blocksPerson, severityOf } from './severity'
 export {
   type ActionCounts,
   actionKpis,

@@ -28,6 +28,7 @@ import type { LeaveGroupRow } from '@/drill/types'
 import { addDays, daysBetween, formatDate } from '@/lib/dates'
 import { fmt, plural } from '@/lib/format'
 import { median } from '@/lib/stats'
+import { surveyShown } from '@/views/listening/api'
 import type { ServicesModel } from '../engine'
 import { metricDefinition, servicesDefinitions } from '../engine/definitions'
 import { asOfSub, type DrillScope } from '../engine/drills'
@@ -643,6 +644,8 @@ function SurveyFigure({
   ctx: AnalyticsContext
   survey: SurveyHeadline | null
 }) {
+  // A linked survey number shows only where the mode shows its Listening tab (docs/ROLES-V2.md 4.2).
+  if (!surveyShown(ctx, 'Return to work')) return null
   const D = servicesDefinitions(ctx.metrics, m.settings)
   const listening =
     survey?.metricId && ctx.metrics.def(survey.metricId)

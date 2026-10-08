@@ -85,6 +85,40 @@ export const metrics: MetricDef[] = defineMetrics('talent', [
     goodDirection: 'up',
     uses: L.kpi['talent-rated'],
     owner: OWNER,
+    params: [
+      {
+        key: P.reviewGraceDays.key,
+        label: 'Ratings due after',
+        description:
+          'Ratings missing in the latest cycle become an Action center item for the manager once the cycle date is this many days past.',
+        type: 'days',
+        default: DEFAULTS.reviewGraceDays,
+        min: 0,
+        max: 365,
+        step: 1,
+      },
+      {
+        key: P.reviewEligibleAfterDays.key,
+        label: 'Rated after',
+        description:
+          'People hired fewer days than this before the cycle date are not expected to have a rating in it.',
+        type: 'days',
+        default: DEFAULTS.reviewEligibleAfterDays,
+        min: 0,
+        max: 365,
+        step: 1,
+      },
+      {
+        key: P.reviewCriticalDays.key,
+        label: 'Ratings critical after',
+        description: 'Missing ratings are critical once the cycle date is this many days past.',
+        type: 'days',
+        default: DEFAULTS.reviewCriticalDays,
+        min: 1,
+        max: 365,
+        step: 1,
+      },
+    ],
   },
   {
     id: M.highPerformers,

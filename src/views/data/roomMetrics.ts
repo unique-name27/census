@@ -43,6 +43,7 @@ export const metrics: MetricDef[] = defineMetrics('data', [
       'hiringPlan.period',
       'onboardingTasks.dueDate',
       'surveyResponses.responseDate',
+      'budget.period',
     ],
     owner: OWNER,
   },

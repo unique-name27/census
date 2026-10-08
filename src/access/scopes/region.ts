@@ -1,0 +1,62 @@
+/**
+ * The `region` scope: HRBP for a region (docs/ROLES-V2.md, 2.1 to 2.4). It pins the location filter
+ * to a non-empty subset of the region's sites, include only; every dataset follows it through
+ * `scopeDatasets`. The sites come from the one region index (`regionIndex`). Pure and memoized.
+ */
+import type { Employee, ISODate } from '@/data/schema'
+import { isActiveAt, isEmployee } from '@/data/scope'
+import type { RegionIndex } from './regions'
+import type { RegionScope } from './types'
+import { NOBODY } from './unit'
+
+const memo = new WeakMap<RegionIndex, WeakMap<readonly Employee[], Map<string, RegionScope>>>()
+
+/** The scope for one region, memoized per region index, roster, as-of date and region. */
+export function regionScope(
+  employees: readonly Employee[],
+  asOf: ISODate,
+  region: string,
+  regions: RegionIndex,
+): RegionScope {
+  let byRoster = memo.get(regions)
+  if (!byRoster) {
+    byRoster = new WeakMap()
+    memo.set(regions, byRoster)
+  }
+  let byKey = byRoster.get(employees)
+  if (!byKey) {
+    byKey = new Map()
+    byRoster.set(employees, byKey)
+  }
+  const key = `${asOf}|${region}`
+  const hit = byKey.get(key)
+  if (hit) return hit
+  const sites = regions.sitesOf(region)
+  const at = new Set(sites)
+  const memberIds = new Set<string>()
+  let size = 0
+  for (const e of employees) {
+    if (!e.location || !at.has(e.location)) continue
+    memberIds.add(e.employeeId)
+    if (isEmployee(e) && isActiveAt(e, asOf)) size++
+  }
+  const scope: RegionScope = { kind: 'region', label: region, region, sites, size, memberIds }
+  byKey.set(key, scope)
+  return scope
+}
+
+/** A region scope that holds nobody: no region picked, or no location in the loaded data is in it. */
+export function emptyRegionScope(region: string | null | undefined): RegionScope {
+  const label = region ?? ''
+  let s = emptyRegions.get(label)
+  if (!s) {
+    s = { kind: 'region', label, region: region || NOBODY, sites: [], size: 0, memberIds: new Set() }
+    emptyRegions.set(label, s)
+  }
+  return s
+}
+const emptyRegions = new Map<string, RegionScope>()
+
+/** The locations a region scope pins: its sites, or a value no record has when it has none. */
+export const pinnedSites = (scope: Pick<RegionScope, 'sites'>): readonly string[] =>
+  scope.sites.length ? scope.sites : [NOBODY]

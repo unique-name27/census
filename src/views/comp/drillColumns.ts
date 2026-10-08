@@ -22,12 +22,22 @@ import {
   MERIT_BY_RATING_COLUMNS,
   MIX_COLUMNS,
   marketColumns,
+  OPEN_REQ_COST_COLUMNS,
   PENETRATION_COLUMNS,
   POSITION_COLUMNS,
   PROMOTION_COLUMNS,
   SPEND_COLUMNS,
 } from './columns'
-import type { Bin, ExceptionRow, PromotionRow, RewardsMixRow, SpendRow } from './engine/cycle'
+import {
+  type CostModel,
+  type CostRow,
+  costPeopleDrill,
+  costRowDrill,
+  isCosted,
+  type OpenReqRow,
+  openReqDrill,
+} from './engine/cost'
+import type { Bin, ExceptionRow, ProgressRow, PromotionRow, RewardsMixRow, SpendRow } from './engine/cycle'
 import {
   bonusDrill,
   type CompaMeasure,
@@ -48,6 +58,7 @@ import {
   outsideDrill,
   penetrationDrill,
   positionDrill,
+  progressDrill,
   promotionsDrill,
   type RatingSide,
   spendDrill,
@@ -281,4 +292,52 @@ export function mixColumns(m: DrillScope): Column<RewardsMixRow>[] {
     bonus: part('Target bonus', (r) => r.bonus),
     equity: part('Equity', (r) => r.equity),
   })
+}
+
+/* ───────── workforce cost and cycle progress ───────── */
+
+/** A Workforce cost table: each count and total opens the people it covers (employees in Finance). */
+export function costTableColumns<T extends CostRow>(c: CostModel, cols: readonly Column<T>[]): Column<T>[] {
+  const open = (r: T): DrillSource => (r.members.length ? () => costRowDrill(c, r) : null)
+  return withDrill(cols, {
+    people: open,
+    baseUsd: open,
+    bonusUsd: open,
+    targetCashUsd: open,
+    equityUsd: open,
+    perHeadUsd: open,
+  })
+}
+
+/** Merit spend against budget in USD: the proposals behind each row (employees in Finance). */
+export function meritCostColumns(m: DrillScope, c: CostModel): Column<SpendRow>[] {
+  const open = (r: SpendRow): DrillSource =>
+    r.members.length
+      ? () =>
+          c.totals
+            ? costPeopleDrill(c, `Merit proposals, ${r.group}`, r.members.filter(isCosted))
+            : spendDrill(m, r, 'priced')
+      : null
+  return withDrill(SPEND_COLUMNS, {
+    n: open,
+    spendPct: open,
+    eligibleBaseUsd: open,
+    spendUsd: open,
+    overUsd: open,
+  })
+}
+
+/** Open reqs at range midpoint: the reqs behind each row. */
+export function openReqColumns(c: CostModel): Column<OpenReqRow>[] {
+  const open = (r: OpenReqRow): DrillSource => (r.reqs ? () => openReqDrill(c, r) : null)
+  return withDrill(OPEN_REQ_COST_COLUMNS, { reqs: open, openings: open, estimated: open, estimateUsd: open })
+}
+
+/** Merit cycle progress: each count opens the unit's eligible people, those with no proposal first. */
+export function progressColumns<T extends ProgressRow>(
+  m: DrillScope,
+  cols: readonly Column<T>[],
+): Column<T>[] {
+  const open = (r: T): DrillSource => (r.eligible ? () => progressDrill(m, r) : null)
+  return withDrill(cols, { eligible: open, proposed: open, missing: open, share: open })
 }

@@ -10,8 +10,15 @@
  * '@/metrics/compCycle'): merit budget on 'comp.merit.spend', the healthy band on
  * 'comp.compa.inBand' and the merit guideline on 'comp.merit.guidelineSpend'.
  */
-import { HEALTHY_BAND_PARAM, MERIT_BUDGET_PARAM, MERIT_GUIDELINE_PARAM } from '@/metrics/compCycle'
-import { defineMetrics } from '@/metrics/define'
+import { BUDGET_METRICS } from '@/lib/budget'
+import { BUDGET_BAND_PARAMS, BUDGET_METRIC_DEFS } from '@/metrics/budget'
+import {
+  CYCLE_DATE_PARAMS,
+  HEALTHY_BAND_PARAM,
+  MERIT_BUDGET_PARAM,
+  MERIT_GUIDELINE_PARAM,
+} from '@/metrics/compCycle'
+import { defineMetrics, type MetricInput } from '@/metrics/define'
 import type { MetricDef, ParamDef } from '@/metrics/types'
 import {
   BY,
@@ -62,6 +69,18 @@ export const M = {
   marketGap: 'comp.market.gap',
   marketVsMid: 'comp.market.vsMidpoint',
   belowMarket: 'comp.market.belowMarket',
+  /* workforce cost (docs/ROLES-V2.md 3.2): totals over groups of 5 or more */
+  costPeople: 'comp.cost.people',
+  costBase: 'comp.cost.base',
+  costTargetCash: 'comp.cost.targetCash',
+  costEquity: 'comp.cost.equity',
+  costPerHead: 'comp.cost.perHead',
+  costOpenReqs: 'comp.cost.openReqsAtMid',
+  costMerit: 'comp.cost.meritSpend',
+  /* actual against the headcount and cost budget (src/lib/budget.ts) */
+  headcountVsBudget: BUDGET_METRICS.headcount,
+  costVsBudget: BUDGET_METRICS.cost,
+  contractorEstimate: BUDGET_METRICS.contractors,
 } as const
 
 export type CompMetricId = (typeof M)[keyof typeof M]
@@ -110,7 +129,28 @@ const DEPENDS_ON: Readonly<Record<string, readonly string[]>> = {
   [M.overBudget]: [M.spend],
   [M.vsGuideline]: [M.guidelineSpend],
   [M.differentiation]: [M.exceptions],
+  [M.costMerit]: [M.spend],
 }
+
+/* ───────── workforce cost ───────── */
+
+const COSTED =
+  'Active employees on the as-of date with a comp record and an exchange rate to USD. Contractors and interns are counted beside the totals, never costed.'
+const GUARD =
+  'Totals only, over groups of 5 or more people. A smaller group folds into Other, and Other takes the smallest group until it reaches 5, so no group is the total less the others.'
+const COST_OWNER = 'Total rewards'
+const COST_USES = refs(POPULATION, FX)
+
+/** The budget entries (`src/metrics/budget.ts`), with their on-budget bands as settings. */
+const BUDGET_ENTRIES: MetricInput[] = BUDGET_METRIC_DEFS.map((d) => ({
+  ...d,
+  params:
+    d.id === BUDGET_METRICS.headcount
+      ? [BUDGET_BAND_PARAMS.headcount]
+      : d.id === BUDGET_METRICS.cost
+        ? [BUDGET_BAND_PARAMS.cost]
+        : d.params,
+}))
 
 export const metrics: MetricDef[] = defineMetrics('comp', [
   /* ───────── compa-ratio ───────── */
@@ -481,14 +521,28 @@ export const metrics: MetricDef[] = defineMetrics('comp', [
     id: M.proposals,
     name: 'Merit proposals',
     definition:
-      'People with a merit proposal in the comp data. People without one are treated as not eligible this cycle.',
-    formula: 'count of people with a merit %',
+      'People with a merit proposal in the comp data. Eligible people are active employees with a comp record hired on or before the cycle’s eligibility date; progress is the proposals entered as a share of them.',
+    formula: 'count of people with a merit %; progress = eligible people with a merit % ÷ eligible people',
     population: POP,
     window: CYCLE,
     unit: 'int',
     goodDirection: null,
     uses: MERIT,
     owner: REWARDS,
+    params: [
+      ...CYCLE_DATE_PARAMS,
+      {
+        key: 'closeWarnDays',
+        label: 'Due soon within',
+        description:
+          'Missing merit proposals turn from a note to a watch item this many days before the cycle closes.',
+        type: 'days',
+        default: 14,
+        min: 1,
+        max: 90,
+        step: 1,
+      },
+    ],
   },
   {
     id: M.promotions,
@@ -743,4 +797,108 @@ export const metrics: MetricDef[] = defineMetrics('comp', [
       },
     ],
   },
+
+  /* ───────── workforce cost ───────── */
+  {
+    id: M.costPeople,
+    name: 'People costed',
+    definition:
+      'Active employees counted in the cost totals: everyone with a comp record and an exchange rate to USD. People without a rate are left out and counted in the note.',
+    formula: 'count of active employees with a comp record and fxToUsd',
+    population: COSTED,
+    window: SNAPSHOT,
+    unit: 'int',
+    goodDirection: null,
+    uses: COST_USES,
+    owner: COST_OWNER,
+  },
+  {
+    id: M.costBase,
+    name: 'Annual base cost',
+    definition:
+      'Annual base salary of the people costed, in US dollars at each row’s exchange rate. Base salary is the full-time rate, a snapshot on the as-of date.',
+    formula: 'Σ baseSalary × fxToUsd',
+    population: `${COSTED} ${GUARD}`,
+    window: SNAPSHOT,
+    unit: 'money',
+    goodDirection: null,
+    uses: COST_USES,
+    owner: COST_OWNER,
+  },
+  {
+    id: M.costTargetCash,
+    name: 'Target cash cost',
+    definition:
+      'Annual base salary plus the bonus at target of the people costed, in US dollars. A missing target bonus counts as none, and the note says how many.',
+    formula: 'Σ baseSalary × (1 + targetBonusPct) × fxToUsd',
+    population: `${COSTED} ${GUARD}`,
+    window: SNAPSHOT,
+    unit: 'money',
+    goodDirection: null,
+    uses: refs(COST_USES, 'comp.targetBonusPct'),
+    owner: COST_OWNER,
+  },
+  {
+    id: M.costEquity,
+    name: 'Annualized equity',
+    definition: 'Annual value of the equity grants of the people costed, in US dollars as recorded.',
+    formula: 'Σ annualEquityUsd',
+    population: `${COSTED} ${GUARD}`,
+    window: SNAPSHOT,
+    unit: 'money',
+    goodDirection: null,
+    uses: refs(COST_USES, 'comp.annualEquityUsd'),
+    owner: COST_OWNER,
+  },
+  {
+    id: M.costPerHead,
+    name: 'Target cash per employee',
+    definition: 'Target cash cost divided by the people costed.',
+    formula: 'target cash cost ÷ people costed',
+    population: `${COSTED} ${GUARD}`,
+    window: SNAPSHOT,
+    unit: 'money',
+    goodDirection: null,
+    uses: refs(COST_USES, 'comp.targetBonusPct'),
+    owner: COST_OWNER,
+  },
+  {
+    id: M.costOpenReqs,
+    name: 'Open reqs at range midpoint (estimate)',
+    definition:
+      'An estimate of what the open reqs would cost a year in base pay: each opening at the median range midpoint, in US dollars, of active employees at its level and location, or at its level company-wide when fewer than 5 are there. Openings with no estimate are counted in the note.',
+    formula:
+      'Σ openings × median(rangeMid × fxToUsd) of active employees at the req’s level and location (5 or more), else at its level (5 or more)',
+    population:
+      'Open reqs in the scope. A business unit with fewer than 5 estimated openings folds into Other, so no estimate gives away one range midpoint.',
+    window: SNAPSHOT,
+    unit: 'money',
+    goodDirection: null,
+    uses: [
+      'requisitions.status',
+      'requisitions.level',
+      'requisitions.location',
+      'requisitions.openings',
+      'requisitions.businessUnit',
+      'comp.rangeMid',
+      'comp.fxToUsd',
+      'employees.level',
+      'employees.location',
+    ],
+    owner: COST_OWNER,
+  },
+  {
+    id: M.costMerit,
+    name: 'Merit spend against budget (USD)',
+    definition:
+      'Proposed merit increases against the merit budget, both in US dollars, by business unit: the Merit cycle tab’s spend as totals. Promotion increases are not included.',
+    formula: 'Σ(base × fxToUsd × merit %) − Σ(base × fxToUsd) × merit budget',
+    population: `People with a merit proposal and an exchange rate. ${GUARD}`,
+    window: CYCLE,
+    unit: 'money',
+    goodDirection: 'down',
+    uses: refs(MERIT, FX, BY.businessUnit),
+    owner: REWARDS,
+  },
+  ...BUDGET_ENTRIES,
 ]).map((d) => (DEPENDS_ON[d.id] ? { ...d, dependsOn: DEPENDS_ON[d.id] } : d))

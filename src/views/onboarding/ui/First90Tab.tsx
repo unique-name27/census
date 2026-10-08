@@ -10,6 +10,7 @@ import type { Employee } from '@/data/schema'
 import { drill, openPerson } from '@/drill'
 import { formatDate, formatMonth } from '@/lib/dates'
 import { fmt, plural } from '@/lib/format'
+import { surveyShown } from '@/views/listening/api'
 import { tasksDrill } from '../engine/drills'
 import { type CheckInItem, PULSE_DRIVER, type RateGroup } from '../engine/first90'
 import {
@@ -61,9 +62,11 @@ export function First90Tab() {
   const ctx = useAnalytics()
   // Manager mode hides the late-task heatmap (HR and Developer only), so readiness by site takes the row.
   const lateShown = useCan(S.figure('onboarding-late-tasks-by-region'))
-  // The day-30 pulse is a survey: where it is hidden (Manager mode) its section goes with it.
-  const pulseShown = useCan(S.figure('onboarding-pulse'))
+  // The day-30 pulse is a survey: where it is hidden (Manager mode), or where the mode hides its
+  // Listening tab (docs/ROLES-V2.md 4.2), its section goes with it.
+  const pulseFigure = useCan(S.figure('onboarding-pulse'))
   const listeningShown = useCan(S.view('listening'))
+  const pulseShown = pulseFigure && surveyShown(ctx, 'Onboarding pulse day 30')
   const m = useOnboarding()
   const b = m.base
   const f = m.first90
@@ -231,7 +234,7 @@ export function First90Tab() {
       }))
     : []
   type PulseRow = (typeof pulseRows)[number]
-  // A region's answers by location, filtered to its sites ("Filter to Asia Pacific").
+  // A region's answers by location, filtered to its sites ("Filter to APAC").
   const pulseDrill = pulseRegionDrill(b, ctx.all.employees, p, {
     title: 'Day-30 "I had what I needed"',
     driver: PULSE_DRIVER,

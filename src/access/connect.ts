@@ -1,14 +1,27 @@
 /**
- * Connects the modes to the app (docs/ROLES.md, 6.3): registers the store's filter guard (every
- * way filters change goes through the Manager mode clamp), route guard (a hidden route opens the
- * mode's home or the view's first shown tab), standard guard (Manager mode keeps the saved data
- * standard) and the lens guard (off in Manager mode); checks the opening route; and carries out a
- * mode change (1.5). Called once by the shell, like `connectLens`. No React: the shell passes
- * `notify` to show toasts.
+ * Connects the modes to the app (docs/ROLES-V2.md 1.5, 2.3 and 4.13; docs/ROLES.md 6.3): registers
+ * the store's filter guard (every way filters change goes through the one clamp, per scope kind and
+ * Finance's restriction), route guard (a hidden route opens the mode's home or the view's first
+ * shown tab; a scoped mode waiting for its pick shows only its home), standard guard (Finance and
+ * Manager keep the saved data standard) and lens guard (off in Finance and Manager); checks the
+ * opening route; and carries out a mode change. Called once by the shell, like `connectLens`. No
+ * React: the shell passes `notify` to show toasts.
  */
 import { batchAddress, setLensGuard, setLensOn } from '@/data/address'
-import type { Employee } from '@/data/schema'
-import { buildOrgIndex, type Filters, isExcluded, type OrgIndex, withMode } from '@/data/scope'
+import { effectiveLists } from '@/data/lists/effective'
+import { useLists } from '@/data/lists/store'
+import type { ListsState } from '@/data/lists/types'
+import { applyReferenceMappings } from '@/data/reference/apply'
+import type { ReferenceMapping } from '@/data/reference/types'
+import { type Datasets, type Employee, withAllDatasets } from '@/data/schema'
+import {
+  buildOrgIndex,
+  type Filters,
+  isExcluded,
+  normalizeFilters,
+  type OrgIndex,
+  withMode,
+} from '@/data/scope'
 import {
   contextAsOf,
   initialRouteNamed,
@@ -19,20 +32,41 @@ import {
   useCensus,
 } from '@/data/store'
 import { setTimingOn } from '@/lib/timing'
+import { metricsApi } from '@/metrics/api'
 import {
   CHANGE_MODE,
-  leftManagerDescription,
+  FINANCE_FILTERS_NOTE,
+  leftScopeDescription,
   linkLeaderReplaced,
   modeToastTitle,
   NOT_SECURITY_SHORT,
-  pickAgain,
+  PICKER_COPY,
   toManagerTitle,
   WHOLE_COMPANY,
 } from './copy'
-import { clampFilters, heldLock, type ManagerLock } from './lock'
-import { HOME_OF, homeOf, type Mode } from './modes'
+import {
+  EVERY_RECRUITER,
+  HOME_OF,
+  homeOf,
+  type Mode,
+  type ModePicks,
+  modeButtonLabel,
+  PICK_OF,
+  SCOPE_OF,
+} from './modes'
 import { routeDecision } from './policy'
-import { openModeMenu, useMode } from './store'
+import {
+  clampFilters,
+  clampReason,
+  DEFAULT_DEDUP_DAYS,
+  type OrgScope,
+  regionIndex,
+  type ScopeEnv,
+  type ScopeLock,
+  type ScopeResult,
+  scopeFor,
+} from './scopes'
+import { openModeMenu, picksOfState, useMode } from './store'
 
 /** A toast the shell shows for the modes. */
 export interface AccessNotice {
@@ -44,7 +78,7 @@ export interface AccessNotice {
 
 export interface ConnectDeps {
   notify: (n: AccessNotice) => void
-  /** A mode or manager changed: close what shows records from before (the records panel). */
+  /** A mode or pick changed: close what shows records from before (the records panel). */
   onModeChange?: () => void
 }
 
@@ -61,43 +95,108 @@ function orgOf(employees: readonly Employee[]): OrgIndex {
   return o
 }
 
-/** The lock Manager mode holds right now and whether a manager is still to be picked; null in other modes. */
-function liveHeld(): { lock: ManagerLock; unset: boolean } | null {
-  const { mode, managerId } = useMode.getState()
-  if (mode !== 'manager') return null
+const mapped = new WeakMap<object, WeakMap<readonly ReferenceMapping[], Datasets>>()
+/** The loaded data after your reference mappings: the values the filters and scopes hold. */
+function mappedData(data: Partial<Datasets>, mappings: readonly ReferenceMapping[]): Datasets {
+  let byMappings = mapped.get(data)
+  if (!byMappings) {
+    byMappings = new WeakMap()
+    mapped.set(data, byMappings)
+  }
+  let out = byMappings.get(mappings)
+  if (!out) {
+    out = applyReferenceMappings(withAllDatasets(data), mappings).datasets
+    byMappings.set(mappings, out)
+  }
+  return out
+}
+
+const parentsMemo = new WeakMap<object, ReadonlyMap<string, string | null>>()
+
+/** The metric whose `dedupDays` setting matches pre-hires to accepted offers (Onboarding's). */
+const DEDUP_METRIC = 'onboarding.upcoming.starts'
+
+/** What building the live scope reads: the mapped data, the lists in force, the matching window. */
+function liveEnv(mode: Mode): ScopeEnv {
   const st = useCensus.getState()
-  return heldLock(orgOf(st.data.employees), contextAsOf(st), managerId)
+  const all = mappedData(st.data, st.reference.mappings)
+  const kind = SCOPE_OF[mode]
+  const lists: ListsState = useLists.getState().state
+  const env: ScopeEnv = { org: orgOf(st.data.employees), asOf: contextAsOf(st), all }
+  if (kind === 'region')
+    env.regions = regionIndex(effectiveLists(lists, all, st.sources).location?.values, all)
+  if (kind === 'unit') {
+    const values = effectiveLists(lists, all, st.sources).department?.values ?? []
+    let parents = parentsMemo.get(values)
+    if (!parents) {
+      parents = new Map(values.map((v) => [v.value, v.parent ?? null]))
+      parentsMemo.set(values, parents)
+    }
+    env.departmentParents = parents
+  }
+  if (kind === 'reqs') {
+    // The onboarding matching window in force, as `buildContext` reads it.
+    const m = metricsApi(st.metrics)
+    env.dedupDays = m.paramDef(DEDUP_METRIC, 'dedupDays')
+      ? m.num(DEDUP_METRIC, 'dedupDays')
+      : DEFAULT_DEDUP_DAYS
+  }
+  return env
 }
 
-/** The lock Manager mode holds right now (empty until a manager in the data is picked); null in other modes. */
-export function liveLock(): ManagerLock | null {
-  return liveHeld()?.lock ?? null
+const livePicks = (): ModePicks => picksOfState(useMode.getState())
+
+/** The scope the mode holds right now and whether its pick is still to be made; null scope in modes without one. */
+function liveHeld(mode: Mode = useMode.getState().mode, picks: ModePicks = livePicks()): ScopeResult {
+  if (!SCOPE_OF[mode]) return { scope: null, unset: false }
+  return scopeFor(mode, picks, liveEnv(mode))
 }
 
-/** Manager mode on loaded data with nobody usable picked: every route shows My team's empty state. */
-const waitingForManager = (): boolean => !!useCensus.getState().ready && !!liveHeld()?.unset
+/** The scope the mode holds right now (empty until a pick in the data is made); null in modes without one. */
+export function liveScope(): ScopeLock | null {
+  return liveHeld().scope
+}
 
-/** The mode and lock right now, for code outside React (openInOrgChart, the clamp toasts). */
-export function liveAccess(): { mode: Mode; lock: ManagerLock | null } {
-  return { mode: useMode.getState().mode, lock: liveLock() }
+/** Manager mode's org scope right now (empty until a manager in the data is picked); null in other modes. */
+export function liveLock(): OrgScope | null {
+  const s = liveScope()
+  return s?.kind === 'org' ? s : null
+}
+
+/** A scoped mode on loaded data with nothing usable picked: every route shows its home's empty state. */
+const waitingForPick = (): boolean => !!useCensus.getState().ready && liveHeld().unset
+
+/** The mode and scope right now, for code outside React (openInOrgChart, the clamp toasts). */
+export function liveAccess(): { mode: Mode; scope: ScopeLock | null; lock: OrgScope | null } {
+  const scope = liveScope()
+  return { mode: useMode.getState().mode, scope, lock: scope?.kind === 'org' ? scope : null }
 }
 
 const changeMode = { label: CHANGE_MODE, onClick: openModeMenu }
 
 /**
- * After a link or a saved view applied its scope: say so when Manager mode replaced the leader it
- * named (outside the org, or excluded). Back and Forward never call this.
+ * After a link or a saved view applied its scope: say so when the mode's clamp changed what it
+ * asked for (a leader outside the org, another business unit, other locations, Finance's other
+ * filters). Back and Forward never call this.
  */
-export function noteLeaderReplaced(
-  asked: Pick<Filters, 'leaderId' | 'modes'>,
-  from: 'link' | 'view' = 'link',
-): void {
-  const lock = liveLock()
-  if (!lock || !asked.leaderId || !lock.managerName) return
+export function noteLeaderReplaced(asked: Partial<Filters>, from: 'link' | 'view' = 'link'): void {
+  const mode = useMode.getState().mode
+  const scope = liveScope()
   const now = useCensus.getState().filters
-  if (asked.leaderId === now.leaderId && !isExcluded(asked, 'leaderId')) return
-  deps.notify({ title: linkLeaderReplaced(lock.managerName, from), timeout: 9000 })
+  if (scope?.kind === 'org') {
+    if (!asked.leaderId || !scope.managerName) return
+    if (asked.leaderId === now.leaderId && !isExcluded(asked, 'leaderId')) return
+    deps.notify({ title: linkLeaderReplaced(scope.managerName, from), timeout: 9000 })
+    return
+  }
+  const full = normalizeFilters(asked)
+  const kept = clampFilters(full, scope, mode)
+  const title = clampReason(mode, scope, full, kept, from)
+  if (title) deps.notify({ title, timeout: 9000 })
 }
+
+/** The same note under its general name. */
+export const noteScopeChanged = noteLeaderReplaced
 
 /** Send a hidden route to where the mode shows it, silently (a mode change says so itself). */
 function routeIntoMode(mode: Mode): void {
@@ -107,71 +206,128 @@ function routeIntoMode(mode: Mode): void {
     st.navigate(d.route.view, d.route.tab, { history: 'replace', scroll: d.route.view !== st.route.view })
 }
 
+/** The note the pick dialog opens with when the remembered pick is gone; null when nothing was picked. */
+function goneNote(mode: Mode, picks: ModePicks): string | null {
+  const kind = PICK_OF[mode]
+  if (!kind) return null
+  const copy = PICKER_COPY[kind]
+  switch (kind) {
+    case 'manager': {
+      const id = picks.managerId
+      if (!id) return null
+      return copy.gone(
+        orgOf(useCensus.getState().data.employees).byId.get(id)?.name || 'The manager you picked',
+      )
+    }
+    case 'unit':
+      return picks.unit ? copy.gone(picks.unit) : null
+    case 'region':
+      return picks.region ? copy.gone(picks.region) : null
+    case 'recruiter':
+      return picks.recruiter?.name ? copy.gone(picks.recruiter.name) : null
+  }
+}
+
 /**
- * Manager mode on loaded data: is the manager still one (on the roster, leading 3 or more)? If
- * not, open the picker with a note; either way keep the filters inside the lock.
+ * A scoped mode on loaded data: is the pick still usable (a manager leading 3 or more, a unit with
+ * active employees, a region with a location in the data, a recruiter on a req)? If not, open the
+ * pick dialog with a note and show the home's empty state; either way keep the filters inside the
+ * scope (and Finance's filters to business unit and period).
  */
-function checkManager(): void {
-  const { mode, managerId, picking } = useMode.getState()
+function checkScope(): void {
+  const { mode, picking } = useMode.getState()
   const st = useCensus.getState()
-  if (mode !== 'manager' || !st.ready) return
-  const org = orgOf(st.data.employees)
-  const held = heldLock(org, contextAsOf(st), managerId)
-  if (held.unset) {
-    if (!picking)
-      useMode
-        .getState()
-        .openPicker(managerId ? pickAgain(org.byId.get(managerId)?.name || 'The manager you picked') : null)
-    // My team's empty state until someone is picked (docs/ROLES.md, 1.3).
-    const home = homeOf('manager')
+  if (!st.ready) return
+  const picks = livePicks()
+  const held = liveHeld(mode, picks)
+  const kind = PICK_OF[mode]
+  if (held.unset && kind) {
+    if (!picking) useMode.getState().openPicker(kind, goneNote(mode, picks))
+    const home = homeOf(mode)
     if (st.route.view !== home.view) st.navigate(home.view, home.tab, { history: 'replace', scroll: false })
   }
-  const clamped = clampFilters(st.filters, held.lock)
+  const clamped = clampFilters(st.filters, held.scope, mode)
   if (clamped !== st.filters) st.setFilters(clamped, { history: 'replace' })
 }
 
-/** What changes when the mode or the manager changes (docs/ROLES.md, 1.5). Not a history entry. */
-function switched(
-  prev: { mode: Mode; managerId: string | null },
-  next: { mode: Mode; managerId: string | null },
-) {
+/** The name a scope is shown by on the Mode button ("Silicon Engineering", "Maya Chen"). */
+function pickName(mode: Mode, scope: ScopeLock | null, picks: ModePicks): string | null {
+  if (mode === 'recruiter' && picks.recruiter?.name === EVERY_RECRUITER) return EVERY_RECRUITER
+  if (!scope) return null
+  switch (scope.kind) {
+    case 'org':
+      return scope.managerName || null
+    case 'unit':
+    case 'region':
+      return scope.label || null
+    case 'reqs':
+      return scope.reqIds.size ? scope.recruiter : null
+  }
+}
+
+/** The filters a scope pinned, cleared ("Whole company" on the leaving toast). */
+function unpin(scope: ScopeLock): Partial<Filters> {
+  if (scope.kind === 'org') return { leaderId: null }
+  if (scope.kind === 'unit') return { businessUnit: [] }
+  if (scope.kind === 'region') return { location: [] }
+  return {}
+}
+
+interface Was {
+  mode: Mode
+  picks: ModePicks
+}
+
+/** What changes when the mode or its pick changes (docs/ROLES-V2.md 1.5). Not a history entry. */
+function switched(prev: Was, next: Was) {
   const st = useCensus.getState()
-  const name = (id: string | null) => (id ? orgOf(st.data.employees).byId.get(id)?.name : undefined)
+  const before = liveHeld(prev.mode, prev.picks)
+  const after = liveHeld(next.mode, next.picks)
   batchAddress('replace', () => {
-    if (next.mode === 'manager') {
-      // The leader becomes the manager (include mode); list filters and the period stay.
-      st.setFilters(
-        { leaderId: next.managerId, modes: withMode(st.filters.modes, 'leaderId', 'include') },
-        { history: 'replace' },
-      )
-      st.setShowPay(false)
-      st.setShowImmigration(false)
+    // One rule, whatever the modes: pay amounts and immigration details go off.
+    st.setShowPay(false)
+    st.setShowImmigration(false)
+    if (next.mode === 'finance' || next.mode === 'manager') {
       setLensOn(false)
       st.setScopeStandard(savedDataStandard())
+    }
+    if (after.scope?.kind === 'org') {
+      // The leader becomes the manager (include mode); list filters and the period stay.
+      st.setFilters(
+        { leaderId: after.scope.managerId, modes: withMode(st.filters.modes, 'leaderId', 'include') },
+        { history: 'replace' },
+      )
+    } else {
+      const clamped = clampFilters(useCensus.getState().filters, after.scope, next.mode)
+      if (clamped !== useCensus.getState().filters) st.setFilters(clamped, { history: 'replace' })
     }
     routeIntoMode(next.mode)
   })
   deps.onModeChange?.()
-  const prevName = prev.mode === 'manager' ? name(prev.managerId) : undefined
-  if (next.mode === 'manager') {
-    // Someone who leads fewer than 3 is no manager: no org is named until one is picked.
-    const usable = !heldLock(orgOf(st.data.employees), contextAsOf(st), next.managerId).unset
-    const who = usable ? name(next.managerId) : undefined
-    deps.notify({
-      title: who ? toManagerTitle(who) : modeToastTitle('manager'),
-      description: NOT_SECURITY_SHORT,
-    })
-    checkManager()
-  } else if (prevName)
+  const prevScope = before.unset ? null : before.scope
+  const name = pickName(next.mode, after.unset ? null : after.scope, next.picks)
+  if (PICK_OF[next.mode]) {
+    const title =
+      next.mode === 'manager' && name
+        ? toManagerTitle(name)
+        : name
+          ? modeButtonLabel(next.mode, name)
+          : modeToastTitle(next.mode)
+    deps.notify({ title, description: NOT_SECURITY_SHORT })
+    checkScope()
+  } else if (next.mode === 'finance')
+    deps.notify({ title: modeToastTitle('finance'), description: FINANCE_FILTERS_NOTE })
+  else if (prevScope && prevScope.kind !== 'reqs' && prevScope.label) {
+    const pinned = unpin(prevScope)
     deps.notify({
       title: modeToastTitle(next.mode),
-      description: leftManagerDescription(prevName),
+      description: leftScopeDescription(prevScope.label),
       action: {
         label: WHOLE_COMPANY,
-        onClick: () => useCensus.getState().setFilters({ leaderId: null }, { history: 'push' }),
+        onClick: () => useCensus.getState().setFilters(pinned, { history: 'push' }),
       },
     })
-  else deps.notify({ title: modeToastTitle(next.mode), description: NOT_SECURITY_SHORT })
+  } else deps.notify({ title: modeToastTitle(next.mode), description: NOT_SECURITY_SHORT })
 }
 
 /** The page this load opened on: an unnamed one goes to the mode's home; a hidden one is redirected with a notice. */
@@ -188,6 +344,24 @@ function checkOpeningRoute(): void {
     st.navigate(st.route.view, st.route.tab, { history: 'replace', scroll: false })
 }
 
+/** Whether the pick the current mode reads changed. */
+function pickChanged(mode: Mode, a: ModePicks, b: ModePicks): boolean {
+  switch (PICK_OF[mode]) {
+    case 'manager':
+      return a.managerId !== b.managerId
+    case 'unit':
+      return a.unit !== b.unit
+    case 'region':
+      return a.region !== b.region
+    case 'recruiter':
+      return (
+        a.recruiter?.name !== b.recruiter?.name || (a.recruiter?.id ?? null) !== (b.recruiter?.id ?? null)
+      )
+    default:
+      return false
+  }
+}
+
 let connected: (() => void) | null = null
 
 /**
@@ -198,14 +372,16 @@ export function connectAccess(d: ConnectDeps): () => void {
   connected?.()
   deps = d
   setFilterGuard((f) => {
-    const lock = liveLock()
-    return lock ? clampFilters(f, lock) : f
+    const mode = useMode.getState().mode
+    const scope = SCOPE_OF[mode] ? liveScope() : null
+    return clampFilters(f, scope, mode)
   })
   setRouteGuard({
     check(route) {
-      // No manager picked yet: My team's empty state is the only page (the picker is open).
-      if (waitingForManager() && route.view !== HOME_OF.manager) return { route: homeOf('manager') }
-      const r = routeDecision(useMode.getState().mode, route)
+      const mode = useMode.getState().mode
+      // No pick yet: the home's empty state is the only page (the pick dialog is open).
+      if (waitingForPick() && route.view !== HOME_OF[mode]) return { route: homeOf(mode) }
+      const r = routeDecision(mode, route)
       if (!r.redirected || !r.reason) return null
       const reason = r.reason
       return {
@@ -216,28 +392,42 @@ export function connectAccess(d: ConnectDeps): () => void {
     },
     home: () => HOME_OF[useMode.getState().mode],
   })
-  setStandardGuard((asked) => (useMode.getState().mode === 'manager' ? savedDataStandard() : asked))
-  setLensGuard(() => useMode.getState().mode === 'manager')
+  setStandardGuard((asked) => {
+    const mode = useMode.getState().mode
+    return mode === 'manager' || mode === 'finance' ? savedDataStandard() : asked
+  })
+  setLensGuard(() => {
+    const mode = useMode.getState().mode
+    return mode === 'manager' || mode === 'finance'
+  })
   checkOpeningRoute()
-  checkManager()
+  checkScope()
   // Timings record only in Developer mode (docs/ROLES.md, 5.7): the other modes pay nothing.
   setTimingOn(useMode.getState().mode === 'developer')
   const unMode = useMode.subscribe((s, prev) => {
     if (s.mode !== prev.mode) setTimingOn(s.mode === 'developer')
-    if (s.mode !== prev.mode || (s.mode === 'manager' && s.managerId !== prev.managerId))
-      switched({ mode: prev.mode, managerId: prev.managerId }, { mode: s.mode, managerId: s.managerId })
+    const now = picksOfState(s)
+    const was = picksOfState(prev)
+    if (s.mode !== prev.mode || pickChanged(s.mode, now, was))
+      switched({ mode: prev.mode, picks: was }, { mode: s.mode, picks: now })
   })
   const unData = useCensus.subscribe((s, prev) => {
     if (
       s.ready !== prev.ready ||
       s.data.employees !== prev.data.employees ||
-      s.asOfOverride !== prev.asOfOverride
+      s.data.requisitions !== prev.data.requisitions ||
+      s.asOfOverride !== prev.asOfOverride ||
+      s.reference !== prev.reference
     )
-      checkManager()
+      checkScope()
+  })
+  const unLists = useLists.subscribe((s, prev) => {
+    if (s.state !== prev.state && SCOPE_OF[useMode.getState().mode]) checkScope()
   })
   const stop = () => {
     unMode()
     unData()
+    unLists()
     setFilterGuard(null)
     setRouteGuard(null)
     setStandardGuard(null)

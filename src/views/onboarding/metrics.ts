@@ -682,6 +682,14 @@ const entries: MetricInput[] = [
     uses: union(PLAN, ACTUAL, UPCOMING, FORECAST),
     dependsOn: [M.vsPlan, M.committed, M.forecast],
     owner: OWNER,
+    params: [
+      share(
+        'behindCritical',
+        'Critical gap',
+        'A business unit or department behind plan is a critical Action center item when its full-year gap is at least this share of its full-year plan.',
+        0.25,
+      ),
+    ],
   },
   {
     id: M.quarter,
@@ -717,6 +725,14 @@ const entries: MetricInput[] = [
     goodDirection: 'down',
     uses: union(PLAN, PLAN_REQ, ACCEPTED),
     owner: OWNER,
+    params: [
+      days(
+        'soonDays',
+        'Starting soon',
+        'A planned role with no open req is a warning in the Action center when its planned month starts within this many days.',
+        60,
+      ),
+    ],
   },
   {
     id: M.notInPlan,

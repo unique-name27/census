@@ -442,7 +442,7 @@ export function readinessCut(
   }
   if (flag && ctx.data.onboardingTasks.length) {
     const f = flag
-    const tie = laptopLate(ctx, ctx.window, (loc) => regionOfLocation(loc) === f.region)
+    const tie = laptopLate(ctx, ctx.window, (loc) => regionOfLocation(p, loc) === f.region)
     if (tie.starts >= min)
       f.laptop = { region: f.region, starts: tie.starts, late: tie.late, share: tie.late / tie.starts }
     const all = laptopLate(ctx, { start: '0000-01-01', end: ctx.asOf }, () => true)
@@ -457,7 +457,9 @@ export function readinessCut(
   const regions: RegionReadiness[] = [...byRegion.groups, ...(byRegion.other ? [byRegion.other] : [])].map(
     (g) => {
       const tie =
-        hasTasks && !g.folded ? laptopLate(ctx, ctx.window, (loc) => regionOfLocation(loc) === g.group) : null
+        hasTasks && !g.folded
+          ? laptopLate(ctx, ctx.window, (loc) => regionOfLocation(p, loc) === g.group)
+          : null
       return {
         region: g.group,
         mean: g.mean,

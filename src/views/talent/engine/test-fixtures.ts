@@ -74,6 +74,7 @@ export function datasets(partial: Partial<Datasets> = {}): Datasets {
     rightToWork: [],
     surveyResponses: [],
     surveyItems: [],
+    budget: [],
     ...partial,
   }
 }

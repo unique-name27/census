@@ -35,7 +35,7 @@ import { groupsDrill, itemRowsOf, rowsBy } from '../engine/drills'
 import { stageWords } from '../engine/findings'
 import * as L from '../engine/lineage'
 import { type HeatCell, inHeatColumn, type SurveyModel } from '../engine/measures'
-import { CUT_LABEL, type CutKey, cutOf, deptBandOf, regionOfLocation } from '../engine/prepare'
+import { CUT_LABEL, type CutKey, cutOf, deptBandOf, type Prepared, regionOfLocation } from '../engine/prepare'
 
 /** The filter a survey cut maps to; tenure and stage are no filters. */
 const CUT_DIMENSION: Partial<Record<CutKey, FilterDimension>> = {
@@ -117,12 +117,10 @@ export function stageCellDrill(
   )
 }
 
-/** The sites of a region that people in the loaded data work at, sorted. */
-export function regionSites(ctx: Pick<AnalyticsContext, 'all'>, region: string): string[] | null {
-  const out = new Set<string>()
-  for (const e of ctx.all.employees)
-    if (e.location && regionOfLocation(e.location) === region) out.add(e.location)
-  return out.size ? [...out].sort() : null
+/** The sites of a region in the loaded data, from the one region index (`Prepared.regions`). */
+export function regionSites(p: Pick<Prepared, 'regions'>, region: string): string[] | null {
+  const sites = p.regions.sitesOf(region)
+  return sites.length ? [...sites] : null
 }
 
 /** Day-30 readiness by region: the survey by location, and the laptop tasks of the region's starts. */
@@ -131,10 +129,10 @@ export function readinessDrills(ctx: AnalyticsContext, m: ListeningModel, sm: Su
   const ready = readinessRows(p, sm.period)
   const shownRegions = new Set(m.readiness?.byRegion.groups.map((g) => g.group) ?? [])
   const inRegion = (r: { respondentKey: string }, region: string) => {
-    const g = regionOfLocation(p.emp.get(r.respondentKey)?.location)
+    const g = regionOfLocation(p, p.emp.get(r.respondentKey)?.location)
     return region.startsWith('Other (') ? !!g && !shownRegions.has(g) : g === region
   }
-  const sites = (r: RegionReadiness) => (r.suppressed ? null : regionSites(ctx, r.region))
+  const sites = (r: RegionReadiness) => (r.suppressed ? null : regionSites(p, r.region))
   const survey = byGroup(
     'location',
     sites,
@@ -154,7 +152,7 @@ export function readinessDrills(ctx: AnalyticsContext, m: ListeningModel, sm: Su
           uses: m.uses.readiness,
         },
       ),
-    // The region's sites are the filter; the actions say the region: "Filter to Asia Pacific".
+    // The region's sites are the filter; the actions say the region: "Filter to APAC".
     (r) => r.region,
   )
   const tasks = (late: boolean) =>
@@ -162,7 +160,7 @@ export function readinessDrills(ctx: AnalyticsContext, m: ListeningModel, sm: Su
       'location',
       sites,
       (r: RegionReadiness) => () => {
-        const tie = laptopLate(ctx, ctx.window, (loc) => regionOfLocation(loc) === r.region)
+        const tie = laptopLate(ctx, ctx.window, (loc) => regionOfLocation(p, loc) === r.region)
         return late
           ? drillSpec({
               kind: 'onboardingTasks',

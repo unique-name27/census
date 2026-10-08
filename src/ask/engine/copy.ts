@@ -20,6 +20,12 @@ export const WHAT_IS_SENT: readonly string[] = [
 ]
 
 const SUGGESTIONS: Record<RouteView, readonly string[]> = {
+  home: [
+    'Which practices miss the most targets?',
+    'What are the most serious findings across Census right now?',
+    'How is voluntary attrition trending against its target?',
+    'Where is headcount growing fastest?',
+  ],
   team: [
     'How has headcount in my org changed over the last 12 months?',
     'How does voluntary attrition in my org compare with the company?',

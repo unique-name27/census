@@ -143,6 +143,15 @@ export function formatDate(d: string | null | undefined): string {
   if (!d || !isValidDate(d)) return '—'
   return `${+d.slice(8, 10)} ${MONTHS[+d.slice(5, 7) - 1]} ${d.slice(0, 4)}`
 }
+/**
+ * A date in a sentence: "12 Sep" in the as-of date's year, "5 Dec 2024" in any other, so a date
+ * written into item text never loses its year (docs/ACTION-CENTER-AUDIT.md 4.2).
+ */
+export function dateWords(d: string | null | undefined, asOf: string): string {
+  const full = formatDate(d)
+  if (!d || full === '—' || d.slice(0, 4) !== asOf.slice(0, 4)) return full
+  return full.replace(/ \d{4}$/, '')
+}
 /** "Sep 2026" */
 export function formatMonth(d: string): string {
   return `${MONTHS[+d.slice(5, 7) - 1]} ${d.slice(0, 4)}`

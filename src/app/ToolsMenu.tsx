@@ -19,11 +19,13 @@ const ROW =
   'group flex items-start gap-3 rounded-control px-2.5 py-2 text-left outline-none hover:bg-hover focus-visible:bg-hover'
 
 export function ToolsMenu() {
-  // The links the mode shows (docs/ROLES.md, 3.7). Where links cannot be edited (Manager mode), a
-  // link with no URL is left out, and with no link left the button is too.
+  // The links the mode shows (docs/ROLES-V2.md 4.7). Where links cannot be edited (every mode but
+  // HR, CHRO and Developer), a link with no URL is left out, and with no link left the button is
+  // too (Finance usually).
   const { access } = useAnalytics()
-  const canEdit = access.can('tools:edit')
-  const tools = useTools().filter((t) => access.can(`tools:${t.id}`) && (canEdit || !!t.url))
+  const shown = access.can('masthead:tools')
+  const canEdit = shown && access.can('tools:edit')
+  const tools = useTools().filter((t) => shown && access.can(`tools:${t.id}`) && (canEdit || !!t.url))
   const [open, setOpen] = useState(false)
   const edit = () => {
     setOpen(false)

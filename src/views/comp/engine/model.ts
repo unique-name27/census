@@ -23,15 +23,20 @@ import {
   type PayAttrition,
   payAttrition,
 } from './charts'
+import { type CostModel, computeCost } from './cost'
 import {
   type Bin,
   binBy,
   binDomain,
+  type CycleCalendar,
+  cycleCalendar,
   type ExceptionRow,
   guidelineExceptions,
   meritSpend,
   type PromotionRow,
+  type ProposalProgress,
   promotions,
+  proposalProgress,
   type RewardsMixRow,
   ratingPeerStats,
   rewardsMix,
@@ -199,7 +204,13 @@ export interface CompModel {
     exceptions: ExceptionRow[]
     promotions: { rows: PromotionRow[]; share: number | null; median: number | null }
     mix: RewardsMixRow[]
+    /** The cycle's dates in force (Settings > Compensation cycle) and who is eligible. */
+    calendar: CycleCalendar
+    /** Proposals entered as a share of eligible people, by business unit (`proposalProgress`). */
+    progress: ProposalProgress
   }
+  /** Workforce cost: totals over groups under the cost guard, and actual against budget (`engine/cost.ts`). */
+  cost: CostModel
 }
 
 /** Histogram bin width: 0.02 keeps every edge exact at the two decimals compa-ratios are read at. */
@@ -287,6 +298,7 @@ export function computeComp(ctx: AnalyticsContext, settings?: CycleSettings): Co
     exceptions: guidelineExceptions(people, s, ratingPeerStats(company.people), rules.exceptions),
     promotions: promotions(people, min),
     mix: rewardsMix(people, pop.has.equity, min),
+    calendar: cycleCalendar(rules.cycleDates, company.people, ctx.asOf, rules.proposals.closeWarnDays),
   }
   const ranges = {
     penetration: penetrationByLevel(people, min),
@@ -343,6 +355,7 @@ export function computeComp(ctx: AnalyticsContext, settings?: CycleSettings): Co
   const scopeLabel = ctx.isCompany ? 'Whole company' : ctx.scopeLabel
   const cycleModel = {
     ...cycle,
+    progress: proposalProgress({ pop, rules, cycle }),
     kpis: buildCycleKpis(
       pop,
       cycle,
@@ -370,6 +383,7 @@ export function computeComp(ctx: AnalyticsContext, settings?: CycleSettings): Co
     performance,
     market,
     cycle: cycleModel,
+    cost: computeCost({ ctx, pop, rules, settings: s, scopeLabel, asOf: ctx.asOf }),
   }
   return {
     ...core,

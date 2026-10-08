@@ -233,6 +233,7 @@ describe('settings', () => {
       offersWaitingMin: 2,
       emptyFunnelDays: 30,
       oldReqDays: 120,
+      pastTarget: { multiple: 1.5, critical: 2.5 },
       slowFill: { factor: 1.5, minFilled: 10 },
       bottleneck: {
         factor: 2,

@@ -5,22 +5,22 @@
  * in a toast. The export library loads on first use.
  */
 import { useState } from 'react'
-import { managerExportLine } from '@/access/copy'
 import { useFigureRegistry } from '@/charts/registry'
 import { IconCopy, IconDownload, IconSlides, IconTable } from '@/components/icons'
 import { toast, updateToast } from '@/components/toast'
 import { Button, Menu, type MenuItem } from '@/components/ui'
 import { useAnalytics } from '@/data/context'
 import { SAMPLE_COMPANY } from '@/data/sample'
+import { moneyLeftOut, moneyOpts } from '@/lib/export/columns'
+import { modeMeta } from '@/lib/export/modeMeta'
 import { plural } from '@/lib/format'
 import type { ViewDef } from '@/views/types'
-import { buildExportMeta } from './exportMeta'
+import { accessInputOf, buildExportMeta } from './exportMeta'
 import { copyViewLink } from './viewActions'
 import { renderWholeView } from './wholeView'
 import {
   type ExportKind,
   layoutProgress,
-  payDropped,
   WHOLE_VIEW_LABEL,
   wholeViewDone,
   writeProgress,
@@ -42,8 +42,9 @@ export function ExportMenu({ view, tab }: { view: ViewDef; tab: string }) {
       sampleCompany: SAMPLE_COMPANY,
       standard: ctx.standard,
       readsData: view.datasets.length > 0,
-      // A Manager mode export says whose org it shows (docs/ROLES.md, 3.11).
-      ...(ctx.access.lock?.managerName && { modeLine: managerExportLine(ctx.access.lock.managerName) }),
+      // Every mode but HR and Developer says so, with its scope, and Finance adds its cost line
+      // (docs/ROLES-V2.md 4.11, 3.2).
+      ...modeMeta(ctx.access),
     })
 
   const runTab = async (kind: ExportKind) => {
@@ -54,12 +55,13 @@ export function ExportMenu({ view, tab }: { view: ViewDef; tab: string }) {
     }
     setBusy(kind)
     const meta = metaFor(view.tabs.find((t) => t.key === tab)?.label)
-    const opts = { showPay: ctx.showPay }
+    // Pay amounts per the switch; cost totals per the mode (Finance keeps them, `ctx.showCost`).
+    const opts = moneyOpts(ctx)
     try {
       const lib = await import('@/lib/export')
       if (kind === 'workbook') await lib.exportViewWorkbook(figures, meta, opts)
       else await lib.exportViewDeck(figures, meta, opts)
-      const dropped = !ctx.showPay && figures.some((f) => f.columns.some((c) => c.pay))
+      const dropped = moneyLeftOut(figures, { pay: opts.showPay, cost: opts.showCost })
       toast(kind === 'workbook' ? 'Workbook downloaded' : 'Slides downloaded', {
         tone: 'good',
         description: `${plural(figures.length, 'figure')} from ${[meta.view, meta.tab].filter(Boolean).join(', ')}.${
@@ -80,7 +82,7 @@ export function ExportMenu({ view, tab }: { view: ViewDef; tab: string }) {
   const runView = async (kind: ExportKind) => {
     setBusy(kind)
     const meta = metaFor(WHOLE_VIEW_LABEL)
-    const opts = { showPay: ctx.showPay }
+    const opts = moneyOpts(ctx)
     const first = layoutProgress(view.label, view.tabs[0], 0, view.tabs.length)
     const id = toast(first.title, { description: first.description, timeout: 0 })
     try {
@@ -90,11 +92,8 @@ export function ExportMenu({ view, tab }: { view: ViewDef; tab: string }) {
         failed,
         value: images,
       } = await renderWholeView(view, {
-        // The off-screen tabs render in the same mode, with the same tabs and figures.
-        access:
-          ctx.access.mode === 'manager'
-            ? { mode: 'manager', managerId: ctx.access.lock?.managerId }
-            : { mode: ctx.access.mode },
+        // The off-screen tabs render in the same mode and scope, with the same tabs and figures.
+        access: accessInputOf(ctx.access),
         onProgress: ({ index, total, tab: t }) => {
           const p = layoutProgress(view.label, t, index, total)
           updateToast(id, p.title, { description: p.description })
@@ -120,7 +119,10 @@ export function ExportMenu({ view, tab }: { view: ViewDef; tab: string }) {
         viewLabel: view.label,
         groups,
         failed,
-        payDropped: payDropped(groups, ctx.showPay),
+        payDropped: moneyLeftOut(
+          groups.flatMap((g) => g.figures),
+          { pay: opts.showPay, cost: opts.showCost },
+        ),
       })
       updateToast(id, done.title, { tone: 'good', description: done.description, timeout: 6000 })
     } catch (err) {

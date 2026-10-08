@@ -4,7 +4,8 @@
  * it, and "edited" once something changes; Update saves the change, Save as new keeps both.
  */
 import { useEffect, useRef, useState } from 'react'
-import { MODE_LABEL, type Mode } from '@/access/modes'
+import { modeName } from '@/access/copy'
+import type { Mode } from '@/access/modes'
 import { routeDecision } from '@/access/policy'
 import { Dialog } from '@/components/Dialog'
 import { IconArrowDown, IconArrowUp, IconCheck, IconCopy, IconPencil } from '@/components/icons'
@@ -52,6 +53,7 @@ function scopeSummary(
 function routeName(page: { view: string; tab: string }): string | null {
   if (page.view === 'data') return 'Data room'
   if (page.view === 'actions') return 'Action center'
+  if (page.view === 'dev') return 'Developer page'
   const v = viewByKey.get(page.view as never)
   if (!v) return null
   const tab = v.tabs.find((t) => t.key === page.tab)?.label
@@ -60,14 +62,14 @@ function routeName(page: { view: string; tab: string }): string | null {
 
 /**
  * The page a view opens on in this mode: "People stats, Attrition", or where the mode sends a page
- * it hides ("My team in Manager mode"), never the hidden page's own name.
+ * it hides ("My team in Manager mode", "Home in HRBP mode"), never the hidden page's own name.
  */
 function pageName(page: { view: string; tab: string } | null, mode: Mode): string | null {
   if (!page) return null
   const d = routeDecision(mode, { view: page.view as RouteView, tab: page.tab })
   if (!d.redirected) return routeName(page)
   const to = routeName({ view: d.route.view, tab: d.route.tab })
-  return to ? `${to} in ${MODE_LABEL[mode]} mode` : null
+  return to ? `${to} in ${modeName(mode)}` : null
 }
 
 /** The live scope and the saved view it matches (or was applied last and is now edited). */

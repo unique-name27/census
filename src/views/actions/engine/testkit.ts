@@ -17,6 +17,7 @@ import type { SourceMeta } from '@/data/store'
 import type { MetricsApi } from '@/metrics/types'
 import type { ActionItem } from '@/views/types'
 import type { OpenAction, ViewSource } from './collect'
+import { markKeyOf } from './marks'
 
 export const AS_OF: ISODate = '2026-09-30'
 
@@ -131,6 +132,7 @@ export function open(patch: Partial<ActionItem> = {}, extra: Partial<OpenAction>
   return {
     item: i,
     id: i.id,
+    markKey: markKeyOf(i.id),
     role: i.ownerRole,
     roleLabel: 'Managers',
     ownerKey: i.ownerId ? `id:${i.ownerId}` : `team:${i.ownerRole}:${i.ownerName.toLowerCase()}`,
@@ -142,6 +144,8 @@ export function open(patch: Partial<ActionItem> = {}, extra: Partial<OpenAction>
     from: 'Talent · Learning',
     personId: i.subject.id ?? null,
     team: null,
+    below: null,
+    alsoFrom: [],
     ...extra,
   }
 }

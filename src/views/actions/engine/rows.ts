@@ -2,12 +2,16 @@
  * Items as rows: for the Excel export of the list, for each owner group's sheet export, and as
  * drill records (`actionItems`), so every count on the page opens the items behind it and each
  * item's About cell opens its own records. Item ids are never shown or exported: an employee
- * relations item's id carries its case ID. Pure.
+ * relations item's id carries its case ID. An item's money (`ActionItem.amount`) is never in its
+ * text: the export carries it in its own column, `pay: true` for one person's amount and
+ * `cost: true` for a total over a group, so the pay rules drop it where the mode or the switch
+ * says so. Pure.
  */
 import type { Column } from '@/charts/types'
 import type { Severity } from '@/components/types'
 import type { AnalyticsContext } from '@/data/context'
 import type { FieldRef } from '@/data/quality/fieldRef'
+import { TIER_LABEL } from '@/data/quality/tier'
 import type { ISODate } from '@/data/schema'
 import { type ActionItemRow, type DrillSpec, drillSpec } from '@/drill/types'
 import { formatDate } from '@/lib/dates'
@@ -25,10 +29,12 @@ export const SEVERITY_WORD: Record<Severity, string> = {
 
 export const SEVERITY_ORDER: readonly Severity[] = ['critical', 'warning', 'info', 'good']
 
-/** "Open", "Handled 4 Oct 2026", "Snoozed until 11 Oct 2026". */
+/** "Open", "Handled 4 Oct 2026", "Handled 4 Oct 2026 by Priya", "Snoozed until 11 Oct 2026", "Open, changed since 4 Oct 2026". */
 export function statusText(s: ItemStatus): string {
-  if (s.state === 'handled') return `Handled ${formatDate(s.at.slice(0, 10))}`
-  if (s.state === 'snoozed') return `Snoozed until ${formatDate(s.until.slice(0, 10))}`
+  const by = 'by' in s && s.by ? ` by ${s.by}` : ''
+  if (s.state === 'handled') return `Handled ${formatDate(s.at.slice(0, 10))}${by}`
+  if (s.state === 'snoozed') return `Snoozed until ${formatDate(s.until.slice(0, 10))}${by}`
+  if (s.changedSince) return `Open, changed since ${formatDate(s.changedSince.slice(0, 10))}`
   return 'Open'
 }
 
@@ -44,7 +50,20 @@ export interface ExportRow {
   from: string
   note: string
   status: string
+  /** One person's amount (USD), for a pay column. */
+  amount: number | null
+  /** A total over a group (USD), for a cost column. */
+  total: number | null
+  /** What the amount or total is: "Cost to bring to minimum, a year". */
+  amountLabel: string
+  /** The tier of data below the standard ("Bronze"), else empty. */
+  data: string
+  /** Other views that raised the same matter. */
+  alsoFrom: string
 }
+
+/** A group item's amount is a total (cost); a person's is pay. */
+const isGroup = (a: OpenAction) => a.item.subject.kind === 'none'
 
 export const EXPORT_COLUMNS: Column<ExportRow>[] = [
   { key: 'ownerGroup', label: 'Owner group' },
@@ -57,6 +76,11 @@ export const EXPORT_COLUMNS: Column<ExportRow>[] = [
   { key: 'from', label: 'From', width: 22 },
   { key: 'note', label: 'Note', width: 48 },
   { key: 'status', label: 'Status' },
+  { key: 'alsoFrom', label: 'Also raised in', width: 22 },
+  { key: 'data', label: 'Data below your standard' },
+  { key: 'amount', label: 'Amount (USD)', format: 'moneyFull', pay: true },
+  { key: 'total', label: 'Total (USD)', format: 'moneyFull', cost: true },
+  { key: 'amountLabel', label: 'Amount for', width: 30, cost: true },
 ]
 
 type StatusFn = (a: OpenAction) => ItemStatus
@@ -78,6 +102,11 @@ export function exportRows(
     from: a.from,
     note: a.item.note ?? '',
     status: statusText(status(a)),
+    amount: a.item.amount && !isGroup(a) ? a.item.amount.usd : null,
+    total: a.item.amount && isGroup(a) ? a.item.amount.usd : null,
+    amountLabel: a.item.amount?.label ?? '',
+    data: a.below ? TIER_LABEL[a.below.tier] : '',
+    alsoFrom: a.alsoFrom.join(', '),
   }))
 }
 

@@ -7,10 +7,17 @@
  *    compliance).
  *
  * `what` describes the state in plain words, never a nagging verb, and never the authorization
- * type; `note` holds the polite ask the copied note uses. Ids are stable across recomputes. Pure.
+ * type; `note` holds the polite ask the copied note uses. Ids are stable across recomputes.
+ *
+ * Each item is one matter per person (`matter`: 'work-auth:', 'i9:', 'license:' and the employee
+ * ID), so Onboarding's I-9 Section 2 item and its export-control screening task fold into these
+ * (docs/ACTION-CENTER-AUDIT.md 4.2). A legal breach (an authorization that ended, an I-9 past due,
+ * an export license not in force) carries `exposure` and ranks first; a license breach is due on
+ * the start date, so it reads overdue, never "Due today". Pure.
  */
 import type { AnalyticsContext } from '@/data/context'
 import { addDays } from '@/lib/dates'
+import { placeOf, TEAM_OWNER } from '../../hrbp/engine/places'
 import type { ActionItem } from '../../types'
 import { type DrillScope, expiryDrill, i9Drill, licenseDrill } from './drills'
 import { USES } from './lineage'
@@ -18,15 +25,19 @@ import type { ComplianceCore } from './model'
 import { businessDaysText, day } from './wording'
 import { isJudged } from './work'
 
-export const MOBILITY = 'Global mobility'
-export const PEOPLE_OPS = 'People operations'
-export const TRADE = 'Trade compliance'
+export const MOBILITY = TEAM_OWNER.mobility
+export const PEOPLE_OPS = TEAM_OWNER.peopleOps
+export const TRADE = TEAM_OWNER.trade
 
 /** Item ids: '<view>:<kind>:<employee ID>'. */
 export const actionId = (kind: 'reverification' | 'i9' | 'license', employeeId: string): string =>
   `compliance:${kind}:${employeeId}`
 
-export function buildActions(_ctx: AnalyticsContext, m: ComplianceCore, s: DrillScope): ActionItem[] {
+/** The matter an item is about, shared with the views that raise the same one: '<kind>:<employee ID>'. */
+export const matterOf = (kind: 'work-auth' | 'i9' | 'license', employeeId: string): string =>
+  `${kind}:${employeeId}`
+
+export function buildActions(ctx: AnalyticsContext, m: ComplianceCore, s: DrillScope): ActionItem[] {
   const { work, i9, exportControl: ex, settings: cfg, base } = m
   const asOf = base.asOf
   if (!base.has.rightToWork) return []
@@ -64,6 +75,10 @@ export function buildActions(_ctx: AnalyticsContext, m: ComplianceCore, s: Drill
         ? `Could you confirm the current work authorization for ${x.e.name}, whose recorded authorization ended on ${day(x.expiryDate)}?`
         : `Could you start reverification for ${x.e.name}, whose work authorization ends on ${day(x.expiryDate)}?`,
       uses: USES.reverification,
+      matter: matterOf('work-auth', x.e.employeeId),
+      ...(ended ? { exposure: true } : {}),
+      closesWhen: 'A reverification date, or a new authorization end date, on the Right to work row',
+      place: placeOf(ctx, x.e),
     })
   }
 
@@ -83,6 +98,10 @@ export function buildActions(_ctx: AnalyticsContext, m: ComplianceCore, s: Drill
       drill: () => i9Drill(s, [x], { title: `Form I-9 of ${x.e.name}`, uses: USES.i9 }),
       note: `Could you complete Form I-9 Section 2 for ${x.e.name}, who started on ${day(x.hireDate)}?`,
       uses: USES.i9,
+      matter: matterOf('i9', x.e.employeeId),
+      exposure: true,
+      closesWhen: 'An I-9 Section 2 completed date on the Right to work row',
+      place: placeOf(ctx, x.e),
     })
   }
 
@@ -93,7 +112,8 @@ export function buildActions(_ctx: AnalyticsContext, m: ComplianceCore, s: Drill
       ownerRole: 'trade-compliance',
       ownerId: null,
       ownerName: TRADE,
-      due: asOf,
+      // The breach began on the start date: it is overdue from then, never "Due today".
+      due: x.startDate,
       severity: 'critical',
       what: `Working since ${day(x.startDate)} without an export license in force (license ${x.status.toLowerCase()})`,
       subject: { kind: 'rightToWork', id: x.e.employeeId, label: x.e.name },
@@ -102,6 +122,10 @@ export function buildActions(_ctx: AnalyticsContext, m: ComplianceCore, s: Drill
       drill: () => licenseDrill(s, [x], { title: `Export license of ${x.e.name}`, uses: USES.exportLicense }),
       note: `Could you confirm the export license for ${x.e.name}, and that access to controlled technology stays restricted until it is in force?`,
       uses: USES.exportLicense,
+      matter: matterOf('license', x.e.employeeId),
+      exposure: true,
+      closesWhen: 'An export license status of Approved, or Not needed, on the Right to work row',
+      place: placeOf(ctx, x.e),
     })
   }
   for (const x of ex.pendingStarts) {
@@ -119,6 +143,10 @@ export function buildActions(_ctx: AnalyticsContext, m: ComplianceCore, s: Drill
       drill: () => licenseDrill(s, [x], { title: `Export license of ${x.e.name}`, uses: USES.exportLicense }),
       note: `Could you confirm whether the export license for ${x.e.name} will be in force before the start on ${day(x.startDate)}?`,
       uses: USES.exportLicense,
+      matter: matterOf('license', x.e.employeeId),
+      exposure: true,
+      closesWhen: 'An export license status of Approved, or Not needed, on the Right to work row',
+      place: placeOf(ctx, x.e),
     })
   }
   return items

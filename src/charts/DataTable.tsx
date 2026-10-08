@@ -23,6 +23,7 @@ import {
   columnAlign,
   columnFormat,
   isNumericFormat,
+  moneyShown,
   sampleRow,
   sampleValue,
   visibleColumns,
@@ -122,13 +123,14 @@ export function DataTable<T extends object>({
   pinFirst = true,
   className,
 }: DataTableProps<T>) {
-  const { showPay } = useAnalytics()
+  const ctx = useAnalytics()
   const [sort, setSort] = useState<SortState | null>(defaultSort ?? null)
   // Extra rows revealed past maxRows; Infinity once "Show all" is chosen.
   const [extra, setExtra] = useState(0)
   const [query, setQuery] = useState('')
 
-  const cols = visibleColumns(columns, showPay)
+  // Pay amounts per the switch, cost totals per the mode (`cost: true`, `ctx.showCost`).
+  const cols = visibleColumns(columns, moneyShown(ctx))
   const records = rows as readonly Record<string, unknown>[]
   const samples = cols.map((c) => sampleValue(records, c.key))
   const firsts = cols.map((c) => sampleRow(records, c.key))

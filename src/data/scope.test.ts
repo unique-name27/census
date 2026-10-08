@@ -52,6 +52,7 @@ const empty: Datasets = {
   rightToWork: [],
   surveyResponses: [],
   surveyItems: [],
+  budget: [],
 }
 
 describe('period windows', () => {

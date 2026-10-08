@@ -18,16 +18,36 @@ import type PptxGenJS from 'pptxgenjs'
 import type { ExportMeta, ExportSection, RegisteredFigure } from '@/charts/types'
 import { type DataStandard, STANDARD_LABEL, TIER_LABEL } from '@/data/quality/tier'
 import { fmt } from '@/lib/format'
-import { cellFormat, columnAlign, columnFormat, sampleRow, sampleValue, visibleColumns } from './columns'
+import {
+  cellFormat,
+  columnAlign,
+  columnFormat,
+  type MoneyShown,
+  moneyShown,
+  sampleRow,
+  sampleValue,
+  visibleColumns,
+} from './columns'
 import { definitionsLineFor } from './definitions'
 import { downloadBlob, MIME } from './download'
 import { pngDataUrl, type RasterImage, svgToPng, withLightTheme } from './image'
-import { asOfLabel, fileStem, hasDataContext, metaLine, stampLine, standardLine, viewLine } from './names'
+import {
+  asOfLabel,
+  fileStem,
+  hasDataContext,
+  metaLine,
+  modeLines,
+  stampLine,
+  standardLine,
+  viewLine,
+} from './names'
 import { exportNote } from './withheld'
 import { addTableSheet, newWorkbook, saveWorkbook, uniqueSheetNames, XL } from './xlsx'
 
 export interface ViewExportOptions {
   showPay: boolean
+  /** Cost total columns (`cost: true`) are kept while this is on (`ctx.showCost`); follows `showPay` when not given. */
+  showCost?: boolean
   /** File name without extension; defaults to census-<view>-<tab>-<as-of>. */
   fileName?: string
   /**
@@ -165,6 +185,23 @@ export async function captureFigureImages(
 
 /* ───────── Workbook ───────── */
 
+/**
+ * The Summary's pay line: Finance's cost line when the meta carries one; else "Pay amounts:
+ * Included" or "Left out" when a figure has pay or cost columns ("Included" only when both kinds
+ * that are there are kept).
+ */
+export function payFact(
+  meta: Pick<ExportMeta, 'costLine'>,
+  money: MoneyShown,
+  anyPay: boolean,
+  anyCost: boolean,
+): [string, string][] {
+  if (meta.costLine) return [['Pay', meta.costLine]]
+  if (!anyPay && !anyCost) return []
+  const kept = (!anyPay || money.pay) && (!anyCost || money.cost)
+  return [['Pay amounts', kept ? 'Included' : 'Left out']]
+}
+
 function writeSummary(
   wb: Workbook,
   sheetName: string,
@@ -199,7 +236,9 @@ function writeSummary(
   sub.value = [meta.company, 'Census people analytics'].filter(Boolean).join(' · ')
   sub.font = { size: 10, color: { argb: XL.muted } }
 
+  const money = moneyShown(opts)
   const anyPay = figures.some((f) => f.columns.some((c) => c.pay))
+  const anyCost = figures.some((f) => f.columns.some((c) => c.cost))
   const changedDefs = definitionsLineFor(meta)
   const tabs = [...new Set(entries.flatMap((e) => (e.group ? [e.group.label] : [])))]
   const facts: [string, string][] = [
@@ -219,7 +258,8 @@ function writeSummary(
           string,
         ][])
       : []),
-    ...(anyPay ? ([['Pay amounts', opts.showPay ? 'Included' : 'Left out']] as [string, string][]) : []),
+    // Finance states its cost line in place of "Pay amounts" (docs/ROLES-V2.md 3.2).
+    ...payFact(meta, money, anyPay, anyCost),
     ...(meta.modeLine ? ([['Mode', meta.modeLine]] as [string, string][]) : []),
     // Someone changed a definition, target or setting: the numbers may not use the standard ones.
     ...(changedDefs
@@ -458,7 +498,7 @@ function titleSlide(pptx: PptxGenJS, meta: ExportMeta) {
     meta.asOf ? `As of ${asOfLabel(meta.asOf)}` : '',
     meta.standard ? standardLine(meta.standard) : '',
     definitionsLineFor(meta) ?? '',
-    meta.modeLine ?? '',
+    ...modeLines(meta),
   ].filter(Boolean)
   if (context.length)
     s.addText(
@@ -467,13 +507,15 @@ function titleSlide(pptx: PptxGenJS, meta: ExportMeta) {
         x: M,
         y: 4.0,
         w: W - 2 * M,
-        h: 1.45,
+        // Up to seven lines with the mode and cost lines; the company line sits below at 6.45in.
+        h: 2.3,
         fontFace: FONT,
         fontSize: 14,
         color: C.ink2,
         margin: 0,
         valign: 'top',
         paraSpaceAfter: 4,
+        fit: 'shrink',
       },
     )
   if (meta.company)
@@ -602,9 +644,9 @@ function figureHeader(slide: Slide, f: RegisteredFigure): number {
 
 function tableRows(
   f: RegisteredFigure,
-  showPay: boolean,
+  money: MoneyShown,
 ): { rows: PptxGenJS.TableRow[]; widths: number[]; more: number } {
-  const cols = visibleColumns(f.columns, showPay, 'slides')
+  const cols = visibleColumns(f.columns, money, 'slides')
   const samples = cols.map((c) => sampleValue(f.rows, c.key))
   const firsts = cols.map((c) => sampleRow(f.rows, c.key))
   const formats = cols.map((c, i) => columnFormat(c, samples[i], firsts[i]))
@@ -742,7 +784,7 @@ export async function exportViewDeck(
       const k = Math.min(boxW / inW, boxH / inH, 2)
       s.addImage({ data: await pngDataUrl(img), x: M, y: top, w: inW * k, h: inH * k, altText: f.title })
     } else if (f.rows.length) {
-      const { rows, widths, more } = tableRows(f, opts.showPay)
+      const { rows, widths, more } = tableRows(f, moneyShown(opts))
       s.addTable(rows, {
         x: M,
         y: top,

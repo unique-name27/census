@@ -3,7 +3,7 @@
  *
  *  - Late day-one tasks by task and region (or site): the share of starters whose task was done
  *    after its due date, or is still open past it. A cell opens those late tasks; a region carries
- *    its sites as the filter, named as the region ("Filter to Asia Pacific"), a site itself. Cells
+ *    its sites as the filter, named as the region ("Filter to APAC"), a site itself. Cells
  *    under the anonymity minimum show "—".
  *  - When day-one tasks were finished: for one task, days from the start date to completion, with
  *    the on-time zone shaded and the first day marked, so a late task that still landed before day
@@ -56,7 +56,7 @@ export function LateTasksHeatmap() {
   const [by, setBy] = useState<Place>('region')
   const uses = union(STARTERS, TASKS, SITE)
   const cells = lateByTaskAndPlace(f.readinessTasks, by, min)
-  const cellDrill = lateCellDrill(b, ctx.all.employees, by, uses)
+  const cellDrill = lateCellDrill(b, by, uses)
   const places = [...new Set(cells.map((c) => c.place))]
   const xOrder =
     by === 'region'

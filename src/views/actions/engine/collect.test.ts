@@ -75,24 +75,30 @@ describe('collectActions', () => {
     expect(Object.fromEntries(by)).toEqual({ 'talent:p:1': 'E3', 'talent:p:2': null, 'talent:p:3': null })
   })
 
-  it('hides items below the data standard and counts them by what holds them back', () => {
+  it('shows workflow items at every data standard, tagged with their tier, and counts the ones below it', () => {
     const views = [source('talent', 'Talent', [item(), item()])]
     const shown = collectUncached(ctxOf({ standard: 'bronze' }), views)
     expect(shown.items).toHaveLength(2)
-    expect(shown.hidden.count).toBe(0)
-    // Hand-built uploads are bronze: under Validated both items are held back.
-    const held = collectUncached(ctxOf({ standard: 'silver' }), views)
-    expect(held.items).toHaveLength(0)
-    expect(held.hidden.count).toBe(2)
-    expect(held.hidden.reasons).toEqual([
-      expect.objectContaining({ dataset: 'employees', tier: 'bronze', count: 2 }),
-    ])
-    // A field with no data hides its item even when everything shows.
+    expect(shown.below.count).toBe(0)
+    expect(shown.items.every((a) => a.below === null)).toBe(true)
+    // Hand-built uploads are bronze: under Validated and Production both items still show, tagged.
+    for (const standard of ['silver', 'gold'] as const) {
+      const held = collectUncached(ctxOf({ standard }), views)
+      expect(held.items, standard).toHaveLength(2)
+      expect(held.below.count, standard).toBe(2)
+      expect(held.below.reasons, standard).toEqual([
+        expect.objectContaining({ dataset: 'employees', tier: 'bronze', count: 2 }),
+      ])
+      for (const a of held.items)
+        expect(a.below, standard).toMatchObject({ tier: 'bronze', dataset: 'employees' })
+    }
+    // A field with no data still lists its item, tagged "No data", and counts it.
     const empty = collectUncached(ctxOf(), [
       source('talent', 'Talent', [item({ uses: ['learning.dueDate'] })]),
     ])
-    expect(empty.items).toHaveLength(0)
-    expect(empty.hidden.reasons[0]).toMatchObject({ tier: 'none', dataset: 'learning' })
+    expect(empty.items).toHaveLength(1)
+    expect(empty.items[0].below).toMatchObject({ tier: 'none', dataset: 'learning' })
+    expect(empty.below.reasons[0]).toMatchObject({ tier: 'none', dataset: 'learning', count: 1 })
   })
 
   describe('"My team" mode (the leader filter)', () => {
@@ -242,7 +248,7 @@ describe('counts and drills', () => {
     expect(countActions(open, ctx).bySeverity).toEqual({ critical: 1, warning: 2, info: 1, good: 0 })
   })
 
-  it('read the look-ahead and the snooze length through the dictionary, and change with them', () => {
+  it('read the look-ahead, the snooze length, the overdue limit and the escalation days through the dictionary, and change with them', () => {
     const rec = recordParamReads(defaultMetrics())
     const ctx = ctxOf({ metrics: rec.metrics })
     const open = collectUncached(ctx, views).items
@@ -254,11 +260,18 @@ describe('counts and drills', () => {
     expect(paramsOfView('actions')).toEqual([
       paramRef(P.snoozeDays.metricId, P.snoozeDays.key),
       paramRef(P.dueSoonDays.metricId, P.dueSoonDays.key),
+      paramRef(P.blockedDays.metricId, P.blockedDays.key),
+      paramRef(P.escalationDays.metricId, P.escalationDays.key),
     ])
     const wider = ctxOf({ metrics: metricsWith({ [M.dueSoon]: { days: 30 }, [M.open]: { snoozeDays: 14 } }) })
     const soon = actionKpis(collectUncached(wider, views).items, wider).find((k) => k.id === 'due-soon')
     expect(soon?.value).toBe(2)
-    expect(settingsOf(wider.metrics)).toEqual({ snoozeDays: 14, dueSoonDays: 30 })
+    expect(settingsOf(wider.metrics)).toEqual({
+      snoozeDays: 14,
+      dueSoonDays: 30,
+      blockedDays: 14,
+      escalationDays: 14,
+    })
   })
 
   it('give each figure its rows: owner groups by due date, and views', () => {

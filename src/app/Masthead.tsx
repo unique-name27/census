@@ -10,6 +10,7 @@
 import type { SVGProps } from 'react'
 
 import { HOME_LABEL } from '@/access/modes'
+import { showImmigrationIn } from '@/access/pay'
 import { ModeButton } from '@/access/ui/ModeButton'
 import { AskButton } from '@/ask/ui/AskButton'
 import { IconAsk } from '@/ask/ui/icons'
@@ -34,10 +35,17 @@ import { IconHelp } from '@/help/ui/IconHelp'
 import { formatDate } from '@/lib/dates'
 import { fmt } from '@/lib/format'
 import { useOpenActionCount } from '@/views/actions'
+import { showsLists } from '@/views/actions/engine/roles'
 import { companyLine, uploadedCount } from './exportMeta'
 import { Mark } from './Mark'
 import { settingsTrigger } from './settings/SettingsSheet'
 import { ToolsMenu, useTools } from './ToolsMenu'
+
+/**
+ * Phones: the buttons beside the wordmark sit closer (8px sides), so the Mode button's short name
+ * ("Recruiter", "Developer"), Actions with its count, Settings and More share the wordmark's row.
+ */
+const PHONE_BUTTON = 'max-sm:px-2'
 
 export function Wordmark() {
   return (
@@ -125,21 +133,27 @@ function ActionsButton() {
   const onActions = useCensus((s) => s.route.view === 'actions')
   const count = useOpenActionCount()
   const critical = useOpenActionCount('critical')
+  // A role mode counts its Needs attention; Developer, HR and CHRO every open item.
+  const roleLists = showsLists(useAnalytics().access)
+  const what = roleLists ? 'need attention' : 'open'
   const tip =
     count == null
       ? 'Open items from every view'
-      : `${fmt(count, 'int')} open ${count === 1 ? 'item' : 'items'}${critical ? `, ${fmt(critical, 'int')} critical` : ''}`
+      : roleLists
+        ? `${fmt(count, 'int')} ${count === 1 ? 'item needs' : 'items need'} attention${critical ? `, ${fmt(critical, 'int')} critical` : ''}`
+        : `${fmt(count, 'int')} open ${count === 1 ? 'item' : 'items'}${critical ? `, ${fmt(critical, 'int')} critical` : ''}`
   return (
     <Tip content={tip} side="bottom">
       <Button
         data-tour="masthead-actions"
         variant={onActions ? 'secondary' : 'ghost'}
         icon={<IconActions />}
+        className={PHONE_BUTTON}
         aria-current={onActions ? 'page' : undefined}
         aria-label={
           count == null
             ? 'Actions'
-            : `Actions, ${fmt(count, 'int')} open${critical ? `, ${fmt(critical, 'int')} critical` : ''}`
+            : `Actions, ${fmt(count, 'int')} ${what}${critical ? `, ${fmt(critical, 'int')} critical` : ''}`
         }
         onClick={() => goTo('actions')}
       >
@@ -160,8 +174,9 @@ function ActionsButton() {
  */
 function MoreMenu({ uploaded, total }: { uploaded: number; total: number }) {
   const { access } = useAnalytics()
-  const canEditTools = access.can('tools:edit')
-  const tools = useTools().filter((t) => access.can(`tools:${t.id}`) && !!t.url)
+  const toolsShown = access.can('masthead:tools')
+  const canEditTools = toolsShown && access.can('tools:edit')
+  const tools = useTools().filter((t) => toolsShown && access.can(`tools:${t.id}`) && !!t.url)
   const items: MenuItem[] = [
     { label: 'Ask Census', icon: <IconAsk />, hint: 'Alt+A', onSelect: () => openAsk() },
     { label: 'Help', icon: <IconHelp />, hint: '?', onSelect: () => openHelp() },
@@ -201,7 +216,7 @@ function MoreMenu({ uploaded, total }: { uploaded: number; total: number }) {
           variant="ghost"
           icon={<IconMore />}
           aria-label="More"
-          className="md:hidden"
+          className={cx('md:hidden', PHONE_BUTTON)}
         />
       }
     />
@@ -215,10 +230,14 @@ export function Masthead() {
   const ctx = useAnalytics()
   const onDataRoom = useCensus((s) => s.route.view === 'data')
   const onDev = useCensus((s) => s.route.view === 'dev')
-  // The mode shapes the band (docs/ROLES.md, 3.1): no Data room or session tags in Manager mode,
-  // the Developer button in Developer mode only.
+  // The mode shapes the band (docs/ROLES-V2.md 4.3): the Data room in HR, CHRO, HR ops and
+  // Developer, the Developer button in Developer mode only. Each session tag shows while its switch
+  // is on, in the modes that have that switch (pay: HR, CHRO, Compensation, Developer;
+  // immigration: HR, CHRO, HR ops, Developer). The switches are read from the store, so "Hide"
+  // takes the tag away at once.
   const { access } = ctx
-  const showImmigration = useCensus((s) => s.showImmigration) && access.can('masthead:pay-tags')
+  const showPayTag = useCensus((s) => s.showPay) && access.can('pay:switch')
+  const showImmigrationTag = useCensus((s) => s.showImmigration) && showImmigrationIn(access.mode, true)
   const settingsOpen = useCensus((s) => s.settingsOpen.open)
   const { uploaded, total } = uploadedCount(ctx.sources)
   return (
@@ -235,8 +254,8 @@ export function Masthead() {
         <span aria-hidden="true" className="hidden h-4 w-px bg-rule-strong sm:block" />
         <span className="truncate text-small text-ink-2">{companyLine(ctx.isSample, SAMPLE_COMPANY)}</span>
         {ctx.isSample && <Tag>Sample data</Tag>}
-        {ctx.showPay && access.can('masthead:pay-tags') && <PayShownTag />}
-        {showImmigration && <ImmigrationShownTag />}
+        {showPayTag && <PayShownTag />}
+        {showImmigrationTag && <ImmigrationShownTag />}
       </div>
       {/* Phones keep these on the wordmark's row (the rest are in More). Wraps onto a second row
           only when even those do not fit (very large text), so the page never scrolls sideways. */}
@@ -287,6 +306,7 @@ export function Masthead() {
         <Button
           ref={settingsTrigger}
           data-tour="masthead-settings"
+          className={PHONE_BUTTON}
           variant={settingsOpen ? 'secondary' : 'ghost'}
           icon={<IconGear />}
           aria-haspopup="dialog"

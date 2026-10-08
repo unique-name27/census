@@ -151,4 +151,22 @@ export const EXTRA_SYNONYMS: Partial<Record<DatasetKey, Record<string, string[]>
     meritPct: ['merit percent', 'merit increase percent', 'merit recommendation'],
     promotionPct: ['promotion percent', 'promo percent'],
   },
+  // Planning tools (Adaptive Planning, Anaplan, Pigment) and finance budget exports.
+  budget: {
+    period: ['time', 'fiscal period name', 'accounting period', 'month name'],
+    businessUnit: ['business unit name', 'level 1', 'org level 1', 'sbu'],
+    department: ['department name', 'level 2', 'org level 2'],
+    costCenter: ['cost center number', 'cost centre number', 'department code', 'org code'],
+    budgetHeadcount: ['ending headcount', 'end of period headcount', 'headcount eop', 'hc eop'],
+    budgetCost: [
+      'total personnel expense',
+      'personnel expense',
+      'total compensation cost',
+      'total people cost',
+      'workforce expense',
+      'budget local currency',
+    ],
+    currency: ['currency name', 'local currency'],
+    planVersion: ['version name', 'scenario name', 'budget scenario'],
+  },
 }

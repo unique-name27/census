@@ -1,5 +1,5 @@
 /**
- * Surface ids: every thing a mode can show, limit or hide has one (docs/ROLES.md, 6.2). They are
+ * Surface ids: every thing a mode can show, limit or hide has one (docs/ROLES.md, 6.2; ROLES-V2 8.1). They are
  * plain strings with a kind before the first colon ("view:hrbp", "tab:talent.retention",
  * "figure:hrbp-exit-survey", "metric:talent.retention.flightRisk"), branded so a typo'd literal
  * does not pass where a surface is expected. Build them with `S`. Pure.
@@ -73,7 +73,7 @@ export type ExportKind =
   | 'data-room'
   | 'formulas'
 
-/** Parts of the records panel and the person card (3.12, 3.13). */
+/** Parts of the records panel and the person card (3.12, 3.13; ROLES-V2 4.12). */
 export type PersonPart =
   | 'inside-org'
   | 'outside-org'
@@ -83,6 +83,11 @@ export type PersonPart =
   | 'focus'
   | 'org-chart'
   | 'row-open'
+  /** Ratings and potential on the person card and the org chart's details panel. */
+  | 'ratings'
+
+/** Pay (docs/ROLES-V2.md 3.1): the "Show pay amounts" switch, one person's amounts, cost totals over groups. */
+export type PayPart = 'switch' | 'amounts' | 'totals'
 
 export type ShortcutKey = 'help' | 'ask' | 'keys' | 'tabs' | 'org' | 'tour' | 'dev-overlays'
 
@@ -125,6 +130,11 @@ export const S = {
   org: (part: 'simulate-exit') => surface(`org:${part}`),
   /** Action center items whose id starts with this ("onboarding:i9:"). */
   item: (prefix: string) => surface(`item:${prefix}`),
-  /** Other shared parts: "tier-badge", "edit-definition", "kpi-delta-company", "route-link", "error-details". */
+  /** Pay amounts per person, cost totals, or the "Show pay amounts" switch (`payDecisions` per mode). */
+  pay: (part: PayPart) => surface(`pay:${part}`),
+  /**
+   * Other shared parts: "tier-badge", "edit-definition", "kpi-delta-company", "route-link",
+   * "error-details", "attention-lists" (the Action center's Needs attention and Waiting on others).
+   */
   ui: (part: string) => surface(`ui:${part}`),
 } as const

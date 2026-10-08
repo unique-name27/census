@@ -28,10 +28,12 @@ export const M = {
 export const P = {
   snoozeDays: { metricId: M.open, key: 'snoozeDays' },
   dueSoonDays: { metricId: M.dueSoon, key: 'days' },
+  blockedDays: { metricId: M.critical, key: 'blockedDays' },
+  escalationDays: { metricId: M.critical, key: 'escalationDays' },
 } as const
 
 /** Defaults, for tests and wording that names no number. */
-export const DEFAULTS = { snoozeDays: 7, dueSoonDays: 7 } as const
+export const DEFAULTS = { snoozeDays: 7, dueSoonDays: 7, blockedDays: 14, escalationDays: 14 } as const
 
 /**
  * The fields the views' open items read (each item declares its own `uses`; this is their union
@@ -64,6 +66,8 @@ export const ITEM_USES: readonly FieldRef[] = [
   'cases.team',
   'comp.baseSalary',
   'comp.employeeId',
+  // Merit spend over budget is weighted by base in USD.
+  'comp.fxToUsd',
   'comp.meritPct',
   'comp.rangeMax',
   'comp.rangeMid',
@@ -89,6 +93,15 @@ export const ITEM_USES: readonly FieldRef[] = [
   'jobChanges.fromManagerId',
   'jobChanges.toLevel',
   'jobChanges.toManagerId',
+  // Hiring plan items for Finance (docs/ROLES-V2.md 5.14): not in the plan, behind it, no req.
+  'hiringPlan.businessUnit',
+  'hiringPlan.department',
+  'hiringPlan.period',
+  'hiringPlan.planVersion',
+  'hiringPlan.plannedHires',
+  'hiringPlan.reqId',
+  // Required courses below their on-time target read the course category with the on-time base.
+  'learning.category',
   'learning.completedDate',
   'learning.course',
   'learning.dueDate',
@@ -101,13 +114,18 @@ export const ITEM_USES: readonly FieldRef[] = [
   'onboardingTasks.owner',
   'onboardingTasks.status',
   'onboardingTasks.task',
+  'requisitions.businessUnit',
   'requisitions.closedDate',
   'requisitions.department',
   'requisitions.filledDate',
   'requisitions.hiringManager',
+  // Reqs past their time-to-fill target: the level's median when there is no target.
+  'requisitions.level',
   'requisitions.openedDate',
+  'requisitions.openings',
   'requisitions.recruiter',
   'requisitions.reqId',
+  'requisitions.reqType',
   'requisitions.status',
   'reviews.cycle',
   'reviews.cycleDate',
@@ -213,14 +231,37 @@ export const metrics: MetricDef[] = defineMetrics('actions', [
     id: M.critical,
     name: 'Critical items',
     definition:
-      'Open items the view they come from rates critical, such as final pay past due or a license not in force.',
-    formula: 'open items with severity critical',
+      'Open items with legal or regulatory exposure (an I-9, an export license, a work authorization, final pay), a person blocked past the overdue limit (a candidate or a start waiting on a step), or an item its view rates critical by its own threshold, such as a critical role at high risk of loss.',
+    formula:
+      'open items with exposure, or blocking a person and overdue > overdue limit, or rated critical by their view',
     population: POPULATION,
     window: 'A snapshot on the as-of date.',
     unit: 'int',
     goodDirection: 'down',
     uses: ITEM_USES,
     owner: OWNER,
+    params: [
+      {
+        key: P.blockedDays.key,
+        label: 'Overdue limit for a waiting person',
+        description:
+          'How many days overdue an item can be before it is critical when a person waits on it: a candidate waiting on a review, an interview, a decision or an offer, or a start waiting on a day-one task. Below the limit it reads Watch.',
+        type: 'days',
+        default: DEFAULTS.blockedDays,
+        min: 1,
+        max: 90,
+      },
+      {
+        key: P.escalationDays.key,
+        label: 'Escalation after',
+        description:
+          'A critical item overdue more than this many days is an escalation: it joins legal exposure, critical roles at high risk of loss and regretted exit clusters on the CHRO and HR homes.',
+        type: 'days',
+        default: DEFAULTS.escalationDays,
+        min: 1,
+        max: 90,
+      },
+    ],
   },
   {
     id: M.owners,

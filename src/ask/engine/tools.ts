@@ -7,8 +7,10 @@
  * (`TokenMap.scanDeep`): known names, person IDs and emails become tokens and money amounts are
  * withheld, whatever an engine wrote into its text.
  */
+
 import type { BetaTool } from '@anthropic-ai/sdk/resources/beta/messages/messages'
 import type { AccessContext } from '@/access/context'
+import { modeName } from '@/access/copy'
 import { errorMessage, logDevError } from '@/app/devlog'
 import { DATASET_KEYS, DATASETS } from '@/data/schema'
 import { recordSince } from '@/lib/timing'
@@ -283,8 +285,8 @@ let managerTools: BetaTool[] | null = null
 let hrTools: BetaTool[] | null = null
 
 /**
- * The tool definitions sent to Claude in a mode. HR and Developer mode send every data tool (HR
- * leaves out the ones not ready yet). Manager mode leaves out `explain_quality`, and the view and
+ * The tool definitions sent to Claude in a mode. HR and Developer mode send every data tool; the
+ * other modes leave out the tools their policy hides. Manager mode leaves out `explain_quality`, and the view and
  * dataset enums and descriptions list only what Manager mode shows. The screen tools follow when
  * the app is connected. The last tool keeps the cache breakpoint.
  */
@@ -321,8 +323,7 @@ const withScreen = new WeakMap<BetaTool[], WeakMap<BetaTool[], BetaTool[]>>()
 function dataToolsFor(access: ModeAccess | null | undefined): BetaTool[] {
   if (!access || access.mode === 'developer') return TOOL_DEFINITIONS
   if (access.mode !== 'manager') {
-    // HR mode: every tool but the ones not ready yet (open_items while the Action center is
-    // Developer mode only). The last tool keeps the cache breakpoint.
+    // Every tool the mode's policy shows. The last tool keeps the cache breakpoint.
     if (hrTools) return hrTools
     const shown = TOOL_DEFINITIONS.filter((t) => access.can(`ask:${t.name}`))
     if (shown.length === TOOL_DEFINITIONS.length) {
@@ -484,10 +485,7 @@ export function runTool(
   if (access && isToolName(name) && !access.can(`ask:${name}`))
     return {
       content: JSON.stringify({
-        error:
-          access.mode === 'manager'
-            ? `${name} is not available in Manager mode.`
-            : `${name} is not available: the Action center it reads is not ready yet.`,
+        error: `${name} is not available in ${modeName(access.mode)}.`,
       }),
       isError: true,
       label,

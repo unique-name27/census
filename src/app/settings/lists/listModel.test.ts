@@ -103,12 +103,14 @@ describe('Official lists view model', () => {
     expect(originText(sample.department, EMPTY_LISTS)).toBe(
       'The sample company’s list, official so you can see the checks at work.',
     )
-    expect(checksText(sample.department)).toBe('Checks Employees, Requisitions, Job changes and Hiring plan.')
+    expect(checksText(sample.department)).toBe(
+      'Checks Employees, Requisitions, Job changes, Hiring plan and Headcount and cost budget.',
+    )
     expect(originText(sample.level, EMPTY_LISTS)).toBe('Census reads these exact values.')
     const own = kinds(['employees'])
     const mine = effectiveLists(EMPTY_LISTS, d, own)
     expect(checksText(mine.department)).toBe(
-      'Will check Employees, Requisitions, Job changes and Hiring plan once official.',
+      'Will check Employees, Requisitions, Job changes, Hiring plan and Headcount and cost budget once official.',
     )
     // Saved on the sample, then your own data is loaded: worth rebuilding.
     const r = applyEdit(
@@ -122,7 +124,7 @@ describe('Official lists view model', () => {
     expect(after.department).toMatchObject({ status: 'proposed', validates: false, paused: 'sample' })
     expect(pauseText(after.department)).toMatch(/^You saved this list while Census showed the sample company/)
     expect(checksText(after.department)).toBe(
-      'Checks Employees, Requisitions, Job changes and Hiring plan while the sample is loaded.',
+      'Checks Employees, Requisitions, Job changes, Hiring plan and Headcount and cost budget while the sample is loaded.',
     )
     expect(effectiveLists(r.state, d, kinds()).department.paused).toBeUndefined()
     const off = offListItems(after.department, analyzeLists(after, d).department)

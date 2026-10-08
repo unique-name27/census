@@ -197,11 +197,12 @@ describe('open_view', () => {
     const h = fakeApp(hr)
     const dev = await callScreen(new Conversation(), envOf(hr, { app: h.app }), 'open_view', { view: 'dev' })
     expect(String(dev.json.error)).toMatch(/^The Developer page is not shown in HR mode\. Ask opens only/)
+    // The Action center opens in every mode (docs/ROLES-V2.md 6.3).
     const actions = await callScreen(new Conversation(), envOf(hr, { app: h.app }), 'open_view', {
       view: 'actions',
     })
-    expect(String(actions.json.error)).toMatch(/^The Action center is not ready yet\./)
-    expect(h.history).toHaveLength(1)
+    expect(actions.isError).toBe(false)
+    expect(h.history).toHaveLength(2)
     const m = fakeApp(manager, { route: { view: 'team', tab: '' } })
     const env = envOf(manager, { app: m.app })
     const comp = await callScreen(new Conversation(), env, 'open_view', { view: 'comp' })
@@ -424,7 +425,8 @@ describe('the tool definitions per mode', () => {
     expect(hrViews).toContain('data')
     expect(hrViews).not.toContain('dev')
     expect(hrViews).not.toContain('team')
-    expect(hrViews).not.toContain('actions')
+    // The Action center opens in every mode (docs/ROLES-V2.md 6.3).
+    expect(hrViews).toContain('actions')
     const mViews = openView(manager).view?.enum ?? []
     expect(mViews).toContain('team')
     for (const hidden of ['comp', 'scorecard', 'services', 'compliance', 'listening', 'data', 'dev'])

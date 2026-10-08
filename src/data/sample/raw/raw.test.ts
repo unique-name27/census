@@ -77,6 +77,7 @@ describe('messy sample', () => {
       rightToWork: { unreadable: PENDING_RENEWAL },
       surveyResponses: {},
       surveyItems: {},
+      budget: {},
     }
     for (const k of RAW_DATASETS) {
       const { result } = messy.imports[k]
@@ -124,6 +125,7 @@ describe('messy sample', () => {
       rightToWork: { expiryDate: PENDING_RENEWAL },
       surveyResponses: { driver: base.surveyResponses.filter((r) => r.survey === UNTAGGED_PROGRAM).length },
       surveyItems: {},
+      budget: {},
     }
     for (const k of RAW_DATASETS) expect(diffs(k, messy.data[k]), k).toEqual(expected[k])
     // Exit reasons lost in the migration, and a few school names typed the short way.

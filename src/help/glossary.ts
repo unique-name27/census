@@ -17,6 +17,7 @@ export interface GlossaryEntry {
 
 /** Page names as the folder tabs and masthead say them. */
 export const PAGE_LABEL: Readonly<Record<MetricView, string>> = {
+  home: 'Home',
   team: 'My team',
   scorecard: 'Scorecard',
   recruiting: 'Recruiting',

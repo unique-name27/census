@@ -41,9 +41,13 @@ export function visibleViews(access: ViewAccess): ViewDef[] {
 }
 
 /**
- * The folder tabs a mode shows: its visible views, except that Developer mode opens My team by
- * address and from the Developer page only (it is Manager mode's home, not a folder tab there).
+ * The folder tabs a mode shows: its visible views, except that Developer mode opens My team and
+ * Home by address and from the Developer page only (they are other modes' homes, not folder tabs
+ * there; docs/ROLES-V2.md 4.1).
  */
 export function folderViews(access: ViewAccess): ViewDef[] {
-  return visibleViews(access).filter((v) => v.key !== 'team' || access.mode === 'manager')
+  return visibleViews(access).filter(
+    (v) =>
+      (v.key !== 'team' || access.mode === 'manager') && (v.key !== 'home' || access.mode !== 'developer'),
+  )
 }

@@ -9,7 +9,7 @@ import { MotionConfig, motion } from 'motion/react'
 import { type CSSProperties, lazy, Suspense, useEffect, useRef } from 'react'
 import { baseTab } from '@/access/policy'
 import { connectAccessUi } from '@/access/ui/connectUi'
-import { ManagerPicker } from '@/access/ui/ManagerPicker'
+import { ScopePicker } from '@/access/ui/ScopePicker'
 import { AskPanel } from '@/ask/ui/AskPanel'
 import { AskScreenBridge } from '@/ask/ui/AskScreenBridge'
 import { useDock } from '@/ask/ui/useDock'
@@ -287,7 +287,7 @@ export function App() {
             {/* Inside the provider: the panels read the analytics context (names, as-of, tiers, pay setting). */}
             <DrillPanel />
             <SettingsSheet />
-            <ManagerPicker />
+            <ScopePicker />
             {/* Developer mode's debug overlays and their shortcut (Alt+Shift+D); nothing in the other modes. */}
             <DevLayer />
           </AnalyticsProvider>

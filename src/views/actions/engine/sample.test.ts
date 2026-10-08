@@ -43,8 +43,9 @@ describe('the Action center on the sample', () => {
     expect(all.errors).toEqual([])
     const withActions = VIEWS.filter((v) => v.actions).map((v) => v.key)
     expect(new Set(all.items.map((a) => a.item.view))).toEqual(new Set(withActions))
+    // Every raw item is listed once, or folded into another about the same matter.
     const raw = VIEWS.reduce((n, v) => n + (v.actions?.(ctx).length ?? 0), 0)
-    expect(all.items.length + all.hidden.count).toBe(raw)
+    expect(all.items.length + all.folded).toBe(raw)
     expect(new Set(all.items.map((a) => a.id)).size).toBe(all.items.length)
   })
 

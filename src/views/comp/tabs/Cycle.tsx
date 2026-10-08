@@ -1,25 +1,28 @@
 /**
- * Merit cycle: spend against budget, the merit distribution, exceptions, promotions and the
- * rewards mix. Tiles, bars, bins, segments and counts open the proposals behind them with merit %;
- * a person's row opens their card.
+ * Merit cycle: the cycle's dates and progress (proposals entered as a share of eligible people),
+ * spend against budget, the merit distribution, exceptions, promotions and the rewards mix.
+ * Tiles, bars, bins, segments and counts open the proposals behind them with merit %; a person's
+ * row opens their card.
  */
-import { BarList, Figure, HBars, Histogram } from '@/charts'
+import { BarList, BulletList, Figure, HBars, Histogram } from '@/charts'
 import { KpiStrip, Section, type Severity } from '@/components'
 import { LEVELS } from '@/data/schema'
 import { drill, openPerson } from '@/drill'
 import { formatDate } from '@/lib/dates'
 import { fmt } from '@/lib/format'
+import { PROGRESS_COLUMNS } from '../columns'
 import {
   binColumns,
   binItems,
   exceptionColumns,
   mixColumns,
+  progressColumns,
   promotionColumns,
   spendColumns,
 } from '../drillColumns'
-import type { ExceptionRow, SpendRow } from '../engine/cycle'
-import { FIGURE_METRIC } from '../engine/definitions'
-import { meritBinDrill, mixDrill, spendDrill } from '../engine/drill'
+import { type ExceptionRow, PROGRESS_STATUS_LABEL, type ProgressRow, type SpendRow } from '../engine/cycle'
+import { cycleDatesSentence, FIGURE_METRIC } from '../engine/definitions'
+import { meritBinDrill, mixDrill, progressDrill, spendDrill } from '../engine/drill'
 import { smallSpend } from '../engine/kpis'
 import { type CompModel, MERIT_STEP } from '../engine/model'
 import { pts2 } from '../engine/text'
@@ -35,6 +38,48 @@ const exceptionTone = (r: ExceptionRow): Severity => (r.kind === 'outlier' ? 'in
 const MIX_SERIES = ['Base', 'Target bonus', 'Equity']
 /** Person rows open that person's card. */
 const personRow = (r: { id: string }) => openPerson(r.id)
+
+/** A progress row with its status in words, for the table and every export. */
+export const progressRows = (m: CompModel) =>
+  m.cycle.progress.rows.map((r) => ({ ...r, statusLabel: r.status ? PROGRESS_STATUS_LABEL[r.status] : null }))
+
+/**
+ * Merit cycle progress by business unit: proposals entered against 100% of eligible people, spend
+ * against budget as each row's status. Compensation's home reuses it (`home-comp-cycle`).
+ */
+export function ProgressChart({ m, rows }: { m: CompModel; rows: readonly ProgressRow[] }) {
+  return (
+    <BulletList
+      data={rows}
+      label="group"
+      value="share"
+      target={() => 1}
+      format={(_, v) => fmt(v, 'pct')}
+      scale="shared"
+      status={(r) =>
+        r.status === 'over'
+          ? { tone: 'warning', label: PROGRESS_STATUS_LABEL.over }
+          : r.status === 'within'
+            ? { tone: 'good', label: PROGRESS_STATUS_LABEL.within }
+            : null
+      }
+      onSelect={(r) => drill(progressDrill(m, r))}
+    />
+  )
+}
+
+/** "1,299 of 1,299 eligible people have a proposal · eligible if hired by 30 Mar 2026 · as of 30 Sep 2026" */
+function progressNote(m: CompModel): string {
+  const t = m.cycle.progress.total
+  const cal = m.cycle.calendar
+  const parts = [`${fmt(t.proposed, 'int')} of ${fmt(t.eligible, 'int')} eligible have a proposal`]
+  if (cal.cutoff)
+    parts.push(
+      `eligible if hired by ${formatDate(cal.cutoff)}${cal.cutoffInferred ? ', the latest hire with a proposal' : ''}`,
+    )
+  parts.push(`as of ${formatDate(m.asOf)}`)
+  return parts.join(' · ')
+}
 
 export function Cycle({ m }: { m: CompModel }) {
   const c = m.cycle
@@ -64,14 +109,30 @@ export function Cycle({ m }: { m: CompModel }) {
       ? ` · ${fmt(Math.abs(c.spend.overUsd), 'money')} ${c.spend.overUsd > 0 ? 'over' : 'under'} budget`
       : ''
 
+  const progress = progressRows(m)
   return (
     <div>
       <KpiStrip kpis={c.kpis} id="comp-cycle-figures" title="Merit cycle figures" />
 
       <Section
-        title="Spend against budget"
-        dek={`Merit proposals as a share of eligible base salary in USD, against the ${pct2(s.meritBudget)} merit budget. Promotion increases are kept apart.`}
+        title="Progress and spend"
+        dek={`${cycleDatesSentence(m.rules)}${m.cycle.calendar.close ? '' : ' Set the dates in Settings, Compensation cycle.'} Merit proposals are weighed against eligible base salary in USD and the ${pct2(s.meritBudget)} merit budget; promotion increases are kept apart.`}
       >
+        <Figure
+          id="comp-cycle-progress"
+          uses={m.uses['comp-cycle-progress']}
+          metric={FIGURE_METRIC['comp-cycle-progress']}
+          title="Merit cycle progress"
+          subtitle="Proposals entered as a share of eligible people, by business unit, with spend against budget"
+          data={progress}
+          columns={progressColumns(m, PROGRESS_COLUMNS)}
+          definitions={m.definitions['comp-cycle-progress']}
+          note={progressNote(m)}
+          span={6}
+          empty={emptyIf(progress, noMerit, 'No one in this scope is eligible this cycle.')}
+        >
+          <ProgressChart m={m} rows={progress} />
+        </Figure>
         <Figure
           id="comp-spend-by-bu"
           uses={m.uses['comp-spend-by-bu']}
@@ -106,7 +167,7 @@ export function Cycle({ m }: { m: CompModel }) {
           columns={binColumns(m, c.hist, 'merit')}
           definitions={m.definitions['comp-merit-distribution']}
           note={`${note(m, merits, 'proposals')}${c.spend.meanMerit == null ? '' : ` · mean ${pct2(c.spend.meanMerit)}`}`}
-          span={6}
+          span={12}
           empty={emptyIf(c.hist, noMerit, 'No merit proposals in this scope.')}
         >
           <Histogram

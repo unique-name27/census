@@ -32,6 +32,7 @@ export const START_ARTICLES: readonly HelpArticle[] = [
           '[Scorecard](route:scorecard): how each practice is doing against its targets, and the top findings across Census. Census opens here.',
           'The practice views: Recruiting, Onboarding, People stats, Org chart, HR ops, Talent, Compensation, Compliance and Listening.',
           '[AI in HR](route:ai): the AI agents the HR team has, what each is for, and when not to use one.',
+          '[Action center](route:actions): open items from every view, grouped by who they wait on, or in a role mode your Needs attention and what is waiting on others.',
           '[Data room](route:data): what data is loaded and how good it is, the metric definitions, and how categories are mapped.',
         ],
       },
@@ -276,11 +277,11 @@ export const START_ARTICLES: readonly HelpArticle[] = [
         ],
       },
       {
-        p: 'Other ready-made exports: People stats "Copy talking points" for a leader 1:1, the Org chart "Org slides" and the reorg sandbox scenario.',
+        p: 'Other ready-made exports: People stats "Copy talking points" for a leader 1:1, the Org chart "Org slides", the reorg sandbox scenario, and "Export list" in the [Action center](route:actions).',
         surface: 'tab:org.sandbox',
       },
       {
-        p: 'Other ready-made exports: the Org chart "Org slides".',
+        p: 'Other ready-made exports: the Org chart "Org slides", and "Export list" in the [Action center](route:actions).',
         unless: 'tab:org.sandbox',
       },
     ],
@@ -323,7 +324,7 @@ export const START_ARTICLES: readonly HelpArticle[] = [
           'The key figures and findings of any view, for the whole company or for a leader, business unit, department, location or level.',
           'One figure compared across groups, such as voluntary attrition by location.',
           'Counts and simple cuts of a dataset, such as open reqs by recruiter or cases by category.',
-          'Metric definitions, data quality and tiers.',
+          'Metric definitions, data quality and tiers, and the open items in the Action center.',
         ],
       },
       {

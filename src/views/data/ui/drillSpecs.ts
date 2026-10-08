@@ -95,6 +95,7 @@ export function checkDrillLabel(ds: Pick<ManifestRow, 'key'>, records: CheckReco
     const target = LINKS[ds.key]?.target
     return `Show the ${n} that refer to ${(target && TARGET_NOUN[target]) ?? 'records that are not loaded'}`
   }
+  if (sel.by === 'rows') return `Show the ${n}`
   const label = midSentence(datasetDef(ds.key).fields.find((x) => x.key === sel.field)?.label ?? sel.field)
   return sel.by === 'blank' ? `Show the ${n} with no ${label}` : `Show the ${n} with ${label} set by default`
 }
@@ -113,6 +114,7 @@ export function checkSpec(
   }
   const rows = checkRecords(ds.key, data, sel)
   if (!rows.length) return null
+  if (sel.by === 'rows') return { kind: ds.key, title: sel.title, subtitle: subtitleOf(ds), rows }
   const def = datasetDef(ds.key)
   if (sel.by === 'defaulted') {
     const label = def.fields.find((x) => x.key === sel.field)?.label ?? sel.field

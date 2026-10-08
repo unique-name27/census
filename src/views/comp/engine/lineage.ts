@@ -110,6 +110,17 @@ export const FIGURE_IDS = [
   'comp-guideline-exceptions',
   'comp-promotions',
   'comp-rewards-mix',
+  'comp-cycle-progress',
+  'comp-cost-by-unit',
+  'comp-cost-by-cost-center',
+  'comp-cost-by-level',
+  'comp-cost-by-site',
+  'comp-cost-merit-by-unit',
+  'comp-cost-open-reqs',
+  'comp-cost-budget-headcount',
+  'comp-cost-budget-cost',
+  'comp-cost-budget-trend',
+  'comp-cost-budget-centers',
 ] as const
 export type FigureId = (typeof FIGURE_IDS)[number]
 export type FigureUses = Record<FigureId, readonly FieldRef[]>
@@ -125,6 +136,29 @@ export function figureUses(m: { pop: Has; showPay: boolean; promotionsShown?: bo
   // Compa-ratio tables also count who is below minimum and above maximum.
   const compaTable = refs(COMPA, POSITION)
   const market = refs(MARKET, MARKET_VS_MID)
+  // Workforce cost: target cash reads the target bonus; equity only where the data has it.
+  const cash = refs(POPULATION, FX, 'comp.targetBonusPct')
+  const costParts = refs(cash, pop.has.equity && 'comp.annualEquityUsd')
+  const budgetHeads = refs(
+    'budget.period',
+    'budget.businessUnit',
+    'budget.budgetHeadcount',
+    'employees.employmentType',
+    'employees.hireDate',
+    'employees.terminationDate',
+    'employees.businessUnit',
+  )
+  // The run rate adds contractors at the range midpoint of their level and location.
+  const budgetCost = refs(
+    'budget.period',
+    'budget.businessUnit',
+    'budget.budgetCost',
+    'budget.currency',
+    cash,
+    'comp.rangeMid',
+    'employees.level',
+    'employees.location',
+  )
   return {
     'comp-compa-distribution': COMPA,
     'comp-position-by-bu': refs(POSITION, BY.businessUnit),
@@ -164,5 +198,26 @@ export function figureUses(m: { pop: Has; showPay: boolean; promotionsShown?: bo
       BY.level,
       POPULATION,
     ),
+    'comp-cycle-progress': refs(MERIT, FX, BY.businessUnit),
+    'comp-cost-by-unit': refs(costParts, BY.businessUnit),
+    'comp-cost-by-cost-center': refs(costParts, 'employees.costCenter', BY.department),
+    'comp-cost-by-level': refs(cash, BY.level),
+    'comp-cost-by-site': refs(cash, BY.location),
+    'comp-cost-merit-by-unit': refs(MERIT, FX, BY.businessUnit),
+    'comp-cost-open-reqs': refs(
+      'requisitions.status',
+      'requisitions.level',
+      'requisitions.location',
+      'requisitions.openings',
+      'requisitions.businessUnit',
+      'comp.rangeMid',
+      FX,
+      BY.level,
+      BY.location,
+    ),
+    'comp-cost-budget-headcount': budgetHeads,
+    'comp-cost-budget-cost': budgetCost,
+    'comp-cost-budget-trend': budgetHeads,
+    'comp-cost-budget-centers': refs(budgetCost, budgetHeads, 'budget.costCenter', 'employees.costCenter'),
   }
 }

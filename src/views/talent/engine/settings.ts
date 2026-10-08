@@ -134,6 +134,9 @@ export const TALENT_PARAM = {
   goodDistributionMinRated: { metricId: M.goodDistributionRule, key: 'minRated' },
   goodSuccessionCoverage: { metricId: M.goodSuccessionRule, key: 'minCoverage' },
   goodSuccessionMinCritical: { metricId: M.goodSuccessionRule, key: 'minCritical' },
+  reviewGraceDays: { metricId: M.ratedCoverage, key: 'reviewGraceDays' },
+  reviewEligibleAfterDays: { metricId: M.ratedCoverage, key: 'eligibleAfterDays' },
+  reviewCriticalDays: { metricId: M.ratedCoverage, key: 'criticalDays' },
 } as const
 
 /* ───────── defaults (the registry's, and the pure helpers' fallbacks) ───────── */
@@ -164,6 +167,9 @@ export const DEFAULTS = {
   goodDistributionMinRated: 100,
   goodSuccessionCoverage: 0.8,
   goodSuccessionMinCritical: 5,
+  reviewGraceDays: 30,
+  reviewEligibleAfterDays: 90,
+  reviewCriticalDays: 60,
 } as const
 
 /** The guideline share at or above a rating: 35% at 4 with the default guideline. */
@@ -193,6 +199,12 @@ export interface TalentSettings {
   promotionYears: number
   /** Required training on-time target, or null when the metric has no target. */
   onTimeTarget: MetricTarget | null
+  /**
+   * Ratings missing in the latest cycle (an Action center item): the cycle must have closed this
+   * many days before the as-of date; people hired fewer days than `eligibleAfterDays` before the
+   * cycle date are not expected to have a rating; critical from `criticalDays` after it.
+   */
+  reviewMissing: { graceDays: number; eligibleAfterDays: number; criticalDays: number }
   /**
    * How the flight-risk attrition factors measure voluntary attrition: the People stats settings
    * (who counts, annualized or not), so a rate quoted here matches People stats.
@@ -236,6 +248,11 @@ export function readSettings(m: MetricsApi): TalentSettings {
     sharedFactor: num('sharedFactor'),
     promotionYears: num('promotionYears'),
     onTimeTarget: m.target(M.requiredOnTime),
+    reviewMissing: {
+      graceDays: num('reviewGraceDays'),
+      eligibleAfterDays: num('reviewEligibleAfterDays'),
+      criticalDays: num('reviewCriticalDays'),
+    },
     rates: {
       contractors: m.flag(PEOPLE_STATS.countContractors.metricId, PEOPLE_STATS.countContractors.key),
       annualize: m.flag(PEOPLE_STATS.annualize.metricId, PEOPLE_STATS.annualize.key),

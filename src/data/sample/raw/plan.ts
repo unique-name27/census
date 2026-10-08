@@ -26,6 +26,7 @@ export const SAMPLE_TIERS: Record<DatasetKey, StartTier> = {
   rightToWork: 'silver',
   surveyResponses: 'silver',
   surveyItems: 'silver',
+  budget: 'silver',
 }
 
 /** Datasets that arrive as raw extracts and run through the importer on load. */
@@ -42,6 +43,7 @@ export const RAW_DATASETS = [
   'rightToWork',
   'surveyResponses',
   'surveyItems',
+  'budget',
 ] as const
 export type RawDataset = (typeof RAW_DATASETS)[number]
 
@@ -59,6 +61,7 @@ export const FILES: Record<RawDataset, { fileName: string; sheetName: string }> 
   rightToWork: { fileName: 'Immigration and I-9 tracker.xlsx', sheetName: 'Tracker' },
   surveyResponses: { fileName: 'Survey platform export.xlsx', sheetName: 'Responses' },
   surveyItems: { fileName: 'Survey platform export.xlsx', sheetName: 'Questions' },
+  budget: { fileName: 'FY27 budget.xlsx', sheetName: 'HC and cost' },
 }
 
 /** When each raw extract was loaded (the morning of the as-of date). */
@@ -75,6 +78,7 @@ export const IMPORTED_AT: Record<RawDataset, string> = {
   rightToWork: '2026-09-30T09:00:00.000Z',
   surveyResponses: '2026-09-30T09:05:00.000Z',
   surveyItems: '2026-09-30T09:05:00.000Z',
+  budget: '2026-09-30T09:10:00.000Z',
 }
 
 /** Who reviewed the mapping of each silver dataset, and when. */
@@ -87,6 +91,7 @@ export const CONFIRMED: Partial<Record<DatasetKey, { by: string; at: string }>> 
   rightToWork: { by: 'Global mobility', at: '2026-09-30T12:10:00.000Z' },
   surveyResponses: { by: 'People analytics', at: '2026-09-30T12:30:00.000Z' },
   surveyItems: { by: 'People analytics', at: '2026-09-30T12:30:00.000Z' },
+  budget: { by: 'Finance', at: '2026-09-30T12:45:00.000Z' },
 }
 
 export interface StarterTotal {

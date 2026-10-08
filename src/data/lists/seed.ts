@@ -98,9 +98,14 @@ export const censusNames = (id: ListId): string[] => censusValues(id).map((v) =>
 
 /** The field on the same row that names a value's parent, per dataset. */
 const PARENT_FIELD: Partial<Record<ListId, Partial<Record<DatasetKey, string>>>> = {
-  department: { employees: 'businessUnit', requisitions: 'businessUnit', hiringPlan: 'businessUnit' },
+  department: {
+    employees: 'businessUnit',
+    requisitions: 'businessUnit',
+    hiringPlan: 'businessUnit',
+    budget: 'businessUnit',
+  },
   jobFunction: { employees: 'jobFamily' },
-  costCenter: { employees: 'department' },
+  costCenter: { employees: 'department', budget: 'department' },
 }
 
 class Tally {

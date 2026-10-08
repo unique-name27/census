@@ -94,8 +94,8 @@ export function summary(ctx: AnalyticsContext): ViewSummary {
   }
 }
 
-/** For the Action center: starts not ready, probation decisions, I-9 Section 2. */
+/** For the Action center: day-one tasks, probation decisions, I-9 Section 2 and the hiring plan. */
 export function actions(ctx: AnalyticsContext): ActionItem[] {
   const m = computeOnboarding(ctx)
-  return onboardingActions(m.base, m.upcoming, m.first90, m.base.starters)
+  return onboardingActions(m.base, m.upcoming, m.first90, m.base.starters, m.plan)
 }

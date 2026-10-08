@@ -5,7 +5,7 @@
  * number, chart mark and readout sentence through this object. Pure.
  */
 import { defaultMetrics } from '@/metrics/api'
-import { cycleSettingsOf } from '@/metrics/compCycle'
+import { type CycleDates, cycleDatesOf, cycleSettingsOf } from '@/metrics/compCycle'
 import { minGroupOf } from '@/metrics/privacy'
 import type { MetricsApi } from '@/metrics/types'
 import { M } from '../metrics'
@@ -14,6 +14,10 @@ import type { CycleSettings } from './settings'
 export interface CompRules {
   /** Merit budget, healthy compa-ratio band and merit guideline by rating. */
   cycle: CycleSettings
+  /** The cycle's open, calibration, close and effective dates and the eligibility date (null: not set). */
+  cycleDates: CycleDates
+  /** Missing proposals are a watch item this many days before the close date. */
+  proposals: { closeWarnDays: number }
   /** The anonymity minimum: statistics over fewer people are hidden. */
   minGroup: number
   compaMedian: { material: number }
@@ -36,13 +40,15 @@ export interface CompRules {
 
 export type ExceptionRules = CompRules['exceptions']
 
-type Reader = Pick<MetricsApi, 'num' | 'range' | 'ratings'>
+type Reader = Pick<MetricsApi, 'num' | 'range' | 'ratings' | 'param' | 'paramDef'>
 
 function read(m: Reader, cycle: CycleSettings | undefined): CompRules {
   const n = (id: string, key: string) => m.num(id, key)
   const minGroup = minGroupOf(m)
   return {
     cycle: cycle ?? cycleSettingsOf(m),
+    cycleDates: cycleDatesOf(m),
+    proposals: { closeWarnDays: n(M.proposals, 'closeWarnDays') },
     minGroup,
     compaMedian: { material: n(M.compaMedian, 'material') },
     inBand: { material: n(M.inBand, 'material'), goodShare: n(M.inBand, 'goodShare') },

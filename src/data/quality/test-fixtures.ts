@@ -19,6 +19,7 @@ export const emptyDatasets = (): Datasets => ({
   rightToWork: [],
   surveyResponses: [],
   surveyItems: [],
+  budget: [],
 })
 
 export function emp(n: number, patch: Partial<Employee> = {}): Employee {

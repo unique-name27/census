@@ -11,13 +11,16 @@
  *    people operations.
  *
  * Wording follows the recruiting tone rules: `what` states the result, `note` is a polite ask.
- * No item names a respondent; a manager is named only through a manager cut.
+ * No item names a respondent; a manager is named only through a manager cut. Each item carries
+ * its place for the HRBP lenses (regions from the one region index, "APAC") and a fingerprint of
+ * the result, so a handled mark reopens when a new wave changes it.
  */
 import type { AnalyticsContext } from '@/data/context'
 import { groupFilter } from '@/drill/filter'
 import { formatDate } from '@/lib/dates'
 import { fmt } from '@/lib/format'
 import type { ActionItem } from '@/views/types'
+import { placeOf, TEAM_OWNER } from '../../hrbp/engine/places'
 import { M } from '../metrics'
 import { deptBandFilter, readinessRows, splitDeptBand } from './cuts'
 import { groupsDrill, rowsBy } from './drills'
@@ -51,7 +54,7 @@ export function actionsOf(ctx: AnalyticsContext, m: ListeningModel): ActionItem[
         id: `listening:manager:${g.managerId}`,
         ownerRole: 'hrbp',
         ownerId: null,
-        ownerName: g.hrbp || 'HR business partner',
+        ownerName: g.hrbp || TEAM_OWNER.hrbp,
         severity: g.mean < s.lowManager - 0.5 ? 'critical' : 'warning',
         what: `Upward feedback is ${ofFive(g.mean)} from ${g.respondents} people over four quarters, below the low score of ${fmt(s.lowManager, 'num1')}`,
         subject: { kind: 'employees', id: g.managerId, label: g.name },
@@ -59,6 +62,9 @@ export function actionsOf(ctx: AnalyticsContext, m: ListeningModel): ActionItem[
         tab: 'managers',
         note: `Could you review the upward feedback results with ${g.name} and agree a development plan?`,
         uses: [...L.union(L.ANSWER, L.SUBJECT, L.MANAGER_JOIN)],
+        fingerprint: `${g.respondents}/${fmt(g.mean, 'num2')}`,
+        closesWhen: 'A later wave with upward feedback at or above the low score',
+        place: placeOf(ctx, p.emp.get(g.managerId)),
         drill: () =>
           groupsDrill(
             rowsBy(theirs, (r) => r.driver ?? r.item, {
@@ -89,9 +95,12 @@ export function actionsOf(ctx: AnalyticsContext, m: ListeningModel): ActionItem[
     out.push({
       id: `listening:stay:${g.group}`,
       ownerRole: 'talent',
-      ownerName: 'Talent management',
+      ownerName: TEAM_OWNER.talent,
       severity: 'warning',
       what: `${g.reason} is the top stay risk in ${fmt(g.share, 'pct0')} of stay interviews (${g.count} of ${g.interviews})`,
+      fingerprint: `${g.count}/${g.interviews}`,
+      closesWhen: 'A later wave where no stay risk stands out for the group',
+      place: { businessUnit: oneUnit(groupAnswers.map((r) => p.emp.get(r.respondentKey)?.businessUnit)) },
       subject: { kind: 'none', label: `${department} ${band} key talent` },
       view: 'listening',
       tab: 'stay-exit',
@@ -129,9 +138,12 @@ export function actionsOf(ctx: AnalyticsContext, m: ListeningModel): ActionItem[
     out.push({
       id: `listening:exit:${g.location}`,
       ownerRole: g.pay ? 'total-rewards' : 'hrbp',
-      ownerName: g.pay ? 'Total rewards' : 'HR business partners',
+      ownerName: g.pay ? TEAM_OWNER.totalRewards : TEAM_OWNER.hrbp,
       severity: 'warning',
       what: `${g.reason} is the top exit survey reason in ${g.location} (${g.count} of ${g.respondents} leavers)`,
+      fingerprint: `${g.count}/${g.respondents}`,
+      closesWhen: 'A later period where no exit reason stands out at the location',
+      place: placeOf(ctx, { location: g.location }),
       subject: { kind: 'none', label: `${g.location} leavers` },
       view: 'listening',
       tab: 'stay-exit',
@@ -165,8 +177,11 @@ export function actionsOf(ctx: AnalyticsContext, m: ListeningModel): ActionItem[
     out.push({
       id: `listening:readiness:${g.region}`,
       ownerRole: laptop ? 'it' : 'hr-ops',
-      ownerName: laptop ? 'IT' : 'People operations',
+      ownerName: laptop ? TEAM_OWNER.it : TEAM_OWNER.peopleOps,
       severity: 'warning',
+      fingerprint: `${g.respondents}/${fmt(g.mean, 'num2')}`,
+      closesWhen: 'A later period with day-30 readiness in the region near the rest',
+      place: { region: g.region },
       what: laptop
         ? `Day-30 readiness is ${ofFive(g.mean)} in ${g.region}; laptops shipped late for ${laptop.late} of ${laptop.starts} starts there`
         : `Day-30 readiness is ${ofFive(g.mean)} in ${g.region}, against ${fmt(g.restMean, 'num2')} elsewhere`,
@@ -196,6 +211,12 @@ export function actionsOf(ctx: AnalyticsContext, m: ListeningModel): ActionItem[
     })
   }
   return out
+}
+
+/** The one business unit a group's people share, else none (the group spans units). */
+function oneUnit(units: readonly (string | null | undefined)[]): string | null {
+  const set = new Set(units.filter(Boolean))
+  return set.size === 1 ? ([...set][0] as string) : null
 }
 
 /** Metric ids the actions read their thresholds from (for tests). */

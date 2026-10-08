@@ -1,7 +1,9 @@
 /**
  * Talent for the Scorecard and the Action center: the summary's measures and the open items
- * (overdue required training by manager, high performers overdue for promotion, Critical roles
- * without a ready-now successor), on hand-built data and on the sample company.
+ * (overdue required training by manager, courses below target, ratings missing, high performers
+ * overdue for promotion by business unit, Critical roles without a ready-now successor), on
+ * hand-built data and on the sample company (docs/ROLES-V2.md 5.14; docs/ACTION-CENTER-AUDIT.md
+ * 4.2 and part 6).
  */
 import { beforeAll, describe, expect, it } from 'vitest'
 import { type AnalyticsContext, buildContext } from '@/data/context'
@@ -84,8 +86,11 @@ describe('action items on hand-built data (as of 30 Sep 2026)', () => {
       due: '2026-08-26',
       view: 'talent',
       tab: 'learning',
-      subject: { kind: 'employees', id: 'MGR', label: "Priya Raman's team" },
+      // A team, not the manager: About never opens the manager's card.
+      subject: { kind: 'none', label: "Priya Raman's team" },
+      place: { businessUnit: 'Engineering', location: 'San Jose', region: 'Americas' },
     })
+    expect(x.fingerprint).toMatch(/^2:[0-9a-f]{8}$/)
     expect(x.what).toBe(
       "2 required courses overdue for 2 people on Priya Raman's team, the oldest due 26 Aug",
     )
@@ -103,17 +108,25 @@ describe('action items on hand-built data (as of 30 Sep 2026)', () => {
     })
   })
 
-  it('sends a high performer overdue for promotion to the HR business partner', () => {
-    const x = byId(items, 'talent:promotion-overdue:A')
-    expect(x).toMatchObject({ ownerRole: 'hrbp', ownerName: 'Mei Chen', ownerId: 'HR1', tab: 'retention' })
-    expect(x.what).toMatch(
-      /^Rated 4 and 5 in the last two annual cycles, not promoted since joining on 7 Jan 2019/,
-    )
+  it('rolls high performers overdue for promotion into one item per business unit, for its HR business partner', () => {
+    const x = byId(items, 'talent:promotion-overdue:Engineering')
+    expect(x).toMatchObject({
+      ownerRole: 'hrbp',
+      ownerName: 'Mei Chen',
+      ownerId: 'HR1',
+      tab: 'retention',
+      subject: { kind: 'none', label: 'Engineering high performers' },
+      place: { businessUnit: 'Engineering' },
+    })
+    expect(x.what).toBe('1 high performer in Engineering has had no promotion in 3 years')
     expect(x.note).toBe(
-      "Could we review Ana's path to the next level with Priya Raman before the next promotion cycle?",
+      'Could we review these paths to the next level with the Engineering leaders before the next promotion cycle?',
     )
-    // Rated 3 then 4: not a consistent high performer.
-    expect(items.some((i) => i.id === 'talent:promotion-overdue:B')).toBe(false)
+    // Ana only: rated 3 then 4 is not a consistent high performer (Ben).
+    expect(resolveDrill(x.drill)!.rows.map((e) => (e as { employeeId: string }).employeeId)).toEqual(['A'])
+    expect(x.fingerprint).toMatch(/^1:/)
+    // No flight risk in the words: a model score about a named person stays out of item text.
+    expect(x.what).not.toMatch(/risk/i)
   })
 
   it('lists Critical roles without a ready-now successor for Talent management', () => {
@@ -174,11 +187,13 @@ describe('on the sample company', () => {
       expect(byId(roles, `talent:critical-role:${id}`).severity).toBe('critical')
   })
 
-  it('story 6: the 25 high performers waiting for promotion, 15 in Design Verification', () => {
+  it('story 6: the 25 high performers waiting for promotion, 15 in Design Verification, one item per unit', () => {
     const promo = items.filter((i) => i.id.startsWith('talent:promotion-overdue:'))
-    expect(promo).toHaveLength(25)
-    const dv = promo.filter((i) => ctx.org.byId.get(i.subject.id!)?.department === 'Design Verification')
-    expect(dv).toHaveLength(15)
+    const people = promo.flatMap((i) => resolveDrill(i.drill)!.rows as readonly { department: string }[])
+    expect(people).toHaveLength(25)
+    expect(people.filter((e) => e.department === 'Design Verification')).toHaveLength(15)
+    expect(promo.length).toBeLessThan(25)
+    expect(new Set(promo.map((i) => i.place?.businessUnit)).size).toBe(promo.length)
     for (const x of promo) expect(x.ownerId, x.id).toBeTruthy()
   })
 
@@ -187,8 +202,9 @@ describe('on the sample company', () => {
     const overdue = talentModel(ctx).learning.records.pastDue.filter((p) => p.overdue)
     const listed = training.reduce((n, i) => n + resolveDrill(i.drill)!.rows.length, 0)
     expect(listed).toBe(overdue.length)
-    const ops = training.filter((i) => ctx.org.byId.get(i.subject.id ?? '')?.businessUnit === 'Operations')
+    const ops = training.filter((i) => i.place?.businessUnit === 'Operations')
     expect(ops.length).toBeGreaterThan(0)
+    for (const i of training) expect(i.subject.kind, i.id).toBe('none')
   })
 
   it('keeps ids unique and stable, owners known and words polite', () => {
@@ -224,6 +240,7 @@ describe('on the sample company', () => {
       }),
     )
     expect(scoped.length).toBeLessThan(items.length)
-    expect(scoped.filter((i) => i.id.startsWith('talent:promotion-overdue:'))).toHaveLength(15)
+    const promo = scoped.filter((i) => i.id.startsWith('talent:promotion-overdue:'))
+    expect(promo.reduce((n, i) => n + resolveDrill(i.drill)!.rows.length, 0)).toBe(15)
   })
 })

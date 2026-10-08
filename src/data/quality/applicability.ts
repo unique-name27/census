@@ -295,6 +295,14 @@ export const APPLICABILITY: Partial<Record<DatasetKey, Record<string, Applicabil
     text: { applies: each(() => true), scope: 'All items', blankOk: true },
     target: { applies: each(() => true), scope: 'All items', blankOk: true },
   },
+  budget: {
+    // A line can budget a whole business unit or department: blank by design.
+    department: { applies: each(() => true), scope: 'All budget lines', blankOk: true },
+    costCenter: { applies: each(() => true), scope: 'All budget lines', blankOk: true },
+    // A currency only means something next to a cost.
+    currency: { applies: each((r) => has(r.budgetCost)), scope: 'Lines with a budget cost', blankOk: true },
+    planVersion: { applies: each(() => true), scope: 'All budget lines', blankOk: true },
+  },
 }
 
 /** The rule for one field, or undefined when it applies to every row. */

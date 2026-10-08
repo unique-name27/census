@@ -8,7 +8,9 @@
  * includes it.
  *
  * The rows passed as `data` are exactly what the table shows and every export writes. Columns
- * marked `pay: true` are dropped unless pay amounts are switched on.
+ * marked `pay: true` (one person's amount) are dropped unless pay amounts are switched on, and
+ * columns marked `cost: true` (a total over a group) unless cost totals may show (`ctx.showCost`:
+ * pay amounts on, or Finance mode). See the note at the top of `./types.ts`.
  *
  * Data standard: the figure's tier is the lowest among its `uses` (or the view's datasets). Below
  * the standard the body becomes a note naming what holds it back and how to raise it; "Preview
@@ -48,6 +50,7 @@ import { useAnalytics, useAnalyticsPending } from '@/data/context'
 import type { FieldRef } from '@/data/quality/fieldRef'
 import { LearnMoreLink } from '@/help/ui/LearnMore'
 import { copyTable } from '@/lib/export/clipboard'
+import { moneyOpts } from '@/lib/export/columns'
 import { downloadCsv } from '@/lib/export/csv'
 import { downloadPng, downloadSvg } from '@/lib/export/image'
 import { fileStem, imageFooter } from '@/lib/export/names'
@@ -171,7 +174,10 @@ export function Figure<T extends object>({
   className,
   children,
 }: FigureProps<T>) {
-  const { showPay, quality, metrics, access } = useAnalytics()
+  const ctx = useAnalytics()
+  const { quality, metrics, access } = ctx
+  // Pay amounts per the switch, cost totals per the mode (`ctx.showCost`): every export below.
+  const money = moneyOpts(ctx)
   // The mode decides first (docs/ROLES.md, 6.5): a figure on a hidden tab, on the Manager hide
   // list or showing a hidden metric renders nothing, registers nothing and exports nothing.
   const here = useCurrentView()
@@ -315,14 +321,14 @@ export function Figure<T extends object>({
       hint: '.csv',
       disabled: noRows,
       onSelect: () =>
-        void run(() => downloadCsv(exportTable, meta, { showPay, fileName: stem, preamble: true })),
+        void run(() => downloadCsv(exportTable, meta, { ...money, fileName: stem, preamble: true })),
     },
     {
       label: 'Download Excel',
       icon: <IconTable />,
       hint: '.xlsx',
       disabled: noRows,
-      onSelect: () => void run(() => downloadXlsx([exportTable], meta, { showPay, fileName: stem })),
+      onSelect: () => void run(() => downloadXlsx([exportTable], meta, { ...money, fileName: stem })),
     },
     {
       label: 'Copy table',
@@ -331,7 +337,7 @@ export function Figure<T extends object>({
       disabled: noRows,
       onSelect: () =>
         void run(
-          () => copyTable(exportTable, { showPay }),
+          () => copyTable(exportTable, money),
           `Copied ${rows.length.toLocaleString('en-US')} ${rows.length === 1 ? 'row' : 'rows'}`,
           'The browser blocked copying. Download CSV instead.',
         ),
@@ -357,7 +363,7 @@ export function Figure<T extends object>({
               },
             ],
             meta,
-            { showPay, fileName: `${stem}-detail` },
+            { ...money, fileName: `${stem}-detail` },
           )
         }),
     })

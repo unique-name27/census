@@ -20,17 +20,28 @@
  * decline reasons list in force, each reason with its theme (docs/ANALYSES.md, 3.2).
  */
 import { createContext, type ReactNode, use, useDeferredValue, useMemo } from 'react'
-import { type AccessContext, type AccessInput, accessFor, HR_INPUT } from '@/access/context'
-import { NO_MANAGER_PICKED } from '@/access/copy'
-import { clampFilters, heldLock } from '@/access/lock'
-import { useMode } from '@/access/store'
+import { type AccessContext, type AccessInput, accessFor, HR_INPUT, picksOf } from '@/access/context'
+import { PICKER_COPY } from '@/access/copy'
+import { PICK_OF, SCOPE_OF } from '@/access/modes'
+import { showCostIn, showImmigrationIn, showPayIn } from '@/access/pay'
+import {
+  applyScope,
+  clampFilters,
+  DEFAULT_DEDUP_DAYS,
+  type RegionIndex,
+  regionIndex,
+  type ScopeLock,
+  scopeFor,
+  scopeLabelOf,
+} from '@/access/scopes'
+import { picksOfState, useMode } from '@/access/store'
 import { timed } from '@/lib/timing'
 import { defaultMetrics, metricsApi } from '@/metrics/api'
 import { qualityRulesOf } from '@/metrics/quality'
 import type { MetricsApi } from '@/metrics/types'
 import { contextDeclineReasons } from './lists/declines'
 import { EMPTY_LISTS } from './lists/edit'
-import { validationVocab } from './lists/effective'
+import { effectiveLists, validationVocab } from './lists/effective'
 import { contextJobs, type JobArchitecture } from './lists/jobs'
 import { useLists } from './lists/store'
 import type { ListsState, ListValue } from './lists/types'
@@ -84,8 +95,16 @@ export interface AnalyticsContext {
   sources: Record<DatasetKey, SourceMeta>
   /** Every dataset is the generated sample. */
   isSample: boolean
-  /** Pay amounts may be shown and exported. */
+  /**
+   * Individual pay amounts may be shown and exported (`pay: true` columns): a mode with the "Show
+   * pay amounts" switch (Developer, HR, CHRO, Compensation) while it is on (docs/ROLES-V2.md 3.1).
+   */
   showPay: boolean
+  /**
+   * Cost totals over groups may be shown and exported (`cost: true` columns): `showPay`, or Finance
+   * mode always (its totals stay under the cost guard: 5 or more people, whole business units).
+   */
+  showCost: boolean
   /** Work authorization types may be shown per person and exported (session only). */
   showImmigration: boolean
   /** Feature switches from Settings that change what a view shows. */
@@ -114,12 +133,20 @@ export interface AnalyticsContext {
    */
   universities: readonly ListValue[]
   /**
-   * The mode (docs/ROLES.md, 6.4): HR, Manager or Developer, the manager's org in Manager mode
-   * (`lock`), and `decide` bound to the mode. Ask it, never the mode store, so an off-screen render
-   * with its own mode gets its own answers. In Manager mode `filters` and `data` are always inside
-   * the lock, `isCompany` is false and pay, immigration details and engagement surveys are off.
+   * The mode (docs/ROLES-V2.md 8.5; docs/ROLES.md 6.4): one of eleven, its scope (`scope`: the
+   * manager's org, a business unit, a region or a recruiter's reqs), its pay view, and `decide`
+   * bound to the mode. Ask it, never the mode store, so an off-screen render with its own mode gets
+   * its own answers. In a scoped mode `filters` and `data` are always inside the scope and
+   * `isCompany` is false; `all` is never narrowed. In Manager mode engagement surveys are off.
    */
   access: AccessContext
+  /**
+   * The one region index (docs/ROLES-V2.md 1.3): each location's region from the Locations list in
+   * force (the provider builds it), else its known site's region ("APAC"). Company-wide; it never
+   * follows the filters. Optional for hand-built test contexts: read it with `ctx.regions ??
+   * regionIndex(null, ctx.all)`.
+   */
+  regions?: RegionIndex
 }
 
 export interface Features {
@@ -218,10 +245,17 @@ export function buildContext(args: {
   quality?: QualityIndex
   /** The metric dictionary; every metric at its defaults when not given. */
   metrics?: MetricsApi
-  /** The mode and, in Manager mode, the manager; HR when not given (every existing test). */
+  /** The mode and its picks; HR when not given (every existing test). */
   access?: AccessInput
   /** The saved official lists (Settings > Official lists); none saved when not given. */
   lists?: ListsState
+  /**
+   * The region index for HRBP for a region (`regionIndex` over the Locations list in force; the
+   * provider builds it). Without it, each location takes its known site's region, else its country's.
+   */
+  regions?: RegionIndex | null
+  /** Department → business unit on the Departments list in force, for HRBP for a business unit's clamp. */
+  departmentParents?: ReadonlyMap<string, string | null> | null
 }): AnalyticsContext {
   const { sources, asOfOverride } = args
   const metrics = args.metrics ?? defaultMetrics()
@@ -230,15 +264,31 @@ export function buildContext(args: {
   const isSample = Object.values(sources).every((s) => s.kind === 'sample')
   const asOf = contextAsOf({ data: args.data, sources, asOfOverride, today: args.today })
   const org = buildOrgIndex(all.employees)
-  // Manager mode: the manager's org is a lock every scope stays inside (defensive: the store's
-  // filter guard already clamps). Without a usable manager the lock holds nobody.
+  // A scoped mode holds Census to its scope (docs/ROLES-V2.md part 2): the one clamp runs again here
+  // (defensive: the store's filter guard already clamps), then the filters, then `applyScope`.
+  // Without a usable pick the scope holds nobody.
   const accessIn = args.access ?? HR_INPUT
-  const manager = accessIn.mode === 'manager'
-  const held = manager ? heldLock(org, asOf, accessIn.managerId) : null
-  const unset = !!held?.unset
-  const lock = held?.lock ?? null
-  const filters = lock ? clampFilters(args.filters, lock) : args.filters
-  const showPay = manager ? false : args.showPay
+  const mode = accessIn.mode
+  const manager = mode === 'manager'
+  let scope: ScopeLock | null = null
+  let unset = false
+  if (SCOPE_OF[mode]) {
+    const held = scopeFor(mode, picksOf(accessIn), {
+      org,
+      asOf,
+      all,
+      regions: args.regions,
+      departmentParents: args.departmentParents,
+      dedupDays: metrics.paramDef(DEDUP_METRIC, 'dedupDays')
+        ? metrics.num(DEDUP_METRIC, 'dedupDays')
+        : DEFAULT_DEDUP_DAYS,
+    })
+    scope = held.scope
+    unset = held.unset
+  }
+  const filters = clampFilters(args.filters, scope, mode)
+  const showPay = showPayIn(mode, args.showPay)
+  const pickKind = PICK_OF[mode]
   const { current, prior } = periodWindows(filters.period, asOf, {
     start: filters.customStart,
     end: filters.customEnd,
@@ -253,15 +303,21 @@ export function buildContext(args: {
     window: current,
     prior,
     filters,
-    scopeLabel: unset ? NO_MANAGER_PICKED : scopeLabel(filters, org),
-    isCompany: !hasOrgFilter(filters),
-    data: scopeDatasets(all, filters, org),
+    scopeLabel:
+      unset && pickKind
+        ? PICKER_COPY[pickKind].none
+        : scope
+          ? scopeLabelOf(scope, filters, org)
+          : scopeLabel(filters, org),
+    isCompany: !scope && !unset && !hasOrgFilter(filters),
+    data: applyScope(scopeDatasets(all, filters, org), scope),
     all,
     org,
     sources,
     isSample,
     showPay,
-    showImmigration: manager ? false : (args.showImmigration ?? false),
+    showCost: showCostIn(mode, args.showPay),
+    showImmigration: showImmigrationIn(mode, args.showImmigration ?? false),
     features: manager ? NO_FEATURES : (args.features ?? NO_FEATURES),
     quality: args.quality ?? qualityFor(applied, versions, asOf, qualityRulesOf(metrics)),
     standard: args.standard ?? DEFAULT_STANDARD,
@@ -270,8 +326,38 @@ export function buildContext(args: {
     jobs: contextJobs(args.lists ?? EMPTY_LISTS, sources, all.employees, asOf),
     offerDeclineReasons: contextDeclineReasons(args.lists ?? EMPTY_LISTS, sources),
     universities: contextUniversities(args.lists ?? EMPTY_LISTS, sources),
-    access: accessFor(accessIn.mode, lock, metrics, unset),
+    regions: args.regions ?? regionIndex(null, all),
+    access: accessFor(mode, scope, metrics, unset),
   }
+}
+
+/** The metric whose `dedupDays` setting matches pre-hires to accepted offers (Onboarding's). */
+const DEDUP_METRIC = 'onboarding.upcoming.starts'
+
+/** The region index over the Locations list in force (official, else proposed from the data). */
+export function contextRegions(
+  lists: ListsState,
+  data: Datasets,
+  sources: Record<DatasetKey, SourceMeta>,
+): RegionIndex {
+  return regionIndex(effectiveLists(lists, data, sources).location?.values, data)
+}
+
+const parentsMemo = new WeakMap<object, ReadonlyMap<string, string | null>>()
+
+/** Department → business unit on the Departments list in force (official, else proposed from the data). */
+export function contextDepartmentParents(
+  lists: ListsState,
+  data: Datasets,
+  sources: Record<DatasetKey, SourceMeta>,
+): ReadonlyMap<string, string | null> {
+  const values = effectiveLists(lists, data, sources).department?.values ?? []
+  let hit = parentsMemo.get(values)
+  if (!hit) {
+    hit = new Map(values.map((v) => [v.value, v.parent ?? null]))
+    parentsMemo.set(values, hit)
+  }
+  return hit
 }
 
 const Ctx = createContext<AnalyticsContext | null>(null)
@@ -282,7 +368,7 @@ export function AnalyticsProvider({
   access: override,
 }: {
   children: ReactNode
-  /** A mode for this tree only (an off-screen render: the Manager figure scan, a whole-view export). */
+  /** A mode for this tree only (an off-screen render: a figure scan as a role, a whole-view export). */
   access?: AccessInput
 }) {
   const data = useCensus((s) => s.data)
@@ -297,9 +383,28 @@ export function AnalyticsProvider({
   const standard = useCensus((s) => s.dataStandard)
   const metricsState = useCensus((s) => s.metrics)
   const liveMode = useMode((s) => s.mode)
+  const livePicks = useMode((s) => s.picks)
   const liveManager = useMode((s) => s.managerId)
   const mode = override?.mode ?? liveMode
-  const managerId = override ? (override.managerId ?? null) : liveManager
+  const p = override ? picksOf(override) : picksOfState({ picks: livePicks, managerId: liveManager })
+  // Keyed on the picks' values, so a new override object with the same picks rebuilds nothing.
+  const managerId = p.managerId ?? null
+  const unit = p.unit ?? null
+  const region = p.region ?? null
+  const recruiterName = p.recruiter?.name ?? null
+  const recruiterId = p.recruiter?.id ?? null
+  const accessIn = useMemo<AccessInput>(
+    () => ({
+      mode,
+      picks: {
+        managerId,
+        unit,
+        region,
+        recruiter: recruiterName ? { name: recruiterName, id: recruiterId } : null,
+      },
+    }),
+    [mode, managerId, unit, region, recruiterName, recruiterId],
+  )
   // Layers that don't depend on filters, so a filter change only rescopes.
   const applied = useMemo(() => referenceLayer(withAllDatasets(data), mappings), [data, mappings])
   const features = useMemo<Features>(() => ({ engagementSurveys }), [engagementSurveys])
@@ -313,6 +418,21 @@ export function AnalyticsProvider({
   const quality = useMemo(
     () => timed('census:quality', () => qualityFor(applied, versions, asOf, rules, vocab)),
     [applied, versions, asOf, rules, vocab],
+  )
+  // The HRBP scopes read the lists in force: regions from the Locations list, departments' units.
+  const scopeKind = SCOPE_OF[mode]
+  // Every reader shares this index (Onboarding's and Listening's regions too). Without a saved
+  // Locations list the proposed one takes each site's own region, which `buildContext`'s fallback
+  // gives without proposing every list.
+  const savedLocations = !!savedLists.lists.location
+  const regions = useMemo(
+    () =>
+      scopeKind === 'region' || savedLocations ? contextRegions(savedLists, applied.datasets, sources) : null,
+    [scopeKind, savedLocations, savedLists, applied, sources],
+  )
+  const departmentParents = useMemo(
+    () => (scopeKind === 'unit' ? contextDepartmentParents(savedLists, applied.datasets, sources) : null),
+    [scopeKind, savedLists, applied, sources],
   )
   const value = useMemo(
     () =>
@@ -330,8 +450,10 @@ export function AnalyticsProvider({
           standard,
           quality,
           metrics,
-          access: mode === 'manager' ? { mode, managerId } : { mode },
+          access: accessIn,
           lists: savedLists,
+          regions,
+          departmentParents,
         }),
       ),
     [
@@ -347,9 +469,10 @@ export function AnalyticsProvider({
       standard,
       quality,
       metrics,
-      mode,
-      managerId,
+      accessIn,
       savedLists,
+      regions,
+      departmentParents,
     ],
   )
   // A filter, mode or data change recomputes every engine. The new context is built in the

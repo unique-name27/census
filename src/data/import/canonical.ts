@@ -216,6 +216,7 @@ export function canonicalText(dataset: DatasetKey, field: string, raw: unknown):
     case 'cases.location':
       return vocabMatch(SITE_NAMES, LOCATION_ALIASES, raw)
     case 'comp.currency':
+    case 'budget.currency':
       return normalizeCurrency(raw)
     case 'hiringPlan.location':
       return vocabMatch(SITE_NAMES, LOCATION_ALIASES, raw)

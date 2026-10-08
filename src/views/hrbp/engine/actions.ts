@@ -13,11 +13,15 @@
  *      Org chart's list, so one manager never shows up twice.
  *
  * Wording: `what` states the facts, `note` is a polite ask; no leaver is named in either (the
- * drill lists them for HR). Pure: no React.
+ * drill lists them for HR). In Manager mode the item says "exits", never "regretted exits":
+ * regretted is HR's call about named leavers (docs/ACTION-CENTER-AUDIT.md, open question 4).
+ * A stay conversation item is about a team, so its subject is a group (`kind: 'none'`) and About
+ * never opens the manager; its fingerprint is the leavers, so a handled mark reopens when another
+ * exit joins the cluster. Every item carries its place for the HRBP lenses. Pure: no React.
  */
 import type { AnalyticsContext } from '@/data/context'
 import type { Employee } from '@/data/schema'
-import { addDays, formatDate } from '@/lib/dates'
+import { addDays, dateWords } from '@/lib/dates'
 import type { ActionItem, ViewSummary } from '../../types'
 import { count, type Prep, possessive } from './base'
 import { leaversSpec, managersSpec } from './drill'
@@ -25,6 +29,7 @@ import { hrbpModel } from './index'
 import { MANAGER, ORG } from './lineage'
 import type { ManagerRow } from './org'
 import { firstName, hrbpOwner, ownerLookup } from './owners'
+import { fingerprintOf, placeOf } from './places'
 import { exitsIn } from './population'
 
 /** The three measures the Scorecard judges People stats on, in order. */
@@ -53,6 +58,9 @@ function regrettedByManager(p: Prep): Map<string, Employee[]> {
 function stayItems(p: Prep, look: ReturnType<typeof ownerLookup>): ActionItem[] {
   if (!p.regrettedReady) return []
   const { minExits, criticalExits, stayWithinDays } = p.set.regrettedCluster
+  // A manager reads "exits": whether an exit was regretted is HR's call about named leavers.
+  const forManager = p.ctx.access.mode === 'manager'
+  const [one, many] = forManager ? ['exit', 'exits'] : ['regretted exit', 'regretted exits']
   const out: ActionItem[] = []
   for (const [managerId, list] of regrettedByManager(p)) {
     if (list.length < minExits) continue
@@ -69,16 +77,22 @@ function stayItems(p: Prep, look: ReturnType<typeof ownerLookup>): ActionItem[] 
       ...owner,
       due: addDays(latest, stayWithinDays),
       severity: list.length >= criticalExits ? 'critical' : 'warning',
-      what: `${count(list.length, 'regretted exit', 'regretted exits')} from ${team} in the last 12 months, the latest on ${formatDate(latest)}`,
-      subject: { kind: 'employees', id: managerId, label: team },
+      what: `${count(list.length, one, many)} from ${team} in the last 12 months, the latest on ${dateWords(latest, p.asOf)}`,
+      // A team, not the manager: About opens the leavers, never the manager's card.
+      subject: { kind: 'none', label: team },
       view: 'hrbp',
       tab: 'attrition',
       drill: () =>
-        leaversSpec(p, `Regretted leavers from ${team}, last 12 months`, list, { when: p.t12.label }),
+        leaversSpec(p, `${forManager ? 'Leavers' : 'Regretted leavers'} from ${team}, last 12 months`, list, {
+          when: p.t12.label,
+        }),
       note: active
         ? 'Could you hold stay conversations with the rest of your team this month? Your HR business partner can help you prepare.'
         : `Could you arrange stay conversations this month with the rest of the team that ${name} led?`,
       uses: p.uses(p.lin.regrettedExits, MANAGER),
+      fingerprint: fingerprintOf(list.map((e) => e.employeeId)),
+      closesWhen: 'Mark handled once the stay conversations are held; no record in the data closes it',
+      place: placeOf(p.ctx, mgr),
     })
   }
   return out
@@ -114,6 +128,9 @@ function spanItems(
         ? `Could we review with ${who} whether the team would benefit from a team lead or a split?`
         : `Could we review with ${who} whether this layer is still needed or could be merged?`,
       uses: p.uses(ORG),
+      fingerprint: `${m.directs}`,
+      closesWhen: 'A span between the narrow and wide spans',
+      place: placeOf(p.ctx, m.employee),
     })
   }
   return out

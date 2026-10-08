@@ -7,7 +7,8 @@
  */
 import { describe, expect, it } from 'vitest'
 import { BANNED_MODE_WORDS } from '@/access/copy'
-import { routeShown } from '@/access/policy'
+import { MODES as EVERY_MODE } from '@/access/modes'
+import { decide, routeShown } from '@/access/policy'
 import { leaderOptions } from '@/app/filterOptions'
 import { sampleCtx } from '@/ask/engine/testkit'
 import type { AnalyticsContext } from '@/data/context'
@@ -92,12 +93,9 @@ describe('help in each mode', () => {
     }
     // Manager mode's articles do link into the Data room in HR mode: those read as text here.
     expect(texted).toBeGreaterThan(0)
-    // HR mode keeps every link but the ones to the Action center (not ready yet: Developer mode only).
+    // HR mode keeps every link, the Action center's included (docs/ROLES-V2.md 6.3).
     for (const a of ARTICLES)
-      for (const l of articleLinks(a))
-        expect(linkShown(hr.access, l), `${a.id} ${l.target}`).toBe(
-          !(l.kind === 'route' && l.target.startsWith('actions')),
-        )
+      for (const l of articleLinks(a)) expect(linkShown(hr.access, l), `${a.id} ${l.target}`).toBe(true)
   })
 
   it('keeps the modes article plain: no em dash and none of the words that make a mode sound like security', () => {
@@ -141,5 +139,36 @@ describe('help in each mode', () => {
     expect(diagnosticText(diagnosticInput(dev, { ...state, filters: dev.filters }, env))).toContain(
       'Mode: Developer',
     )
+  })
+})
+
+describe('the Action center in Help, in every mode', () => {
+  it('shows its article and tour in every mode, with the steps and sections of the mode', () => {
+    const tour = TOURS.find((t) => t.id === 'view-actions')!
+    for (const mode of EVERY_MODE) {
+      const access = sampleCtx({ access: { mode } }).access
+      expect(articleShown(access, 'view-actions'), mode).toBe(true)
+      expect(tourShown(access, 'view-actions'), mode).toBe(true)
+      expect(decide(mode, 'page:actions').access, mode).not.toBe('hidden')
+      const steps = tourInMode(access, tour)?.steps ?? []
+      expect(steps.length, mode).toBeGreaterThanOrEqual(3)
+      const lists = access.can('ui:attention-lists')
+      // The role modes walk through their two lists; Developer, HR and CHRO through "My team".
+      expect(
+        steps.some((s) => s.surface === 'ui:attention-lists'),
+        mode,
+      ).toBe(lists)
+      expect(
+        steps.some((s) => s.surface === 'ui:actions-team'),
+        mode,
+      ).toBe(access.can('ui:actions-team'))
+    }
+  })
+
+  it('links to the Action center again from Start here', () => {
+    const links = ARTICLES.flatMap((a) => articleLinks(a).map((l) => ({ a: a.id, l })))
+    const toActions = links.filter((x) => x.l.kind === 'route' && x.l.target.startsWith('actions'))
+    expect(toActions.map((x) => x.a)).toEqual(expect.arrayContaining(['what-census-is']))
+    for (const x of toActions) expect(linkShown(hr.access, x.l), x.a).toBe(true)
   })
 })

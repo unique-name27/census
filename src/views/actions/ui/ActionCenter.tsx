@@ -1,15 +1,20 @@
 /**
- * The Action center page (docs/VIEWS.md, Action center): every open item from every view's
- * `actions(ctx)`, grouped by who it waits on, for the weekly review with each leader.
+ * The Action center page (docs/VIEWS.md, Action center; docs/ROLES-V2.md 4.4 and 6.1): open items
+ * from every view's `actions(ctx)`, for the weekly review with each leader.
  *
- * Header: what it lists, scope and as-of date, counts by severity, the "My team" picker (the
- * leader filter: a manager's items and their team's) and the Excel export of the list. Then the
- * key figures, where items wait (by owner group and due date, and by view), the page's own
- * filters, and one sheet per owner group. Items the data standard holds back are counted, with
- * what holds them back. Handled and snoozed items are kept in this browser and can be reopened.
+ * Developer, HR and CHRO list every item, grouped by who it waits on, with the "My team" picker
+ * (the leader filter). Every other mode shows its two lists: "Needs attention" (the role's own
+ * items, most pressing first, legal exposure at the top) and "Waiting on others" (its area, owned
+ * by someone else, grouped by owner with a note to copy for each), and the key figures and charts
+ * follow the list picked. On a phone the list comes first and the overview follows.
+ *
+ * Items from data below the on-screen standard are listed with their tier and counted. Handled
+ * and snoozed items are kept in this browser (with the name typed here, if any) and can be
+ * reopened; a roll-up that changes after it was marked is open again.
  */
-import { type ReactNode, useMemo } from 'react'
+import { type ReactNode, useMemo, useState } from 'react'
 import { lockTip, WHOLE_ORG } from '@/access/copy'
+import { roleItems } from '@/access/items'
 import { leaderOptions } from '@/app/filterOptions'
 import { LeaderPicker } from '@/app/LeaderPicker'
 import { BarList, Figure, HBars, useChartTheme, useExportMeta } from '@/charts'
@@ -18,11 +23,8 @@ import { EmptyState } from '@/components/EmptyState'
 import { IconDownload, IconSearch } from '@/components/icons'
 import { KpiStrip } from '@/components/KpiStrip'
 import { MultiSelect } from '@/components/MultiSelect'
-import { goTo } from '@/components/navigation'
 import { Pending } from '@/components/Pending'
-import { useRouteShown } from '@/components/RouteLink'
 import { Grid, Section } from '@/components/Section'
-import { belowStandardText } from '@/components/tier/tierModel'
 import { toast } from '@/components/toast'
 import type { Severity } from '@/components/types'
 import { Button, Segmented, SeverityIcon } from '@/components/ui'
@@ -35,6 +37,7 @@ import { drill } from '@/drill'
 import type { DrillSpec } from '@/drill/types'
 import { AboutViewLink } from '@/help/ui/AboutViewLink'
 import { formatDate } from '@/lib/dates'
+import { moneyOpts } from '@/lib/export/columns'
 import { downloadXlsx } from '@/lib/export/xlsx'
 import { fmt, plural } from '@/lib/format'
 import { minGroupOf } from '@/metrics/privacy'
@@ -55,6 +58,10 @@ import {
   type ItemStatus,
   isFiltering,
   itemsDrill,
+  lensFor,
+  listHeader,
+  NEEDS_SHOWN,
+  nothingWaiting,
   type OpenAction,
   type OwnerDueRow,
   type OwnerTableRow,
@@ -63,6 +70,7 @@ import {
   SEVERITY_ORDER,
   SEVERITY_WORD,
   settingsOf,
+  showsLists,
   statusOf,
   usesOf,
   type ViewCountRow,
@@ -71,11 +79,58 @@ import {
 } from '../engine'
 import { M } from '../metrics'
 import { ByKind, DueTimeline, TopOwners } from './Charts'
-import { drillItems, OwnerSheet, type StatusFn } from './Sheets'
-import { useActionFilters, useActionMarks, useNow } from './store'
-import { useCollected } from './useCollected'
+import { MarksName } from './MarksName'
+import { drillItems, ItemRow, OwnerSheet, type StatusFn } from './Sheets'
+import { type ListMode, listIn, useActionFilters, useActionMarks, useNow } from './store'
+import { type RoleItemsState, useRoleItems } from './useCollected'
 
 const SEVERITIES: readonly Severity[] = SEVERITY_ORDER.filter((s) => s !== 'good')
+
+/** The page's lists for one render: what each list holds and which one is shown. */
+interface Lists {
+  /** The mode shows Needs attention and Waiting on others. */
+  roles: boolean
+  list: ListMode
+  needs: OpenAction[]
+  waiting: OpenAction[]
+  /** Every open item the mode lists (Developer, HR, CHRO: all of them). */
+  open: OpenAction[]
+  parked: OpenAction[]
+  /** The items of the list shown, before the page's own filters. */
+  base: OpenAction[]
+  /** What the key figures and charts count: the list shown, or every open item for the parked list. */
+  counted: OpenAction[]
+  left: number
+}
+
+function useLists(state: RoleItemsState | null, status: StatusFn): Lists {
+  const ctx = useAnalytics()
+  const picked = useActionFilters((s) => s.list)
+  const roles = showsLists(ctx.access)
+  const list = listIn(picked, roles)
+  const needs = state?.needs ?? []
+  const waiting = state?.waiting ?? []
+  const open = state?.open ?? []
+  const all = state?.collected.items ?? []
+  const marked = all.filter((a) => status(a).state !== 'open')
+  // A role mode's parked list keeps to what its two lists would hold.
+  // The parked list keeps to what the mode lists: its two lists, or its full list.
+  const r = roleItems(marked, lensFor(ctx))
+  const parked = roles ? [...r.needs, ...r.waiting] : r.listed
+  const shownOpen = roles ? [...needs, ...waiting] : open
+  const base = list === 'needs' ? needs : list === 'waiting' ? waiting : list === 'parked' ? parked : open
+  return {
+    roles,
+    list,
+    needs,
+    waiting,
+    open: shownOpen,
+    parked,
+    base,
+    counted: list === 'parked' ? shownOpen : base,
+    left: state?.left ?? 0,
+  }
+}
 
 /* ───────── header ───────── */
 
@@ -133,8 +188,24 @@ function MyTeamPicker() {
   )
 }
 
-function ExportListButton({ items, status }: { items: readonly OpenAction[]; status: StatusFn }) {
+const LIST_TITLE: Record<ListMode, string> = {
+  open: 'Action center: items',
+  needs: 'Action center: needs attention',
+  waiting: 'Action center: waiting on others',
+  parked: 'Action center: handled and snoozed',
+}
+
+function ExportListButton({
+  items,
+  status,
+  list,
+}: {
+  items: readonly OpenAction[]
+  status: StatusFn
+  list: ListMode
+}) {
   const ctx = useAnalytics()
+  // The mode and scope lines ride in the meta (docs/ROLES-V2.md 4.11), as on every export.
   const meta = useExportMeta()
   const run = async () => {
     try {
@@ -159,7 +230,7 @@ function ExportListButton({ items, status }: { items: readonly OpenAction[]; sta
         [
           {
             name: 'Items',
-            title: 'Action center: items',
+            title: LIST_TITLE[list],
             subtitle: 'Items from every view, by who they wait on, most pressing first',
             columns: EXPORT_COLUMNS,
             rows: exportRows(items, ctx.asOf, status),
@@ -167,7 +238,7 @@ function ExportListButton({ items, status }: { items: readonly OpenAction[]; sta
           { name: 'By owner', title: 'Action center: items by owner', columns: ownerColumns, rows: owners },
         ],
         meta,
-        { showPay: ctx.showPay, fileName: 'census-action-center' },
+        { ...moneyOpts(ctx), fileName: 'census-action-center' },
       )
       toast('Action center list downloaded', {
         tone: 'good',
@@ -187,34 +258,48 @@ function ExportListButton({ items, status }: { items: readonly OpenAction[]; sta
 
 /* ───────── notices ───────── */
 
-function Notices({ collected, stale }: { collected: Collected; stale: boolean }) {
+function Notices({
+  collected,
+  stale,
+  left,
+  roles,
+}: {
+  collected: Collected
+  stale: boolean
+  left: number
+  /** The mode shows the two lists: `left` is what other practices hold; else the items not listed at all. */
+  roles: boolean
+}) {
   const ctx = useAnalytics()
-  const dataRoom = useRouteShown('data')
-  const { hidden, errors, smallScope } = collected
+  const { below, errors, smallScope } = collected
   const lines: ReactNode[] = []
   if (stale) lines.push(<span key="stale">Updating for the new filters.</span>)
-  if (hidden.count > 0) {
-    const reasons = hidden.reasons
+  if (below.count > 0) {
+    const reasons = below.reasons
       .slice(0, 3)
       .map((r) => `${r.subject} is ${TIER_LABEL[r.tier]} (${fmt(r.count, 'int')})`)
       .join(', ')
     lines.push(
-      <span key="hidden">
-        {plural(hidden.count, 'item')} hidden because {hidden.count === 1 ? 'its' : 'their'} data is{' '}
-        {ctx.standard === 'bronze' ? 'missing' : belowStandardText(ctx.standard).toLowerCase()}: {reasons}
-        {hidden.reasons.length > 3 ? ' and more' : ''}.{' '}
-        {dataRoom && (
-          <button
-            type="button"
-            onClick={() => goTo('data')}
-            className="rounded-mark text-ink underline decoration-rule-strong underline-offset-2 hover:decoration-ink"
-          >
-            Open the Data room
-          </button>
-        )}
+      <span key="below">
+        {below.count === 1
+          ? '1 item comes from data below your standard'
+          : `${fmt(below.count, 'int')} items come from data below your standard`}
+        : {reasons}
+        {below.reasons.length > 3 ? ' and more' : ''}. They are listed with their tier, because the work is
+        real whatever the data's tier.
       </span>,
     )
   }
+  if (left > 0)
+    lines.push(
+      <span key="left">
+        {roles
+          ? left === 1
+            ? '1 more item from the views this mode shows waits on another practice and is not listed here.'
+            : `${fmt(left, 'int')} more items from the views this mode shows wait on other practices and are not listed here.`
+          : `${plural(left, 'overdue training item')}, one per manager's team, ${left === 1 ? 'is' : 'are'} listed for the managers; here training shows by course below target.`}
+      </span>,
+    )
   if (smallScope)
     lines.push(
       <span key="small">
@@ -371,7 +456,7 @@ function ListControls({
   items,
   leader,
 }: {
-  /** The items the controls choose among (open or parked), before the page filters. */
+  /** The items the controls choose among (the list shown), before the page filters. */
   items: readonly OpenAction[]
   leader: Collected['leader']
 }) {
@@ -464,6 +549,49 @@ function ListControls({
   )
 }
 
+/* ───────── Needs attention: one ranked list ───────── */
+
+/**
+ * A role's Needs attention, most pressing first (legal exposure at the top), the first 15 before
+ * "Show all". One Figure, so the list exports; each row says who it waits on.
+ */
+function NeedsList({ items, status }: { items: readonly OpenAction[]; status: StatusFn }) {
+  const ctx = useAnalytics()
+  const [all, setAll] = useState(false)
+  const shown = all ? items : items.slice(0, NEEDS_SHOWN)
+  const more = items.length - shown.length
+  // Say who each item waits on only when the list holds more than one owner (HR ops' queues).
+  const owners = new Set(items.map((a) => a.ownerKey)).size > 1
+  return (
+    <Figure
+      id="actions-needs"
+      title="Most pressing first"
+      subtitle={`${plural(items.length, 'item')}, legal exposure first, then severity and days overdue`}
+      data={exportRows(items, ctx.asOf, status)}
+      columns={EXPORT_COLUMNS}
+      image={false}
+      tableToggle={false}
+      metric={M.open}
+      uses={usesOf(items)}
+    >
+      <div className="-mx-4 -mt-1 -mb-5 lg:-mx-5">
+        <ul aria-label="Needs attention" className="border-t border-rule">
+          {shown.map((a) => (
+            <ItemRow key={a.id} a={a} parked={false} status={status(a)} showOwner={owners} />
+          ))}
+        </ul>
+        {more > 0 && (
+          <div className="border-t border-rule px-4 py-1.5 sm:pl-10">
+            <Button size="sm" variant="ghost" onClick={() => setAll(true)}>
+              Show all {fmt(items.length, 'int')}
+            </Button>
+          </div>
+        )}
+      </div>
+    </Figure>
+  )
+}
+
 /* ───────── page ───────── */
 
 /** The first figures at their final size while every view's open items are collected. */
@@ -481,100 +609,135 @@ function Loading() {
   )
 }
 
-function Body({ collected, stale }: { collected: Collected; stale: boolean }) {
+const SECTION_TITLE: Record<ListMode, string> = {
+  open: 'Waiting on',
+  needs: 'Needs attention',
+  waiting: 'Waiting on others',
+  parked: 'Handled and snoozed',
+}
+
+function ListSwitch({ lists }: { lists: Lists }) {
+  const setList = useActionFilters((s) => s.setList)
+  const n = (x: readonly OpenAction[]) => fmt(x.length, 'int')
+  const options: { value: ListMode; label: string }[] = lists.roles
+    ? [
+        { value: 'needs', label: `Needs attention ${n(lists.needs)}` },
+        { value: 'waiting', label: `Waiting on others ${n(lists.waiting)}` },
+        { value: 'parked', label: `Handled and snoozed ${n(lists.parked)}` },
+      ]
+    : [
+        { value: 'open', label: `Open ${n(lists.open)}` },
+        { value: 'parked', label: `Handled and snoozed ${n(lists.parked)}` },
+      ]
+  return (
+    <span data-tour="actions-list-switch">
+      <Segmented<ListMode> label="Show" value={lists.list} onChange={setList} options={options} />
+    </span>
+  )
+}
+
+function Body({ state, status }: { state: RoleItemsState; status: StatusFn }) {
   const ctx = useAnalytics()
-  const marks = useActionMarks((s) => s.marks)
-  const now = useNow()
   const filters = useActionFilters((s) => s.filters)
-  const mode = useActionFilters((s) => s.mode)
-  const setMode = useActionFilters((s) => s.setMode)
   const resetFilters = useActionFilters((s) => s.resetFilters)
   const { dueSoonDays } = settingsOf(ctx.metrics)
-  const status = (a: OpenAction): ItemStatus => statusOf(a.id, marks, now)
-  const open = collected.items.filter((a) => status(a).state === 'open')
-  const parked = collected.items.filter((a) => status(a).state !== 'open')
-  const base = mode === 'open' ? open : parked
+  const lists = useLists(state, status)
+  const { list, base } = lists
   const listed = filterActions(base, filters, ctx.asOf, dueSoonDays)
   const groups = groupByOwner(listed, ctx.asOf)
-  const kpis = actionKpis(open, ctx)
-  const leader = collected.leader
+  const kpis = actionKpis(lists.counted, ctx)
+  const leader = state.collected.leader
+  const parked = list === 'parked'
+  const dek =
+    list === 'needs'
+      ? 'What is yours to act on, most pressing first: legal exposure, then severity and days overdue. Mark an item handled or snooze it once it is in hand.'
+      : list === 'waiting'
+        ? 'Items in your area that someone else owns. Copy a note to send each owner their list.'
+        : parked
+          ? 'Items marked handled or snoozed in this browser. A snooze ends on its own, and an item that changes opens again; reopen an item to list it now.'
+          : leader
+            ? `Items waiting on ${leader.name} or someone in their org anywhere in the company, and items about people in their org waiting on others. Copy a note to send each owner their list.`
+            : 'One sheet per owner group, the most pressing owner first. Copy a note to send each owner their list; mark an item handled or snooze it once it is in hand.'
+  const empty = !listed.length ? (
+    base.length ? (
+      <EmptyState
+        title="No items match these filters"
+        body="Clear a filter, or search for another name."
+        action={
+          <Button size="sm" onClick={resetFilters}>
+            Clear filters
+          </Button>
+        }
+      />
+    ) : parked ? (
+      <EmptyState
+        title="Nothing is handled or snoozed"
+        body="Items you mark handled or snooze in this browser show here, so you can reopen them."
+      />
+    ) : list === 'needs' ? (
+      <EmptyState title="Nothing needs attention" body={nothingWaiting(ctx)} />
+    ) : list === 'waiting' ? (
+      <EmptyState
+        title="Nothing is waiting on others"
+        body="No item in your area is owned by someone else."
+      />
+    ) : (
+      <EmptyState
+        title="Nothing is open"
+        body="No view has an item waiting on someone in this scope. Items show here when a decision, a task or a deadline waits on a person or a team."
+      />
+    )
+  ) : null
   return (
-    <>
-      {/* Sheets keep their own heights: the charts in a row differ by up to 150px. */}
-      <Grid className="mt-5 items-start">
-        <Notices collected={collected} stale={stale} />
-        <KpiStrip kpis={kpis} />
-        <WhereItemsWait open={open} status={status} />
-      </Grid>
+    // On a phone the list leads and the overview follows (docs/ACTION-CENTER-AUDIT.md 3.15).
+    <div className="mt-5 flex flex-col">
       <Section
-        className="mt-10"
-        title={mode === 'open' ? 'Waiting on' : 'Handled and snoozed'}
+        title="Overview"
         dek={
-          mode === 'open'
-            ? leader
-              ? `Items waiting on ${leader.name} or someone in their org anywhere in the company, and items about people in their org waiting on others. Copy a note to send each owner their list.`
-              : 'One sheet per owner group, the most pressing owner first. Copy a note to send each owner their list; mark an item handled or snooze it once it is in hand.'
-            : 'Items marked handled or snoozed in this browser. A snooze ends on its own; reopen an item to list it again.'
+          lists.roles && !parked
+            ? `The key figures and charts count ${list === 'needs' ? 'Needs attention' : 'Waiting on others'}.`
+            : undefined
         }
-        actions={
-          <Segmented<'open' | 'parked'>
-            label="Show"
-            value={mode}
-            onChange={setMode}
-            options={[
-              { value: 'open', label: `Open ${fmt(open.length, 'int')}` },
-              { value: 'parked', label: `Handled and snoozed ${fmt(parked.length, 'int')}` },
-            ]}
-          />
-        }
+        align="start"
+        className="max-md:order-2 max-md:mt-10"
+      >
+        <Notices collected={state.collected} stale={state.stale} left={lists.left} roles={lists.roles} />
+        <KpiStrip kpis={kpis} />
+        <WhereItemsWait open={lists.counted} status={status} />
+      </Section>
+      <Section
+        className="mt-10 max-md:order-1 max-md:mt-0"
+        title={SECTION_TITLE[list]}
+        dek={dek}
+        actions={<ListSwitch lists={lists} />}
       >
         <ListControls items={base} leader={leader} />
-        {groups.length ? (
-          groups.map((g) => <OwnerSheet key={`${mode}-${g.role}`} group={g} mode={mode} statusOf={status} />)
-        ) : base.length ? (
-          <EmptyState
-            title="No items match these filters"
-            body="Clear a filter, or search for another name."
-            action={
-              <Button size="sm" onClick={resetFilters}>
-                Clear filters
-              </Button>
-            }
-          />
-        ) : mode === 'open' ? (
-          <EmptyState
-            title="Nothing is open"
-            body="No view has an item waiting on someone in this scope. Items show here when a decision, a task or a deadline waits on a person or a team."
-          />
-        ) : (
-          <EmptyState
-            title="Nothing is handled or snoozed"
-            body="Items you mark handled or snooze in this browser show here, so you can reopen them."
-          />
-        )}
+        {empty ??
+          (list === 'needs' ? (
+            <NeedsList items={listed} status={status} />
+          ) : (
+            groups.map((g) => (
+              <OwnerSheet key={`${list}-${g.role}`} group={g} parked={parked} statusOf={status} />
+            ))
+          ))}
+        {parked && <MarksName />}
       </Section>
-    </>
+    </div>
   )
 }
 
 export function ActionCenter() {
   const ctx = useAnalytics()
-  const state = useCollected()
+  const state = useRoleItems()
   const marks = useActionMarks((s) => s.marks)
   const now = useNow()
-  const status = (a: OpenAction): ItemStatus => statusOf(a.id, marks, now)
-  const items = state?.value.items ?? []
-  const open = items.filter((a) => status(a).state === 'open')
+  const status = (a: OpenAction): ItemStatus => statusOf(a, marks, now)
   const filters = useActionFilters((s) => s.filters)
-  const mode = useActionFilters((s) => s.mode)
   const { dueSoonDays } = settingsOf(ctx.metrics)
-  const exportable = filterActions(
-    items.filter((a) => (status(a).state === 'open') === (mode === 'open')),
-    filters,
-    ctx.asOf,
-    dueSoonDays,
-  )
-  const leader = state?.value.leader ?? null
+  const lists = useLists(state, status)
+  const exportable = filterActions(lists.base, filters, ctx.asOf, dueSoonDays)
+  const leader = state?.collected.leader ?? null
+  const counted = lists.list === 'parked' ? lists.open : lists.base
   return (
     <div>
       <div className="pt-5">
@@ -588,9 +751,11 @@ export function ActionCenter() {
               Action center
             </h1>
             <p className="mt-1.5 max-w-[72ch] text-small text-ink-2">
-              {leader
-                ? `${leader.name}'s items and their team's, from every view, grouped by who they wait on.`
-                : 'Open items from every view, grouped by who they wait on: decisions, tasks, deadlines and follow-ups to raise in each leader review.'}
+              {lists.roles
+                ? `${listHeader(ctx)}. Needs attention is yours; Waiting on others is in your area, with someone else.`
+                : leader
+                  ? `${leader.name}'s items and their team's, from every view, grouped by who they wait on.`
+                  : 'Open items from every view, grouped by who they wait on: decisions, tasks, deadlines and follow-ups to raise in each leader review.'}
             </p>
             <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-small text-ink-2">
               <span>{ctx.scopeLabel}</span>
@@ -598,12 +763,12 @@ export function ActionCenter() {
                 ·
               </span>
               <span>as of {formatDate(ctx.asOf)}</span>
-              {state && open.length > 0 && (
+              {state && counted.length > 0 && (
                 <>
                   <span aria-hidden="true" className="text-muted">
                     ·
                   </span>
-                  <SeverityCounts open={open} ctx={ctx} />
+                  <SeverityCounts open={counted} ctx={ctx} />
                 </>
               )}
             </div>
@@ -612,14 +777,16 @@ export function ActionCenter() {
             </p>
           </div>
           <div data-tour="actions-my-team" className="flex max-w-full min-w-0 flex-wrap items-center gap-2">
-            <MyTeamPicker />
-            <ExportListButton items={exportable} status={status} />
+            {ctx.access.can('ui:actions-team') && <MyTeamPicker />}
+            {ctx.access.can('export:action-list') && (
+              <ExportListButton items={exportable} status={status} list={lists.list} />
+            )}
           </div>
         </div>
         <div className="mt-4 border-b border-rule" />
       </div>
       {state ? (
-        <Body collected={state.value} stale={state.stale} />
+        <Body state={state} status={status} />
       ) : (
         <div className="mt-5">
           <Loading />

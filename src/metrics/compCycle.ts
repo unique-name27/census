@@ -3,10 +3,18 @@
  * rating) as settings of the Compensation metrics. They moved here from Settings > Compensation
  * cycle; `src/metrics/persist.ts` carries saved values over once.
  *
+ * The cycle's dates (open, calibration, close and effective, and the hire date that makes someone
+ * eligible) are date settings of 'comp.merit.proposals' (docs/ROLES-V2.md 5.14, the audit's open
+ * question 5), so they are logged and travel with the settings file like every other setting.
+ * Blank means not set: Compensation's items then have no due date and say so. Read them with
+ * `cycleDatesOf(ctx.metrics)`.
+ *
  * The comp view registers these metric ids in `src/views/comp/metrics.ts` with its own wording;
  * the catalog adds the entries below for any id or setting it leaves out, so the settings always
  * exist.
  */
+
+import type { ISODate } from '@/data/schema'
 import {
   COMP_CYCLE_LIMITS,
   type CompCycleSettings,
@@ -14,14 +22,34 @@ import {
   type LegacyCycleSettings,
 } from '@/data/settings'
 import { paramField } from './registry'
-import type { MetricDef, MetricEdit, MetricsApi, ParamDef, RatingMap } from './types'
+import type { MetricDef, MetricEdit, MetricsApi, ParamDef, ParamValue, RatingMap } from './types'
+
+/** The metric that holds the cycle's dates. */
+const CYCLE_DATES_METRIC = 'comp.merit.proposals'
 
 /** Where each cycle setting lives: metric id and setting key. */
 export const COMP_CYCLE = {
   meritBudget: { metricId: 'comp.merit.spend', key: 'meritBudget' },
   healthyBand: { metricId: 'comp.compa.inBand', key: 'healthyBand' },
   guideline: { metricId: 'comp.merit.guidelineSpend', key: 'guideline' },
+  openDate: { metricId: CYCLE_DATES_METRIC, key: 'openDate' },
+  calibrationDate: { metricId: CYCLE_DATES_METRIC, key: 'calibrationDate' },
+  closeDate: { metricId: CYCLE_DATES_METRIC, key: 'closeDate' },
+  effectiveDate: { metricId: CYCLE_DATES_METRIC, key: 'effectiveDate' },
+  eligibleHiredBy: { metricId: CYCLE_DATES_METRIC, key: 'eligibleHiredBy' },
 } as const
+
+/** The cycle settings in the order Settings > Compensation cycle lists them. */
+export const COMP_CYCLE_ROWS = [
+  COMP_CYCLE.meritBudget,
+  COMP_CYCLE.healthyBand,
+  COMP_CYCLE.guideline,
+  COMP_CYCLE.openDate,
+  COMP_CYCLE.calibrationDate,
+  COMP_CYCLE.closeDate,
+  COMP_CYCLE.effectiveDate,
+  COMP_CYCLE.eligibleHiredBy,
+] as const
 
 export const MERIT_BUDGET_PARAM: ParamDef = {
   key: COMP_CYCLE.meritBudget.key,
@@ -57,6 +85,70 @@ export const MERIT_GUIDELINE_PARAM: ParamDef = {
   max: COMP_CYCLE_LIMITS.guideline.max,
   step: 0.0025,
   format: 'pct',
+}
+
+const dateParam = (key: string, label: string, description: string): ParamDef => ({
+  key,
+  label,
+  description,
+  type: 'date',
+  default: '',
+})
+
+/** The cycle's dates, on 'comp.merit.proposals'. Blank (the default) means not set. */
+export const CYCLE_DATE_PARAMS: readonly ParamDef[] = [
+  dateParam(
+    COMP_CYCLE.openDate.key,
+    'Cycle opens',
+    'The day managers can start entering merit proposals. Before it, the cycle is not open and no proposal is missing yet.',
+  ),
+  dateParam(
+    COMP_CYCLE.calibrationDate.key,
+    'Calibration',
+    'The day calibration of the proposals starts. Shown with the cycle dates on the Merit cycle tab.',
+  ),
+  dateParam(
+    COMP_CYCLE.closeDate.key,
+    'Cycle closes',
+    'The day proposals are final. Compensation items are due on this date; without it they have no due date and say so.',
+  ),
+  dateParam(
+    COMP_CYCLE.effectiveDate.key,
+    'Increases take effect',
+    'The day merit increases are paid from. Shown with the cycle dates on the Merit cycle tab.',
+  ),
+  dateParam(
+    COMP_CYCLE.eligibleHiredBy.key,
+    'Eligible if hired by',
+    'People hired after this date are not eligible this cycle. Blank: the latest hire date among people with a merit proposal.',
+  ),
+]
+
+/** The cycle's dates in force; null where not set. */
+export interface CycleDates {
+  open: ISODate | null
+  calibration: ISODate | null
+  close: ISODate | null
+  effective: ISODate | null
+  /** People hired after this are not eligible; null: Census works it out from the proposals. */
+  eligibleHiredBy: ISODate | null
+}
+
+const dateIn = (m: Pick<MetricsApi, 'param' | 'paramDef'>, where: { metricId: string; key: string }) => {
+  if (!m.paramDef(where.metricId, where.key)) return null
+  const v = m.param<ParamValue>(where.metricId, where.key)
+  return typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null
+}
+
+/** The comp cycle's dates in force (Settings > Compensation cycle). */
+export function cycleDatesOf(m: Pick<MetricsApi, 'param' | 'paramDef'>): CycleDates {
+  return {
+    open: dateIn(m, COMP_CYCLE.openDate),
+    calibration: dateIn(m, COMP_CYCLE.calibrationDate),
+    close: dateIn(m, COMP_CYCLE.closeDate),
+    effective: dateIn(m, COMP_CYCLE.effectiveDate),
+    eligibleHiredBy: dateIn(m, COMP_CYCLE.eligibleHiredBy),
+  }
 }
 
 const POPULATION = 'Active employees with a comp record.'
@@ -103,6 +195,20 @@ export const COMP_CYCLE_METRICS: readonly MetricDef[] = [
     uses: ['comp.meritPct', 'comp.baseSalary', 'comp.fxToUsd', 'reviews.rating'],
     owner: 'Total rewards',
     params: [MERIT_GUIDELINE_PARAM],
+  },
+  {
+    id: CYCLE_DATES_METRIC,
+    name: 'Merit proposals',
+    views: ['comp'],
+    definition:
+      'Eligible people with a merit proposal. Eligible means an active employee with a comp record hired on or before the cycle’s eligibility date.',
+    formula: 'people with a merit % ÷ eligible people',
+    population: POPULATION,
+    unit: 'int',
+    goodDirection: null,
+    uses: ['comp.meritPct', 'comp.employeeId', 'employees.hireDate'],
+    owner: 'Total rewards',
+    params: CYCLE_DATE_PARAMS,
   },
 ]
 

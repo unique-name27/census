@@ -8,6 +8,7 @@ import { personInLock } from '@/access/records'
 import type { Column } from '@/charts/types'
 import type { AnalyticsContext } from '@/data/context'
 import type {
+  BudgetLine,
   Candidate,
   CompRecord,
   Employee,
@@ -113,6 +114,8 @@ const EMPLOYEE_COLUMNS: Column[] = [
   C('jobFunction', 'Job function'),
   C('department', 'Department'),
   C('location', 'Location'),
+  // Finance mode's employee lists only (`modeColumns`): the cost center a cost total is cut by.
+  C('costCenter', 'Cost center'),
   C('level', 'Level'),
   C('manager', 'Manager'),
   C('directReports', 'Direct reports', { format: 'int' }),
@@ -143,6 +146,7 @@ function employeeRow(ctx: DrillContext, e: Employee): Row {
     jobFunction: e.jobFunction ?? null,
     department: e.department,
     location: e.location,
+    costCenter: e.costCenter ?? null,
     level: levelText(e.level),
     manager: nameOf(ctx, e.managerId),
     directReports: directs,
@@ -391,17 +395,31 @@ const SUCCESSION_COLUMNS: Column[] = [
   C('successor', 'Successor'),
   C('readiness', 'Readiness'),
 ]
+/**
+ * The successor cell. Manager mode: a successor outside the org shows by readiness only, never by
+ * name. HRBP modes (docs/ROLES-V2.md 2.7): a successor outside the business unit or region shows
+ * by name with their unit or site, as plain text ("Ana Ruiz, Data Center Group"); the row opens
+ * the incumbent, never them.
+ */
+function successorText(ctx: DrillContext, s: SuccessionPlan): string {
+  if (!s.successorId) return 'None named'
+  if (personInLock(s.successorId, ctx.access)) return nameOf(ctx, s.successorId) ?? 'None named'
+  const scope = ctx.access?.scope
+  if (scope?.kind === 'unit' || scope?.kind === 'region') {
+    const p = ctx.org.byId.get(s.successorId)
+    const where = scope.kind === 'unit' ? p?.businessUnit : p?.location
+    return [p?.name ?? s.successorId, where].filter(Boolean).join(', ')
+  }
+  return `Outside the org${s.readiness ? `, ${s.readiness.toLowerCase()}` : ''}`
+}
+
 const successionRow = (ctx: DrillContext, s: SuccessionPlan, i: number): Row => ({
   roleId: s.roleId,
   roleTitle: s.roleTitle,
   incumbent: nameOf(ctx, s.incumbentId),
   criticality: s.criticality,
   incumbentRiskOfLoss: s.incumbentRiskOfLoss ?? null,
-  // Manager mode: a successor outside the org shows by readiness only, never by name.
-  successor:
-    s.successorId && !personInLock(s.successorId, ctx.access)
-      ? `Outside the org${s.readiness ? `, ${s.readiness.toLowerCase()}` : ''}`
-      : (nameOf(ctx, s.successorId) ?? 'None named'),
+  successor: successorText(ctx, s),
   readiness: s.readiness ?? null,
   [PERSON_KEY]: s.incumbentId,
   [ROW_KEY]: `${s.roleId}-${s.successorId ?? 'none'}-${i}`,
@@ -621,6 +639,30 @@ const responseRow = (_ctx: DrillContext, r: SurveyResponse, i: number): Row => (
   [ROW_KEY]: `response-${i}`,
 })
 
+const BUDGET_COLUMNS: Column[] = [
+  C('period', 'Month'),
+  C('businessUnit', 'Business unit'),
+  C('department', 'Department'),
+  C('costCenter', 'Cost center'),
+  C('budgetHeadcount', 'Budget headcount', { format: 'int' }),
+  // One line's cost can be one small team's pay: amounts follow the pay switch, never Finance.
+  C('budgetCost', 'Budget cost', { format: 'int', pay: true }),
+  C('currency', 'Currency'),
+  C('planVersion', 'Plan version'),
+]
+const budgetRow = (_ctx: DrillContext, b: BudgetLine, i: number): Row => ({
+  period: b.period ? formatMonth(b.period) : null,
+  businessUnit: b.businessUnit,
+  department: b.department ?? null,
+  costCenter: b.costCenter ?? null,
+  budgetHeadcount: b.budgetHeadcount,
+  budgetCost: b.budgetCost ?? null,
+  currency: b.budgetCost == null ? null : (b.currency ?? 'USD'),
+  planVersion: b.planVersion ?? null,
+  [PERSON_KEY]: null,
+  [ROW_KEY]: `budget-${b.planVersion ?? ''}-${b.period}-${b.businessUnit}-${b.department ?? ''}-${b.costCenter ?? ''}-${i}`,
+})
+
 const ITEM_COLUMNS: Column[] = [
   C('item', 'Item'),
   C('survey', 'Survey'),
@@ -771,6 +813,7 @@ const KINDS: { [K in DrillKind]: { columns: Column[]; row: RowFn<K>; noun: [stri
   rightToWork: { columns: RTW_COLUMNS, row: rtwRow, noun: ['person', 'people'] },
   surveyResponses: { columns: RESPONSE_COLUMNS, row: responseRow, noun: ['answer', 'answers'] },
   surveyItems: { columns: ITEM_COLUMNS, row: itemRow, noun: ['survey item', 'survey items'] },
+  budget: { columns: BUDGET_COLUMNS, row: budgetRow, noun: ['budget line', 'budget lines'] },
   surveyGroups: { columns: SURVEY_GROUP_COLUMNS, row: surveyGroupRow, noun: ['group', 'groups'] },
   leaveGroups: { columns: LEAVE_GROUP_COLUMNS, row: leaveGroupRow, noun: ['group', 'groups'] },
   actionItems: { columns: ACTION_COLUMNS, row: actionRow, noun: ['item', 'items'] },
@@ -828,6 +871,40 @@ const EXTRA_LINKS: { [K in DrillKind]?: readonly ExtraLink<K>[] } = {
   ],
 }
 
+/**
+ * Finance mode's employee list (docs/ROLES-V2.md 3.2): the people a headcount or cost total counts,
+ * with no ratings, exits or pay.
+ */
+const FINANCE_EMPLOYEE_COLUMNS: ReadonlySet<string> = new Set([
+  'employeeId',
+  'name',
+  'costCenter',
+  'department',
+  'level',
+  'location',
+  'employmentType',
+  'hireDate',
+])
+
+/**
+ * Standard columns the mode leaves out of a kind (docs/ROLES-V2.md 3.2, 4.2): Finance's employee
+ * lists keep `FINANCE_EMPLOYEE_COLUMNS`; a mode that hides exit reasons
+ * (`hrbp.attrition.exitReasons`) lists no exit reason or regrettable flag; the cost center shows
+ * in Finance only.
+ */
+export function modeHiddenColumns(kind: DrillKind, access: DrillContext['access']): ReadonlySet<string> {
+  if (kind !== 'employees') return NO_KEYS
+  if (access?.mode === 'finance')
+    return new Set(EMPLOYEE_COLUMNS.map((c) => c.key).filter((k) => !FINANCE_EMPLOYEE_COLUMNS.has(k)))
+  const out = new Set(['costCenter'])
+  if (access && !access.can('metric:hrbp.attrition.exitReasons')) {
+    out.add('terminationReason')
+    out.add('regrettable')
+  }
+  return out
+}
+const NO_KEYS: ReadonlySet<string> = new Set()
+
 /** Display table for a drill: standard columns for the kind, minus hidden ones, plus extras. */
 export const buildDrillTable = (spec: DrillSpec, ctx: DrillContext): DrillTable =>
   timed(`census:drill:${spec.kind}`, () => drillTableOf(spec, ctx))
@@ -839,7 +916,11 @@ function drillTableOf(spec: DrillSpec, ctx: DrillContext): DrillTable {
   const links = ((EXTRA_LINKS[spec.kind] ?? []) as readonly ExtraLink<DrillKind>[]).filter((l) =>
     extraKeys.has(l.key),
   )
-  const hide = new Set([...(spec.hide ?? []), ...links.map((l) => l.standard)])
+  const hide = new Set([
+    ...(spec.hide ?? []),
+    ...links.map((l) => l.standard),
+    ...modeHiddenColumns(spec.kind, ctx.access),
+  ])
   // A view's extra column with a standard column's key takes its place.
   const columns = [...kind.columns.filter((c) => !hide.has(c.key) && !extraKeys.has(c.key)), ...extraCols]
   const values = spec.extra?.values as ((r: unknown) => Record<string, unknown>) | undefined
@@ -900,6 +981,7 @@ const ROW_OPENS: Record<DrillKind, string> = {
   rightToWork: 'Select a row to open the person.',
   surveyResponses: '',
   surveyItems: '',
+  budget: '',
   surveyGroups: '',
   leaveGroups: '',
   actionItems: 'Select a row to open the person it is about, when it names one.',

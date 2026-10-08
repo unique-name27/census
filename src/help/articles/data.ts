@@ -25,7 +25,7 @@ export const DATA_ARTICLES: readonly HelpArticle[] = [
     tour: 'own-data',
     body: [
       {
-        p: 'Census reads fifteen datasets: Employees, Job changes, Requisitions, Candidates, HR cases, HR transactions, Performance reviews, Succession plans, Learning, Compensation, Hiring plan, Onboarding tasks, Right to work, Survey responses and Survey items. The last five are optional. You can replace any one with your own export; the others keep running on the sample.',
+        p: 'Census reads sixteen datasets: Employees, Job changes, Requisitions, Candidates, HR cases, HR transactions, Performance reviews, Succession plans, Learning, Compensation, Hiring plan, Onboarding tasks, Right to work, Survey responses, Survey items, and the Headcount and cost budget. The last six are optional. You can replace any one with your own export; the others keep running on the sample. The budget’s cost is a pay amount: Finance sees it only as totals over groups of 5 or more.',
       },
       { h: 'Add files' },
       {

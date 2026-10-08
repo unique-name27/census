@@ -1,11 +1,14 @@
 /**
  * Columns for every Compensation figure: what the table view shows and every export writes.
- * Amount columns are marked `pay: true` so they disappear unless pay amounts are switched on.
+ * One person's amount is marked `pay: true` (shown only with "Show pay amounts" on); a total over
+ * a group is marked `cost: true` (shown while cost totals may show: the switch, or Finance mode).
  * Module constants keep figure registrations stable across renders. Figure definitions come from
  * the metric dictionary (`engine/definitions.ts`).
  */
 import type { Column } from '@/charts'
-import type { Bin, ExceptionRow, PromotionRow, RewardsMixRow, SpendRow } from './engine/cycle'
+import type { BudgetMonthRow, BudgetRow } from '@/lib/budget'
+import type { CostRow, OpenReqRow } from './engine/cost'
+import type { Bin, ExceptionRow, ProgressRow, PromotionRow, RewardsMixRow, SpendRow } from './engine/cycle'
 import type { JobMarketRow, MarketRow } from './engine/market'
 import type { PersonRow } from './engine/model'
 import type {
@@ -200,9 +203,103 @@ export const SPEND_COLUMNS: Column<SpendRow>[] = [
   { key: 'spendPct', label: 'Merit spend', format: 'pct2' },
   { key: 'budgetPct', label: 'Budget', format: 'pct2' },
   { key: 'delta', label: 'Spend vs budget', format: 'pts2' },
-  { key: 'eligibleBaseUsd', label: 'Eligible base (USD)', format: 'moneyFull', pay: true },
-  { key: 'spendUsd', label: 'Merit spend (USD)', format: 'moneyFull', pay: true },
-  { key: 'overUsd', label: 'Spend vs budget (USD)', format: 'moneyFull', pay: true },
+  // Business unit totals, not one person's pay (docs/ROLES-V2.md 3.1).
+  { key: 'eligibleBaseUsd', label: 'Eligible base (USD)', format: 'moneyFull', cost: true },
+  { key: 'spendUsd', label: 'Merit spend (USD)', format: 'moneyFull', cost: true },
+  { key: 'overUsd', label: 'Spend vs budget (USD)', format: 'moneyFull', cost: true },
+]
+
+export const PROGRESS_COLUMNS: Column<ProgressRow & { statusLabel: string | null }>[] = [
+  { key: 'group', label: 'Business unit', format: 'text' },
+  { key: 'eligible', label: 'Eligible', format: 'int' },
+  { key: 'proposed', label: 'Proposals entered', format: 'int' },
+  { key: 'missing', label: 'No proposal', format: 'int' },
+  { key: 'share', label: 'Entered', format: 'pct' },
+  { key: 'spendPct', label: 'Merit spend', format: 'pct2' },
+  { key: 'delta', label: 'Spend vs budget', format: 'pts2' },
+  { key: 'statusLabel', label: 'Status', format: 'text' },
+]
+
+/* ───────── workforce cost: totals over groups (`cost: true`) ───────── */
+
+const costColumns = (groupLabel: string): Column<CostRow>[] => [
+  { key: 'group', label: groupLabel, format: 'text' },
+  { key: 'people', label: 'People costed', format: 'int' },
+  { key: 'baseUsd', label: 'Annual base (USD)', format: 'moneyFull', cost: true },
+  { key: 'bonusUsd', label: 'Bonus at target (USD)', format: 'moneyFull', cost: true },
+  { key: 'targetCashUsd', label: 'Target cash (USD)', format: 'moneyFull', cost: true },
+  { key: 'equityUsd', label: 'Annual equity (USD)', format: 'moneyFull', cost: true },
+  { key: 'perHeadUsd', label: 'Target cash per employee (USD)', format: 'moneyFull', cost: true },
+  { key: 'share', label: 'Share of target cash', format: 'pct' },
+]
+export const COST_BY_UNIT_COLUMNS = costColumns('Business unit')
+export const COST_BY_LEVEL_COLUMNS = costColumns('Level')
+export const COST_BY_SITE_COLUMNS = costColumns('Location')
+/** A cost center row with its name from the Cost centers list. */
+export type CostCenterRow = CostRow & { name: string | null }
+export const COST_BY_CENTER_COLUMNS: Column<CostCenterRow>[] = [
+  { key: 'group', label: 'Cost center', format: 'text' },
+  { key: 'name', label: 'Name', format: 'text' },
+  { key: 'department', label: 'Department', format: 'text' },
+  ...(costColumns('Cost center').slice(1) as Column<CostCenterRow>[]),
+]
+
+export const OPEN_REQ_COST_COLUMNS: Column<OpenReqRow>[] = [
+  { key: 'group', label: 'Business unit', format: 'text' },
+  { key: 'reqs', label: 'Open reqs', format: 'int' },
+  { key: 'openings', label: 'Openings', format: 'int' },
+  { key: 'estimated', label: 'Openings estimated', format: 'int' },
+  { key: 'estimateUsd', label: 'At range midpoint, estimate (USD)', format: 'moneyFull', cost: true },
+]
+
+/* ───────── actual against budget (`src/lib/budget.ts`) ───────── */
+
+/** A budget row with its status in words ("Over budget"). */
+export type BudgetUnitRow = BudgetRow & { headcountWord: string | null; costWord: string | null }
+/** A cost center row of the budget, with its name from the Cost centers list. */
+export type BudgetCenterRow = BudgetUnitRow & { name: string | null }
+export type BudgetTrendRow = BudgetMonthRow & { monthLabel: string }
+
+export const BUDGET_HEADCOUNT_COLUMNS: Column<BudgetUnitRow>[] = [
+  { key: 'label', label: 'Business unit', format: 'text' },
+  { key: 'budgetHeadcount', label: 'Budget headcount', format: 'int' },
+  { key: 'headcount', label: 'Headcount', format: 'int' },
+  { key: 'headcountVariance', label: 'Headcount vs budget', format: 'int' },
+  { key: 'headcountVariancePct', label: 'Headcount vs budget (%)', format: 'deltaPct' },
+  { key: 'headcountWord', label: 'Status', format: 'text' },
+  { key: 'contractors', label: 'Contractors', format: 'int' },
+]
+
+export const BUDGET_COST_COLUMNS: Column<BudgetUnitRow>[] = [
+  { key: 'label', label: 'Business unit', format: 'text' },
+  { key: 'costed', label: 'People costed', format: 'int' },
+  { key: 'budgetCostUsd', label: 'Budget cost a month (USD)', format: 'moneyFull', cost: true },
+  { key: 'employeeCostUsd', label: 'Employees a month (USD)', format: 'moneyFull', cost: true },
+  { key: 'contractorCostUsd', label: 'Contractors a month, estimate (USD)', format: 'moneyFull', cost: true },
+  { key: 'costUsd', label: 'Cost a month (USD)', format: 'moneyFull', cost: true },
+  { key: 'costVarianceUsd', label: 'Cost vs budget (USD)', format: 'moneyFull', cost: true },
+  { key: 'costVariancePct', label: 'Cost vs budget (%)', format: 'deltaPct' },
+  { key: 'costWord', label: 'Status', format: 'text' },
+]
+
+export const BUDGET_MONTH_COLUMNS: Column<BudgetTrendRow>[] = [
+  { key: 'monthLabel', label: 'Month', format: 'text', sortValue: (r) => r.month },
+  { key: 'budgetHeadcount', label: 'Budget headcount', format: 'int' },
+  { key: 'headcount', label: 'Headcount', format: 'int' },
+  { key: 'headcountVariance', label: 'Headcount vs budget', format: 'int' },
+]
+
+export const BUDGET_CENTER_COLUMNS: Column<BudgetCenterRow>[] = [
+  { key: 'label', label: 'Cost center', format: 'text' },
+  { key: 'name', label: 'Name', format: 'text' },
+  { key: 'businessUnit', label: 'Business unit', format: 'text' },
+  { key: 'budgetHeadcount', label: 'Budget headcount', format: 'int' },
+  { key: 'headcount', label: 'Headcount', format: 'int' },
+  { key: 'headcountVariance', label: 'Headcount vs budget', format: 'int' },
+  { key: 'budgetCostUsd', label: 'Budget cost a month (USD)', format: 'moneyFull', cost: true },
+  { key: 'costUsd', label: 'Cost a month (USD)', format: 'moneyFull', cost: true },
+  { key: 'costVarianceUsd', label: 'Cost vs budget (USD)', format: 'moneyFull', cost: true },
+  { key: 'costWord', label: 'Status', format: 'text' },
 ]
 
 export const EXCEPTION_COLUMNS: Column<ExceptionRow>[] = [

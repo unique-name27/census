@@ -169,7 +169,8 @@ export function ViewHeader({ view, tab }: { view: ViewDef; tab: string }) {
           {/* A view that reads no datasets (AI in HR) has no scope, window, as-of date or data source. */}
           {view.datasets.length > 0 && (
             <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-small text-ink-2">
-              {access.lock && <IconPin className="size-3.5 shrink-0 text-muted" />}
+              {/* A scoped mode's line starts with the pin: the org, unit, region or reqs it keeps. */}
+              {access.scope && <IconPin className="size-3.5 shrink-0 text-muted" />}
               <span>{ctx.scopeLabel}</span>
               <span aria-hidden="true" className="text-muted">
                 ·

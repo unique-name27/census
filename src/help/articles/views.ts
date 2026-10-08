@@ -888,11 +888,21 @@ export const VIEW_ARTICLES: readonly HelpArticle[] = [
     ],
     body: [
       {
-        p: 'The Action center collects the open items every view raises: candidates waiting on a decision, starts not ready, probation decisions, cases past target, overdue transactions, returns from leave without systems ready, overdue training, reverifications, I-9s and export licenses. Open it from the Actions button in the masthead; the number on the button is the open count.',
+        p: 'The Action center collects the open items every view raises: candidates waiting on a decision, starts not ready, probation decisions, cases past target, overdue transactions, returns from leave without systems ready, overdue training, reverifications, I-9s and export licenses. Open it from the Actions button in the masthead. Items with legal exposure (an I-9, an export license, a work authorization, final pay) come first, then the most severe and the most overdue.',
       },
-      { h: 'My team' },
+      { h: 'Your two lists', surface: 'ui:attention-lists' },
+      {
+        p: 'Each mode shows its own two lists. Needs attention holds the items that are yours: owned by your practice, its queues, or you. Waiting on others holds the items in your area that someone else owns, grouped by owner with a note to copy for each. The number on the Actions button counts Needs attention, and the key figures and charts count the list you pick.',
+        surface: 'ui:attention-lists',
+      },
+      {
+        p: 'In HR mode the page lists every item, grouped by who it waits on, and the number on the Actions button is the open count.',
+        unless: 'ui:attention-lists',
+      },
+      { h: 'My team', surface: 'ui:actions-team' },
       {
         p: 'Pick a manager in "My team" (it sets the leader filter) to see items about people in their org and items they or their org own anywhere in the company. "Waiting on" narrows to the leader, their org or others.',
+        surface: 'ui:actions-team',
       },
       { h: 'Reading the list' },
       {
@@ -907,13 +917,14 @@ export const VIEW_ARTICLES: readonly HelpArticle[] = [
       {
         ul: [
           'Copy note writes one polite message per owner with their items, ready to paste into an email or chat.',
-          'Mark handled or Snooze for 7 days once an item is in hand. Undo or Reopen puts it back. These marks are kept in this browser.',
+          'Mark handled or Snooze for 7 days once an item is in hand. Undo or Reopen puts it back. A roll-up that changes after you marked it, such as a new overdue course, opens again.',
+          'Marks are kept in this browser, with the name you add under Handled and snoozed. Settings, This device saves them to a file for a teammate, or loads theirs.',
           'Filter by owner group, severity, due date or view, or search for an owner, person or req.',
           'Export list writes the filtered list and a by-owner sheet to Excel.',
         ],
       },
       {
-        note: 'Items follow the data standard like any number, and the page says how many are hidden and why. An employee relations item never names a person.',
+        note: 'Items from data below your data standard still show, tagged with their tier, and the page counts them: the work is real whatever the data. The same matter raised by two views, such as an export license, shows once. An item never carries a pay amount in its text, and an employee relations item never names a person.',
       },
     ],
   },

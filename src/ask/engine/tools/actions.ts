@@ -2,8 +2,10 @@
  * `open_items`: the Action center's counts (its own engine: `collectActions`, the marks kept in
  * this browser, the same owner groups and due buckets) by owner group, severity and source view,
  * and the owners with the most pressing items as tokens. Every count has a ref to its items.
- * Employee relations items never name a person (the Action center's rule), and the data standard
- * leaves out what it leaves out on the page.
+ * The items are the ones the mode's page lists (docs/ROLES-V2.md 7): in a role mode its "Needs
+ * attention" and "Waiting on others" (`roleView`, the page's own split), elsewhere every item,
+ * with the escalations counted. Employee relations items never name a person (the Action
+ * center's rule); items from data below the standard are listed and counted, as on the page.
  */
 
 import {
@@ -14,6 +16,7 @@ import {
   itemsDrill,
   type OpenAction,
   ownerTableRows,
+  roleView,
   settingsOf,
   viewRows,
 } from '@/views/actions/engine'
@@ -39,7 +42,13 @@ export function openItems(rt: ToolRuntime, raw: unknown): ToolOutput {
   const now = rt.env.now ?? Date.now()
   const marks = rt.env.marks ?? {}
   const { dueSoonDays } = settingsOf(ctx.metrics)
-  let open: OpenAction[] = collected.items.filter((a) => isOpen(a.id, marks, now))
+  const lists = roleView(collected, ctx, (a) => isOpen(a, marks, now))
+  // What the page lists: a role mode's two lists, else every open item.
+  let open: OpenAction[] = lists.lists ? [...lists.needs, ...lists.waiting] : lists.open
+  const inOpen = (xs: readonly OpenAction[]) => {
+    const keep = new Set(open)
+    return xs.filter((a) => keep.has(a))
+  }
   if (group) open = open.filter((a) => a.role === group)
   if (input.overdue_only)
     open = open.filter((a) => dueBucket(a.item.due, ctx.asOf, dueSoonDays) === 'overdue')
@@ -54,6 +63,18 @@ export function openItems(rt: ToolRuntime, raw: unknown): ToolOutput {
     owner_group: group ? ACTION_OWNER_LABEL[group] : 'All owner groups',
     overdue_only: !!input.overdue_only,
     open: { count: c.open.length, ref: ref('Open items', c.open) },
+    ...(lists.lists
+      ? {
+          needs_attention: {
+            count: inOpen(lists.needs).length,
+            ref: ref('Needs attention', inOpen(lists.needs)),
+          },
+          waiting_on_others: {
+            count: inOpen(lists.waiting).length,
+            ref: ref('Waiting on others', inOpen(lists.waiting)),
+          },
+        }
+      : { escalations: { count: inOpen(lists.needs).length, ref: ref('Escalations', inOpen(lists.needs)) } }),
     overdue: { count: c.overdue.length, ref: ref('Overdue items', c.overdue) },
     critical: { count: c.critical.length, ref: ref('Critical items', c.critical) },
     due_soon: {
@@ -91,10 +112,11 @@ export function openItems(rt: ToolRuntime, raw: unknown): ToolOutput {
         critical: o.critical,
         ref: rt.refs.add(o.itemsDrill, `Open items waiting on ${owner(o.owner, o.personId)}`),
       })),
-    hidden_by_data_standard: collected.hidden.count
+    below_data_standard: collected.below.count
       ? {
-          items: collected.hidden.count,
-          reasons: collected.hidden.reasons.map((r) => ({ what: r.subject, tier: r.tier, items: r.count })),
+          items: collected.below.count,
+          note: 'These items are listed, tagged with their tier: workflow shows at every data standard.',
+          reasons: collected.below.reasons.map((r) => ({ what: r.subject, tier: r.tier, items: r.count })),
         }
       : null,
     ...(collected.smallScope

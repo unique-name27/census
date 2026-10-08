@@ -20,6 +20,11 @@ export interface ExportTable {
 export interface ExportOptions {
   /** Pay amount columns (`pay: true`) are dropped unless this is on. */
   showPay: boolean
+  /**
+   * Cost total columns (`cost: true`) are dropped unless this is on (`ctx.showCost`: pay amounts
+   * on, or Finance mode). Follows `showPay` when not given.
+   */
+  showCost?: boolean
   /** File name without extension; defaults to `fileStem(meta, name)`. */
   fileName?: string
 }

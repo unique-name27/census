@@ -3,7 +3,8 @@
  * the merit guideline by rating are settings of the Compensation metrics, edited in the Data
  * room's Metric definitions with every other calculation setting (docs/METRICS.md), so each one
  * has one home and every change is logged. This section shows the values in force and opens the
- * dictionary filtered to Compensation, or at one metric.
+ * dictionary filtered to Compensation, or at one metric. In a mode without the Data room
+ * (Compensation) it shows the values only, and says where they change.
  */
 import { IconChevronRight } from '@/components/icons'
 import { Button } from '@/components/ui'
@@ -14,15 +15,20 @@ import type { ParamValue } from '@/metrics/types'
 import { openMetricDefinition, openMetricDefinitions } from '@/views/data/metrics/open'
 import { LINK, SettingsBlock } from './ui'
 
-const ROWS = [COMP_CYCLE.meritBudget, COMP_CYCLE.healthyBand, COMP_CYCLE.guideline] as const
+/** Every cycle setting, in the order `COMP_CYCLE` names them (a new one shows here as it is added). */
+const ROWS = Object.values(COMP_CYCLE)
+
+const INTRO =
+  'These settings now live in Metric definitions in the Data room, with every other calculation setting. Changes there apply to every view, are logged and can be undone.'
+const INTRO_READ_ONLY =
+  'These settings live in Metric definitions in the Data room, with every other calculation setting. Change them in HR mode; changes apply to every view and are logged.'
 
 export function CompSection() {
-  const { metrics } = useAnalytics()
+  const { metrics, access } = useAnalytics()
+  // The links open the Data room, which only some modes show.
+  const canEdit = access.can('page:data')
   return (
-    <SettingsBlock
-      section="compensation"
-      intro="These settings now live in Metric definitions in the Data room, with every other calculation setting. Changes there apply to every view, are logged and can be undone."
-    >
+    <SettingsBlock section="compensation" intro={canEdit ? INTRO : INTRO_READ_ONLY}>
       <dl className="flex flex-col">
         {ROWS.map(({ metricId, key }) => {
           const p = metrics.paramDef(metricId, key)
@@ -37,21 +43,25 @@ export function CompSection() {
               <dd className="flex items-baseline gap-2 text-small text-ink">
                 <span className="tnum">{formatParam(p, metrics.param<ParamValue>(metricId, key))}</span>
                 {changed && <span className="text-meta text-muted">changed from default</span>}
-                <button type="button" className={LINK} onClick={() => openMetricDefinition(metricId)}>
-                  Edit
-                  <span className="sr-only"> {p.label.toLowerCase()} in Metric definitions</span>
-                </button>
+                {canEdit && (
+                  <button type="button" className={LINK} onClick={() => openMetricDefinition(metricId)}>
+                    Edit
+                    <span className="sr-only"> {p.label.toLowerCase()} in Metric definitions</span>
+                  </button>
+                )}
               </dd>
             </div>
           )
         })}
       </dl>
-      <div>
-        <Button onClick={() => openMetricDefinitions({ view: 'comp' })}>
-          Open Compensation in Metric definitions
-          <IconChevronRight className="-mr-1 text-muted" />
-        </Button>
-      </div>
+      {canEdit && (
+        <div>
+          <Button onClick={() => openMetricDefinitions({ view: 'comp' })}>
+            Open Compensation in Metric definitions
+            <IconChevronRight className="-mr-1 text-muted" />
+          </Button>
+        </div>
+      )}
     </SettingsBlock>
   )
 }

@@ -140,6 +140,22 @@ export interface PerformanceRecords {
 /** Key of `PerformanceRecords.cycles`. */
 export const cycleKey = (cycle: string, businessUnit: string): string => `${cycle}|${businessUnit}`
 
+/**
+ * Rated in the latest cycle for one business unit (docs/ROLES-V2.md 5.7, the Talent home's review
+ * coverage): the same population as the "Rated in latest cycle" tile, cut by business unit.
+ */
+export interface CoverageByUnitRow {
+  businessUnit: string
+  /** Employees active at the as-of date in the unit (the tile's denominator). */
+  active: number
+  /** Of them, rated in the latest cycle. */
+  rated: number
+  /** rated ÷ active; null under the anonymity minimum. */
+  share: number | null
+  /** The active employees with no rating in the latest cycle (for the drill; not exported). */
+  unrated: Employee[]
+}
+
 export interface PerformanceResult {
   cycle: Cycle | null
   /** Scoped reviews in the latest cycle. */
@@ -150,6 +166,8 @@ export interface PerformanceResult {
   ratedLeft: number
   activeCount: number
   coverage: number | null
+  /** Coverage by business unit, the lowest share first (units under the minimum last). */
+  coverageByUnit: CoverageByUnitRow[]
   highShare: number | null
   distribution: DistributionRow[]
   distributionLong: DistributionLong[]
@@ -274,6 +292,38 @@ function calibrationRow(businessUnit: string, rows: Review[], min: number): Cali
     movedDown: ok ? pairs.filter((p) => p[0] > p[1]).length / n : null,
     movedUp: ok ? pairs.filter((p) => p[0] < p[1]).length / n : null,
   }
+}
+
+/** Rated in the latest cycle by business unit, from the cycle's reviews by employee ID. */
+function coverageByUnit(
+  base: TalentBase,
+  reviewOf: ReadonlyMap<string, Review>,
+  minGroup: number,
+): CoverageByUnitRow[] {
+  if (!base.latest) return []
+  const units = new Map<string, { active: number; rated: number; unrated: Employee[] }>()
+  for (const e of base.active) {
+    const bu = e.businessUnit || 'Unknown'
+    const u = units.get(bu) ?? { active: 0, rated: 0, unrated: [] }
+    u.active++
+    if (reviewOf.has(e.employeeId)) u.rated++
+    else u.unrated.push(e)
+    units.set(bu, u)
+  }
+  return [...units]
+    .map(([businessUnit, u]) => ({
+      businessUnit,
+      active: u.active,
+      rated: u.rated,
+      share: u.active >= minGroup ? u.rated / u.active : null,
+      unrated: u.unrated,
+    }))
+    .sort(
+      (a, b) =>
+        (a.share ?? 2) - (b.share ?? 2) ||
+        b.active - a.active ||
+        a.businessUnit.localeCompare(b.businessUnit),
+    )
 }
 
 export function computePerformance(base: TalentBase): PerformanceResult {
@@ -487,6 +537,7 @@ export function computePerformance(base: TalentBase): PerformanceResult {
     ratedLeft,
     activeCount: base.active.length,
     coverage: base.active.length ? ratedActive / base.active.length : null,
+    coverageByUnit: coverageByUnit(base, reviewOf, minGroup),
     highShare: share(high, n),
     distribution,
     distributionLong,

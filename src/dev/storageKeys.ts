@@ -43,10 +43,18 @@ export const STORAGE_KEYS: readonly StorageKeyDef[] = [
     inSettingsFile: true,
   },
   { key: 'census:lists', where: ['localStorage'], holds: 'Official lists', inSettingsFile: true },
-  { key: 'census:mode', where: ['localStorage'], holds: 'The mode and, in Manager mode, the manager' },
+  {
+    key: 'census:mode',
+    where: ['localStorage'],
+    holds: 'The mode and its picks: manager, business unit, region, recruiter',
+  },
   { key: 'census:dev', where: ['localStorage'], holds: 'The debug overlay switches' },
   { key: 'census:help', where: ['localStorage'], holds: 'Help: welcome card dismissed, tours finished' },
-  { key: 'census:actions', where: ['localStorage'], holds: 'Action center items marked handled or snoozed' },
+  {
+    key: 'census:actions',
+    where: ['localStorage'],
+    holds: 'Action center items marked handled or snoozed, and the name marks are kept under',
+  },
   { key: 'census:ai-agents', where: ['localStorage'], holds: 'The AI in HR agent catalog' },
   { key: 'census:quality-lens', where: ['localStorage'], holds: 'The quality lens switch' },
   {

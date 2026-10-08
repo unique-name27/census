@@ -113,9 +113,9 @@ describe('ask with a fake client', () => {
     expect(body.model).toBe('claude-opus-5-5')
     expect(body.max_tokens).toBe(MAX_TOKENS)
     expect(body.system).toEqual([{ type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }])
-    // HR mode: every tool but open_items while the Action center is not ready (Developer mode only).
-    expect((body.tools as { name: string }[]).map((t) => t.name)).not.toContain('open_items')
-    expect((body.tools as unknown[]).length).toBe(6)
+    // HR mode: every tool, open_items included.
+    expect((body.tools as { name: string }[]).map((t) => t.name)).toContain('open_items')
+    expect((body.tools as unknown[]).length).toBe(7)
     expect(body.cache_control).toEqual({ type: 'ephemeral' })
     expect(body.output_config).toEqual({ effort: 'medium' })
     expect(body.betas).toEqual([FALLBACK_BETA])

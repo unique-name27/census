@@ -1,9 +1,11 @@
 /**
  * The tier of a number: a medal glyph and the word ("Gold", "Silver", "Bronze", "No data"), so
  * the tier never relies on color. Hover or focus explains it; a click opens the dataset's
- * Quality panel in the Data room.
+ * Quality panel in the Data room. A screen reader hears "Bronze tier" in the reading flow and the
+ * long explanation only as the badge's description on focus, so a page of figures does not repeat
+ * it on every one (docs/ACTION-CENTER-AUDIT.md 3.14).
  */
-import type { ReactNode } from 'react'
+import { type ReactNode, useId } from 'react'
 import { openDatasetQuality } from '@/app/datasetFocus'
 import { useAnalyticsIfAny } from '@/data/context'
 import { TIER_LABEL, type Tier } from '@/data/quality/tier'
@@ -100,29 +102,47 @@ export function TierBadge({ tier, explain, dataset, onOpen, compact, className }
     </span>
   )
   const sr = [detail, open ? where : null].filter(Boolean).join(' ')
+  const describedId = useId()
+  // The explanation is the badge's description (read on focus), never part of the reading flow.
+  const described = sr ? (
+    <span id={describedId} hidden>
+      {sr}
+    </span>
+  ) : null
   if (!open)
     return (
-      <Tip content={tip}>
-        {/* biome-ignore lint/a11y/noNoninteractiveTabindex: focus shows the explanation, as hover does */}
-        <span tabIndex={0} className={cx(look, 'cursor-default')}>
-          {body}
-          {sr && <span className="sr-only"> tier. {sr}</span>}
-        </span>
-      </Tip>
+      <>
+        <Tip content={tip}>
+          <span
+            // biome-ignore lint/a11y/noNoninteractiveTabindex: focus shows the explanation, as hover does
+            tabIndex={0}
+            aria-describedby={sr ? describedId : undefined}
+            className={cx(look, 'cursor-default')}
+          >
+            {body}
+            <span className="sr-only"> tier</span>
+          </span>
+        </Tip>
+        {described}
+      </>
     )
   return (
-    <Tip content={tip}>
-      <button
-        type="button"
-        onClick={(e) => {
-          e.stopPropagation()
-          open()
-        }}
-        className={cx(look, 'relative z-10 hover:bg-hover hover:text-ink active:bg-press')}
-      >
-        {body}
-        {sr && <span className="sr-only"> tier. {sr}</span>}
-      </button>
-    </Tip>
+    <>
+      <Tip content={tip}>
+        <button
+          type="button"
+          aria-describedby={sr ? describedId : undefined}
+          onClick={(e) => {
+            e.stopPropagation()
+            open()
+          }}
+          className={cx(look, 'relative z-10 hover:bg-hover hover:text-ink active:bg-press')}
+        >
+          {body}
+          <span className="sr-only"> tier</span>
+        </button>
+      </Tip>
+      {described}
+    </>
   )
 }

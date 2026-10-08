@@ -276,12 +276,25 @@ export function groupScopes(ctx: ScopeContext, patch: DrillFilter): GroupScopes 
     const removed = before - after
     if ((before > 0 && after === 0) || (removed > 0 && removed < min) || !safe(leaveOut)) leaveOut = null
   }
-  // Manager mode (docs/ROLES.md, 3.13): only a scope the lock leaves unchanged (it stays inside the
-  // org) is offered, and leaving out a leader never is.
-  const lock = ctx.access?.lock
-  if (lock) {
-    if (filterTo && clampFilters(filterTo, lock) !== filterTo) filterTo = null
-    if (leaveOut && (patch.leaderId || clampFilters(leaveOut, lock) !== leaveOut)) leaveOut = null
+  // A scoped mode (docs/ROLES.md 3.13; docs/ROLES-V2.md 2.3, 3.2): only a scope the mode's clamp
+  // leaves unchanged is offered, so it stays inside the org, unit or region, and in Finance only
+  // business unit groups are (Exclude is off there). Leaving out a leader never is in Manager mode.
+  const access = ctx.access
+  const scope = access?.scope ?? access?.lock ?? null
+  const mode = access?.mode
+  if (scope || mode === 'finance') {
+    if (filterTo && clampFilters(filterTo, scope, mode) !== filterTo) filterTo = null
+    if (
+      leaveOut &&
+      ((scope?.kind === 'org' && patch.leaderId) || clampFilters(leaveOut, scope, mode) !== leaveOut)
+    )
+      leaveOut = null
+  }
+  // The mode's own decisions on the two actions (`focus:*`).
+  if (access?.can) {
+    if (filterTo && !access.can('focus:filter-to')) filterTo = null
+    if (leaveOut && !access.can(patch.leaderId ? 'focus:leave-out-leader' : 'focus:leave-out'))
+      leaveOut = null
   }
   return { filterTo, leaveOut }
 }

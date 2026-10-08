@@ -14,8 +14,7 @@
  */
 import { Dialog as BDialog } from '@base-ui/react/dialog'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { KIND_NOT_SHOWN, recordsLeftOut } from '@/access/copy'
-import { rowsInLock } from '@/access/records'
+import { rowsInScope } from '@/access/records'
 import { DataTable } from '@/charts/DataTable'
 import { Figure } from '@/charts/Figure'
 import { BarList } from '@/charts/kit/BarList'
@@ -35,10 +34,12 @@ import { Button, Menu } from '@/components/ui'
 import { useAnalytics } from '@/data/context'
 import { datasetDef } from '@/data/schema'
 import { vocabularyOf } from '@/data/urlScope'
+import { moneyOpts } from '@/lib/export/columns'
 import { fmt } from '@/lib/format'
 import { DrillNesting } from './Drill'
 import { filterActionLabels, filterInData, groupName, groupScopes, isFilterable } from './filter'
 import { focusScope } from './focus'
+import { immigrationNote, kindHiddenLine, payAmountsNote, recordsOutsideLine } from './guard'
 import { PersonCard } from './PersonCard'
 import { buildDrillTable, DRILLS_KEY, drillNoun, drillTableHint, ROW_KEY, rowPerson } from './records'
 import { pushDrill, useDrillStore } from './store'
@@ -232,14 +233,15 @@ function RecordsView({ spec: asked, from }: { spec: DrillSpec; from: string | nu
   const ctx = useAnalytics()
   const meta = useExportMeta()
   const openPerson = useDrillStore((s) => s.openPerson)
-  // Manager mode (docs/ROLES.md, 3.12): a kind it does not list shows a sentence instead of a
-  // table, and rows about people outside the org are left out, said in one muted line.
-  const lock = ctx.access.lock
+  // Every mode (docs/ROLES-V2.md 2.7, 4.12): a kind it does not list shows a sentence instead of
+  // a table, and rows outside its scope (an org, a business unit, a region, a recruiter's reqs)
+  // are left out, said in one muted line.
   const shownKind = ctx.access.can(`drill:${asked.kind}`)
   const guarded = useMemo(() => {
-    const r = rowsInLock(asked, ctx)
+    const r = rowsInScope(asked, ctx)
     return { spec: r.leftOut ? { ...asked, rows: r.rows } : asked, leftOut: r.leftOut }
   }, [asked, ctx])
+  const outsideLine = recordsOutsideLine(ctx.access, guarded.leftOut)
   const spec = guarded.spec
   const table = useMemo(() => buildDrillTable(spec, ctx), [spec, ctx])
   const target = (r: Record<string, unknown>) => {
@@ -260,7 +262,8 @@ function RecordsView({ spec: asked, from }: { spec: DrillSpec; from: string | nu
     rows: table.rows,
     tier: drillTier(ctx.quality, spec).tier,
   }
-  const opts = { showPay: ctx.showPay }
+  // Pay amounts per the switch, cost totals per the mode: the rows the panel lists, nothing more.
+  const opts = moneyOpts(ctx)
 
   const onCsv = async () => {
     const m = await import('@/lib/export')
@@ -295,13 +298,29 @@ function RecordsView({ spec: asked, from }: { spec: DrillSpec; from: string | nu
     }
   }
 
+  // The rows the panel lists, where the mode exports records (`export:records`); the spec for Developer.
+  const exportItems = [
+    ...(ctx.access.can('export:records')
+      ? [
+          { label: 'Download CSV', icon: <IconFile />, onSelect: () => void onCsv() },
+          { label: 'Download Excel', icon: <IconFile />, onSelect: () => void onXlsx() },
+          { label: 'Copy table', icon: <IconCopy />, onSelect: () => void onCopy() },
+        ]
+      : []),
+    ...(ctx.access.can('export:drill-spec')
+      ? [{ label: 'Copy drill spec (JSON)', icon: <IconCopy />, onSelect: () => void onCopySpec() }]
+      : []),
+  ]
+
   if (!shownKind)
     return (
       <div className="flex flex-col gap-2">
         <BDialog.Title tabIndex={-1} className="cut-head text-section leading-tight font-semibold">
           {spec.title}
         </BDialog.Title>
-        <BDialog.Description className="text-small text-ink-2">{KIND_NOT_SHOWN}</BDialog.Description>
+        <BDialog.Description className="text-small text-ink-2">
+          {kindHiddenLine(ctx.access)}
+        </BDialog.Description>
       </div>
     )
 
@@ -320,26 +339,19 @@ function RecordsView({ spec: asked, from }: { spec: DrillSpec; from: string | nu
           </BDialog.Description>
           {spec.note && <p className="mt-1 max-w-[70ch] text-meta text-muted">{spec.note}</p>}
         </div>
-        <Menu
-          width={220}
-          trigger={
-            <Button icon={<IconDownload />} caret disabled={!table.rows.length}>
-              Export
-            </Button>
-          }
-          items={[
-            { label: 'Download CSV', icon: <IconFile />, onSelect: () => void onCsv() },
-            { label: 'Download Excel', icon: <IconFile />, onSelect: () => void onXlsx() },
-            { label: 'Copy table', icon: <IconCopy />, onSelect: () => void onCopy() },
-            ...(ctx.access.can('export:drill-spec')
-              ? [{ label: 'Copy drill spec (JSON)', icon: <IconCopy />, onSelect: () => void onCopySpec() }]
-              : []),
-          ]}
-        />
+        {exportItems.length > 0 && (
+          <Menu
+            width={220}
+            trigger={
+              <Button icon={<IconDownload />} caret disabled={!table.rows.length}>
+                Export
+              </Button>
+            }
+            items={exportItems}
+          />
+        )}
       </div>
-      {lock && guarded.leftOut > 0 && (
-        <p className="text-meta text-muted">{recordsLeftOut(guarded.leftOut, lock.managerName)}</p>
-      )}
+      {outsideLine && <p className="text-meta text-muted">{outsideLine}</p>}
       {spec.filter && <FilterActions filter={spec.filter} filterLabel={spec.filterLabel} />}
       {spec.action && (
         <div className="flex flex-wrap items-center gap-2">
@@ -356,15 +368,10 @@ function RecordsView({ spec: asked, from }: { spec: DrillSpec; from: string | nu
       )}
       <RecordsSummary spec={spec} table={table} />
       {!ctx.showPay && spec.kind === 'comp' && (
-        <p className="text-meta text-muted">
-          Pay amounts are hidden. Switch on "Show pay amounts" in Settings or in Compensation to include them.
-        </p>
+        <p className="text-meta text-muted">{payAmountsNote(ctx.access)}</p>
       )}
       {!ctx.showImmigration && spec.kind === 'rightToWork' && (
-        <p className="text-meta text-muted">
-          Authorization types are hidden. Switch on "Show immigration details" in Settings, Privacy to include
-          them for this session.
-        </p>
+        <p className="text-meta text-muted">{immigrationNote(ctx.access)}</p>
       )}
       {(spec.kind === 'surveyGroups' || spec.kind === 'surveyResponses') && (
         <p className="text-meta text-muted">

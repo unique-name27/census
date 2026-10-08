@@ -53,7 +53,7 @@ import {
 } from '../engine/first90'
 import { ACCEPT_TO_START, FORECAST, NEW_HIRE_TX, OPEN_REQS, RENEGE, UPCOMING } from '../engine/lineage'
 import type { CoverageRow, PlanLineView, PlanModel, UnitCut, UnitMonthCell } from '../engine/plan'
-import { regionOf, regionSites, type Start } from '../engine/starts'
+import { regionSites, type Start } from '../engine/starts'
 import type { CalendarRow, DaysRow, RenegeRow } from '../engine/upcoming'
 
 type Uses = readonly FieldRef[]
@@ -347,7 +347,7 @@ export const quarterRoleDrill = (b: OnboardingBase, quarter: string, uses: Uses)
 
 /**
  * The day-30 pulse by region: a shown region opens its answers by location, filtered to its sites
- * and named as the region ("Filter to Asia Pacific"); a hidden or folded one opens every region's
+ * and named as the region ("Filter to APAC"); a hidden or folded one opens every region's
  * groups, without a filter. Answers follow the respondent's employee record, as the figure groups
  * them, so "Filter to" keeps the region's respondents and mean.
  */
@@ -369,13 +369,13 @@ export function pulseRegionDrill(
   const who = respondentIndex({ employees })
   return byGroup(
     'location',
-    (r: { region: string }) => (shown.has(r.region) ? regionSites(employees, r.region) : null),
+    (r: { region: string }) => (shown.has(r.region) ? regionSites(b.regions, r.region) : null),
     (r: { region: string }) => {
       const g = shown.get(r.region)
       if (!g) return whole
       return () => {
         const answers = pulse.answers.filter(
-          (x) => regionOf(who(x.respondentKey).employee?.location) === r.region,
+          (x) => b.regions.regionOf(who(x.respondentKey).employee?.location) === r.region,
         )
         const bySite = breakdown(
           answers,
@@ -396,19 +396,14 @@ export function pulseRegionDrill(
 
 /**
  * Late day-one tasks by task and region (or site): a cell's late tasks, with the region's sites as
- * the filter named as the region ("Filter to Asia Pacific"), or the site itself. Hidden cells and
+ * the filter named as the region ("Filter to APAC"), or the site itself. Hidden cells and
  * the "Unknown" place open nothing or carry no filter.
  */
-export function lateCellDrill(
-  b: OnboardingBase,
-  employees: readonly Employee[],
-  by: 'region' | 'site',
-  uses: Uses,
-): Build<LateCell> {
+export function lateCellDrill(b: OnboardingBase, by: 'region' | 'site', uses: Uses): Build<LateCell> {
   return byGroup(
     'location',
     (c: LateCell) =>
-      by === 'region' ? (named(c.place) ? regionSites(employees, c.place) : null) : named(c.place),
+      by === 'region' ? (named(c.place) ? regionSites(b.regions, c.place) : null) : named(c.place),
     (c) => (c.items.length ? () => lateTasksDrill(b, c, { uses }) : null),
     (c) => (by === 'region' ? c.place : null),
   )

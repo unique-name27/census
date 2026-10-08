@@ -1,7 +1,17 @@
 import { describe, expect, it } from 'vitest'
+import type { AccessInput } from '@/access/context'
+import { sampleCtx } from '@/ask/engine/testkit'
 import { DATASET_KEYS, type DatasetKey } from '@/data/schema'
 import type { SourceMeta } from '@/data/store'
-import { buildExportMeta, companyLine, datasetNote, resolveTab, uploadedCount } from './exportMeta'
+import { modeMeta } from '@/lib/export/modeMeta'
+import {
+  accessInputOf,
+  buildExportMeta,
+  companyLine,
+  datasetNote,
+  resolveTab,
+  uploadedCount,
+} from './exportMeta'
 
 const sources = (uploaded: Partial<Record<DatasetKey, SourceMeta>> = {}) =>
   Object.fromEntries(DATASET_KEYS.map((k) => [k, uploaded[k] ?? { kind: 'sample', rowCount: 10 }])) as Record<
@@ -126,5 +136,66 @@ describe('buildExportMeta', () => {
       isSample: false,
       company: '',
     })
+  })
+})
+
+describe('the mode a whole-view export renders in', () => {
+  const hr = sampleCtx()
+  const boss = [...hr.org.children.entries()].sort((a, b) => b[1].length - a[1].length)[1][0]
+  const inputs: AccessInput[] = [
+    { mode: 'hr' },
+    { mode: 'finance' },
+    { mode: 'hrbp-unit', picks: { unit: 'Silicon Engineering' } },
+    { mode: 'hrbp-region', picks: { region: 'APAC' } },
+    { mode: 'recruiter', picks: { recruiter: { name: 'Agnieszka Nielsen', id: null } } },
+    { mode: 'recruiter', picks: { recruiter: { name: '*', id: null } } },
+    { mode: 'manager', picks: { managerId: boss } },
+    // Picks that are missing or gone stay so: the off-screen tabs hold nobody too.
+    { mode: 'hrbp-unit', picks: { unit: 'Nowhere' } },
+    { mode: 'hrbp-region' },
+    { mode: 'recruiter' },
+  ]
+
+  it('rebuilds the same mode and scope from the context on screen', () => {
+    for (const input of inputs) {
+      const ctx = sampleCtx({ access: input })
+      const again = sampleCtx({ access: accessInputOf(ctx.access) })
+      const label = JSON.stringify(input)
+      expect(again.access.mode, label).toBe(ctx.access.mode)
+      expect(again.access.unset, label).toBe(ctx.access.unset)
+      expect(again.access.scope?.kind ?? null, label).toBe(ctx.access.scope?.kind ?? null)
+      expect(again.access.scope?.label ?? null, label).toBe(ctx.access.scope?.label ?? null)
+      expect(again.access.scope?.size ?? null, label).toBe(ctx.access.scope?.size ?? null)
+      expect(again.data.employees.length, label).toBe(ctx.data.employees.length)
+    }
+  })
+})
+
+describe('the Action center list and My list exports', () => {
+  // Export list and My list write through useExportMeta, which adds modeMeta(ctx.access).
+  it('carry the mode and its scope in every mode but HR and Developer', () => {
+    const cases: [AccessInput, RegExp | null][] = [
+      [{ mode: 'hr' }, null],
+      [{ mode: 'developer' }, null],
+      [{ mode: 'chro' }, /^Made in CHRO mode\.$/],
+      [
+        { mode: 'hrbp-unit', picks: { unit: 'Silicon Engineering' } },
+        /^Made in HRBP mode for Silicon Engineering\.$/,
+      ],
+      [{ mode: 'hrbp-region', picks: { region: 'APAC' } }, /^Made in HRBP mode for APAC\.$/],
+      [{ mode: 'compensation' }, /^Made in Compensation mode\.$/],
+      [{ mode: 'talent-management' }, /^Made in Talent management mode\.$/],
+      [{ mode: 'hr-ops' }, /^Made in HR ops mode\.$/],
+      [
+        { mode: 'recruiter', picks: { recruiter: { name: 'Agnieszka Nielsen', id: null } } },
+        /^Made in Recruiter mode for Agnieszka Nielsen's reqs\.$/,
+      ],
+      [{ mode: 'finance' }, /^Made in Finance mode\.$/],
+    ]
+    for (const [input, line] of cases) {
+      const meta = modeMeta(sampleCtx({ access: input }).access)
+      if (line) expect(meta.modeLine, input.mode).toMatch(line)
+      else expect(meta.modeLine, input.mode).toBeUndefined()
+    }
   })
 })

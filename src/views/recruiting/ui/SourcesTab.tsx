@@ -278,7 +278,7 @@ export function SourcesTab() {
               extra: `Sites under ${minGroup} resolved offers fold into Other; a row still under ${minGroup} shows only its offer count.`,
             }),
           ]}
-          note={`${plural(offersN, 'offer')} resolved · company ${fmt(companyAcc, 'pct')} · ${asOfNote(b.asOf)}`}
+          note={`${plural(offersN, 'offer')} resolved · ${b.bench.note} ${fmt(companyAcc, 'pct')} · ${asOfNote(b.asOf)}`}
         >
           <BarList
             data={byLocation}
@@ -294,7 +294,7 @@ export function SourcesTab() {
             }
             ref={
               companyAcc != null
-                ? { value: companyAcc, label: `Company ${fmt(companyAcc, 'pct0')}` }
+                ? { value: companyAcc, label: `${b.bench.label} ${fmt(companyAcc, 'pct0')}` }
                 : undefined
             }
             tone={(d) =>

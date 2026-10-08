@@ -127,12 +127,25 @@ const STATUS_RANK: Record<RoleStatus, number> = { 'No successor': 0, Thin: 1, Co
 
 /**
  * The successors' names. In Manager mode (docs/ROLES.md, 4.5) a successor outside the manager's
- * org shows by readiness only, never by name: "Ann Lee, 1 outside your org, ready now".
+ * org shows by readiness only, never by name: "Ann Lee, 1 outside your org, ready now". In HRBP
+ * mode for a business unit or a region (docs/ROLES-V2.md 2.7) a successor outside the scope shows
+ * by name with their business unit or site, as plain text: "Ana Ruiz (Data Center Group)"; the
+ * records panel gives them the limited card, so they never open.
  */
 function successorNames(
   base: TalentBase,
   bench: readonly { id: string; readiness: Readiness | null }[],
 ): string {
+  const scope = base.ctx.access?.scope
+  if (scope && (scope.kind === 'unit' || scope.kind === 'region'))
+    return bench
+      .map((b) => {
+        if (scope.memberIds.has(b.id)) return nameOf(base, b.id)
+        const e = base.byId.get(b.id)
+        const where = scope.kind === 'unit' ? e?.businessUnit : e?.location
+        return where ? `${nameOf(base, b.id)} (${where})` : nameOf(base, b.id)
+      })
+      .join(', ')
   const lock = base.ctx.access?.lock
   if (!lock) return bench.map((b) => nameOf(base, b.id)).join(', ')
   const inside = bench.filter((b) => lock.orgIds.has(b.id)).map((b) => nameOf(base, b.id))

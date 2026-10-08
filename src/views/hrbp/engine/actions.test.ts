@@ -4,6 +4,8 @@
  * partner), on hand-built data and on the sample company.
  */
 import { describe, expect, it } from 'vitest'
+import { buildContext } from '@/data/context'
+import { DEFAULT_FILTERS } from '@/data/scope'
 import { resolveDrill } from '@/drill/Drill'
 import { metricsWith } from '@/metrics/testing'
 import { ACTION_OWNER_ROLES, type ActionItem } from '../../types'
@@ -81,15 +83,37 @@ describe('action items on hand-built data (as of 30 Sep 2026)', () => {
       due: '2026-09-13',
       view: 'hrbp',
       tab: 'attrition',
-      subject: { kind: 'employees', id: 'M1', label: "Heather Hayes's team" },
+      // A team, not the manager: About never opens the manager's card.
+      subject: { kind: 'none', label: "Heather Hayes's team" },
+      place: { businessUnit: hayes.businessUnit, location: hayes.location },
     })
     expect(x.what).toBe(
-      "3 regretted exits from Heather Hayes's team in the last 12 months, the latest on 14 Aug 2026",
+      "3 regretted exits from Heather Hayes's team in the last 12 months, the latest on 14 Aug",
     )
+    expect(x.fingerprint).toMatch(/^3:[0-9a-f]{8}$/)
     expect(x.note).toMatch(/^Could you hold stay conversations with the rest of your team this month\?/)
     expect(resolveDrill(x.drill)!.rows).toHaveLength(3)
     // No leaver is named in the item's words.
     for (const e of left) expect(`${x.what} ${x.note}`).not.toContain(e.name)
+  })
+
+  it('says "exits" to the manager in Manager mode, never "regretted exits"', () => {
+    const data = { employees: [partner, hayes, ...team, ...left] }
+    const base = ctxOf(data)
+    const asManager = buildContext({
+      data: base.all,
+      sources: base.sources,
+      filters: DEFAULT_FILTERS,
+      asOfOverride: base.asOf,
+      showPay: false,
+      access: { mode: 'manager', picks: { managerId: 'M1' } },
+    })
+    const x = byId(hrbpActions(asManager), 'hrbp:stay-conversations:M1')
+    expect(x.what).toBe("3 exits from Heather Hayes's team in the last 12 months, the latest on 14 Aug")
+    expect(`${x.what} ${x.note}`).not.toMatch(/regrett/i)
+    expect(resolveDrill(x.drill)!.title).toMatch(/^Leavers from/)
+    // The same leavers, so a mark made in one mode holds in the other.
+    expect(x.fingerprint).toBe(byId(hrbpActions(base), 'hrbp:stay-conversations:M1').fingerprint)
   })
 
   it('reads the due window from the dictionary', () => {

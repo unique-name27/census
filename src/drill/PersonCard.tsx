@@ -1,13 +1,17 @@
 /**
  * One person, on one sheet: role, place in the org, history, ratings and open items. Names in the
  * manager chain and the direct reports open their own cards; the counts (direct reports, org,
- * open cases, overdue courses) open the records behind them. Pay amounts are never shown here;
- * compa-ratio is.
+ * open cases, overdue courses) open the records behind them. Compa-ratio shows where the mode
+ * shows it; pay amounts only in a switch mode with "Show pay amounts" on.
+ *
+ * The mode shapes the card (docs/ROLES-V2.md 4.12, `personCardPlan` in ./person.ts): someone
+ * outside the scope gets the limited card ("Outside APAC."), Recruiter mode a pre-hire's start,
+ * Finance mode the reporting facts with no ratings, pay ratio or history, and every other part
+ * follows its own decision.
  */
 import { Dialog as BDialog } from '@base-ui/react/dialog'
 import { useMemo } from 'react'
-import { outsideOrg } from '@/access/copy'
-import { personInLock } from '@/access/records'
+import { personInScope } from '@/access/records'
 import { Button, StatusPill, Tag } from '@/components/ui'
 import { useAnalytics } from '@/data/context'
 import { RATING_LABELS } from '@/data/schema'
@@ -16,7 +20,7 @@ import { fmt } from '@/lib/format'
 import { openInOrgChart } from '@/views/org/link'
 import { Drill } from './Drill'
 import { focusScope } from './focus'
-import { jobLine, personSummary } from './person'
+import { jobLine, type PersonSummary, personSummary } from './person'
 import { directsSpec, openCasesSpec, orgSpec, overdueSpec } from './related'
 import { useDrillStore } from './store'
 
@@ -50,7 +54,8 @@ export function PersonCard({ employeeId }: { employeeId: string }) {
     )
   }
   const e = p.employee
-  // Manager mode, someone outside the org: who they are, and nothing else (docs/ROLES.md, 3.12).
+  const card = p.card
+  // Someone outside the scope: who they are, and nothing else (docs/ROLES-V2.md 2.7, 4.12).
   if (p.outside)
     return (
       <article className="flex flex-col gap-2">
@@ -59,9 +64,10 @@ export function PersonCard({ employeeId }: { employeeId: string }) {
         </BDialog.Title>
         <BDialog.Description className="text-body text-ink-2">{e.jobTitle}</BDialog.Description>
         {e.department && <p className="text-small text-ink-2">{e.department}</p>}
-        <p className="text-small text-muted">{outsideOrg(ctx.access.lock?.managerName ?? 'the manager')}</p>
+        {card.outsideLine && <p className="text-small text-muted">{card.outsideLine}</p>}
       </article>
     )
+  if (p.preHire) return <PreHireCard p={p} />
   const latest = p.reviews[0]
   const count = (n: number, one: string, many: string) => `${fmt(n, 'int')} ${n === 1 ? one : many}`
   const casesText = count(p.openCases, 'open HR case', 'open HR cases')
@@ -99,8 +105,18 @@ export function PersonCard({ employeeId }: { employeeId: string }) {
             {[e.department, e.businessUnit, e.location].filter(Boolean).join(' · ') || '—'}
             {e.employmentType && e.employmentType !== 'Employee' ? ` · ${e.employmentType}` : ''}
           </dd>
+          {card.costCenter && (
+            <>
+              <dt className="text-muted">Cost center</dt>
+              <dd className="text-ink-2">{e.costCenter || '—'}</dd>
+            </>
+          )}
         </dl>
-        <PersonActions employeeId={e.employeeId} manages={p.directs.length > 0} />
+        <PersonActions
+          employeeId={e.employeeId}
+          focus={card.focus && p.directs.length > 0}
+          orgChart={card.orgChart}
+        />
       </header>
 
       <section className="border-y border-rule py-4">
@@ -111,8 +127,8 @@ export function PersonCard({ employeeId }: { employeeId: string }) {
                 {p.chain.map((m, i) => (
                   <span key={m.employeeId} className="flex items-center gap-1">
                     {i > 0 && <span className="text-muted">›</span>}
-                    {/* Manager mode: names above the manager read as plain text. */}
-                    {personInLock(m.employeeId, ctx.access) ? (
+                    {/* A scoped mode: names outside it (above the manager) read as plain text. */}
+                    {personInScope(m.employeeId, ctx.access) ? (
                       <button type="button" className={LINK} onClick={() => openPerson(m.employeeId)}>
                         {m.name}
                       </button>
@@ -129,58 +145,75 @@ export function PersonCard({ employeeId }: { employeeId: string }) {
           <Fact label="Hired">
             {formatDate(e.hireDate)} · {fmt(p.tenureYears, 'years')}
           </Fact>
-          <Fact label="Team">
-            {p.directs.length ? (
-              <>
-                <Drill
-                  spec={lists.directs}
-                  label={`Show ${e.name}'s ${count(p.directs.length, 'direct report', 'direct reports')}`}
-                >
-                  {count(p.directs.length, 'direct report', 'direct reports')}
-                </Drill>
-                {' · '}
-                {/* Everyone below them, contractors and interns too; the leader filter and headcount
-                    count employees with the leader, so the card says what it counts. */}
-                <Drill
-                  spec={lists.org}
-                  label={`Show the ${count(p.orgSize, 'person', 'people')} below ${e.name}`}
-                >
-                  {`${count(p.orgSize, 'person', 'people')} below them`}
-                </Drill>
-                {p.orgContingent > 0 &&
-                  `, including ${count(p.orgContingent, 'contractor or intern', 'contractors or interns')}`}
-              </>
-            ) : (
-              'No direct reports'
-            )}
-          </Fact>
-          <Fact label="Latest rating">
-            {latest
-              ? `${latest.rating} ${RATING_LABELS[latest.rating] ?? ''} (${latest.cycle})${latest.potential ? ` · ${latest.potential} potential` : ''}`
-              : 'Not rated'}
-          </Fact>
-          {!p.limited && (
+          {card.team && (
+            <Fact label="Team">
+              {p.directs.length ? (
+                <>
+                  <Drill
+                    spec={lists.directs}
+                    label={`Show ${e.name}'s ${count(p.directs.length, 'direct report', 'direct reports')}`}
+                  >
+                    {count(p.directs.length, 'direct report', 'direct reports')}
+                  </Drill>
+                  {' · '}
+                  {/* Everyone below them, contractors and interns too; the leader filter and headcount
+                      count employees with the leader, so the card says what it counts. */}
+                  <Drill
+                    spec={lists.org}
+                    label={`Show the ${count(p.orgSize, 'person', 'people')} below ${e.name}`}
+                  >
+                    {`${count(p.orgSize, 'person', 'people')} below them`}
+                  </Drill>
+                  {p.orgContingent > 0 &&
+                    `, including ${count(p.orgContingent, 'contractor or intern', 'contractors or interns')}`}
+                </>
+              ) : (
+                'No direct reports'
+              )}
+            </Fact>
+          )}
+          {card.ratings && (
+            <Fact label="Latest rating">
+              {latest
+                ? `${latest.rating} ${RATING_LABELS[latest.rating] ?? ''} (${latest.cycle})${latest.potential ? ` · ${latest.potential} potential` : ''}`
+                : 'Not rated'}
+            </Fact>
+          )}
+          {card.compaRatio && (
             <Fact label="Compa-ratio">{p.compaRatio == null ? '—' : fmt(p.compaRatio, 'num2')}</Fact>
           )}
-          <Fact label="Open items">
-            {/* Employee relations cases are left out of this count: ER is never tied to a named person.
-                Manager mode shows no HR cases at all. */}
-            {!p.limited && (
-              <>
+          {/* One person's amounts: a switch mode with "Show pay amounts" on (docs/ROLES-V2.md 3.3). */}
+          {card.pay && p.pay && (
+            <Fact label="Base salary">
+              {`${p.pay.currency} ${fmt(p.pay.baseSalary, 'int')}`}
+              <span className="text-ink-2">{` · midpoint ${fmt(p.pay.rangeMid, 'int')}`}</span>
+            </Fact>
+          )}
+          {(card.openCases || card.courses) && (
+            <Fact label="Open items">
+              {/* Employee relations cases are left out of this count: ER is never tied to a named
+                  person. Modes without HR ops cases (Manager, Talent management) show none. */}
+              {card.openCases && (
                 <Drill spec={lists.cases} label={`Show ${e.name}'s ${casesText}`}>
                   {casesText}
                 </Drill>
-                {' · '}
-              </>
-            )}
-            <Drill spec={lists.courses} label={`Show ${e.name}'s ${coursesText}`}>
-              {coursesText}
-            </Drill>
-          </Fact>
+              )}
+              {card.openCases && card.courses && ' · '}
+              {card.courses && (
+                <Drill spec={lists.courses} label={`Show ${e.name}'s ${coursesText}`}>
+                  {coursesText}
+                </Drill>
+              )}
+            </Fact>
+          )}
           {p.successorFor.length > 0 && <Fact label="Named successor for">{p.successorFor.join(', ')}</Fact>}
           {p.status === 'Left' && (
             <Fact label="Exit">
-              {[e.terminationType, e.terminationReason, e.regrettable ? 'Regrettable' : null]
+              {[
+                e.terminationType,
+                card.exitDetail ? e.terminationReason : null,
+                card.exitDetail && e.regrettable ? 'Regrettable' : null,
+              ]
                 .filter(Boolean)
                 .join(' · ') || '—'}
             </Fact>
@@ -197,9 +230,13 @@ export function PersonCard({ employeeId }: { employeeId: string }) {
               .sort((a, b) => a.name.localeCompare(b.name))
               .map((d) => (
                 <li key={d.employeeId} className="flex min-w-0 items-baseline gap-2">
-                  <button type="button" className={LINK} onClick={() => openPerson(d.employeeId)}>
-                    {d.name}
-                  </button>
+                  {personInScope(d.employeeId, ctx.access) ? (
+                    <button type="button" className={LINK} onClick={() => openPerson(d.employeeId)}>
+                      {d.name}
+                    </button>
+                  ) : (
+                    <span>{d.name}</span>
+                  )}
                   <span className="truncate text-meta text-muted">{d.jobTitle}</span>
                 </li>
               ))}
@@ -258,6 +295,56 @@ export function PersonCard({ employeeId }: { employeeId: string }) {
   )
 }
 
+/**
+ * Recruiter mode: a pre-hire on the recruiter's reqs (docs/ROLES-V2.md 4.12): name, role, start
+ * date, hiring manager and day-one readiness, with no actions.
+ */
+function PreHireCard({ p }: { p: PersonSummary }) {
+  const e = p.employee
+  const s = p.preHire
+  if (!s) return null
+  const r = s.readiness
+  const open = [
+    r.overdue ? `${fmt(r.overdue, 'int')} overdue` : '',
+    r.blocked ? `${fmt(r.blocked, 'int')} blocked` : '',
+  ].filter(Boolean)
+  return (
+    <article className="flex flex-col gap-5">
+      <header className="flex flex-col gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <BDialog.Title tabIndex={-1} className="cut-head text-page-title leading-tight font-semibold">
+            {e.name}
+          </BDialog.Title>
+          <StatusPill severity="info" label={`Starts ${formatDate(s.startDate)}`} />
+        </div>
+        <BDialog.Description className="text-body text-ink-2">
+          {e.jobTitle}
+          {p.levelLabel ? ` · ${p.levelLabel}` : ''}
+        </BDialog.Description>
+        <p className="text-small text-ink-2">
+          {[e.department, e.location].filter(Boolean).join(' · ') || '—'}
+        </p>
+      </header>
+      <section className="border-y border-rule py-4">
+        <dl className="grid grid-cols-1 gap-x-6 gap-y-3 text-small sm:grid-cols-2">
+          <Fact label="Start date">{formatDate(s.startDate)}</Fact>
+          <Fact label="Hiring manager">{s.hiringManager ?? '—'}</Fact>
+          {s.reqId && (
+            <Fact label="Requisition">
+              <span className="font-mono text-meta">{s.reqId}</span>
+            </Fact>
+          )}
+          <Fact label="Day-one readiness">
+            {r.total
+              ? `${fmt(r.done, 'int')} of ${fmt(r.total, 'int')} tasks done${open.length ? ` · ${open.join(' · ')}` : ''}`
+              : 'No readiness tasks on file'}
+          </Fact>
+        </dl>
+      </section>
+    </article>
+  )
+}
+
 function Fact({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex min-w-0 flex-col gap-0.5">
@@ -267,13 +354,25 @@ function Fact({ label, children }: { label: string; children: React.ReactNode })
   )
 }
 
-/** "Focus on their org" and "Show in org chart" for a person card. */
-function PersonActions({ employeeId, manages }: { employeeId: string; manages: boolean }) {
+/**
+ * "Focus on their org" and "Show in org chart" for a person card, where the mode offers them:
+ * Focus only when the mode's scope keeps it (a manager inside the org, the unit or the region;
+ * never in Finance, which filters by business unit only), the org chart only where it shows.
+ */
+function PersonActions({
+  employeeId,
+  focus,
+  orgChart,
+}: {
+  employeeId: string
+  focus: boolean
+  orgChart: boolean
+}) {
   const close = useDrillStore((s) => s.close)
   const { org } = useAnalytics()
   return (
     <div className="flex flex-wrap gap-2">
-      {manages && (
+      {focus && (
         <Button
           onClick={() => {
             // The same merge, history entry and Undo as "Filter to" in the records panel.
@@ -283,14 +382,16 @@ function PersonActions({ employeeId, manages }: { employeeId: string; manages: b
           Focus on their org
         </Button>
       )}
-      <Button
-        onClick={() => {
-          close()
-          openInOrgChart(employeeId)
-        }}
-      >
-        Show in org chart
-      </Button>
+      {orgChart && (
+        <Button
+          onClick={() => {
+            close()
+            openInOrgChart(employeeId)
+          }}
+        >
+          Show in org chart
+        </Button>
+      )}
       <Tag tone="outline">ID {employeeId}</Tag>
     </div>
   )

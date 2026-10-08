@@ -9,6 +9,7 @@ import { FRESHNESS, type Link, LINKS as QUALITY_LINKS } from '@/data/quality/rul
 import type { QualityIndex } from '@/data/quality/types'
 import { type DatasetKey, type Datasets, datasetDef, type ISODate, OPTIONAL_DATASETS } from '@/data/schema'
 import type { SourceMeta } from '@/data/store'
+import { budgetIssues } from '@/lib/budget'
 import { daysBetween, formatDate } from '@/lib/dates'
 import { fmt } from '@/lib/format'
 import { type DatasetCoverage, type FieldCoverage, type FieldFills, fieldRecords } from './coverage'
@@ -34,6 +35,8 @@ export type CheckSelect =
   | { by: 'defaulted'; field: string }
   /** Rows with a reference that does not resolve in the linked dataset. */
   | { by: 'unlinked' }
+  /** Rows a dataset's own rule found (budget lines at two levels), by position, with the panel's title. */
+  | { by: 'rows'; rows: readonly number[]; title: string }
 
 export interface CheckRecords {
   select: CheckSelect
@@ -286,6 +289,28 @@ function rosterChecks(
   return out
 }
 
+/**
+ * The budget's own rules (`budgetIssues`): lines at two levels for one business unit and month,
+ * no line for the month of the as-of date, and costs in a currency with no exchange rate.
+ */
+function budgetChecks(data: Datasets, asOf: ISODate): DatasetCheck[] {
+  return budgetIssues(data.budget, asOf, data.comp).map((issue) => ({
+    kind: 'metric-field',
+    severity: issue.severity,
+    text: issue.text,
+    count: issue.rows.length,
+    ...(issue.rows.length
+      ? {
+          records: {
+            select: { by: 'rows', rows: issue.rows, title: issue.title },
+            count: issue.rows.length,
+            figure: issue.kind === 'no-rate' ? fmt(issue.rows.length, 'int') : null,
+          },
+        }
+      : {}),
+  }))
+}
+
 export function datasetChecks(args: {
   key: DatasetKey
   data: Datasets
@@ -321,6 +346,7 @@ export function datasetChecks(args: {
     ]
   const out: DatasetCheck[] = [...fieldChecks(coverage)]
   if (key === 'employees') out.push(...rosterChecks(rows as readonly Row[], coverage, args.fills))
+  if (key === 'budget') out.push(...budgetChecks(data, asOf))
 
   const link = LINKS[key]
   const unlinked = unlinkedRows(key, data)
@@ -424,7 +450,11 @@ export function qualityChecks(
       out.push({ kind: 'quality-rule', severity: 'warning', text: r.detail, count: r.count })
   }
   const named = new Set(
-    covered.flatMap((c) => (c.records && c.records.select.by !== 'unlinked' ? [c.records.select.field] : [])),
+    covered.flatMap((c) =>
+      c.records && (c.records.select.by === 'blank' || c.records.select.by === 'defaulted')
+        ? [c.records.select.field]
+        : [],
+    ),
   )
   // Judged on the field itself, so a bronze dataset's weak fields show before its mapping is confirmed.
   for (const f of quality.fields(key)) {
@@ -460,5 +490,6 @@ export function checkRecords(key: DatasetKey, data: Datasets, select: CheckSelec
   const rows: readonly DatasetRecord[] = data[key]
   if (select.by === 'unlinked') return unlinkedRecords(key, rows, data)
   if (select.by === 'defaulted') return [...rows]
+  if (select.by === 'rows') return select.rows.flatMap((i) => (rows[i] ? [rows[i]] : []))
   return fieldRecords(datasetDef(key), rows, select.field).blank
 }

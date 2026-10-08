@@ -14,6 +14,7 @@ import { kpiTarget } from '@/metrics/api'
 import { minGroupOf } from '@/metrics/privacy'
 import { metricsWith } from '@/metrics/testing'
 import { collectActions, countActions, isOpen } from '@/views/actions/engine'
+import { everyMode } from '@/views/actions/engine/roleKit'
 import { VIEWS } from '@/views/registry'
 import type { ViewDef } from '@/views/types'
 import { Conversation } from './conversation'
@@ -38,7 +39,7 @@ const summarized = VIEWS.filter((v) => typeof v.summary === 'function')
 const viewOf = (key: string) => VIEWS.find((v) => v.key === key) as ViewDef
 
 let ctx: AnalyticsContext
-/** The Action center (open_items) is not ready yet: Developer mode only. */
+/** Developer mode: the Action center lists every item, as HR mode does. */
 let dev: AnalyticsContext
 let conv: Conversation
 beforeAll(() => {
@@ -321,7 +322,7 @@ describe('the other tools', () => {
   it('get_context lists the scope, datasets, views and vocabularies without names', () => {
     const r = call(conv, envOf(ctx), 'get_context')
     expect(r.json.as_of).toBe(ctx.asOf)
-    expect((r.json.datasets as unknown[]).length).toBe(15)
+    expect((r.json.datasets as unknown[]).length).toBe(16)
     // The views HR mode shows: every one but My team, Manager mode's home (docs/ROLES.md, 3.2).
     expect((r.json.views as { view: string }[]).map((v) => v.view)).toEqual(
       VIEWS.filter((v) => v.key !== 'team').map((v) => v.key),
@@ -399,7 +400,7 @@ describe('the other tools', () => {
 
   it('open_items counts what the Action center lists, marks included', () => {
     const collected = collectActions(dev, VIEWS)
-    const open = collected.items.filter((a) => isOpen(a.id, {}, Date.now()))
+    const open = collected.items.filter((a) => isOpen(a, {}, Date.now()))
     const counts = countActions(open, dev)
     const r = call(conv, envOf(dev), 'open_items')
     expect((r.json.open as { count: number }).count).toBe(counts.open.length)
@@ -410,7 +411,7 @@ describe('the other tools', () => {
     for (const o of r.json.top_owners as { owner: string }[]) expect(o.owner).not.toMatch(/\s{2}/)
     expectClean(r.content, 'open_items')
 
-    const first = open[0]?.id as string
+    const first = open[0]?.markKey as string
     const marked = call(
       conv,
       envOf(dev, { marks: { [first]: { state: 'handled', at: '2026-09-30T00:00:00Z' } } }),
@@ -420,11 +421,32 @@ describe('the other tools', () => {
     const managers = call(conv, envOf(dev), 'open_items', { owner_group: 'manager', overdue_only: true })
     expect((managers.json.open as { count: number }).count).toBeLessThanOrEqual(counts.overdue.length)
 
-    // HR mode does not offer it while the Action center is not ready.
+    // HR mode lists every item but the per-manager training roll-ups (training shows by course),
+    // with the escalations counted.
     const hr = call(new Conversation(), envOf(ctx), 'open_items')
-    expect(hr.isError).toBe(true)
-    expect(hr.json.error).toMatch(/not available/)
+    expect(hr.isError).toBe(false)
+    const training = open.filter((a) => a.id.startsWith('talent:training-overdue:') && a.role === 'manager')
+    expect(training.length).toBeGreaterThan(0)
+    expect((hr.json.open as { count: number }).count).toBe(counts.open.length - training.length)
+    expect((hr.json.escalations as { count: number }).count).toBeGreaterThan(0)
   })
+
+  it("open_items lists what each mode's Action center lists: its two lists, or every item with the escalations", () => {
+    for (const { mode, ctx: c, lists } of everyMode()) {
+      const r = call(new Conversation(), envOf(c), 'open_items')
+      expect(r.isError, mode).toBe(false)
+      const count = (k: string) => (r.json[k] as { count: number } | undefined)?.count
+      if (lists.lists) {
+        expect(count('open'), mode).toBe(lists.needs.length + lists.waiting.length)
+        expect(count('needs_attention'), mode).toBe(lists.needs.length)
+        expect(count('waiting_on_others'), mode).toBe(lists.waiting.length)
+      } else {
+        expect(count('open'), mode).toBe(lists.open.length)
+        expect(count('escalations'), mode).toBe(lists.needs.length)
+      }
+      expectClean(r.content, `open_items ${mode}`)
+    }
+  }, 300_000)
 
   it('reports an unknown tool, unknown arguments and broken input as errors Claude can act on', () => {
     expect(call(conv, envOf(ctx), 'drop_table').json.error).toMatch(/There is no tool/)

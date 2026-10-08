@@ -554,10 +554,10 @@ function emptyFunnel(
   // Merged with the slow time-to-fill story (company scope only, where "overall" is the company).
   const ttfText = vsCompany
     ? slow
-      ? `${dept} reqs filled in the ${b.windowWords} took a median ${days(deptTtf)} to fill and ${slow.top.value} reqs ${days(slow.top.days)}, vs ${days(companyTtf)} for the company.`
-      : `${dept} reqs filled in the ${b.windowWords} took a median ${days(deptTtf)} to fill, vs ${days(companyTtf)} for the company.`
+      ? `${dept} reqs filled in the ${b.windowWords} took a median ${days(deptTtf)} to fill and ${slow.top.value} reqs ${days(slow.top.days)}, vs ${days(companyTtf)} for ${b.bench.words}.`
+      : `${dept} reqs filled in the ${b.windowWords} took a median ${days(deptTtf)} to fill, vs ${days(companyTtf)} for ${b.bench.words}.`
     : slow
-      ? `${slow.top.value} reqs filled in the ${b.windowWords} took a median ${days(slow.top.days)} to fill, vs ${days(slow.overall)} for the company.`
+      ? `${slow.top.value} reqs filled in the ${b.windowWords} took a median ${days(slow.top.days)} to fill, vs ${days(slow.overall)} for ${b.bench.words}.`
       : ''
   const detail = [n > 1 ? `The oldest is ${reqName(oldest)} at ${n0(oldest.daysOpen)} days.` : '', ttfText]
     .filter(Boolean)

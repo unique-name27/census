@@ -27,8 +27,11 @@ import { type DatasetCoverage, type FieldFills, fieldCoverage, REQUIREMENT_LABEL
  * Folder-tab order and labels of the views that read datasets directly. The scorecard reads every
  * view's summary rather than a dataset, and AI in HR reads none, so neither is listed as fed.
  */
-// My team, like the scorecard, composes other views' numbers: it feeds on what they read.
-export const VIEW_ORDER: ViewKey[] = VIEW_KEYS.filter((k) => k !== 'ai' && k !== 'scorecard' && k !== 'team')
+// My team and the role homes, like the scorecard, compose other views' numbers: they feed on what
+// those views read.
+export const VIEW_ORDER: ViewKey[] = VIEW_KEYS.filter(
+  (k) => k !== 'ai' && k !== 'scorecard' && k !== 'team' && k !== 'home',
+)
 export const VIEW_LABELS: Record<ViewKey, string> = VIEW_LABEL
 
 export interface SourceInfo {

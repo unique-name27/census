@@ -117,6 +117,10 @@ function recount(filters: Filters, data: Datasets = sample): Datasets {
     rightToWork: byEmp(data.rightToWork),
     surveyResponses: data.surveyResponses.filter((r) => person(r.respondentKey, r.respondentKey)),
     surveyItems: data.surveyItems,
+    // Budget lines by their business unit and department; a line with no department stays.
+    budget: data.budget.filter(
+      (b) => !(out('businessUnit', b.businessUnit) || out('department', b.department)),
+    ),
     cases: data.cases.filter((c) => {
       const e = c.requesterId ? org.byId.get(c.requesterId) : undefined
       if (e) return empIn(e)

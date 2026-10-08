@@ -4,11 +4,12 @@
  * so a grid of counts reads where dots would pile on one another: each cell is the number of
  * starts that week held by that team, its tooltip says how many are not ready or behind, and it
  * opens those starts (one start opens its day-one tasks). The table lists everyone by name. In
- * Manager mode a background check or export-control screening reads "With People ops" while open
+ * Manager and Finance mode a background check or export-control screening reads "With People ops" while open
  * and "Handled by People ops" once closed, with no completed date, in the table and the records,
  * so no contingency outcome is shown. Owner
  * teams are not a filter dimension and a person is not a group, so nothing offers "Filter to".
  */
+import { MODE_NAME } from '@/access/modes'
 import { type Column, Figure, Heatmap } from '@/charts'
 import { useAnalytics } from '@/data/context'
 import { ONBOARDING_OWNERS } from '@/data/schema'
@@ -33,8 +34,8 @@ export function Countdown() {
   const m = useOnboarding()
   const b = m.base
   const horizon = b.settings.readinessHorizonDays
-  // Manager mode never shows where a contingency stands, only who holds it.
-  const masked = ctx.access.mode === 'manager'
+  // Manager and Finance mode never show where a contingency stands, only who holds it.
+  const masked = b.masked
   const rows = countdownRows(m.upcoming.rows, horizon, masked)
   const owners = [...ONBOARDING_OWNERS, NOTHING_OPEN]
   const grid = countdownGrid(rows, b.asOf, horizon, owners)
@@ -89,7 +90,7 @@ export function Countdown() {
             ? [
                 {
                   term: 'Background checks and screening',
-                  text: 'In Manager mode these show the team that handles them, not where they stand or when they cleared.',
+                  text: `In ${MODE_NAME[ctx.access.mode]} mode these show the team that handles them, not where they stand or when they cleared.`,
                 },
               ]
             : []),

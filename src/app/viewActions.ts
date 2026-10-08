@@ -2,7 +2,7 @@
  * What the Views menu and "Copy link to this view" do (docs/FILTERS.md, parts 1 and 2): apply a
  * saved view in one step (one history entry), and copy the full address of a view.
  */
-import { noteLeaderReplaced } from '@/access/connect'
+import { liveAccess, noteScopeChanged } from '@/access/connect'
 import { currentScope, linkToView } from '@/components/navigation'
 import { toast } from '@/components/toast'
 import { batchAddress, setLensOn } from '@/data/address'
@@ -31,8 +31,9 @@ export function applySavedView(view: SavedView, ctx: Pick<AnalyticsContext, 'all
       st.navigate(page.view as RouteView, page.tab, { scroll: page.view !== st.route.view })
   })
   useSavedViews.getState().setApplied(view.id)
-  // Manager mode keeps the manager's org: a view saved for another leader opens inside it.
-  noteLeaderReplaced(scope.filters, 'view')
+  // A scoped mode keeps its scope, and Finance its business unit and period: a view saved with
+  // other filters opens inside them, and a toast says what was left out.
+  noteScopeChanged(scope.filters, 'view')
   if (leftOut.length || period)
     toast(`Applied "${view.name}" without part of its scope`, {
       description: [
@@ -45,6 +46,10 @@ export function applySavedView(view: SavedView, ctx: Pick<AnalyticsContext, 'all
     })
 }
 
+/** Recruiter mode's reqs have no filter form, so a link carries the other filters only (docs/ROLES-V2.md 1.4). */
+export const REQS_NOT_IN_LINK =
+  "The link carries the filters, not your reqs: in HR mode it shows every recruiter's reqs."
+
 /** Copy a link to a scope and page (the view on screen by default), with a toast. */
 export async function copyViewLink(
   opts: { scope?: UrlScope; route?: { view: RouteView; tab: string }; what?: string } = {},
@@ -52,9 +57,10 @@ export async function copyViewLink(
   const url = linkToView(opts.scope ?? currentScope(), opts.route ?? useCensus.getState().route)
   try {
     await writeClipboard(url)
+    const reqs = liveAccess().scope?.kind === 'reqs'
     toast('Link copied', {
       tone: 'good',
-      description: `It opens ${opts.what ?? 'this view'} with the same filters. Only people with the same data loaded see the same numbers.`,
+      description: `It opens ${opts.what ?? 'this view'} with the same filters. ${reqs ? `${REQS_NOT_IN_LINK} ` : ''}Only people with the same data loaded see the same numbers.`,
     })
   } catch {
     toast('The browser blocked copying', { tone: 'critical', description: url })

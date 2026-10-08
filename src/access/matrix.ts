@@ -1,11 +1,18 @@
 /**
- * The access matrix (docs/ROLES.md, 3 and 6.8): every surface in Developer, HR and Manager order,
- * built from an inventory the caller passes (the policy never imports the view registry). The
- * matrix test renders it as text and compares it with a snapshot, so every change to who sees
- * what shows in review; Developer > Access shows the same rows. Pure.
+ * The access matrix (docs/ROLES-V2.md 8.3; docs/ROLES.md 3 and 6.8): every surface with its
+ * decision in each of the eleven modes, built from an inventory the caller passes (the policy never
+ * imports the view registry). The matrix test renders it as two text files and compares them with
+ * snapshots, so every change to who sees what shows in review:
+ *
+ *  - `matrixText`: a one-letter grid, surface then Dev, HR, CHRO, BU, Rgn, Comp, Tal, Ops, Rec,
+ *    Fin, Mgr, each S (shown), L (limited) or H (hidden);
+ *  - `howText`: for every limited or hidden decision, one line per mode: surface, mode, decision, how.
+ *
+ * Developer > Access shows the same rows. Pure.
  */
-import type { Mode } from './modes'
+import { MODES, type Mode } from './modes'
 import {
+  type Access,
   DEVELOPER_ONLY,
   type Decision,
   decide,
@@ -15,17 +22,19 @@ import {
   MANAGER_HIDDEN_METRIC_PREFIXES,
   MANAGER_HIDDEN_METRICS,
   MANAGER_SURFACES,
+  ROLE_POLICY,
 } from './policy'
 import type {
   ExportKind,
   FilterControl,
   MastheadControl,
   OverlayKey,
+  PayPart,
   PersonPart,
   ShortcutKey,
 } from './surfaces'
 
-/** The views (folder tabs and My team) with their tabs, as the registry lists them. */
+/** The views (folder tabs, My team and Home) with their tabs, as the registry lists them. */
 export interface InventoryView {
   key: string
   label: string
@@ -51,10 +60,12 @@ export interface AccessInventory {
   exports?: readonly ExportKind[]
   shortcuts?: readonly ShortcutKey[]
   /**
-   * Figures to list with the page and tab they sit on: the role home pages' figures (My team and
-   * the Scorecard), so the matrix shows each home in each mode.
+   * Figures to list with the page and tab they sit on: the role homes' figures (My team, the
+   * Scorecard, Home), so the matrix shows each home in each mode.
    */
   figures?: readonly { id: string; view: string; tab?: string }[]
+  /** Parts of a tab picked by address (`hrbp.analyses:quality`), listed as `tab:<view>.<tab>:<part>`. */
+  parts?: readonly string[]
 }
 
 export const MASTHEAD_CONTROLS: readonly MastheadControl[] = [
@@ -118,18 +129,51 @@ export const PERSON_PARTS: readonly PersonPart[] = [
   'focus',
   'org-chart',
   'row-open',
+  'ratings',
 ]
+export const PAY_PARTS: readonly PayPart[] = ['switch', 'amounts', 'totals']
+
+/** The matrix's column order (docs/ROLES-V2.md 4): Dev, HR, CHRO, BU, Rgn, Comp, Tal, Ops, Rec, Fin, Mgr. */
+export const MATRIX_MODES: readonly Mode[] = [
+  'developer',
+  'hr',
+  'chro',
+  'hrbp-unit',
+  'hrbp-region',
+  'compensation',
+  'talent-management',
+  'hr-ops',
+  'recruiter',
+  'finance',
+  'manager',
+]
+
+/** Each mode's column head in the grid. */
+export const MODE_COLUMN: Readonly<Record<Mode, string>> = {
+  developer: 'Dev',
+  hr: 'HR',
+  chro: 'CHRO',
+  'hrbp-unit': 'BU',
+  'hrbp-region': 'Rgn',
+  compensation: 'Comp',
+  'talent-management': 'Tal',
+  'hr-ops': 'Ops',
+  recruiter: 'Rec',
+  finance: 'Fin',
+  manager: 'Mgr',
+}
 
 export interface MatrixRow {
   surface: string
   /** The group the row belongs to: "view", "tab", "masthead", "settings" … */
   kind: string
+  /** The decision in every mode. */
+  decisions: Readonly<Record<Mode, Decision>>
+  /** Shorthands for the three modes Census had first. */
   developer: Decision
   hr: Decision
   manager: Decision
 }
-
-const MODES_ORDER: readonly Mode[] = ['developer', 'hr', 'manager']
 
 /** Every surface of the inventory with its decision in each mode, in a stable order. */
 export function accessMatrix(inv: AccessInventory): MatrixRow[] {
@@ -138,11 +182,21 @@ export function accessMatrix(inv: AccessInventory): MatrixRow[] {
   const add = (kind: string, surface: string, at?: { view: string; tab?: string }) => {
     if (seen.has(surface)) return
     seen.add(surface)
-    const [developer, hr, manager] = MODES_ORDER.map((m) => decide(m, surface, at))
-    rows.push({ surface, kind, developer, hr, manager })
+    const decisions = {} as Record<Mode, Decision>
+    for (const m of MODES) decisions[m] = decide(m, surface, at)
+    rows.push({
+      surface,
+      kind,
+      decisions,
+      developer: decisions.developer,
+      hr: decisions.hr,
+      manager: decisions.manager,
+    })
   }
+  const tables = Object.values(ROLE_POLICY)
   for (const v of inv.views) add('view', `view:${v.key}`)
   for (const v of inv.views) for (const t of v.tabs) add('tab', `tab:${v.key}.${t.key}`)
+  for (const p of inv.parts ?? []) add('tab', `tab:${p}`)
   for (const p of ['actions', 'data', 'dev']) add('page', `page:${p}`)
   for (const t of inv.dataTabs) add('data', `data:${t}`)
   for (const p of inv.datasetPanels) add('data-panel', `data-panel:${p}`)
@@ -164,53 +218,71 @@ export function accessMatrix(inv: AccessInventory): MatrixRow[] {
   for (const e of inv.exports ?? EXPORT_KINDS) add('export', `export:${e}`)
   for (const k of inv.drillKinds) add('drill', `drill:${k}`)
   for (const d of inv.datasets) add('dataset', `dataset:${d}`)
+  for (const p of PAY_PARTS) add('pay', `pay:${p}`)
   for (const p of PERSON_PARTS) add('person', `person:${p}`)
   for (const f of ['filter-to', 'leave-out', 'leave-out-leader', 'finding']) add('focus', `focus:${f}`)
   for (const s of inv.shortcuts ?? SHORTCUT_KEYS) add('shortcut', `shortcut:${s}`)
   for (const o of OVERLAY_KEYS) add('overlay', `overlay:${o}`)
+  add('ui', 'ui:attention-lists')
   for (const f of MANAGER_HIDDEN_FIGURES) add('figure', `figure:${f}`)
   for (const p of MANAGER_HIDDEN_FIGURE_PREFIXES) add('figure', `figure:${p}*`)
+  for (const t of tables) for (const f of t.hiddenFigures) add('figure', `figure:${f}`)
+  for (const t of tables) for (const p of t.hiddenFigurePrefixes) add('figure', `figure:${p}*`)
   for (const f of inv.figures ?? []) add('figure', `figure:${f.id}`, { view: f.view, tab: f.tab })
   for (const m of MANAGER_HIDDEN_METRICS) add('metric', `metric:${m}`)
   for (const p of MANAGER_HIDDEN_METRIC_PREFIXES) add('metric', `metric:${p}*`)
+  for (const t of tables) for (const m of t.metrics.hide) add('metric', `metric:${m}`)
+  for (const t of tables) for (const p of t.metrics.hidePrefixes) add('metric', `metric:${p}*`)
   for (const p of MANAGER_HIDDEN_ITEM_PREFIXES) add('item', `item:${p}`)
-  // Everything else the policy names, so no explicit decision is left out of review.
+  for (const t of tables) for (const p of t.hiddenItemPrefixes) add('item', `item:${p}`)
+  // Everything else a policy names, so no explicit decision is left out of review.
   for (const s of [...DEVELOPER_ONLY, ...Object.keys(MANAGER_SURFACES)]) add(s.split(':')[0], s)
+  for (const t of tables) for (const s of Object.keys(t.surfaces)) add(s.split(':')[0], s)
   return rows
 }
 
-const WORD: Record<Decision['access'], string> = { shown: 'Shown', limited: 'Limited', hidden: 'Hidden' }
+const LETTER: Record<Access, string> = { shown: 'S', limited: 'L', hidden: 'H' }
+const WORD: Record<Access, string> = { shown: 'Shown', limited: 'Limited', hidden: 'Hidden' }
+
+/** The matrix as a fixed-width one-letter grid: surface, then a column per mode in `MATRIX_MODES` order. */
+export function matrixText(rows: readonly MatrixRow[]): string {
+  const w = Math.max('Surface'.length, ...rows.map((r) => r.surface.length))
+  const widths = MATRIX_MODES.map((m) => MODE_COLUMN[m].length)
+  const head = `${'Surface'.padEnd(w)}  ${MATRIX_MODES.map((m, i) => MODE_COLUMN[m].padEnd(widths[i])).join('  ')}`
+  const lines = rows.map((r) =>
+    `${r.surface.padEnd(w)}  ${MATRIX_MODES.map((m, i) => LETTER[r.decisions[m].access].padEnd(widths[i])).join('  ')}`.trimEnd(),
+  )
+  return `${[head.trimEnd(), '-'.repeat(head.trimEnd().length), ...lines].join('\n')}\n`
+}
+
+/** One line per limited or hidden decision: surface, mode, decision, how (the second snapshot file). */
+export function howText(rows: readonly MatrixRow[]): string {
+  const lines: string[][] = []
+  for (const r of rows)
+    for (const m of MATRIX_MODES) {
+      const d = r.decisions[m]
+      if (d.access !== 'shown') lines.push([r.surface, MODE_COLUMN[m], WORD[d.access], d.how ?? ''])
+    }
+  const w0 = Math.max('Surface'.length, ...lines.map((l) => l[0].length))
+  const w1 = Math.max('Mode'.length, ...lines.map((l) => l[1].length))
+  const w2 = 'Decision'.length
+  const fmt = (l: readonly string[]) =>
+    `${l[0].padEnd(w0)}  ${l[1].padEnd(w1)}  ${l[2].padEnd(w2)}  ${l[3]}`.trimEnd()
+  const head = fmt(['Surface', 'Mode', 'Decision', 'How'])
+  return `${[head, '-'.repeat(head.length), ...lines.map(fmt)].join('\n')}\n`
+}
 
 /** One row's "how": the sentence of each mode that limits or hides it ("HR: … Manager: …"). */
 export function howOf(r: MatrixRow): string {
-  return [r.hr.how && `HR: ${r.hr.how}`, r.manager.how && `Manager: ${r.manager.how}`]
-    .filter(Boolean)
+  return MATRIX_MODES.filter((m) => m !== 'developer' && r.decisions[m].how)
+    .map((m) => `${MODE_COLUMN[m]}: ${r.decisions[m].how}`)
     .join(' ')
 }
 
-/** The matrix as a fixed-width text table: surface, Developer, HR, Manager, how. */
-export function matrixText(rows: readonly MatrixRow[]): string {
-  const w = Math.max('Surface'.length, ...rows.map((r) => r.surface.length))
-  const col = (s: string) => s.padEnd(8)
-  const head = `${'Surface'.padEnd(w)}  ${col('Dev')}  ${col('HR')}  ${col('Manager')}  How`
-  const lines = rows.map((r) =>
-    `${r.surface.padEnd(w)}  ${col(WORD[r.developer.access])}  ${col(WORD[r.hr.access])}  ${col(WORD[r.manager.access])}  ${howOf(r)}`.trimEnd(),
-  )
-  return `${[head, '-'.repeat(head.length), ...lines].join('\n')}\n`
-}
-
 /** How many surfaces each mode shows, limits and hides (Developer > Overview, State). */
-export function matrixCounts(rows: readonly MatrixRow[]): Record<Mode, Record<Decision['access'], number>> {
-  const zero = () => ({ shown: 0, limited: 0, hidden: 0 })
-  const out: Record<Mode, Record<Decision['access'], number>> = {
-    developer: zero(),
-    hr: zero(),
-    manager: zero(),
-  }
-  for (const r of rows) {
-    out.developer[r.developer.access]++
-    out.hr[r.hr.access]++
-    out.manager[r.manager.access]++
-  }
+export function matrixCounts(rows: readonly MatrixRow[]): Record<Mode, Record<Access, number>> {
+  const out = {} as Record<Mode, Record<Access, number>>
+  for (const m of MODES) out[m] = { shown: 0, limited: 0, hidden: 0 }
+  for (const r of rows) for (const m of MODES) out[m][r.decisions[m].access]++
   return out
 }

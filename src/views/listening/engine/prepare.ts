@@ -7,21 +7,21 @@
  * The respondent joins return group labels only (business unit, location, tenure band, stage);
  * nothing here hands out a record with its answers attached.
  */
+import type { RegionIndex } from '@/access/scopes/regions'
 import type { AnalyticsContext } from '@/data/context'
-import {
-  type Candidate,
-  type Employee,
-  type HrCase,
-  type ISODate,
-  type Region,
-  type Requisition,
-  type SurveyItem,
-  type SurveyResponse,
-  type SurveyType,
-  siteByLocation,
+import type {
+  Candidate,
+  Employee,
+  HrCase,
+  ISODate,
+  Requisition,
+  SurveyItem,
+  SurveyResponse,
+  SurveyType,
 } from '@/data/schema'
 import { tenureBand, tenureYears } from '@/lib/people'
 import { driverOf, type ItemIndex, itemIndex, selectResponses } from '@/lib/surveys'
+import { regionsOf } from '../../hrbp/engine/places'
 import { levelBand } from './catalog'
 
 export interface Prepared {
@@ -44,6 +44,11 @@ export interface Prepared {
   req: ReadonlyMap<string, Requisition>
   cand: ReadonlyMap<string, Candidate>
   cases: ReadonlyMap<string, HrCase>
+  /**
+   * The one region index (docs/ROLES-V2.md 1.3, `ctx.regions`): a location's region ("APAC") and a
+   * region's sites, so Listening names a region as the region scope and Onboarding do.
+   */
+  regions: RegionIndex
 }
 
 const cache = new WeakMap<AnalyticsContext, Prepared>()
@@ -86,6 +91,7 @@ export function prepare(ctx: AnalyticsContext): Prepared {
     req: new Map(ctx.all.requisitions.map((r) => [r.reqId, r])),
     cand: new Map(ctx.all.candidates.map((c) => [c.applicationId, c])),
     cases: new Map(ctx.all.cases.map((c) => [c.caseId, c])),
+    regions: regionsOf(ctx),
   }
   cache.set(ctx, out)
   return out
@@ -103,12 +109,12 @@ export const within = (
 
 /* ───────────── group labels ───────────── */
 
-const REGION_NAME: Record<Region, string> = { Americas: 'Americas', EMEA: 'EMEA', APAC: 'Asia Pacific' }
-
-/** "Asia Pacific" for Bengaluru; null for a site Census doesn't know. */
-export function regionOfLocation(location: string | null | undefined): string | null {
-  const site = location ? siteByLocation.get(location) : undefined
-  return site ? REGION_NAME[site.region] : null
+/** "APAC" for Bengaluru, from the region index; null for a location with no region. */
+export function regionOfLocation(
+  p: Pick<Prepared, 'regions'>,
+  location: string | null | undefined,
+): string | null {
+  return p.regions.regionOf(location)
 }
 
 export type CutKey = 'businessUnit' | 'location' | 'tenure' | 'stage' | 'region' | 'department'
@@ -141,7 +147,7 @@ export function cutOf(p: Prepared, cut: CutKey): (r: SurveyResponse) => string |
       if (cut === 'businessUnit') return e.businessUnit || null
       if (cut === 'department') return e.department || null
       if (cut === 'location') return e.location || null
-      if (cut === 'region') return regionOfLocation(e.location)
+      if (cut === 'region') return regionOfLocation(p, e.location)
       return tenureBand(tenureYears(e, r.responseDate))
     }
     const q = reqOfCandidate(p, r)
@@ -149,7 +155,7 @@ export function cutOf(p: Prepared, cut: CutKey): (r: SurveyResponse) => string |
     if (cut === 'businessUnit') return q.businessUnit || null
     if (cut === 'department') return q.department || null
     if (cut === 'location') return q.location || null
-    if (cut === 'region') return regionOfLocation(q.location)
+    if (cut === 'region') return regionOfLocation(p, q.location)
     return null
   }
 }

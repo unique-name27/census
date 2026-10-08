@@ -4,7 +4,7 @@
  * the tiles, the cards' "6 direct · 41 org", the table cells and the detail panel's team figures.
  */
 import { useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { notInOrg } from '@/access/copy'
+import { notInOrg, outsideScope } from '@/access/copy'
 import { DataTable, Figure } from '@/charts'
 import { Button, Grid, IconSlides, KpiStrip, Switch, toast } from '@/components'
 import { mainAreaAtLeast } from '@/components/mainArea'
@@ -141,11 +141,18 @@ export function ChartTab() {
     [tree, model.dims, scopeIds, orgIds, flags],
   )
 
-  // Manager mode: search finds people inside the org only (docs/ROLES.md, 4.5).
-  const lockIds = ctx.access.lock?.orgIds
+  // A scoped mode: search finds people inside the scope only (docs/ROLES.md, 4.5; docs/ROLES-V2.md
+  // 2.7). Manager mode's chart is the org; HRBP mode keeps the whole chart, dimmed outside.
+  const held = ctx.access.scope
+  const heldIds =
+    held?.kind === 'org'
+      ? held.orgIds
+      : held?.kind === 'unit' || held?.kind === 'region'
+        ? held.memberIds
+        : null
   const searchable = useMemo(
-    () => (lockIds ? new Map([...tree.people].filter(([id]) => lockIds.has(id))) : tree.people),
-    [tree, lockIds],
+    () => (heldIds ? new Map([...tree.people].filter(([id]) => heldIds.has(id))) : tree.people),
+    [tree, heldIds],
   )
   const rootName = rootId === COMPANY_ROOT ? 'Whole company' : (tree.people.get(rootId)?.name ?? '')
   const scope: DrillScope = { label: scopeLabel(tree, rootId), asOf: ctx.asOf, filtered: model.dims }
@@ -185,9 +192,14 @@ export function ChartTab() {
       })
       return
     }
-    // Manager mode keeps the chart on the manager's org: someone outside it is not on it.
+    // Manager mode keeps the chart on the manager's org: someone outside it is not on it. HRBP
+    // mode shows them dimmed, but a jump from elsewhere stays inside the scope.
     if (ctx.access.lock && !ctx.access.lock.orgIds.has(id)) {
       toast(notInOrg(ctx.access.lock.managerName || 'the manager'))
+      return
+    }
+    if (heldIds && held && held.kind !== 'org' && !heldIds.has(id)) {
+      toast(outsideScope(held.label))
       return
     }
     if (!isWithin(tree, id, model.rootId)) {

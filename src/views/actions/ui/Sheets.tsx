@@ -3,19 +3,24 @@
  * exports. Inside, one block per person or team: their counts (each opens the items behind it),
  * a "Copy note" button with a polite message for that owner, and their items. Each item shows
  * its severity, what is open, what it is about (opens its records), the view it comes from
- * (opens that tab), when it is due, and Mark handled and Snooze, both with Undo.
+ * (opens that tab), when it is due, its tier when its data is below the on-screen standard, the
+ * other views that raised the same matter, and Mark handled and Snooze, both with Undo (which
+ * puts focus back on the item). An item's amount shows beside it only where the mode and the pay
+ * switch allow, never in its text.
  */
 import { useState } from 'react'
 import { Figure } from '@/charts'
 import { Dialog } from '@/components/Dialog'
 import { IconCheck, IconChevronRight, IconCopy, IconReset } from '@/components/icons'
 import { goTo, routeHash } from '@/components/navigation'
+import { TierBadge } from '@/components/tier/TierBadge'
 import { toast } from '@/components/toast'
 import { Button, cx, StatusPill } from '@/components/ui'
 import { useAnalytics } from '@/data/context'
 import type { ViewKey } from '@/data/schema'
 import { Drill, openPerson, resolveDrill } from '@/drill'
 import { openDrill } from '@/drill/store'
+import { formatDate } from '@/lib/dates'
 import { writeClipboard } from '@/lib/export/clipboard'
 import { fmt, plural } from '@/lib/format'
 import {
@@ -24,6 +29,7 @@ import {
   dueText,
   EXPORT_COLUMNS,
   exportRows,
+  hashKey,
   type ItemStatus,
   itemsDrill,
   type OpenAction,
@@ -35,7 +41,7 @@ import {
   usesOf,
 } from '../engine'
 import { M } from '../metrics'
-import { type ListMode, useActionMarks } from './store'
+import { useActionMarks } from './store'
 
 /** Owners listed before "Show all"; items listed per owner before "Show more". */
 const OWNERS_SHOWN = 8
@@ -69,33 +75,59 @@ function IconSnooze({ className }: { className?: string }) {
 
 /* ───────── item actions with Undo ───────── */
 
-function useItemActions() {
+/** The row's key in the page (a hash, so no record id sits in the markup). */
+export const rowKeyOf = (a: OpenAction): string => hashKey(a.markKey)
+
+/** After Undo the item is listed again: put focus back on its first button. */
+export function focusRestored(rowKey: string): void {
+  if (typeof window === 'undefined') return
+  window.setTimeout(() => {
+    const row = document.querySelector<HTMLElement>(`[data-item-key="${rowKey}"]`)
+    const target = row?.querySelector<HTMLElement>('[data-item-action]') ?? row
+    target?.focus()
+  }, 0)
+}
+
+export function useItemActions() {
   const { metrics } = useAnalytics()
   const handle = useActionMarks((s) => s.handle)
   const snooze = useActionMarks((s) => s.snooze)
   const reopen = useActionMarks((s) => s.reopen)
   const restore = useActionMarks((s) => s.restore)
   const { snoozeDays } = settingsOf(metrics)
-  const undoable = (message: string, description: string, snap: Parameters<typeof restore>[0]) =>
+  const undoable = (
+    a: OpenAction,
+    message: string,
+    description: string,
+    snap: Parameters<typeof restore>[0],
+  ) =>
     toast(message, {
       description,
-      action: { label: 'Undo', onClick: () => restore(snap) },
+      action: {
+        label: 'Undo',
+        onClick: () => {
+          restore(snap)
+          focusRestored(rowKeyOf(a))
+        },
+      },
     })
-  const savedNote = () =>
-    useActionMarks.getState().saved
-      ? 'Kept in this browser.'
-      : 'This browser did not save it, so it lasts for this visit.'
+  const savedNote = () => {
+    const s = useActionMarks.getState()
+    if (!s.saved) return 'This browser did not save it, so it lasts for this visit.'
+    return s.name ? `Kept as ${s.name} in this browser.` : 'Kept in this browser.'
+  }
   return {
     snoozeDays,
     handle: (a: OpenAction) =>
-      undoable(`Marked handled: ${a.item.subject.label}`, savedNote(), handle([a.id])),
+      undoable(a, `Marked handled: ${a.item.subject.label}`, savedNote(), handle([a])),
     snooze: (a: OpenAction) =>
       undoable(
+        a,
         `Snoozed for ${snoozeDays} d: ${a.item.subject.label}`,
-        `It comes back on its own. ${savedNote()}`,
-        snooze([a.id], snoozeDays),
+        `It comes back on its own, or sooner if it changes. ${savedNote()}`,
+        snooze([a], snoozeDays),
       ),
-    reopen: (a: OpenAction) => undoable(`Reopened: ${a.item.subject.label}`, savedNote(), reopen([a.id])),
+    reopen: (a: OpenAction) => undoable(a, `Reopened: ${a.item.subject.label}`, savedNote(), reopen([a])),
   }
 }
 
@@ -186,18 +218,50 @@ function FromLink({ a }: { a: OpenAction }) {
   )
 }
 
-function ItemRow({ a, mode, status }: { a: OpenAction; mode: ListMode; status: ItemStatus }) {
-  const { asOf } = useAnalytics()
+/** The item's money, beside it (never in its text): one person's amount with pay amounts on, a total with cost totals. */
+function AmountText({ a }: { a: OpenAction }) {
+  const ctx = useAnalytics()
+  const amount = a.item.amount
+  if (!amount) return null
+  const group = a.item.subject.kind === 'none'
+  if (group ? !ctx.showCost : !ctx.showPay) return null
+  return (
+    <span className="tnum text-meta text-ink-2">
+      {amount.label}: {fmt(amount.usd, 'moneyFull')}
+    </span>
+  )
+}
+
+export function ItemRow({
+  a,
+  parked,
+  status,
+  showOwner = false,
+}: {
+  a: OpenAction
+  /** The handled and snoozed list: Reopen in place of Handled and Snooze. */
+  parked: boolean
+  status: ItemStatus
+  /** Say who it waits on (a list that is not grouped by owner). */
+  showOwner?: boolean
+}) {
+  const ctx = useAnalytics()
+  const { asOf } = ctx
   const act = useItemActions()
   const days = daysToDue(a.item.due, asOf)
   const overdue = days != null && days < 0
+  const changed = status.state === 'open' ? status.changedSince : undefined
+  const amountShown = !!a.item.amount && (a.item.subject.kind === 'none' ? ctx.showCost : ctx.showPay)
   return (
     <li
       data-item-row=""
-      className="grid grid-cols-1 gap-x-3 gap-y-1.5 border-t border-rule py-2.5 pr-4 pl-4 sm:grid-cols-[76px_minmax(0,1fr)_auto] sm:pl-10"
+      data-item-key={rowKeyOf(a)}
+      tabIndex={-1}
+      className="grid grid-cols-1 gap-x-3 gap-y-1.5 border-t border-rule py-2.5 pr-4 pl-4 outline-none sm:grid-cols-[76px_minmax(0,1fr)_auto] sm:pl-10"
     >
-      <div className="pt-px">
+      <div className="flex flex-wrap items-center gap-1.5 pt-px sm:flex-col sm:items-start">
         <StatusPill severity={a.item.severity} quiet label={SEVERITY_WORD[a.item.severity]} />
+        {a.item.exposure && <span className="text-label font-medium text-bad-text">Legal exposure</span>}
       </div>
       <div className="min-w-0">
         <p className="text-small leading-snug text-ink">{a.item.what}</p>
@@ -209,17 +273,40 @@ function ItemRow({ a, mode, status }: { a: OpenAction; mode: ListMode; status: I
             </span>
             <FromLink a={a} />
           </span>
+          {showOwner && (
+            <span className="whitespace-nowrap">
+              <span aria-hidden="true" className="pr-1.5 pl-1.5 text-muted">
+                ·
+              </span>
+              {a.isTeam ? a.ownerName : `Waiting on ${a.ownerName}`}
+            </span>
+          )}
         </p>
         {a.item.note && <p className="mt-1 text-meta leading-snug text-muted">{a.item.note}</p>}
+        {(a.alsoFrom.length > 0 || a.below || amountShown || changed) && (
+          <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-meta leading-snug text-muted">
+            {changed && <span>Changed since it was marked on {formatDate(changed.slice(0, 10))}</span>}
+            {a.alsoFrom.length > 0 && <span>Also raised in {a.alsoFrom.join(', ')}</span>}
+            {a.below && (
+              <TierBadge
+                tier={a.below.tier}
+                compact
+                explain={`${a.below.subject} is below your data standard. Workflow items still show.`}
+                dataset={a.below.dataset}
+              />
+            )}
+            <AmountText a={a} />
+          </p>
+        )}
       </div>
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 sm:flex-col sm:items-end">
         <span
           className={cx('text-meta whitespace-nowrap', overdue ? 'font-medium text-bad-text' : 'text-ink-2')}
         >
-          {mode === 'open' ? dueText(a.item.due, asOf) : statusText(status)}
+          {!parked ? dueText(a.item.due, asOf) : statusText(status)}
         </span>
         <span className="flex gap-1 max-sm:ml-auto">
-          {mode === 'open' ? (
+          {!parked ? (
             <>
               <Button
                 size="sm"
@@ -326,13 +413,13 @@ function OwnerRow({
   block,
   open,
   onToggle,
-  mode,
+  parked,
   statusOf,
 }: {
   block: OwnerBlock
   open: boolean
   onToggle: () => void
-  mode: ListMode
+  parked: boolean
   statusOf: StatusFn
 }) {
   const ctx = useAnalytics()
@@ -395,12 +482,12 @@ function OwnerRow({
             </>
           )}
         </span>
-        {mode === 'open' && <CopyNoteButton block={block} />}
+        {!parked && <CopyNoteButton block={block} />}
       </div>
       {open && (
         <ul id={listId} aria-label={`Items waiting on ${block.name}`}>
           {shown.map((a) => (
-            <ItemRow key={a.id} a={a} mode={mode} status={statusOf(a)} />
+            <ItemRow key={a.id} a={a} parked={parked} status={statusOf(a)} />
           ))}
           {more > 0 && (
             <li className="border-t border-rule py-1.5 pl-4 sm:pl-10">
@@ -419,11 +506,12 @@ function OwnerRow({
 
 export function OwnerSheet({
   group,
-  mode,
+  parked,
   statusOf,
 }: {
   group: OwnerGroup
-  mode: ListMode
+  /** The handled and snoozed list. */
+  parked: boolean
   statusOf: StatusFn
 }) {
   const ctx = useAnalytics()
@@ -440,7 +528,7 @@ export function OwnerSheet({
   const overdue = group.items.filter((a) => (daysToDue(a.item.due, ctx.asOf) ?? 0) < 0)
   const critical = group.items.filter((a) => a.item.severity === 'critical')
   const rows = exportRows(group.items, ctx.asOf, statusOf)
-  const verb = mode === 'open' ? 'open' : 'handled or snoozed'
+  const verb = !parked ? 'open' : 'handled or snoozed'
   return (
     <Figure
       id={`actions-${group.role}`}
@@ -509,7 +597,7 @@ export function OwnerSheet({
               block={b}
               open={isOpen(b)}
               onToggle={() => toggle(b)}
-              mode={mode}
+              parked={parked}
               statusOf={statusOf}
             />
           ))}

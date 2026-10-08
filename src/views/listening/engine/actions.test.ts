@@ -30,7 +30,7 @@ describe('Listening actions on the sample', () => {
   it('sends the stay risk to talent management, the pay-led exit reason to total rewards and the readiness gap to IT', () => {
     expect(byId.get('listening:stay:Design Verification L4-L5')).toMatchObject({ ownerRole: 'talent' })
     expect(byId.get('listening:exit:Bengaluru')).toMatchObject({ ownerRole: 'total-rewards' })
-    expect(byId.get('listening:readiness:Asia Pacific')).toMatchObject({ ownerRole: 'it', ownerName: 'IT' })
+    expect(byId.get('listening:readiness:APAC')).toMatchObject({ ownerRole: 'it', ownerName: 'IT' })
   })
 
   it('keeps ids stable across recomputes', () => {

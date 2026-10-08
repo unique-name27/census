@@ -60,11 +60,11 @@ export function fileStem(meta: Pick<ExportMeta, 'view' | 'viewKey' | 'asOf'>, na
 
 /**
  * Export context for a view that reads no people data (AI in HR lists agents): no scope, window,
- * as-of date, data standard, company or "Sample data" stamp, since none of them describe what is
- * exported. Every line built from the meta then leaves those parts out.
+ * as-of date, data standard, mode lines, company or "Sample data" stamp, since none of them
+ * describe what is exported. Every line built from the meta then leaves those parts out.
  */
 export function withoutDataContext(meta: ExportMeta): ExportMeta {
-  const { standard: _standard, ...rest } = meta
+  const { standard: _standard, modeLine: _mode, costLine: _cost, ...rest } = meta
   return { ...rest, scope: '', window: '', asOf: '', isSample: false, company: '' }
 }
 
@@ -80,6 +80,14 @@ export function metaLine(meta: Pick<ExportMeta, 'scope' | 'window' | 'asOf'>): s
   return [meta.scope, meta.window, asOfPart(meta.asOf)].filter(Boolean).join(' · ')
 }
 
+/**
+ * The mode lines of an export (docs/ROLES-V2.md 4.11, 3.2): "Made in HRBP mode for APAC." and, in
+ * Finance, the cost line. Empty in HR and Developer, and for a view that reads no people data.
+ */
+export function modeLines(meta: Pick<ExportMeta, 'modeLine' | 'costLine'>): string[] {
+  return [meta.modeLine ?? '', meta.costLine ?? ''].filter(Boolean)
+}
+
 /** "Company confidential · Sample data" */
 export function stampLine(meta: Pick<ExportMeta, 'isSample'>): string {
   return meta.isSample ? 'Company confidential · Sample data' : 'Company confidential'
@@ -92,12 +100,12 @@ export function viewLine(meta: Pick<ExportMeta, 'view' | 'tab'>): string {
 
 /**
  * Footer under exported chart images: "Whole company · As of 30 Sep 2026 · Production standard ·
- * Tier: Gold · Census · Sample data" (the standard and the tier when known, and "Definitions
- * changed from defaults: 3" when someone changed the metric dictionary), as sheets and slides
- * state them.
+ * Tier: Gold · Census · Sample data" (the standard and the tier when known, "Definitions
+ * changed from defaults: 3" when someone changed the metric dictionary, and the mode line outside
+ * HR and Developer), as sheets and slides state them.
  */
 export function imageFooter(
-  meta: Pick<ExportMeta, 'scope' | 'asOf' | 'isSample' | 'standard'>,
+  meta: Pick<ExportMeta, 'scope' | 'asOf' | 'isSample' | 'standard' | 'modeLine'>,
   tier?: Tier | null,
 ): string {
   return [
@@ -106,6 +114,8 @@ export function imageFooter(
     meta.standard ? `${STANDARD_LABEL[meta.standard]} standard` : '',
     tier ? `Tier: ${TIER_LABEL[tier]}` : '',
     changedDefinitions(meta),
+    // "Made in HRBP mode for APAC", without its full stop inside the dotted line.
+    meta.modeLine ? meta.modeLine.replace(/\.$/, '') : '',
     'Census',
     meta.isSample ? 'Sample data' : '',
   ]

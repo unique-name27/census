@@ -19,11 +19,13 @@ import { type ReactNode, useState } from 'react'
 import { clampFilters } from '@/access/lock'
 import { findingsInMode } from '@/access/numbers'
 import { routeShown } from '@/access/policy'
+import { personInScope } from '@/access/records'
 import type { Column } from '@/charts/types'
 import { useAnalytics } from '@/data/context'
 import { drill } from '@/drill/Drill'
 import { mergeFilter } from '@/drill/filter'
 import { focusScope } from '@/drill/focus'
+import { drillTarget } from '@/drill/kinds'
 import { openPerson } from '@/drill/store'
 import { plural } from '@/lib/format'
 import { type Span, spanClass } from '@/lib/spans'
@@ -59,7 +61,8 @@ const LINK =
 
 function People({ people, total }: { people: FindingPerson[]; total?: number }) {
   const ctx = useAnalytics()
-  const known = (id: string) => ctx.org.byId.has(id)
+  // A name opens the person's card when they are on the roster and inside the mode's scope.
+  const known = (id: string) => ctx.org.byId.has(id) && personInScope(id, ctx.access)
   const [open, setOpen] = useState(false)
   const [all, setAll] = useState(false)
   const { shown, more } = peoplePreview(people)
@@ -137,19 +140,26 @@ function FindingItem({
       ? finding.tab
       : null
   const nameOf = (id: string) => ctx.org.byId.get(id)?.name
-  // Manager mode offers "Focus on" only when the scope stays inside the org (docs/ROLES.md, 3.13).
-  const lock = ctx.access.lock
-  const merged = finding.filter && lock ? mergeFilter(ctx.filters, finding.filter) : null
-  const canFocus = !!finding.filter && (!lock || !merged || clampFilters(merged, lock) === merged)
+  // A scoped mode offers "Focus on" only when the scope stays inside it, and Finance only for a
+  // business unit group (docs/ROLES.md 3.13; docs/ROLES-V2.md 2.3): the mode's clamp leaves it as is.
+  const { scope, mode } = ctx.access
+  const clamps = !!scope || mode === 'finance'
+  const merged = finding.filter && clamps ? mergeFilter(ctx.filters, finding.filter) : null
+  const canFocus =
+    !!finding.filter &&
+    ctx.access.can('focus:finding') &&
+    (!merged || clampFilters(merged, scope, mode) === merged)
+  // "Show the records" only for records the mode lists (a hidden kind is no link, ROLES-V2 4.12).
+  const records = drillTarget(ctx.access, finding.drill)
   const focus = finding.filter ? finding.filterLabel || describeFocus(finding.filter, nameOf) : ''
   // The same merge, history entry and Undo as "Filter to" in the records panel.
   const onFocus = () => {
     if (finding.filter) focusScope(finding.filter, { org: ctx.org, label: finding.filterLabel })
   }
   const links: ReactNode[] = []
-  if (finding.drill)
+  if (records)
     links.push(
-      <button key="drill" type="button" className={LINK} onClick={() => drill(finding.drill)}>
+      <button key="drill" type="button" className={LINK} onClick={() => drill(records)}>
         Show the records
       </button>,
     )

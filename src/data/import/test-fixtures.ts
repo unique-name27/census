@@ -793,4 +793,26 @@ export const FIXTURE: Datasets = {
       target: 8,
     },
   ],
+  budget: [
+    {
+      period: '2026-09-01',
+      businessUnit: 'Silicon',
+      department: 'Design verification',
+      costCenter: 'CC-220',
+      budgetHeadcount: 5,
+      budgetCost: 61500,
+      currency: 'USD',
+      planVersion: 'FY27 budget',
+    },
+    {
+      period: '2026-09-01',
+      businessUnit: 'Operations',
+      department: null,
+      costCenter: null,
+      budgetHeadcount: 1.5,
+      budgetCost: 12000,
+      currency: 'EUR',
+      planVersion: 'FY27 budget',
+    },
+  ],
 }

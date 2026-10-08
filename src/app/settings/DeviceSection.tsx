@@ -12,6 +12,7 @@ import { clearDevice, exportSettings, importSettings } from '@/data/store'
 import { useSavedViews } from '@/data/viewsStore'
 import { todayISO } from '@/lib/dates'
 import { downloadBlob } from '@/lib/export/download'
+import { MarksFileButtons } from '@/views/actions/ui/MarksName'
 import { importDescription } from './model'
 import { Field, SettingsBlock } from './ui'
 
@@ -97,7 +98,10 @@ function ClearEverything() {
 export function DeviceSection() {
   const fileRef = useRef<HTMLInputElement>(null)
   // A settings file is team configuration: Manager mode keeps "Clear everything" only.
-  const files = useAnalytics().access.can('settings:device-files')
+  const access = useAnalytics().access
+  const files = access.can('settings:device-files')
+  // Action center marks are personal: every mode that shows the Action center can pass them along.
+  const marks = access.can('page:actions')
   const onExport = () => {
     downloadBlob(exportSettings(), settingsFileName(todayISO()))
     toast('Settings file downloaded', { tone: 'good', description: 'Pay amounts are never in it.' })
@@ -164,6 +168,14 @@ export function DeviceSection() {
               e.target.value = ''
             }}
           />
+        </Field>
+      )}
+      {marks && (
+        <Field
+          label="Action center marks"
+          hint="Items you mark handled or snoozed are kept in this browser. Save them to a file to pass a handled list to a teammate, or load the file they sent; where both of you marked an item, the later mark is kept. The file holds item keys, dates and the name you added, never pay amounts or case IDs."
+        >
+          <MarksFileButtons />
         </Field>
       )}
       <ClearEverything />

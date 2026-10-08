@@ -10,6 +10,7 @@ import type { Column } from '@/charts/types'
 import type { Severity } from '@/components/types'
 import type { FieldRef } from '@/data/quality/fieldRef'
 import type {
+  BudgetLine,
   Candidate,
   CompRecord,
   DatasetKey,
@@ -128,6 +129,7 @@ export interface DrillRecordMap {
   rightToWork: RightToWork
   surveyResponses: SurveyResponse
   surveyItems: SurveyItem
+  budget: BudgetLine
   surveyGroups: SurveyGroupRow
   leaveGroups: LeaveGroupRow
   actionItems: ActionItemRow

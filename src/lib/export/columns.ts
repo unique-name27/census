@@ -6,16 +6,88 @@ import type { Column } from '@/charts/types'
 import { type Format, isNum } from '@/lib/format'
 
 /**
- * The columns an output shows: pay-amount columns only when pay amounts are switched on (ratios
- * are never marked `pay`), and the columns meant for that output (`only`). Tables on screen,
- * Excel, CSV and copy are 'sheets'; slide tables are 'slides'.
+ * Which money columns an output may show (docs/ROLES-V2.md 3.1): `pay` for one person's amounts
+ * (`pay: true` columns), `cost` for totals over groups (`cost: true` columns).
  */
-export function visibleColumns<C extends Pick<Column, 'pay' | 'only'>>(
+export interface MoneyShown {
+  pay: boolean
+  cost: boolean
+}
+
+/**
+ * What `visibleColumns` and the exporters take: the context's two flags, or a plain boolean that
+ * means "pay amounts on" (and so cost totals too, as in every switch mode). A plain `false` hides
+ * both, the safe reading for a caller that knows only `showPay`.
+ */
+export type MoneyArg = boolean | MoneyShown
+
+/** What exporters take: `showPay`, and `showCost` (cost totals; follows `showPay` when not given). */
+export interface MoneyOpts {
+  showPay: boolean
+  showCost?: boolean
+}
+
+/**
+ * Both flags from an analytics context or export options (`showPay`, `showCost`). Without
+ * `showCost`, cost totals follow pay amounts. Pay amounts on always allows cost totals.
+ */
+export function moneyShown(ctx: MoneyOpts): MoneyShown {
+  return { pay: ctx.showPay, cost: (ctx.showCost ?? ctx.showPay) || ctx.showPay }
+}
+
+/** The options an export takes from an analytics context: `{ showPay, showCost }`. */
+export function moneyOpts(ctx: MoneyOpts): Required<MoneyOpts> {
+  const m = moneyShown(ctx)
+  return { showPay: m.pay, showCost: m.cost }
+}
+
+/** A `MoneyArg` as both flags. Pay amounts on always allows cost totals. */
+export function readMoney(arg: MoneyArg): MoneyShown {
+  if (typeof arg === 'boolean') return { pay: arg, cost: arg }
+  return { pay: arg.pay, cost: arg.cost || arg.pay }
+}
+
+/** The column holds money the output may not show (a `pay` column without pay, a `cost` column without cost). */
+export function moneyDropped(column: Pick<Column, 'pay' | 'cost'>, money: MoneyArg): boolean {
+  const m = readMoney(money)
+  return (!!column.pay && !m.pay) || (!!column.cost && !m.cost)
+}
+
+/**
+ * Whether any of these tables carries money the output leaves out: a `pay` column without pay
+ * amounts, or a `cost` column without cost totals (the "Pay amounts were left out" note).
+ */
+export function moneyLeftOut(
+  tables: readonly { columns: readonly Pick<Column, 'pay' | 'cost'>[] }[],
+  money: MoneyArg,
+): boolean {
+  return tables.some((t) => t.columns.some((c) => moneyDropped(c, money)))
+}
+
+/**
+ * The columns an output shows: pay-amount columns only when pay amounts are switched on, cost-total
+ * columns only when cost totals may show (ratios carry neither flag), and the columns meant for
+ * that output (`only`). Tables on screen, Excel, CSV and copy are 'sheets'; slide tables are
+ * 'slides'. `money` is `moneyShown(ctx)`, or a plain `showPay`. The second signature takes any
+ * list of columns, for a loop over lists typed for different rows.
+ */
+export function visibleColumns<C extends Pick<Column, 'pay' | 'cost' | 'only'>>(
   columns: readonly C[],
-  showPay: boolean,
+  money: MoneyArg,
+  output?: 'sheets' | 'slides',
+): C[]
+export function visibleColumns(
+  columns: readonly Column[],
+  money: MoneyArg,
+  output?: 'sheets' | 'slides',
+): Column[]
+export function visibleColumns<C extends Pick<Column, 'pay' | 'cost' | 'only'>>(
+  columns: readonly C[],
+  money: MoneyArg,
   output: 'sheets' | 'slides' = 'sheets',
 ): C[] {
-  return columns.filter((c) => (showPay || !c.pay) && (!c.only || c.only === output))
+  const m = readMoney(money)
+  return columns.filter((c) => !moneyDropped(c, m) && (!c.only || c.only === output))
 }
 
 const TEXT_FORMATS = new Set<Format>(['text', 'date'])

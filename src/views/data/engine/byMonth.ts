@@ -34,6 +34,7 @@ export const MONTH_RULES: Partial<Record<DatasetKey, { fields: readonly string[]
   hiringPlan: { fields: ['period'], event: 'for starts' },
   onboardingTasks: { fields: ['dueDate'], event: 'due' },
   surveyResponses: { fields: ['responseDate'], event: 'given' },
+  budget: { fields: ['period'], event: 'lines' },
 }
 
 /** Datasets with no event date: what they hold is as of the load. */

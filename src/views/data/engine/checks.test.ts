@@ -20,6 +20,7 @@ const empty = (): Datasets => ({
   rightToWork: [],
   surveyResponses: [],
   surveyItems: [],
+  budget: [],
 })
 
 const sample: SourceMeta = { kind: 'sample', rowCount: 0 }

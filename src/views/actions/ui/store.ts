@@ -1,10 +1,11 @@
 /**
  * Page state for the Action center:
  *
- *  - `useActionMarks`: Mark handled and Snooze, by item id, saved in this browser
- *    (`census:actions`, every read and write wrapped). Another open Census tab picks up changes
- *    through the browser's storage event.
- *  - `useActionFilters`: the page's own filters, kept for this visit only.
+ *  - `useActionMarks`: Mark handled and Snooze (marks v2), saved in this browser
+ *    (`census:actions`, every read and write wrapped), with the name they are kept under ("Kept as
+ *    Priya in this browser") and the marks file. Another open Census tab picks up changes through
+ *    the browser's storage event. One browser's marks hold across modes.
+ *  - `useActionFilters`: the page's own filters and the list shown, kept for this visit only.
  *  - `useNow`: the clock a snooze is judged against, ticking once a minute.
  */
 import { useEffect, useState } from 'react'
@@ -13,6 +14,8 @@ import {
   type ActionFilters,
   type Mark,
   type Marks,
+  type MarkTarget,
+  mergeMarks,
   NO_FILTERS,
   STORAGE_KEY,
   snapshotOf,
@@ -21,38 +24,59 @@ import {
   withSnapshot,
   withSnoozed,
 } from '../engine'
-import { browserStorage, loadMarks, saveMarks } from '../engine/marks'
+import { browserStorage, loadState, saveMarks } from '../engine/marks'
 
 export type Snapshot = Readonly<Record<string, Mark | null>>
 
-interface MarksState {
+type Target = MarkTarget | string
+
+interface MarksStore {
   marks: Marks
+  /** The name marks are kept under in this browser, or null. */
+  name: string | null
   /** The last write reached the browser's storage (false: marks last for this visit only). */
   saved: boolean
   /** Each returns the marks as they were, for Undo. */
-  handle: (ids: readonly string[]) => Snapshot
-  snooze: (ids: readonly string[], days: number) => Snapshot
-  reopen: (ids: readonly string[]) => Snapshot
+  handle: (targets: readonly Target[]) => Snapshot
+  snooze: (targets: readonly Target[], days: number) => Snapshot
+  reopen: (targets: readonly Target[]) => Snapshot
   restore: (snap: Snapshot) => void
+  setName: (name: string | null) => void
+  /** Lay a marks file's marks over this browser's (the later mark wins); returns how many changed. */
+  merge: (theirs: Marks) => number
   /** Read the saved marks again (another tab changed them). */
   reload: () => void
 }
 
-export const useActionMarks = create<MarksState>((set, get) => {
-  const commit = (marks: Marks) => set({ marks, saved: saveMarks(marks, browserStorage()) })
-  const change = (ids: readonly string[], next: (m: Marks) => Marks): Snapshot => {
-    const before = snapshotOf(get().marks, ids)
+export const useActionMarks = create<MarksStore>((set, get) => {
+  const initial = loadState(browserStorage(), Date.now())
+  const commit = (marks: Marks, name: string | null = get().name) =>
+    set({ marks, name, saved: saveMarks(marks, browserStorage(), name) })
+  const change = (targets: readonly Target[], next: (m: Marks) => Marks): Snapshot => {
+    const before = snapshotOf(get().marks, targets)
     commit(next(get().marks))
     return before
   }
   return {
-    marks: loadMarks(browserStorage(), Date.now()),
+    marks: initial.marks,
+    name: initial.name,
     saved: true,
-    handle: (ids) => change(ids, (m) => withHandled(m, ids, Date.now())),
-    snooze: (ids, days) => change(ids, (m) => withSnoozed(m, ids, Date.now(), days)),
-    reopen: (ids) => change(ids, (m) => withReopened(m, ids)),
+    handle: (targets) => change(targets, (m) => withHandled(m, targets, Date.now(), get().name)),
+    snooze: (targets, days) => change(targets, (m) => withSnoozed(m, targets, Date.now(), days, get().name)),
+    reopen: (targets) => change(targets, (m) => withReopened(m, targets)),
     restore: (snap) => commit(withSnapshot(get().marks, snap)),
-    reload: () => set({ marks: loadMarks(browserStorage(), Date.now()) }),
+    setName: (name) => commit(get().marks, name?.trim() ? name.trim().slice(0, 60) : null),
+    merge: (theirs) => {
+      const before = get().marks
+      const next = mergeMarks(before, theirs)
+      const changed = Object.keys(next).filter((k) => next[k] !== before[k]).length
+      if (changed) commit(next)
+      return changed
+    },
+    reload: () => {
+      const s = loadState(browserStorage(), Date.now())
+      set({ marks: s.marks, name: s.name })
+    },
   }
 })
 
@@ -67,24 +91,34 @@ if (typeof window !== 'undefined') {
   }
 }
 
-/** Which items the list shows: open ones, or the ones handled or snoozed (to reopen them). */
-export type ListMode = 'open' | 'parked'
+/**
+ * Which items the list shows: every open item (Developer, HR, CHRO), a role mode's Needs attention
+ * or Waiting on others, or the ones handled or snoozed (to reopen them).
+ */
+export type ListMode = 'open' | 'needs' | 'waiting' | 'parked'
 
 interface FiltersState {
   filters: ActionFilters
-  mode: ListMode
+  /** The list picked on the page; null until one is picked (the mode's default then). */
+  list: ListMode | null
   setFilters: (patch: Partial<ActionFilters>) => void
   resetFilters: () => void
-  setMode: (mode: ListMode) => void
+  setList: (list: ListMode | null) => void
 }
 
 export const useActionFilters = create<FiltersState>((set) => ({
   filters: NO_FILTERS,
-  mode: 'open',
+  list: null,
   setFilters: (patch) => set((s) => ({ filters: { ...s.filters, ...patch } })),
   resetFilters: () => set({ filters: NO_FILTERS }),
-  setMode: (mode) => set({ mode }),
+  setList: (list) => set({ list }),
 }))
+
+/** The list a page shows: the one picked when the mode has it, else the mode's first. */
+export function listIn(picked: ListMode | null, roleLists: boolean): ListMode {
+  if (roleLists) return picked === 'needs' || picked === 'waiting' || picked === 'parked' ? picked : 'needs'
+  return picked === 'parked' ? 'parked' : 'open'
+}
 
 /** Milliseconds now, refreshed every minute so a snooze that ends while the page is open ends on screen. */
 export function useNow(): number {

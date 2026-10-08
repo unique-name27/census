@@ -3,8 +3,10 @@
  * state for a scope with no one in it and the notice for pay data from another date.
  */
 import { useMemo } from 'react'
-import { Button, EmptyState, goTo, IconDatabase, IconFilter, IconInfo } from '@/components'
+import { S } from '@/access'
+import { Button, EmptyState, goTo, IconDatabase, IconFilter, IconInfo, Switch } from '@/components'
 import { useAnalytics } from '@/data/context'
+import { useCensus } from '@/data/store'
 import { Drill, drill } from '@/drill'
 import { fmt } from '@/lib/format'
 import { missingDrill } from './engine/drill'
@@ -34,6 +36,21 @@ export const MISSING = {
   promotion: 'No promotion increases in this cycle.',
   bonusTarget: 'Add Target bonus % to the Compensation upload to see this.',
 } as const
+
+/** Workforce cost's empty state while cost totals may not show (a switch mode, switch off). */
+export const COST_OFF = 'Turn on Show pay amounts to see cost totals.'
+
+/**
+ * The "Show pay amounts" switch, as the empty-state control of a cost figure. Renders nothing in
+ * a mode without the switch.
+ */
+export function PaySwitch() {
+  const { access } = useAnalytics()
+  const showPay = useCensus((s) => s.showPay)
+  const setShowPay = useCensus((s) => s.setShowPay)
+  if (!access.can(S.pay('switch'))) return null
+  return <Switch checked={showPay} onChange={setShowPay} label="Show pay amounts" />
+}
 
 /** Message when there is no row to show: the missing input first, else a plain "none here". */
 export function emptyIf(rows: readonly unknown[], missing: string | null, none: string): string | null {

@@ -254,9 +254,11 @@ describe('on the sample company', () => {
 
   it('lists every candidate in the action queue and the four analog reqs stuck at the screen', () => {
     const b = computeRecruiting(ctx).base
-    const queue = b.actives.filter(inQueue)
+    // The queue on reqs open on the as-of date: the 7 candidates on held reqs are left out.
+    const queue = b.actives.filter((x) => inQueue(x) && x.app.req?.status !== 'On hold')
     const candidates = items.filter((i) => i.subject.kind === 'candidates')
     expect(candidates).toHaveLength(queue.length)
+    expect(b.actives.filter(inQueue).length - queue.length).toBe(7)
     const funnels = items.filter((i) => i.id.startsWith('recruiting:empty-funnel:'))
     expect(funnels.map((i) => i.subject.id).sort()).toEqual(b.req.emptyFunnel.map((r) => r.reqId).sort())
     // The planted story: open longer than 75 days with nobody past the screen, all analog.
@@ -275,7 +277,8 @@ describe('on the sample company', () => {
     // Recruiters and coordinators are on the roster, so their items carry an employee ID too.
     const named = items.filter((i) => i.ownerName !== UNASSIGNED_OWNER)
     expect(named.every((i) => !!i.ownerId)).toBe(true)
-    expect(items.filter((i) => i.id.startsWith('recruiting:review:'))).toHaveLength(86)
+    // 86 waiting for review, 5 of them on held reqs (no item there).
+    expect(items.filter((i) => i.id.startsWith('recruiting:review:'))).toHaveLength(81)
     expect(items.filter((i) => i.id.startsWith('recruiting:offer-answer:'))).toHaveLength(5)
   })
 

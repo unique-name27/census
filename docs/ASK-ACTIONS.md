@@ -15,7 +15,9 @@ Two parts:
 
 Everything in docs/ASK.md still holds: numbers only go to Claude, names and IDs as tokens, pay
 never sent, small groups hidden, Manager mode locked to the org (docs/ROLES.md), and the
-Action center stays Developer mode only.
+Action center follows the mode: `open_items` returns what the mode's Action center lists, its
+Needs attention and Waiting on others in a role mode, every item with the escalations counted in
+HR, CHRO and Developer (docs/ROLES-V2.md 6.3).
 
 ## 1. The docked panel
 

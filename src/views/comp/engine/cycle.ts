@@ -4,13 +4,15 @@
  * from merit) and the total rewards mix. Pure.
  */
 import type { Severity } from '@/components/types'
-import { LEVELS, MIN_GROUP } from '@/data/schema'
+import { type ISODate, LEVELS, MIN_GROUP } from '@/data/schema'
+import { daysBetween } from '@/lib/dates'
 import { isNum } from '@/lib/format'
 import { median, sum } from '@/lib/stats'
+import type { CycleDates } from '@/metrics/compCycle'
 import type { GroupDim } from './groupFilter'
 import { groupRows, safeMedian, safeShare, values } from './groups'
-import type { CompPerson } from './population'
-import { defaultRules, type ExceptionRules } from './rules'
+import type { CompPerson, Population } from './population'
+import { type CompRules, defaultRules, type ExceptionRules } from './rules'
 import { type CycleSettings, guidelineFor, type RatingKey, ratingKey } from './settings'
 import { settingPct, shownGap } from './text'
 
@@ -362,4 +364,149 @@ export function rewardsMix(
       members: ok ? g.rows : [],
     }
   })
+}
+
+/* ───────── the cycle's dates and merit cycle progress ───────── */
+
+export type CycleState = 'not-started' | 'not-open' | 'open' | 'closed'
+
+/** The cycle's dates in force, where the as-of date sits among them, and who is eligible. */
+export interface CycleCalendar extends CycleDates {
+  /**
+   * 'not-open' before the open date, 'closed' after the close date, 'open' between them (or with
+   * proposals and no dates), 'not-started' with no proposals and no dates.
+   */
+  state: CycleState
+  /** Hired on or before this date is eligible; null when nobody can be judged (no proposals, no setting). */
+  cutoff: ISODate | null
+  /** The cutoff is the latest hire date among people with a proposal, not a setting. */
+  cutoffInferred: boolean
+  /** Days from the as-of date to the close date (negative once it has passed); null without one. */
+  daysToClose: number | null
+  /** Missing proposals are a watch item this many days or fewer before the close date. */
+  warnDays: number
+}
+
+/**
+ * The calendar for the as-of date. The eligibility cutoff is read company-wide (`company`), so a
+ * filter never changes who is eligible.
+ */
+export function cycleCalendar(
+  dates: CycleDates,
+  company: readonly Pick<CompPerson, 'merit' | 'hireDate'>[],
+  asOf: ISODate,
+  warnDays: number,
+): CycleCalendar {
+  let latest: ISODate | null = null
+  for (const p of company) if (p.merit != null && (!latest || p.hireDate > latest)) latest = p.hireDate
+  const cutoff = dates.eligibleHiredBy ?? latest
+  const proposals = latest != null
+  const state: CycleState =
+    dates.open && asOf < dates.open
+      ? 'not-open'
+      : dates.close && asOf > dates.close
+        ? 'closed'
+        : proposals || dates.open
+          ? 'open'
+          : 'not-started'
+  return {
+    ...dates,
+    state,
+    cutoff,
+    cutoffInferred: dates.eligibleHiredBy == null && cutoff != null,
+    daysToClose: dates.close ? daysBetween(asOf, dates.close) : null,
+    warnDays,
+  }
+}
+
+/** Eligible this cycle: a merit proposal, or hired on or before the cutoff. */
+export const isEligible = (p: Pick<CompPerson, 'merit' | 'hireDate'>, cutoff: ISODate | null): boolean =>
+  p.merit != null || (cutoff != null && p.hireDate <= cutoff)
+
+/** Spend against budget as a progress row's status. */
+export type ProgressStatus = 'over' | 'within'
+export const PROGRESS_STATUS_LABEL: Record<ProgressStatus, string> = {
+  over: 'Over budget',
+  within: 'Within budget',
+}
+
+export interface ProgressRow extends GroupDim {
+  group: string
+  isOther: boolean
+  eligible: number
+  /** Eligible people with a merit proposal. */
+  proposed: number
+  /** Eligible people with no merit proposal. */
+  missing: number
+  /** proposed ÷ eligible; null under the anonymity minimum. */
+  share: number | null
+  /** Merit spend of the group's proposals and its gap to the budget; null when hidden. */
+  spendPct: number | null
+  delta: number | null
+  /** Over budget from the flag gap ('comp.merit.overBudget'); null when the spend is hidden. */
+  status: ProgressStatus | null
+  /** The eligible people with no proposal: what the bullet opens. */
+  missingPeople: CompPerson[]
+  eligiblePeople: CompPerson[]
+}
+
+export interface ProposalProgress {
+  calendar: CycleCalendar
+  /** The scope. */
+  total: ProgressRow
+  /** By business unit, largest first, small units folded into Other. */
+  rows: ProgressRow[]
+}
+
+/** What `proposalProgress` reads: the comp model fits as it is. */
+export interface ProgressInput {
+  pop: Pick<Population, 'people'>
+  rules: Pick<CompRules, 'minGroup' | 'overBudget' | 'cycle'>
+  cycle: { calendar: CycleCalendar }
+}
+
+function progressRow(
+  group: string,
+  eligible: readonly CompPerson[],
+  rules: ProgressInput['rules'],
+  patch: Partial<ProgressRow> = {},
+): ProgressRow {
+  const min = rules.minGroup
+  const proposed = eligible.filter((p) => p.merit != null)
+  const missing = eligible.filter((p) => p.merit == null)
+  const spend = meritSpend(proposed, rules.cycle, min)
+  const shown = spend.priced >= min
+  const delta = shown ? spend.delta : null
+  return {
+    group,
+    isOther: false,
+    eligible: eligible.length,
+    proposed: proposed.length,
+    missing: missing.length,
+    share: safeShare(proposed.length, eligible.length, min),
+    spendPct: shown ? spend.spendPct : null,
+    delta,
+    status: delta == null ? null : delta >= rules.overBudget.flag - 1e-9 ? 'over' : 'within',
+    missingPeople: missing,
+    eligiblePeople: eligible.slice(),
+    ...patch,
+  }
+}
+
+/**
+ * Merit cycle progress (Compensation's home, `home-comp-cycle`; the Merit cycle tab): merit
+ * proposals entered as a share of eligible people, by business unit, with spend against budget as
+ * each row's status. Counts are never hidden; shares and spend are, under the anonymity minimum.
+ */
+export function proposalProgress(m: ProgressInput): ProposalProgress {
+  const cal = m.cycle.calendar
+  const eligible = m.pop.people.filter((p) => isEligible(p, cal.cutoff))
+  const groups = groupRows(eligible, (p) => p.businessUnit, { min: m.rules.minGroup })
+  return {
+    calendar: cal,
+    total: progressRow('Total', eligible, m.rules),
+    rows: groups.map((g) =>
+      progressRow(g.label, g.rows, m.rules, g.folded ? { isOther: true } : { dim: 'businessUnit' }),
+    ),
+  }
 }

@@ -6,7 +6,15 @@ export {
   EXPORT_DIGITS,
   exportNumber,
   isNumericFormat,
+  type MoneyArg,
+  type MoneyOpts,
+  type MoneyShown,
+  moneyDropped,
+  moneyLeftOut,
+  moneyOpts,
+  moneyShown,
   plainText,
+  readMoney,
   visibleColumns,
 } from './columns'
 export { csvField, csvPreamble, downloadCsv, guardFormula, toCsv } from './csv'
@@ -24,6 +32,7 @@ export {
   svgToString,
   withLightTheme,
 } from './image'
+export { EVERY_RECRUITER_SCOPE, modeMeta } from './modeMeta'
 export {
   asOfIso,
   asOfLabel,
@@ -32,6 +41,7 @@ export {
   hasDataContext,
   imageFooter,
   metaLine,
+  modeLines,
   slug,
   stampLine,
   standardLine,
@@ -47,6 +57,7 @@ export {
   exportViewWorkbook,
   type FigureGroup,
   isFigureGroups,
+  payFact,
   slideFootnote,
   type ViewEntry,
   type ViewExportOptions,

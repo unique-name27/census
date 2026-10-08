@@ -4,6 +4,7 @@
  * planted stories each view should surface are documented in README.md next to this file.
  */
 import type { Datasets, ISODate } from '../schema'
+import { budgetRows } from './budget'
 import { day } from './calendar'
 import { compRows } from './comp'
 import { planEducation, withEducation } from './education'
@@ -133,6 +134,9 @@ export function generateSample(): Datasets {
     rightToWork: rightToWorkRows(employees, onboardingTasks, exportPlants, rngFor('right-to-work')),
     surveyResponses: surveys.responses,
     surveyItems: surveys.items,
+    // Finance's budget (docs/ROLES-V2.md, "Decisions made"): last, from its own stream, on the
+    // finished roster and pay, so no other number moves.
+    budget: budgetRows(staff, comp, rngFor('budget')),
   }
 }
 

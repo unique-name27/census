@@ -10,6 +10,7 @@ import { computeControlTotal, DEFAULT_TOLERANCE } from '../../quality/rules'
 import type { SampleSeed, SampleSeedEntry } from '../../quality/seed'
 import type { DatasetKey, Datasets } from '../../schema'
 import { cachedSample, SAMPLE_AS_OF } from '..'
+import { budgetPlanted } from './extracts/budget'
 import { candidatesPlanted } from './extracts/candidates'
 import { casesPlanted } from './extracts/cases'
 import { hiringPlanPlanted } from './extracts/hiringPlan'
@@ -38,6 +39,7 @@ export const PLANTED: { [K in RawDataset]: (base: Datasets) => Datasets[K] } = {
   rightToWork: rightToWorkPlanted,
   surveyResponses: surveyResponsesPlanted,
   surveyItems: surveyItemsPlanted,
+  budget: budgetPlanted,
 }
 
 export interface StarterSample {

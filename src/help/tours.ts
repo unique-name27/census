@@ -98,8 +98,8 @@ const GETTING_STARTED: Tour = {
     },
     {
       target: tourTarget('masthead-tools'),
-      title: 'Tools',
-      body: "Tools links to the team's companion tools.",
+      title: 'Tools and the Action center',
+      body: "Tools links to the team's companion tools. Actions, next to it, opens the Action center: open items from every view, grouped by who they wait on.",
       placement: 'bottom',
     },
     {
@@ -831,16 +831,19 @@ const ACTION_CENTER: Tour = {
     {
       ...at('actions'),
       target: tourTarget('actions-my-team'),
+      // The picker is for the modes that list every item (and Manager mode's pinned org).
+      surface: 'ui:actions-team',
       title: 'My team',
       body: 'Pick a manager to see items about their org and items they or their team own anywhere in the company. Export list saves the list to Excel.',
       placement: 'bottom',
     },
     {
       ...at('actions'),
-      target: figureTarget('actions-by-owner'),
-      title: 'Where items wait',
-      body: 'Open items by owner group and due date, with overdue and due soon marked.',
-      placement: 'top',
+      target: tourTarget('actions-list-switch'),
+      surface: 'ui:attention-lists',
+      title: 'Your two lists',
+      body: 'Needs attention is yours to act on, most pressing first: legal exposure, then severity and days overdue. Waiting on others is in your area, with someone else. The key figures and charts count the list you pick.',
+      placement: 'bottom',
     },
     {
       ...at('actions'),
@@ -853,7 +856,7 @@ const ACTION_CENTER: Tour = {
       ...at('actions'),
       target: tourTarget('actions-owner-sheet'),
       title: 'One sheet per owner group',
-      body: "Each owner's items with what is open, who it is about, where it comes from and when it is due. Mark an item handled or snooze it for 7 days once it is in hand.",
+      body: "Each owner's items with what is open, who it is about, where it comes from and when it is due. Mark an item handled or snooze it for 7 days once it is in hand. In a role mode the sheets are under Waiting on others.",
       placement: 'top',
     },
     {

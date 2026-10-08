@@ -4,7 +4,8 @@
  * pans to them.
  */
 import { liveAccess } from '@/access/connect'
-import { notInOrg } from '@/access/copy'
+import { notInOrg, outsideScope } from '@/access/copy'
+import { personInScope } from '@/access/scopes/records'
 import { goTo } from '@/components/navigation'
 import { toast } from '@/components/toast'
 
@@ -13,9 +14,14 @@ export const ORG_JUMP_EVENT = 'census:org-jump'
 
 export function openInOrgChart(employeeId: string): void {
   // Manager mode: the chart shows the manager's org only, so someone outside it does not open.
-  const { lock } = liveAccess()
+  // HRBP mode: the chart shows everyone, dimmed outside the scope, and opens inside it only.
+  const { lock, scope } = liveAccess()
   if (lock && !lock.orgIds.has(employeeId)) {
     toast(notInOrg(lock.managerName || 'the manager'))
+    return
+  }
+  if (scope && scope.kind !== 'org' && !personInScope(employeeId, { scope })) {
+    toast(outsideScope(scope.label))
     return
   }
   try {

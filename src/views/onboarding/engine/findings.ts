@@ -42,7 +42,7 @@ import {
   union,
 } from './lineage'
 import { isUncovered, type PlanModel } from './plan'
-import { regionOf, regionSites, type Start, type TaskView } from './starts'
+import { regionSites, type Start, type TaskView } from './starts'
 import type { UpcomingModel } from './upcoming'
 
 export const MAX_FINDINGS = 10
@@ -300,7 +300,7 @@ function lateTaskFinding(b: OnboardingBase, f: First90Model, ctx: AnalyticsConte
     const pulse = f.pulse
     if (pulse.answers.length) {
       const who = respondentIndex({ employees: ctx.all.employees })
-      const isHere = (key: string) => regionOf(who(key).employee?.location) === seg.value
+      const isHere = (key: string) => b.regions.regionOf(who(key).employee?.location) === seg.value
       const here = aggregate(
         pulse.answers.filter((r) => isHere(r.respondentKey)),
         { min: s.surveyMin },
@@ -318,15 +318,8 @@ function lateTaskFinding(b: OnboardingBase, f: First90Model, ctx: AnalyticsConte
   const pulseShown = detail.some((d) => d.includes('I had what I needed'))
   const uses = union(STARTERS, TASKS, SITE, DEPARTMENT, ['employees.country'], pulseShown ? PULSE : [])
   // The segment as a scope: a site or a department as itself, a region as its sites, named as the
-  // region ("Focus on Asia Pacific"). Starts follow their employee record, as the filters do.
-  const sites =
-    seg.dim === 'region'
-      ? regionSites(
-          ctx.all.employees,
-          seg.value,
-          inSeg.map((x) => x.start.location),
-        )
-      : null
+  // region ("Focus on APAC"). Starts follow their employee record, as the filters do.
+  const sites = seg.dim === 'region' ? regionSites(b.regions, seg.value) : null
   const filter =
     seg.dim === 'location'
       ? groupScope('location', seg.value)

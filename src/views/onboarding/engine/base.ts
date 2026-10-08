@@ -2,10 +2,12 @@
  * What every onboarding measure reads, built once per analytics context: the settings in force,
  * the upcoming starts, the people who started in the window and their tasks.
  */
+import type { RegionIndex } from '@/access/scopes/regions'
 import type { AnalyticsContext } from '@/data/context'
 import type { Employee, ISODate, Requisition } from '@/data/schema'
 import { PERIOD_LABELS, type Window } from '@/data/scope'
 import type { MetricsApi } from '@/metrics/types'
+import { regionsOf } from '../../hrbp/engine/places'
 import { type OnboardingSettings, onboardingSettings } from './settings'
 import {
   type Start,
@@ -43,11 +45,18 @@ export interface OnboardingBase {
   hasPlan: boolean
   hasSurveys: boolean
   /**
-   * Manager mode: a background check or export-control screening reads as the team holding it,
-   * never where it stands, in every table and record of the page; I-9 tasks (a Compliance
-   * measure) are left out of readiness by task.
+   * Manager and Finance mode (docs/ROLES-V2.md 4.2): a background check or export-control
+   * screening reads as the team holding it ("With People ops"), never where it stands, in every
+   * table and record of the page.
    */
   masked: boolean
+  /**
+   * Manager and Recruiter mode: I-9 tasks (an HR ops and Compliance measure) are left out of
+   * readiness by task.
+   */
+  hideI9: boolean
+  /** The one region index (`ctx.regions`). */
+  regions: RegionIndex
 }
 
 const reqIndexes = new WeakMap<readonly Requisition[], Map<string, Requisition>>()
@@ -68,7 +77,10 @@ export function onboardingBase(ctx: AnalyticsContext): OnboardingBase {
   const settings = onboardingSettings(ctx.metrics)
   const reqs = reqIndex(ctx.all.requisitions)
   const tasks = taskIndex(ctx.data.onboardingTasks)
+  const regions = regionsOf(ctx)
+  const mode = ctx.access.mode
   const src: StartSources = {
+    regions,
     employees: ctx.data.employees,
     candidates: ctx.data.candidates,
     reqs,
@@ -97,7 +109,9 @@ export function onboardingBase(ctx: AnalyticsContext): OnboardingBase {
     hasCandidates: ctx.all.candidates.length > 0,
     hasPlan: ctx.all.hiringPlan.length > 0,
     hasSurveys: ctx.all.surveyResponses.length > 0,
-    masked: ctx.access.mode === 'manager',
+    masked: mode === 'manager' || mode === 'finance',
+    hideI9: mode === 'manager' || mode === 'recruiter',
+    regions,
   }
   cache.set(ctx, base)
   return base

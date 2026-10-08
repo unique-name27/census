@@ -9,7 +9,6 @@ import { SEVERITY_RANK } from '@/components/readoutModel'
 import type { Finding, Severity } from '@/components/types'
 import type { AnalyticsContext } from '@/data/context'
 import type { FieldRef } from '@/data/quality/fieldRef'
-import { SITES } from '@/data/schema'
 import { groupFilter } from '@/drill/filter'
 import { formatDate } from '@/lib/dates'
 import { fmt, fmtDelta, plural } from '@/lib/format'
@@ -215,9 +214,7 @@ export function buildFindings(f: FindingInputs): Finding[] {
     ]
       .filter(Boolean)
       .join(' ')
-    const sites = SITES.filter((x) => (x.region === 'APAC' ? 'Asia Pacific' : x.region) === g.region).map(
-      (x) => x.location,
-    )
+    const sites = [...p.regions.sitesOf(g.region)]
     const rows = f.readiness.byRegion
     out.push({
       id: 'listening-readiness',
@@ -230,7 +227,7 @@ export function buildFindings(f: FindingInputs): Finding[] {
         : `Review what new starters in ${g.region} are missing in their first week with the onboarding team.`,
       tab: 'onboarding',
       filter: sites.length ? { location: sites } : undefined,
-      // The region's sites, said as the region: "Focus on Asia Pacific".
+      // The region's sites, said as the region: "Focus on APAC".
       filterLabel: sites.length ? g.region : undefined,
       uses: withItems(p, L.ANSWER, L.ITEM, L.EMP_LOCATION, L.when(laptop, L.LAPTOP_TASKS)),
       drill: () =>

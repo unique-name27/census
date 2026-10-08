@@ -1,6 +1,6 @@
 # Sample company: Northgate Semiconductor
 
-`generateSample()` returns all fifteen datasets for a fictional Nasdaq-listed fabless semiconductor
+`generateSample()` returns all sixteen datasets for a fictional Nasdaq-listed fabless semiconductor
 company, founded March 2014, as of **30 Sep 2026** (`SAMPLE_AS_OF`). Everything is seeded
 (mulberry32, fixed seed, one named stream per module), so every call returns identical rows. It runs
 in about 0.25 s in Node.
@@ -33,6 +33,7 @@ rather than hard-code IDs.
 | `prehires.ts` | pre-hire employee records for the accepted offers that start within two weeks |
 | `leave.ts` | leave categories and planned returns on the HR transactions, and a leave history coherent with the roster |
 | `hiringPlan.ts` | the FY2026-27 hiring plan (FY27 v2) |
+| `budget.ts` | the FY2026-27 headcount and cost budget (FY27 budget), one line per cost center and month; built last, from its own stream (`budget`) |
 | `onboarding.ts` | onboarding tasks (Atlas ON-01 to ON-04) for every start since July 2025 and every upcoming start |
 | `rightToWork.ts` | work authorization, Form I-9 dates and export-control licenses |
 | `surveys.ts` | the listening program: survey answers (long format) and the Survey items sheet |
@@ -73,6 +74,7 @@ new data moved").
 | rightToWork | 1,682 | employees and interns who are active, about to start or left in the last 12 months; 148 time-limited authorizations; 22 export-control licenses |
 | surveyResponses | 19,963 | 11 programs, 6,326 respondent-waves (one row per answer) |
 | surveyItems | 40 | one row per question: driver, wording, scale and target |
+| budget | 1,104 | FY27 budget, April 2026 to March 2027: 92 cost centers × 12 months, headcount and monthly cost in USD |
 
 ## The company
 
@@ -217,6 +219,26 @@ every opening of the open reqs in its target start month, except 12 open reqs le
 3. **Year to date.** Starts April to September ÷ planned: Silicon Engineering **86%** (88 of 102, behind), Go-to-Market **120%** (12 of 10, ahead), Systems & Software 97%, Operations 100%, Corporate 93%; the company 92% (153 of 167), on plan.
 4. **Open reqs not in the plan.** 12 open reqs are on no plan line: **9 backfills** and 3 new reqs opened outside the plan (Operations 2, Go-to-Market 1); none in Silicon Engineering. The Q1 2027 roles the other units plan but have not opened are count rows with no req (17 starts).
 
+### Finance: headcount and cost budget
+
+`budget` is the FY27 budget, approved in March, before the July reforecast of the hiring plan: one
+line per cost center and month from April 2026 to March 2027, with the department and business unit
+it rolls up to, the budgeted headcount and the month's cost in USD. Each cost center's headcount runs
+in a straight line from its headcount on 31 Mar 2026 to its September target and on at the same pace
+to March 2027; its cost is that headcount at the cost center's target cash per head today (within
+0.3%), plus the contractors the budget pays for at the range midpoint of their level and location.
+Measured with `computeBudget` (`src/lib/budget.ts`): headcount = employees at each month end; cost =
+the monthly run rate at 30 Sep 2026, target cash ÷ 12 plus contractors at the midpoint estimate ÷ 12;
+on budget within 1% (headcount) and 0.5% (cost).
+
+1. **Silicon Engineering is under budget on headcount but over on cost, from its contractors.** 556 employees against 566 budgeted at 30 Sep 2026 (**10 under**, all open seats in Bengaluru: Design Verification 5, Physical Design 3, DFT 2, where it is behind its hiring plan), and under in every month since April. Yet its run rate is **$7.34M a month against $7.27M (0.9% over)**: its employees alone cost $7.23M, under budget, but the budget pays for no contractors in Silicon Engineering, and its **29 contractors** (Bengaluru 23, Ho Chi Minh City 6) add an estimated $111,000 a month. The overrun sits where the contractors work: Design Verification in Bengaluru (1130-BLR, 10% over) and Ho Chi Minh City (1130-SGN, 56% over), and Physical Design in Bengaluru (1140-BLR, 14% over).
+2. **Go-to-Market is over budget on headcount.** It was budgeted to hold flat and absorb attrition (180 in March, 176 from July), but it backfilled and hired ahead of its plan (Hiring plan story 3): **184 against 176 (8 over)** at 30 Sep 2026 and over in every month since April, and 4.9% over on cost with it.
+3. **Everyone else is on budget.** Systems & Software 337 against 338, Corporate 196 against 195, Operations 170 and the Executive Office 7 on it; each within 0.2% on cost. A few cost centers are a head above or below in pairs that pay about the same, so their units' totals hold.
+4. **The company** is 1,450 against 1,452 (on budget) and $19.83M a month against $19.63M (1.0% over), all of it Silicon Engineering and Go-to-Market. Under the totals rules, cost centers under 5 people fold into an Other inside their business unit, joined by the smallest shown one when that is needed to reach 5: "Other (2)" in Silicon Engineering and in Go-to-Market, "Other (4)" in Corporate (its People cost centers outside San Jose).
+
+Nothing else in the sample moved: the budget is built after every other module, from the finished
+roster and pay, with its own stream.
+
 ### Compliance
 
 `rightToWork` has one row per employee and intern who is active, starting soon or left in the last
@@ -334,7 +356,7 @@ counts had to move with it; every rate and headline stayed:
 fields `transactions.dueDate`, `learning.dueDate` and `onboardingTasks.dueDate`, and what is planned:
 `candidates.startDate` of accepted offers, `employees.hireDate` of the 25 pre-hires,
 `transactions.expectedReturnDate` and the `effectiveDate` of returns from leave entered ahead,
-`hiringPlan.period` (to March 2027), and `rightToWork.expiryDate` and `exportLicenseExpiry`.
+`hiringPlan.period` and `budget.period` (to March 2027), and `rightToWork.expiryDate` and `exportLicenseExpiry`.
 Everything else, survey answers included, is on or before 30 Sep 2026; case timestamps end by
 30 Sep 2026 23:59.
 
@@ -342,7 +364,7 @@ Everything else, survey answers included, is on or before 30 Sep 2026; case time
 
 `generateSample()` stays clean so the engine tests can measure the planted stories exactly. The app
 loads a messy version of it instead (`src/data/sample/raw`, registered in `main.tsx` with
-`setSampleSeed`), the way real data arrives (docs/DATA-TIERS.md, "Sample data that sucks"). Twelve
+`setSampleSeed`), the way real data arrives (docs/DATA-TIERS.md, "Sample data that sucks"). Thirteen
 datasets are written out as raw extracts and read back through the real importer
 (`sheetFromRows` → `autoMap` → `applyMapping`, with the roster for linking and, for onboarding
 tasks, the accepted candidates whose start dates resolve "Day -3"); the version keeps the
@@ -366,6 +388,7 @@ below differ from the clean sample, so every planted story still shows (`raw.tes
 | Right to work | Silver | `Immigration and I-9 tracker.xlsx`: the vendor's program names ("H-1B", "STEM OPT EAD", "Blue Card", "No expiry"), DD-Mon-YYYY, Yes/No; no nationality or citizenship column; mapping confirmed by global mobility | 2 expiries more than a year away read "Pending renewal" and are blank |
 | Survey responses | Silver | `Survey platform export.xlsx`, sheet Responses: program names ("Candidate Experience (cNPS)", "Upward Manager Feedback"), Participant ID, Question ID, Submitted At, and a Comments column that Census drops as the sheet is read; mapping confirmed by people analytics | The help desk's case survey has no driver on its 2,348 answers (the Questions sheet supplies it) |
 | Survey items | Silver | the same workbook, sheet Questions; mapping confirmed by people analytics | None |
+| Headcount and cost budget | Silver | `FY27 budget.xlsx`, sheet HC and cost: Scenario, Fiscal Period ("Apr 2026"), Business Unit, Department, Cost Center, Budget HC, Personnel Cost; the Q1 2027 lines, from the planning tool's newer template, write the currency as "US$"; mapping confirmed by Finance | None |
 
 Every choice is drawn from a named stream (`raw-<dataset>`), so the messy sample is as
 deterministic as the clean one.

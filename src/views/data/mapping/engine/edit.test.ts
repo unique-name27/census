@@ -113,7 +113,9 @@ describe('previewChange', () => {
 
 describe('scopeText', () => {
   it('names the datasets a category-wide change reaches', () => {
-    expect(scopeText('employees.department')).toBe('Employees, Requisitions, Job changes and Hiring plan')
+    expect(scopeText('employees.department')).toBe(
+      'Employees, Requisitions, Job changes, Hiring plan and Headcount and cost budget',
+    )
     expect(scopeText('cases.channel')).toBe('HR cases')
     expect(scopeText('employees.name')).toBe('')
   })

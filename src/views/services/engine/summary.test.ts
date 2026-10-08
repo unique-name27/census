@@ -149,7 +149,9 @@ describe('actions for the Action center', () => {
         due: '2026-09-25',
         tab: 'transactions',
       })
-      expect(i.what).toMatch(/^Termination for Leaver \d is not processed, due 25 Sep 2026$/)
+      // The as-of year goes without saying; final pay past due is legal exposure.
+      expect(i.what).toMatch(/^Termination for Leaver \d is not processed, due 25 Sep$/)
+      expect(i.exposure).toBe(true)
     }
     expect(
       compute(fixtureContext({ employees, transactions })).tx.every((f) => f.outcome === 'overdue'),

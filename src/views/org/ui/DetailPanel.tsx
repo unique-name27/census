@@ -7,7 +7,8 @@
  * the metric dictionary; the exits window and the anonymity minimum are the settings in force.
  */
 import { type ReactNode, useState } from 'react'
-import { personInLock } from '@/access/records'
+import { outsideScope } from '@/access/copy'
+import { personInScope } from '@/access/scopes/records'
 import { S } from '@/access/surfaces'
 import { Button, goTo, IconButton, IconChevronRight, IconClose, IconExternal, StatusPill } from '@/components'
 import { useAnalytics } from '@/data/context'
@@ -54,15 +55,40 @@ export interface DetailPanelProps {
   onSlides?: (id: string) => void
 }
 
+/** The limited card for someone outside the scope: who they are, and that they are outside it. */
+function OutsidePanel({ e, scope, onClose }: { e: Employee; scope: string; onClose: () => void }) {
+  return (
+    <aside aria-label={`Details for ${e.name}`} className="flex min-h-0 flex-col text-small">
+      <header className="flex items-start gap-2 border-b border-rule px-4 pt-3 pb-3">
+        <div className="min-w-0 flex-1">
+          <h3 className="cut-head text-title leading-tight font-semibold text-ink">{e.name}</h3>
+          <p className="mt-0.5 text-small leading-snug text-ink-2">{e.jobTitle}</p>
+          {e.department && <p className="mt-0.5 text-small leading-snug text-ink-2">{e.department}</p>}
+        </div>
+        <IconButton label="Close details" size="sm" onClick={onClose} className="-mt-0.5 -mr-1.5">
+          <IconClose />
+        </IconButton>
+      </header>
+      <p className="px-4 pt-3 pb-4 text-small text-muted">{outsideScope(scope)}</p>
+    </aside>
+  )
+}
+
 export function DetailPanel(p: DetailPanelProps) {
   const [allReports, setAllReports] = useState(false)
   const setFilters = useCensus((s) => s.setFilters)
   const { metrics, access } = useAnalytics()
-  // Manager mode: names above the manager read as plain text, and there is no exit what-if.
-  const opens = (id: string) => personInLock(id, access)
+  // A scoped mode: names outside the scope read as plain text, and some modes have no exit what-if.
+  const opens = (id: string) => personInScope(id, access)
   const canExit = access.can(S.org('simulate-exit'))
+  const showRatings = access.can(S.person('ratings'))
   const e = p.tree.people.get(p.id)
   if (!e) return null
+  // HRBP mode keeps the whole chart for readability: a dimmed card outside the business unit or
+  // region gets the limited card (docs/ROLES-V2.md 2.7).
+  const scope = access.scope
+  if (scope && (scope.kind === 'unit' || scope.kind === 'region') && !opens(p.id))
+    return <OutsidePanel e={e} scope={scope.label} onClose={p.onClose} />
   const t = p.tree
   const asOf = t.asOf
   const directs = t.children.get(p.id) ?? []
@@ -74,7 +100,7 @@ export function DetailPanel(p: DetailPanelProps) {
   const { rules } = p.model
   const stats = isManager ? teamStats(t, p.id, p.employees, p.model.reqs.get(p.id)?.length ?? 0, rules) : null
   const months = monthsText(rules.exitMonths)
-  const rating = p.model.reviews.cycles.length ? ratingOf(p.model.reviews, p.id, asOf) : null
+  const rating = showRatings && p.model.reviews.cycles.length ? ratingOf(p.model.reviews, p.id, asOf) : null
   const shown = allReports ? directs : directs.slice(0, 8)
 
   const openIn = (view: 'hrbp' | 'talent') => {

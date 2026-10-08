@@ -118,6 +118,7 @@ export interface Route {
   tab: string
 }
 export const ROUTE_VIEWS: RouteView[] = [
+  'home',
   'team',
   'scorecard',
   'recruiting',

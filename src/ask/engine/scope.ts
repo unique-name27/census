@@ -12,7 +12,7 @@
  */
 
 import { askOrgTooSmall } from '@/access/copy'
-import { clampFilters } from '@/access/lock'
+import { applyScope, clampFilters, scopeLabelOf, scopeOfAccess } from '@/access/scopes'
 import { leaderOptions } from '@/app/filterOptions'
 import type { AnalyticsContext } from '@/data/context'
 import { activeEmployees, smallExcludedValues } from '@/data/exclusion'
@@ -97,8 +97,10 @@ const filterKey = (f: Filters): string =>
 
 /** The context for other filters, built from `base` (cached; `base` itself when the filters are its own). */
 export function contextFor(base: AnalyticsContext, asked: Filters): AnalyticsContext {
-  // Manager mode: every scope stays inside the manager's org (defensive; resolveFilters clamps).
-  const filters = base.access?.lock ? clampFilters(asked, base.access.lock) : asked
+  // A scoped mode: every scope stays inside it (defensive; resolveFilters clamps), and Finance keeps
+  // to business unit and period (docs/ROLES-V2.md 2.3).
+  const scope = scopeOfAccess(base.access)
+  const filters = clampFilters(asked, scope, base.access?.mode)
   const key = filterKey(filters)
   if (key === filterKey(base.filters)) return base
   let byKey = scoped.get(base)
@@ -117,9 +119,9 @@ export function contextFor(base: AnalyticsContext, asked: Filters): AnalyticsCon
       filters,
       window: current,
       prior,
-      scopeLabel: scopeLabel(filters, base.org),
-      isCompany: !hasOrgFilter(filters),
-      data: scopeDatasets(base.all, filters, base.org),
+      scopeLabel: scope ? scopeLabelOf(scope, filters, base.org) : scopeLabel(filters, base.org),
+      isCompany: !scope && !hasOrgFilter(filters),
+      data: applyScope(scopeDatasets(base.all, filters, base.org), scope),
     }
     byKey.set(key, out)
   }
@@ -177,9 +179,10 @@ const DIMS = [
  */
 export function resolveFilters(base: AnalyticsContext, input: unknown, tokens: TokenMap): FilterResult {
   const r = resolveAsked(base, input, tokens)
-  const lock = base.access?.lock
-  // Manager mode (docs/ROLES.md, 4.7): the result goes through the same clamp as every other scope.
-  return r.ok && lock ? { ok: true, filters: clampFilters(r.filters, lock) } : r
+  // A scoped mode and Finance (docs/ROLES-V2.md 2.3, 7): the result goes through the one clamp.
+  if (!r.ok) return r
+  const filters = clampFilters(r.filters, scopeOfAccess(base.access), base.access?.mode)
+  return filters === r.filters ? r : { ok: true, filters }
 }
 
 /** Why Ask is off for this context, or null (Manager mode needs an org of the anonymity minimum). */

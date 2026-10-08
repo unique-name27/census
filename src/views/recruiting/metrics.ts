@@ -605,6 +605,24 @@ export const metrics: MetricDef[] = defineMetrics('recruiting', [
         min: 1,
         max: 1095,
       }),
+      multiple({
+        key: 'agingMultiple',
+        label: 'Past target without a target',
+        description:
+          'Without a time-to-fill target, a req is past target once it has been open this multiple of the median time to fill for its level (last 12 months, 5 or more reqs filled). It becomes an Action center item for its recruiter.',
+        default: 1.5,
+        min: 1,
+        max: 10,
+      }),
+      multiple({
+        key: 'agingCritical',
+        label: 'Critical past target',
+        description:
+          'A req past target is critical once it has been open this multiple of the time-to-fill target (or of its level’s median).',
+        default: 2.5,
+        min: 1,
+        max: 20,
+      }),
     ],
   },
   {

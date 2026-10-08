@@ -15,6 +15,7 @@ import { draftValue, inputUnit, type SettingDraft, settingDraft } from '../model
 import { ChangedMark, INPUT_BOX } from './fields'
 
 const NUM = cx(INPUT_BOX, 'tnum h-7 w-[84px] py-0 text-right')
+const DATE = cx(INPUT_BOX, 'tnum h-7 w-[150px] py-0')
 
 function NumberBox({
   value,
@@ -179,6 +180,24 @@ export function SettingEditor({
           onEnter={() => canApply && save()}
         />
       </span>
+    )
+  else if (param.type === 'date' && draft.kind === 'text')
+    // A date, or blank for not set: clearing the box and applying unsets it.
+    control = (
+      <input
+        type="date"
+        value={draft.text}
+        aria-label={`${param.label} for ${metricName}`}
+        aria-invalid={!!error}
+        onChange={(e) => setDraft({ kind: 'text', text: e.target.value })}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault()
+            if (canApply) save()
+          }
+        }}
+        className={DATE}
+      />
     )
   else if (draft.kind === 'text')
     control = (

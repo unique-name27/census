@@ -15,7 +15,7 @@ import { groupFilter } from '@/drill/filter'
 import { type DrillSpec, drillSpec } from '@/drill/types'
 import { formatDate } from '@/lib/dates'
 import { fmt } from '@/lib/format'
-import type { Bin, ExceptionRow, PromotionRow, RewardsMixRow, SpendRow } from './cycle'
+import type { Bin, ExceptionRow, ProgressRow, PromotionRow, RewardsMixRow, SpendRow } from './cycle'
 import { filtered, type GroupDim, rowFilter } from './groupFilter'
 import type { MarketRow } from './market'
 import type {
@@ -713,6 +713,35 @@ function mixSpec(m: DrillScope, row: RewardsMixRow, part: string | null): DrillC
     hide: HIDE_REWARDS,
     note: `Shares of target pay across these ${peopleText(row.n)}: ${parts.join(', ')}.`,
   })
+}
+
+/**
+ * A business unit's merit cycle progress: its eligible people, those with no proposal first, so
+ * the bullet opens the people still to enter.
+ */
+export function progressDrill(m: DrillScope, row: ProgressRow): DrillCompSpec | null {
+  const missing = new Set(row.missingPeople.map((p) => p.id))
+  const spec = peopleDrill({
+    title: row.group === 'Total' ? 'Eligible for merit' : `Eligible for merit, ${row.group}`,
+    subtitle: cycleLine(m),
+    people: row.eligiblePeople,
+    extras: [
+      {
+        column: col('xProposal', 'Merit proposal', 'text'),
+        value: (p) => (missing.has(p.id) ? 'None yet' : 'Entered'),
+      },
+      X_RATING,
+    ],
+    hide: HIDE_MERIT,
+    sort: (a, b) =>
+      Number(missing.has(b.id)) - Number(missing.has(a.id)) ||
+      a.department.localeCompare(b.department) ||
+      a.name.localeCompare(b.name),
+    note: row.missing
+      ? `${peopleText(row.missing)} of ${fmt(row.eligible, 'int')} eligible have no merit proposal; they are listed first.`
+      : `All ${fmt(row.eligible, 'int')} eligible people have a merit proposal.`,
+  })
+  return filtered(spec, rowFilter(row))
 }
 
 /* ───────── coverage ───────── */

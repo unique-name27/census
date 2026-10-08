@@ -1,0 +1,16 @@
+Mode  View        Kinds its numbers open that the mode does not list (plain numbers)
+------------------------------------------------------------------------------------
+BU    comp        budget
+Rgn   comp        budget
+Comp  talent      learning, succession
+Comp  listening   onboardingTasks
+Tal   onboarding  candidates, hiringPlan, transactions
+Tal   hrbp        candidates
+Tal   listening   candidates
+Ops   onboarding  hiringPlan
+Rec   onboarding  hiringPlan, learning, surveyGroups, transactions
+Fin   recruiting  candidates
+Fin   onboarding  candidates, learning, onboardingTasks, surveyGroups, transactions
+Fin   hrbp        candidates, jobChanges
+Fin   comp        comp
+Mgr   onboarding  hiringPlan, surveyGroups, transactions

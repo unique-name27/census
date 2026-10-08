@@ -58,7 +58,7 @@ export function withScope<S extends DrillSpec>(
 ): S | null {
   if (!spec || !filter) return spec
   const merged = { ...spec.filter, ...filter, modes: { ...spec.filter?.modes, ...filter.modes } }
-  // A group named otherwise than its values ("Asia Pacific" for its sites) says that name.
+  // A group named otherwise than its values ("APAC" for its sites) says that name.
   return label ? { ...spec, filter: merged, filterLabel: label } : { ...spec, filter: merged }
 }
 
@@ -168,7 +168,7 @@ export function startsDrill(
   })
 }
 
-/** The tasks that clear an offer's contingencies; Manager mode words them as the team holding them. */
+/** The tasks that clear an offer's contingencies; Manager and Finance mode word them as the team holding them. */
 const CONTINGENCY = new Set(CONTINGENCY_TASKS)
 
 /**
@@ -185,7 +185,7 @@ export const MASKED_NOTE =
 
 /**
  * Onboarding tasks with their effective due date and state (the checklist fills blank due dates).
- * In Manager mode (`b.masked`) a background check or export-control screening reads as the team
+ * In Manager and Finance mode (`b.masked`) a background check or export-control screening reads as the team
  * that handles it, with no completed date or days late, and the note says so.
  */
 export function tasksDrill(
@@ -198,7 +198,7 @@ export function tasksDrill(
     uses?: Uses
     /** The state as the panel words it, when it differs. */
     stateText?: (v: TaskView) => string
-    /** Mask contingency tasks (default: Manager mode, `b.masked`). */
+    /** Mask contingency tasks (default: Manager and Finance mode, `b.masked`). */
     masked?: boolean
     /** Extra columns after the standard ones, with their values per task. */
     extra?: { columns: Column[]; values: (v: TaskView) => Record<string, unknown> }
@@ -511,7 +511,7 @@ export function surveyDrill(
 /* ───────────── new figures: countdown, late tasks, task timing, plan by month ───────────── */
 
 /**
- * One start's day-one tasks (a cell or row of the countdown). With `masked` (Manager mode) a
+ * One start's day-one tasks (a cell or row of the countdown). With `masked` (Manager and Finance mode) a
  * background check or export-control screening reads "With People ops" while open and "Handled by
  * People ops" once closed, never Blocked, Done or Not needed, so a contingency outcome is not shown.
  */

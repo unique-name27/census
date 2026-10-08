@@ -116,13 +116,13 @@ describe('Onboarding on the sample company', () => {
     )
   })
 
-  it('story 4: laptops shipped late for 41.1% of Asia Pacific starts; day-one readiness 83%, 72% there', () => {
+  it('story 4: laptops shipped late for 41.1% of APAC starts; day-one readiness 83%, 72% there', () => {
     const f = find('onboarding-late-laptop-shipped')
-    expect(f.title).toBe('Laptops shipped late for 41.1% of Asia Pacific starts, against 6.2% elsewhere.')
+    expect(f.title).toBe('Laptops shipped late for 41.1% of APAC starts, against 6.2% elsewhere.')
     expect(f.detail).toContain('51 of 124 starts')
     expect(f.detail).toContain('"I had what I needed" 3.42 of 5 at day 30, against 4.28 elsewhere')
     expect(kpi('day-one').value).toBeCloseTo(0.83, 2)
-    const apac = m.first90.dayOne.byRegion.find((g) => g.group === 'Asia Pacific')
+    const apac = m.first90.dayOne.byRegion.find((g) => g.group === 'APAC')
     expect(apac?.rate).toBeCloseTo(0.72, 2)
     expect(find('onboarding-day-one').severity).toBe('critical')
   })
@@ -220,11 +220,18 @@ describe('Onboarding on the sample company', () => {
     const items = actions(ctx)
     const ids = items.map((x) => x.id)
     expect(new Set(ids).size).toBe(ids.length)
+    // Day-one tasks only when overdue, blocked, or not started inside the look-ahead: the two
+    // background checks in progress and not yet due stay on the countdown.
     const bgc = items.filter((x) => x.id.endsWith(':Background check cleared'))
-    expect(bgc).toHaveLength(3)
+    expect(bgc).toHaveLength(1)
     expect(bgc.every((x) => x.ownerRole === 'hr-ops')).toBe(true)
+    expect(bgc[0].what).toMatch(/ is blocked for /)
+    for (const x of items.filter((i) => i.id.startsWith('onboarding:task:')))
+      expect(x.what, x.id).toMatch(/ is (overdue|blocked|not started) for /)
     const screening = items.filter((x) => x.id.endsWith(':Export-control screening'))
     expect(screening.map((x) => x.ownerRole)).toEqual(['trade-compliance', 'trade-compliance'])
+    // The screening clears the export license: one matter with Compliance's license item.
+    for (const x of screening) expect(x.matter, x.id).toMatch(/^license:/)
     const probation = items.filter(
       (x) => x.id.startsWith('onboarding:probation:') && x.severity === 'warning',
     )

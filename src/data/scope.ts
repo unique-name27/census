@@ -11,6 +11,7 @@
  *  - right to work by employeeId; onboarding tasks and survey answers by their person (the
  *    employee, else the candidate's requisition);
  *  - hiring plan lines by their own org fields (see `planMatcher`);
+ *  - budget lines by their business unit and department (see `budgetMatcher`);
  *  - survey items (reference data) are never scoped.
  *
  * Each org filter includes or excludes its values (`Filters.modes`); exclusions follow the same
@@ -18,6 +19,7 @@
  */
 import { addDays, addMonths, formatRange, isCalendarDate, iso, monthEnd, ms, quarterStart } from '@/lib/dates'
 import {
+  type BudgetLine,
   type Datasets,
   type Employee,
   type HiringPlanLine,
@@ -407,6 +409,22 @@ function planMatcher(
   }
 }
 
+/**
+ * Budget lines in scope. A line names a business unit and, when it budgets less than the whole
+ * unit, a department; it carries no location, level or reporting line. So an include filter on a
+ * location, a level or a leader's org leaves every line out (the scope can't be placed on them),
+ * an exclude filter on those keeps them, and a line with no department passes a department filter
+ * only when it excludes. `budgetFit` in `@/lib/budget` says when a scope cuts across the lines,
+ * so a partial budget is never compared.
+ */
+function budgetMatcher(filters: Filters): (b: BudgetLine) => boolean {
+  const including = (d: FilterDimension) => dimensionSet(filters, d) && !isExcluded(filters, d)
+  if (including('leaderId') || including('location') || including('level')) return () => false
+  const bu = listTest(filters, 'businessUnit')
+  const dept = listTest(filters, 'department')
+  return (b) => (!bu || bu(b.businessUnit)) && (!dept || dept(b.department))
+}
+
 /** Apply the org filters to every dataset. Period filters are applied by each metric engine. */
 export function scopeDatasets(input: Datasets, filters: Filters, index: OrgIndex): Datasets {
   const all = withAllDatasets(input)
@@ -455,6 +473,7 @@ export function scopeDatasets(input: Datasets, filters: Filters, index: OrgIndex
     surveyResponses: all.surveyResponses.filter((r) => personOk(r.respondentKey, r.respondentKey)),
     // Reference data: what each item measures, the same for every org.
     surveyItems: all.surveyItems,
+    budget: all.budget.filter(budgetMatcher(filters)),
     cases: all.cases.filter((c) => {
       const e = c.requesterId ? index.byId.get(c.requesterId) : undefined
       if (e) return empOk(e)

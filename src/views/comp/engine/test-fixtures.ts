@@ -2,6 +2,7 @@
  * Hand-built rows for the Compensation engine tests. Each builder fills the required fields with
  * plain defaults so a test only states what it is about.
  */
+import type { AccessInput } from '@/access/context'
 import { buildContext } from '@/data/context'
 import {
   type CompRecord,
@@ -13,6 +14,7 @@ import {
 } from '@/data/schema'
 import { DEFAULT_FILTERS, type Filters } from '@/data/scope'
 import type { SourceMeta } from '@/data/store'
+import type { MetricsApi } from '@/metrics/types'
 
 export const AS_OF = '2026-09-30'
 
@@ -87,6 +89,7 @@ export function dataset(parts: Partial<Datasets>): Datasets {
     rightToWork: [],
     surveyResponses: [],
     surveyItems: [],
+    budget: [],
     ...parts,
   }
 }
@@ -97,14 +100,19 @@ export function sources(data: Datasets): Record<(typeof DATASET_KEYS)[number], S
   ) as Record<(typeof DATASET_KEYS)[number], SourceMeta>
 }
 
-/** An analytics context over uploaded-looking data with a fixed as-of date. */
-export function context(data: Datasets, opts: { filters?: Partial<Filters>; showPay?: boolean } = {}) {
+/** An analytics context over uploaded-looking data with a fixed as-of date (HR mode unless `access` says). */
+export function context(
+  data: Datasets,
+  opts: { filters?: Partial<Filters>; showPay?: boolean; access?: AccessInput; metrics?: MetricsApi } = {},
+) {
   return buildContext({
     data,
     sources: sources(data),
     filters: { ...DEFAULT_FILTERS, ...opts.filters },
     asOfOverride: AS_OF,
     showPay: opts.showPay ?? false,
+    access: opts.access,
+    metrics: opts.metrics,
   })
 }
 

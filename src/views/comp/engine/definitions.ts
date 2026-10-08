@@ -5,6 +5,7 @@
  * the values in force ("The healthy band is 0.90 to 1.10."). Pure.
  */
 import type { Definition } from '@/charts/types'
+import { formatDate } from '@/lib/dates'
 import { fmt } from '@/lib/format'
 import type { MetricDefinition } from '@/metrics/api'
 import type { MetricsApi } from '@/metrics/types'
@@ -47,6 +48,17 @@ export const FIGURE_METRIC: Readonly<Record<FigureId, CompMetricId>> = {
   'comp-guideline-exceptions': M.exceptions,
   'comp-promotions': M.promotions,
   'comp-rewards-mix': M.mix,
+  'comp-cycle-progress': M.proposals,
+  'comp-cost-by-unit': M.costTargetCash,
+  'comp-cost-by-cost-center': M.costTargetCash,
+  'comp-cost-by-level': M.costTargetCash,
+  'comp-cost-by-site': M.costTargetCash,
+  'comp-cost-merit-by-unit': M.costMerit,
+  'comp-cost-open-reqs': M.costOpenReqs,
+  'comp-cost-budget-headcount': M.headcountVsBudget,
+  'comp-cost-budget-cost': M.costVsBudget,
+  'comp-cost-budget-trend': M.headcountVsBudget,
+  'comp-cost-budget-centers': M.costVsBudget,
 }
 
 /* ───────── concept rows (not metrics) ───────── */
@@ -71,6 +83,14 @@ export const DEF_NO_AMOUNTS: Definition = {
 export const DEF_LEVEL_GROUPS: Definition = {
   term: 'Level groups',
   text: 'Levels are grouped so each cell holds enough people to show: L1-L2, L3-L4, L5-L6, M1 managers, M2 directors and E1-E3 executives.',
+}
+export const DEF_COST_CENTER: Definition = {
+  term: 'Cost center',
+  text: 'Each person’s cost center on the roster, named from the Cost centers list in Settings, Official lists. The department is the one most of its people are in.',
+}
+export const DEF_BUDGET: Definition = {
+  term: 'Budget',
+  text: 'The latest plan version of the headcount and cost budget, compared for whole business units and departments only. Budget cost is a month’s cost in USD; the actual is the run rate at the as-of date.',
 }
 export const DEF_BELOW_CAUSE: Definition = {
   term: 'Cause',
@@ -105,6 +125,8 @@ export function settingsSentence(id: CompMetricId, r: CompRules): string | null 
       return `Shown where both sides have ${int(r.compression.minGroup)} or more people; a gap of ${ratio(r.compression.gap)} or more with ${int(r.compression.findingMin)} or more on each side reaches the readout.`
     case M.spend:
       return `The budget is ${fmt(r.cycle.meritBudget, 'pct2')} of eligible base.`
+    case M.proposals:
+      return cycleDatesSentence(r)
     case M.overBudget:
       return `Flagged from ${pts(r.overBudget.flag, 2)} over the ${fmt(r.cycle.meritBudget, 'pct2')} budget, critical from ${pts(r.overBudget.critical, 2)}.`
     case M.guidelineSpend:
@@ -121,6 +143,23 @@ export function settingsSentence(id: CompMetricId, r: CompRules): string | null 
     default:
       return null
   }
+}
+
+/** "The cycle opens 1 Sep 2026 and closes 30 Oct 2026.": the cycle's dates in force, or that none are set. */
+export function cycleDatesSentence(r: Pick<CompRules, 'cycleDates'>): string {
+  const d = r.cycleDates
+  const parts = [
+    d.open && `opens ${formatDate(d.open)}`,
+    d.calibration && `calibrates from ${formatDate(d.calibration)}`,
+    d.close && `closes ${formatDate(d.close)}`,
+    d.effective && `takes effect ${formatDate(d.effective)}`,
+  ].filter((x): x is string => !!x)
+  const dates = parts.length
+    ? `The cycle ${parts.length > 1 ? `${parts.slice(0, -1).join(', ')} and ${parts.at(-1)}` : parts[0]}.`
+    : 'No cycle dates are set.'
+  return d.eligibleHiredBy
+    ? `${dates} People hired by ${formatDate(d.eligibleHiredBy)} are eligible.`
+    : `${dates} Eligible means hired by the latest hire date among people with a proposal.`
 }
 
 /** The registered metric; throws for an id the dictionary does not know (a typo, caught by tests). */
@@ -210,5 +249,39 @@ export function figureDefinitions(m: Defs, r: CompRules): Record<FigureId, Defin
     'comp-guideline-exceptions': [row(M.exceptions), row(M.vsGuideline), DEF_LATEST_RATING],
     'comp-promotions': [row(M.promotions), DEF_LATEST_RATING],
     'comp-rewards-mix': [row(M.mix), DEF_FX],
+    'comp-cycle-progress': [row(M.proposals), row(M.spend), row(M.overBudget), pop(M.proposals)],
+    'comp-cost-by-unit': [
+      row(M.costTargetCash),
+      row(M.costBase),
+      row(M.costEquity),
+      DEF_FX,
+      pop(M.costTargetCash),
+    ],
+    'comp-cost-by-cost-center': [
+      row(M.costTargetCash),
+      row(M.costPeople),
+      row(M.costPerHead),
+      DEF_COST_CENTER,
+      pop(M.costTargetCash),
+    ],
+    'comp-cost-by-level': [row(M.costTargetCash), row(M.costPerHead), pop(M.costTargetCash)],
+    'comp-cost-by-site': [row(M.costTargetCash), DEF_FX, pop(M.costTargetCash)],
+    'comp-cost-merit-by-unit': [row(M.costMerit), row(M.spend), row(M.overBudget), DEF_FX],
+    'comp-cost-open-reqs': [row(M.costOpenReqs), pop(M.costOpenReqs)],
+    'comp-cost-budget-headcount': [row(M.headcountVsBudget), DEF_BUDGET, pop(M.headcountVsBudget)],
+    'comp-cost-budget-cost': [
+      row(M.costVsBudget),
+      row(M.contractorEstimate),
+      DEF_BUDGET,
+      pop(M.costVsBudget),
+    ],
+    'comp-cost-budget-trend': [row(M.headcountVsBudget), DEF_BUDGET],
+    'comp-cost-budget-centers': [
+      row(M.costVsBudget),
+      row(M.headcountVsBudget),
+      row(M.contractorEstimate),
+      DEF_COST_CENTER,
+      DEF_BUDGET,
+    ],
   }
 }

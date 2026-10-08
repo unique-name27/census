@@ -4,10 +4,13 @@
  * The spec is a function so the rows are only gathered when someone clicks.
  *
  * Inside the drill panel (a count in a records table, on a person card) a number opens its
- * records on top of what the panel shows, so Back returns to where the reader was.
+ * records on top of what the panel shows, so Back returns to where the reader was. A number whose
+ * records are a kind the mode does not list renders as plain text (`drillTarget`, ./kinds.ts).
  */
 import { createContext, type ReactNode, useContext } from 'react'
 import { cx } from '@/components/ui'
+import { useAnalyticsIfAny } from '@/data/context'
+import { drillTarget } from './kinds'
 import { openDrill, pushDrill } from './store'
 import type { DrillSpec } from './types'
 
@@ -49,7 +52,10 @@ export function Drill({
   label?: string
 }) {
   const nested = useContext(InDrillPanel)
-  if (!spec) return <span className={className}>{children}</span>
+  // A kind the mode does not list is a plain number: no button, no hover, no tab stop (ROLES-V2 4.12).
+  const access = useAnalyticsIfAny()?.access
+  const target = drillTarget(access, spec)
+  if (!target) return <span className={className}>{children}</span>
   return (
     <button
       type="button"
@@ -58,7 +64,7 @@ export function Drill({
       title={label ?? 'Show the records behind this number'}
       onClick={(e) => {
         e.stopPropagation()
-        const s = resolveDrill(spec)
+        const s = resolveDrill(target)
         if (s) (nested ? pushDrill : openDrill)(s)
       }}
     >

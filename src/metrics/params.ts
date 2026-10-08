@@ -2,6 +2,8 @@
  * Calculation settings: validation against their definition, parsing from text (forms and the
  * Excel dictionary) and plain wording with units ("95%", "365 d", "0.90 to 1.10"). Pure.
  */
+import { partsToDate, readDate } from '@/data/import/dates'
+import { formatDate, isCalendarDate } from '@/lib/dates'
 import type { Format } from '@/lib/format'
 import type { NumberRange, ParamDef, ParamValue, RatingKey, RatingMap } from './types'
 
@@ -138,10 +140,15 @@ export function formatParam(def: ParamDef, value: ParamValue | null | undefined)
       return isRange(value)
         ? `${formatParamNumber(value[0], def)} to ${formatParamNumber(value[1], def)}`
         : '—'
+    case 'date':
+      return value === '' ? NOT_SET : isCalendarDate(value) ? formatDate(value) : '—'
     default:
       return typeof value === 'number' ? formatParamNumber(value, def) : '—'
   }
 }
+
+/** How a date setting with no value reads. */
+export const NOT_SET = 'Not set'
 
 /** What the setting accepts, in words: "0% to 20%", "5 or more, raise only", "Locked". */
 export function allowedText(def: ParamDef): string {
@@ -166,6 +173,8 @@ export function allowedText(def: ParamDef): string {
       return `Each rating ${bounds.charAt(0).toLowerCase()}${bounds.slice(1)}`
     case 'range':
       return `Low end below high end, each ${bounds.charAt(0).toLowerCase()}${bounds.slice(1)}`
+    case 'date':
+      return 'A date, or blank for not set'
     default: {
       if (def.locked === 'raiseOnly') {
         const floor = typeof def.default === 'number' ? n(def.default) : bounds
@@ -277,6 +286,10 @@ export function validateParam(
       }
       return { ok: true, value: out }
     }
+    case 'date':
+      return value === '' || isCalendarDate(value)
+        ? { ok: true, value: value as string }
+        : { ok: false, error: `${def.label}: enter a date such as 30 Oct 2026, or leave it blank.` }
     case 'range': {
       if (!Array.isArray(value) || value.length !== 2)
         return { ok: false, error: `${def.label}: give a low end and a high end.` }
@@ -337,6 +350,21 @@ export function parseParamNumber(
   if (!Number.isFinite(n)) return null
   if (share && (percent || (Math.abs(n) > 1 && (def.max ?? 1) <= 1))) n /= 100
   return clean(n)
+}
+
+/**
+ * A date setting from a form, a cell or a file: 'YYYY-MM-DD', "30 Oct 2026", an Excel date; blank,
+ * "Not set" and "—" mean not set (''). Anything else is returned as is, for the error.
+ */
+function parseParamDate(raw: unknown): unknown {
+  if (raw == null) return ''
+  if (typeof raw === 'string') {
+    const t = raw.trim()
+    if (!t || t === '—' || t.toLowerCase() === NOT_SET.toLowerCase()) return ''
+    if (isCalendarDate(t)) return t
+  }
+  const read = readDate(raw, 'DMY')
+  return read.ok ? partsToDate(read.parts) : raw
 }
 
 const TRUE_WORDS = new Set(['true', 'yes', 'y', 'on', '1'])
@@ -412,6 +440,9 @@ export function parseParamInput(
       else if (Array.isArray(raw)) value = raw.map((v) => parseParamNumber(v, def) ?? v)
       break
     }
+    case 'date':
+      value = parseParamDate(raw)
+      break
     default:
       value = parseParamNumber(raw, def) ?? raw
   }
@@ -430,7 +461,9 @@ export function parseParamInput(
           ? `${def.label}: write it as "5: 6%, 4: 4.5%, 3: 3%, 2: 1%, 1: 0%".`
           : def.type === 'range'
             ? `${def.label}: write it as "0.90 to 1.10".`
-            : `${def.label}: "${raw.trim()}" is not a number.`,
+            : def.type === 'date'
+              ? `${def.label}: "${raw.trim()}" is not a date. Write it as 30 Oct 2026, or leave it blank.`
+              : `${def.label}: "${raw.trim()}" is not a number.`,
     }
   return check
 }

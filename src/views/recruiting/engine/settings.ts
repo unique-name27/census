@@ -46,6 +46,11 @@ export interface RecruitingSettings {
   offersWaitingMin: number
   emptyFunnelDays: number
   oldReqDays: number
+  /**
+   * A req past its time-to-fill target (an Action center item): without a target, past this
+   * multiple of its level's median time to fill; critical past `critical` times the target.
+   */
+  pastTarget: { multiple: number; critical: number }
   slowFill: { factor: number; minFilled: number }
   bottleneck: {
     factor: number
@@ -100,6 +105,7 @@ export function recruitingSettings(m: MetricsApi): RecruitingSettings {
     offersWaitingMin: m.num(RM.offersWaiting, 'minOffers'),
     emptyFunnelDays: m.num(RM.emptyFunnel, 'days'),
     oldReqDays: m.num(RM.reqAge, 'oldDays'),
+    pastTarget: { multiple: m.num(RM.reqAge, 'agingMultiple'), critical: m.num(RM.reqAge, 'agingCritical') },
     slowFill: { factor: m.num(RM.slowFill, 'factor'), minFilled: m.num(RM.slowFill, 'minFilled') },
     bottleneck: {
       factor: m.num(RM.bottleneck, 'factor'),

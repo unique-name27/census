@@ -22,12 +22,12 @@ import {
 /** The tasks that clear the contingencies of an offer (Atlas ON-01 weekly exception). */
 export const CONTINGENCY_TASKS: readonly string[] = ['Background check cleared', 'Export-control screening']
 
-/** Form I-9 tasks: a Compliance measure, which Manager mode leaves out of readiness by task. */
+/** Form I-9 tasks: a Compliance measure, which Manager and Recruiter mode leave out of readiness by task. */
 export const isI9Task = (name: string): boolean => name.startsWith('I-9 ')
 
 /**
  * The blocking item in words: "Background check cleared, due 16 Oct 2026". With `masked`
- * (Manager mode) a contingency task reads as the team holding it ("With People ops"), as the
+ * (Manager and Finance mode) a contingency task reads as the team holding it ("With People ops"), as the
  * countdown words it.
  */
 export function blockingWords(r: Pick<Readiness, 'blocking'>, masked: boolean): string | null {
@@ -287,7 +287,7 @@ export function computeUpcoming(b: OnboardingBase, ctx: AnalyticsContext): Upcom
     return i < 0 ? 99 : i
   }
   const byTask = [...taskRows.values()]
-    .filter((r) => !(b.masked && isI9Task(r.task)))
+    .filter((r) => !(b.hideI9 && isI9Task(r.task)))
     .map((r) => ({ ...r, share: share(r.done, r.starts) }))
     .sort((a, b2) => order(a.task) - order(b2.task) || a.task.localeCompare(b2.task))
   const byOwner = [...ownerRows.values()]
@@ -328,7 +328,7 @@ export interface CountdownRow {
   /** The team holding the blocking item (its owner), or "Nothing open". */
   owner: string
   /**
-   * The blocking item in words. In Manager mode a background check or export-control screening
+   * The blocking item in words. In Manager and Finance mode a background check or export-control screening
    * reads "With People ops" or "With Trade compliance", so a contingency outcome is never shown.
    */
   blocking: string | null
@@ -342,7 +342,7 @@ export interface CountdownRow {
 /**
  * Upcoming starts within `days` of the as-of date, each placed on the owner of the open day-one
  * task due first (the blocking item), soonest start first. `masked` words a contingency task as
- * the team holding it (Manager mode).
+ * the team holding it (Manager and Finance mode).
  */
 export function countdownRows(rows: readonly UpcomingRow[], days: number, masked = false): CountdownRow[] {
   return rows

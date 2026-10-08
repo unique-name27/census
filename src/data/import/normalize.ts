@@ -53,7 +53,7 @@ export function coerceMonth(v: unknown, order: DateOrder = 'MDY'): Coerced<strin
 }
 
 /** Fields that hold a month: the value is stored as the month's first day. */
-const MONTH_FIELDS = new Set(['hiringPlan.period'])
+const MONTH_FIELDS = new Set(['hiringPlan.period', 'budget.period'])
 /**
  * Date fields that also accept a day relative to the start ("Day -3"). The importer converts it
  * once it knows the person's start date (defaults.ts), so it never reaches a stored row.

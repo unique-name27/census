@@ -121,6 +121,12 @@ export const DOCUMENTED_DEFAULTS: Record<DatasetKey, string[]> = {
     'Free-text comments are never imported.',
   ],
   surveyItems: [],
+  budget: [
+    'Period: a full date or a month such as Nov 2026, kept as the first day of the month.',
+    'Department and cost center blank: the line budgets the whole business unit, or the whole department.',
+    'Currency blank: USD, when the line has a budget cost.',
+    'A budget headcount or budget cost below zero: left blank.',
+  ],
 }
 
 /** How a default is reported. */
@@ -310,7 +316,28 @@ export function fillDefaults(dataset: DatasetKey, r: RowFill, ctx: SheetContext)
       return
     case 'surveyItems':
       return
+    case 'budget':
+      fillBudget(r)
+      return
   }
+}
+
+/** A budget line: a currency for its cost, and no negative headcount or cost. */
+function fillBudget(r: RowFill): void {
+  const { rec, fill } = r
+  for (const key of ['budgetHeadcount', 'budgetCost'] as const) {
+    const n = rec[key]
+    if (typeof n === 'number' && n < 0) {
+      r.note(
+        key,
+        `${key === 'budgetHeadcount' ? 'Budget headcount' : 'Budget cost'} ${n} is below zero, so it was left blank.`,
+        'out-of-range',
+        'left-blank',
+      )
+      rec[key] = null
+    }
+  }
+  if (typeof rec.budgetCost === 'number') fill('currency', 'USD', 'logged', 'treated as USD')
 }
 
 /** When this person starts: the roster's hire date, else the accepted candidate's start date. */

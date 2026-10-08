@@ -71,6 +71,7 @@ const emptyData = (): Datasets => ({
   rightToWork: [],
   surveyResponses: [],
   surveyItems: [],
+  budget: [],
 })
 
 const sources = (kind: SourceMeta['kind']) =>

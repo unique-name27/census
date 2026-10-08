@@ -54,6 +54,7 @@ export function RecordsByMonthFigure() {
         'hiringPlan.period',
         'onboardingTasks.dueDate',
         'surveyResponses.responseDate',
+        'budget.period',
       ]}
       // About the data itself: the Data room never gates.
       gate={false}

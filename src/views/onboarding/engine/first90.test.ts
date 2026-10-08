@@ -246,7 +246,7 @@ describe('day-30 pulse', () => {
     const surveyResponses = [...['H1', 'H2', 'H3', 'H4', 'H5'].map((id) => answer(id, 3)), answer('S1', 5)]
     const f = first90(fixtureContext({ employees, surveyResponses }))
     expect(f.pulse.overall?.mean).toBeCloseTo(20 / 6)
-    expect(f.pulse.byRegion?.groups.map((g) => [g.group, g.mean])).toEqual([['Asia Pacific', 3]])
+    expect(f.pulse.byRegion?.groups.map((g) => [g.group, g.mean])).toEqual([['APAC', 3]])
     expect(f.pulse.byRegion?.other?.suppressed).toBe(true)
     expect(f.pulse.target).toBe(4)
   })

@@ -50,7 +50,7 @@ describe('on a small company (as of 30 Sep 2026)', () => {
   it('lists a new manager with a large team', () => {
     const x = items.find((i) => i.id === 'org:new-manager:NEW')!
     expect(x).toMatchObject({ ownerRole: 'hrbp', ownerName: 'Mei Chen', severity: 'warning' })
-    expect(x.what).toBe('Arjun New has managed since 2 Mar 2026 and already leads 8 direct reports')
+    expect(x.what).toBe('Arjun New has managed since 2 Mar and already leads 8 direct reports')
     expect(x.note).toBe(
       'Could we set up a monthly check-in with Arjun on team load for their first year as a manager?',
     )

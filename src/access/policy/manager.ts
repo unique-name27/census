@@ -1,131 +1,21 @@
 /**
- * The access policy (docs/ROLES.md, part 3 and 6.2): one pure function answers, for every surface
- * in every mode, shown, limited or hidden, with one plain sentence for limited and hidden.
- *
- *  1. Developer: shown, always.
- *  2. HR: hidden when the surface is developer-only (`DEVELOPER_ONLY`), else shown.
- *  3. Manager: an explicit table, hidden by default. Views and tabs come from `MANAGER_VIEWS` and
- *     `MANAGER_TABS` (every tab of a shown view has an entry; a missing one is hidden). A figure
- *     is hidden when its id is on `MANAGER_HIDDEN_FIGURES`, starts with a hidden view's key, or
- *     sits on a hidden tab; otherwise it takes its tab's decision. A metric is hidden when it
- *     matches `MANAGER_HIDDEN_METRICS` or `MANAGER_HIDDEN_METRIC_PREFIXES`, or none of the views
- *     it is listed on is shown. Every other surface is in `MANAGER_SURFACES` or a kind rule below.
- *
- * Callers ask through `ctx.access.decide` (the context binds the mode), so an off-screen render
- * with an override gets its own answers. The policy never imports the view registry. Pure.
+ * Manager mode's table (docs/ROLES.md, part 3), moved unchanged from `policy.ts` into the shape every
+ * allowlist mode shares (`RolePolicy`, docs/ROLES-V2.md 8.3). Manager mode is an allowlist: what
+ * these tables do not name is hidden. The one addition is the Home view (`home`), hidden: Manager
+ * mode keeps My team. Pure data.
  */
-
-import { VIEW_LABEL, type ViewKey } from '@/data/schema'
-import type { Route, RouteView } from '@/data/store'
-import { hiddenPageTitle, hiddenTabTitle, openedInstead, openedTabInstead } from './copy'
-import { homeOf, type Mode } from './modes'
-import { kindOf, restOf, type SurfaceId } from './surfaces'
-
-export type Access = 'shown' | 'limited' | 'hidden'
-
-export interface Decision {
-  access: Access
-  /** For limited and hidden: one plain sentence, shown in Developer > Access and the snapshot. */
-  how?: string
-}
-
-/** Where a surface sits: the view (or page) and tab on screen. */
-export interface At {
-  view: string
-  tab?: string
-}
-
-/** What `decide` needs beyond the surface for a few kinds. */
-export interface DecideInfo {
-  /** The views a metric is listed on (`MetricDef.views`); without it only the hide lists apply. */
-  metricViews?: (id: string) => readonly string[] | undefined
-  /** For `kpi:<id>`: the tile's metric id. */
-  metric?: string
-}
-
-export const SHOWN: Decision = Object.freeze({ access: 'shown' })
-const limited = (how: string): Decision => ({ access: 'limited', how })
-const hidden = (how: string): Decision => ({ access: 'hidden', how })
-
-/* ───────────── HR: the developer surfaces ───────────── */
-
-const DEV_ONLY = 'Developer mode only.'
-
-/** Surfaces HR mode hides (Developer shows them; Manager hides them too). */
-export const DEVELOPER_ONLY: readonly string[] = [
-  'page:dev',
-  'masthead:dev',
-  'shortcut:dev-overlays',
-  'ask:console',
-  'export:drill-spec',
-  'ui:error-details',
-  'view:team',
-  'help:article:view-team',
-  'help:article:developer-tools',
-  'help:tour:view-team',
-  'help:tour:manager-start',
-  'help:tour:developer-tools',
-]
-/**
- * Whole kinds of developer surfaces: every debug overlay, the team view's tabs and figures (My team
- * is Manager mode's home; HR mode does not show it), the Developer page's tabs and figures.
- */
-export const DEVELOPER_ONLY_PREFIXES: readonly string[] = [
-  'overlay:',
-  'tab:team.',
-  'figure:team-',
-  'tab:dev.',
-  'figure:dev-',
-]
-
-const DEV_SET = new Set(DEVELOPER_ONLY)
-
-export const isDeveloperOnly = (s: string): boolean =>
-  DEV_SET.has(s) || DEVELOPER_ONLY_PREFIXES.some((p) => s.startsWith(p))
-
-/** Pages only Developer mode shows; a surface placed on one is hidden in HR. */
-const DEV_PAGES = new Set(['team', 'dev'])
-
-/* ───────────── not ready yet: Developer mode only, in every other mode ───────────── */
-
-const NOT_READY_HOW = 'Not ready yet: Developer mode only.'
-
-/**
- * Features still being finished. Developer mode shows them; HR and Manager mode hide them, with
- * every way in (page, masthead button, numbers and figures that come from them, Help, Ask, drills).
- * The Action center is here until the team signs it off.
- */
-export const NOT_READY: readonly string[] = [
-  'page:actions',
-  'masthead:actions',
-  'ui:actions-team',
-  'ask:open_items',
-  'drill:actionItems',
-  'drill:actionOwners',
-  'help:article:view-actions',
-  'help:tour:view-actions',
-  // Numbers and sections built from Action center items on the homes.
-  'figure:scorecard-items',
-  'figure:team-waiting',
-]
-/** Its figures and metrics (a KPI tile is judged by its metric). */
-export const NOT_READY_PREFIXES: readonly string[] = ['figure:actions-', 'metric:actions.']
-/** Pages that are not ready: their routes redirect outside Developer mode. */
-const NOT_READY_PAGES = new Set(['actions'])
-
-const NOT_READY_SET = new Set(NOT_READY)
-
-export const isNotReady = (s: string, at?: At, info?: DecideInfo): boolean =>
-  NOT_READY_SET.has(s) ||
-  NOT_READY_PREFIXES.some((p) => s.startsWith(p)) ||
-  (!!info?.metric && info.metric.startsWith('actions.')) ||
-  (!!at && NOT_READY_PAGES.has(at.view))
+import type { DatasetKey, ViewKey } from '@/data/schema'
+import type { DrillKind } from '@/drill/types'
+import { payDecisions } from '../pay'
+import { DEV_ONLY } from './developer'
+import { type Decision, hidden, limited, type RolePolicy, type RoleTab, SHOWN } from './types'
 
 /* ───────────── Manager: views and tabs (3.2) ───────────── */
 
 const N_A = 'Its view is not shown in Manager mode.'
 
 export const MANAGER_VIEWS: Readonly<Record<ViewKey, Decision>> = {
+  home: hidden('Manager mode opens on My team.'),
   team: SHOWN,
   scorecard: hidden('It judges the whole people function, including pay, HR ops and compliance.'),
   recruiting: limited('Sources & offers, recruiter load and hiring manager satisfaction are hidden.'),
@@ -141,11 +31,7 @@ export const MANAGER_VIEWS: Readonly<Record<ViewKey, Decision>> = {
 }
 
 /** One tab of a shown view: its key, its label (for the redirect toast) and Manager mode's decision. */
-export interface ManagerTab {
-  key: string
-  label: string
-  decision: Decision
-}
+export type ManagerTab = RoleTab
 
 const tab = (key: string, label: string, decision: Decision = SHOWN): ManagerTab => ({ key, label, decision })
 
@@ -222,11 +108,6 @@ export const MANAGER_HIDDEN_PARTS: Readonly<
   },
 }
 
-/** The first tab of a view that Manager mode shows (null when the view is hidden). */
-export function firstManagerTab(view: string): ManagerTab | null {
-  return MANAGER_TABS[view as ViewKey]?.find((t) => t.decision.access !== 'hidden') ?? null
-}
-
 /* ───────────── Manager: hide lists inside the shown views (3.3) ───────────── */
 
 /**
@@ -300,7 +181,7 @@ export const MANAGER_HIDDEN_FIGURES: readonly string[] = [
 export const MANAGER_HIDDEN_FIGURE_PREFIXES: readonly string[] = ['hrbp-quality-', 'hrbp-declines-']
 
 /** Drill kinds whose records Manager mode lists (rows outside the org left out). */
-export const MANAGER_DRILL_KINDS: readonly string[] = [
+export const MANAGER_DRILL_KINDS: readonly DrillKind[] = [
   'employees',
   'jobChanges',
   'requisitions',
@@ -314,7 +195,7 @@ export const MANAGER_DRILL_KINDS: readonly string[] = [
 ]
 
 /** Datasets Manager mode reads (Ask, Inventory, provenance). */
-export const MANAGER_DATASETS: readonly string[] = [
+export const MANAGER_DATASETS: readonly DatasetKey[] = [
   'employees',
   'jobChanges',
   'reviews',
@@ -330,7 +211,7 @@ export const MANAGER_HIDDEN_ITEM_PREFIXES: readonly string[] = ['onboarding:i9:'
 
 /* ───────────── Manager: help (3.8) ───────────── */
 
-const MANAGER_ARTICLES: Readonly<Record<string, Decision>> = {
+export const MANAGER_ARTICLES: Readonly<Record<string, Decision>> = {
   'what-census-is': SHOWN,
   'moving-around': SHOWN,
   'reading-a-number': SHOWN,
@@ -357,7 +238,7 @@ const MANAGER_ARTICLES: Readonly<Record<string, Decision>> = {
   'whats-new': SHOWN,
 }
 
-const MANAGER_TOURS: Readonly<Record<string, Decision>> = {
+export const MANAGER_TOURS: Readonly<Record<string, Decision>> = {
   'manager-start': SHOWN,
   'view-team': SHOWN,
   'view-recruiting': limited('Steps on hidden tabs or controls are skipped.'),
@@ -515,227 +396,32 @@ export const MANAGER_SURFACES: Readonly<Record<string, Decision>> = {
   'tab:hrbp.analyses:pyramid': limited("Inside the org; the company's shape is an aggregate outline."),
 }
 
-/* ───────────── decide ───────────── */
+/* ───────────── the table ───────────── */
 
-const METRIC_SET = new Set(MANAGER_HIDDEN_METRICS)
-const FIGURE_SET = new Set(MANAGER_HIDDEN_FIGURES)
-const DRILL_SET = new Set(MANAGER_DRILL_KINDS)
-const DATASET_SET = new Set(MANAGER_DATASETS)
-
-const viewDecision = (key: string): Decision =>
-  MANAGER_VIEWS[key as ViewKey] ?? hidden('Not named by the Manager mode policy.')
-
-/** The decision for a page or view key in Manager mode (pages: the Action center, Data room, Developer). */
-function managerPlace(view: string): Decision {
-  if (view === 'actions' || view === 'data' || view === 'dev') return MANAGER_SURFACES[`page:${view}`]
-  return viewDecision(view)
-}
-
-/** A tab key without the colon or slash parts some routes carry ("agents:compliance"). */
-export const baseTab = (t: string): string => t.split(/[:/]/)[0]
-
-function managerTab(view: string, t: string): Decision {
-  const v = managerPlace(view)
-  if (v.access === 'hidden') return hidden(N_A)
-  const tabs = MANAGER_TABS[view as ViewKey]
-  // Pages without a tab table (the Action center) take the page's decision.
-  if (!tabs) return v
-  if (!t) return tabs[0]?.decision ?? v
-  // A part of a tab picked in its address (`analyses:quality`) has its own decision.
-  const part = t.includes(':') ? MANAGER_SURFACES[`tab:${view}.${t}`] : undefined
-  if (part) return part
-  return tabs.find((x) => x.key === baseTab(t))?.decision ?? hidden('Not named by the Manager mode policy.')
-}
-
-/** A hidden view's figures start with its key ("comp-…"); so do the Data room's and the Developer page's. */
-const HIDDEN_FIGURE_PREFIXES = [
-  ...Object.entries(MANAGER_VIEWS)
-    .filter(([, d]) => d.access === 'hidden')
-    .map(([k]) => `${k}-`),
-  'data-',
-  'dev-',
-]
-
-function managerFigure(id: string, at?: At): Decision {
-  if (FIGURE_SET.has(id)) return hidden('On the Manager mode figure list.')
-  if (MANAGER_HIDDEN_FIGURE_PREFIXES.some((p) => id.startsWith(p)))
-    return hidden('Its analysis is not shown in Manager mode.')
-  if (HIDDEN_FIGURE_PREFIXES.some((p) => id.startsWith(p))) return hidden(N_A)
-  if (!at) return SHOWN
-  const d = at.tab != null ? managerTab(at.view, at.tab) : managerPlace(at.view)
-  return d.access === 'hidden' ? hidden('Its tab is not shown in Manager mode.') : d
-}
-
-/** Whether a metric id is on the Manager hide lists (by id or prefix). */
-export const managerHidesMetricId = (id: string): boolean =>
-  METRIC_SET.has(id) || MANAGER_HIDDEN_METRIC_PREFIXES.some((p) => id.startsWith(p))
-
-function managerMetric(id: string, info?: DecideInfo): Decision {
-  if (managerHidesMetricId(id)) return hidden('On the Manager mode metric list.')
-  const views = info?.metricViews?.(id)
-  if (views?.length && !views.some((v) => managerPlace(v).access !== 'hidden'))
-    return hidden('None of the views it is on is shown in Manager mode.')
-  return SHOWN
-}
-
-function decideManager(s: string, at?: At, info?: DecideInfo): Decision {
-  const exact = MANAGER_SURFACES[s]
-  if (exact) return exact
-  const kind = kindOf(s)
-  const rest = restOf(s)
-  switch (kind) {
-    case 'view':
-      return viewDecision(rest)
-    case 'tab': {
-      const dot = rest.indexOf('.')
-      return dot < 0 ? managerTab(rest, '') : managerTab(rest.slice(0, dot), rest.slice(dot + 1))
-    }
-    case 'figure':
-      return managerFigure(rest, at)
-    case 'metric':
-      return managerMetric(rest, info)
-    case 'kpi': {
-      if (info?.metric) return managerMetric(info.metric, info)
-      const place = at ? (at.tab != null ? managerTab(at.view, at.tab) : managerPlace(at.view)) : SHOWN
-      return place.access === 'hidden' ? hidden('Its tab is not shown in Manager mode.') : SHOWN
-    }
-    case 'page':
-      return managerPlace(rest)
-    case 'data':
-    case 'data-panel':
-      return hidden('The Data room is not shown in Manager mode.')
-    case 'drill':
-      return DRILL_SET.has(rest)
-        ? limited('Rows about people outside the org are left out.')
-        : hidden('These records are not shown in Manager mode.')
-    case 'dataset':
-      return DATASET_SET.has(rest) ? SHOWN : hidden('Not one of the datasets Manager mode reads.')
-    case 'help': {
-      if (rest.startsWith('article:'))
-        return MANAGER_ARTICLES[rest.slice(8)] ?? hidden('Not shown in Manager mode.')
-      if (rest.startsWith('tour:'))
-        return MANAGER_TOURS[rest.slice(5)] ?? hidden('Not shown in Manager mode.')
-      return hidden('Not named by the Manager mode policy.')
-    }
-    case 'overlay':
-      return hidden(DEV_ONLY)
-    case 'item':
-      return MANAGER_HIDDEN_ITEM_PREFIXES.some((p) => rest.startsWith(p))
-        ? hidden('An I-9 item is a Compliance measure.')
-        : SHOWN
-    case 'header':
-      // A view's own header actions follow the view (the ones Manager mode hides are listed above).
-      if (!MANAGER_VIEWS[rest as ViewKey]) return hidden('Not named by the Manager mode policy.')
-      return viewDecision(rest).access === 'hidden' ? hidden(N_A) : SHOWN
-    default:
-      return hidden('Not named by the Manager mode policy.')
-  }
-}
-
-const NOT_IN_HR = 'HR mode leaves out the developer surfaces and My team.'
-
-function decideHr(s: string, at?: At): Decision {
-  if (isDeveloperOnly(s)) return hidden(NOT_IN_HR)
-  if (at && DEV_PAGES.has(at.view)) return hidden(NOT_IN_HR)
-  return SHOWN
-}
-
-/** Shown, limited or hidden: the one answer for a surface in a mode. */
-export function decide(mode: Mode, surface: SurfaceId | string, at?: At, info?: DecideInfo): Decision {
-  if (mode === 'developer') return SHOWN
-  if (isNotReady(surface, at, info)) return hidden(NOT_READY_HOW)
-  if (mode === 'hr') return decideHr(surface, at)
-  return decideManager(surface, at, info)
-}
-
-/** Anything but hidden. */
-export const can = (mode: Mode, surface: SurfaceId | string, at?: At, info?: DecideInfo): boolean =>
-  decide(mode, surface, at, info).access !== 'hidden'
-
-/* ───────────── routes (3.15) ───────────── */
-
-/** Page names for the redirect toast: "The Data room is not shown in Manager mode". */
-const PLACE_LABEL: Readonly<Record<string, string>> = {
-  data: 'The Data room',
-  actions: 'The Action center',
-  dev: 'The Developer page',
-}
-
-export const placeLabel = (view: string): string =>
-  PLACE_LABEL[view] ?? (VIEW_LABEL as Record<string, string>)[view] ?? view
-
-export interface RouteDecision {
-  route: Route
-  redirected: boolean
-  /** For a redirect: the toast's title and description. */
-  reason?: { title: string; description: string }
-}
-
-/** Whether a route (a view or page, and a tab) is shown in a mode. */
-export function routeShown(mode: Mode, view: string, t = ''): boolean {
-  if (mode === 'developer') return true
-  if (NOT_READY_PAGES.has(view)) return false
-  if (mode === 'hr') return !DEV_PAGES.has(view)
-  if (managerPlace(view).access === 'hidden') return false
-  if (!t) return true
-  // A tab the policy does not name is left for the view to resolve (it opens its first shown tab).
-  const named = MANAGER_TABS[view as ViewKey]?.find((x) => x.key === baseTab(t))
-  if (MANAGER_HIDDEN_PARTS[`${view}.${t}`]) return false
-  return named?.decision.access !== 'hidden'
-}
-
-/**
- * Where a route goes in a mode: unchanged when it is shown; a hidden view or page goes to the
- * mode's home; a hidden tab of a shown view goes to the view's first shown tab. A tab the policy
- * does not know is left for the view to resolve (it opens its first shown tab).
- */
-export function routeDecision(mode: Mode, route: Route): RouteDecision {
-  const same: RouteDecision = { route, redirected: false }
-  if (mode === 'developer') return same
-  if (NOT_READY_PAGES.has(route.view))
-    return {
-      route: homeOf(mode),
-      redirected: true,
-      reason: {
-        title: `${placeLabel(route.view)} is not ready yet.`,
-        description: `It is only in Developer mode for now. ${openedInstead(mode)}`,
-      },
-    }
-  if (mode === 'hr') {
-    if (!DEV_PAGES.has(route.view)) return same
-    return {
-      route: homeOf('hr'),
-      redirected: true,
-      reason: { title: hiddenPageTitle(placeLabel(route.view), mode), description: openedInstead(mode) },
-    }
-  }
-  if (managerPlace(route.view).access === 'hidden')
-    return {
-      route: homeOf('manager'),
-      redirected: true,
-      reason: { title: hiddenPageTitle(placeLabel(route.view), mode), description: openedInstead(mode) },
-    }
-  const tabs = MANAGER_TABS[route.view as ViewKey]
-  const named = route.tab ? tabs?.find((x) => x.key === baseTab(route.tab)) : undefined
-  // A hidden part of a shown tab opens the part named instead, with the same toast.
-  const part = MANAGER_HIDDEN_PARTS[`${route.view}.${route.tab}`]
-  if (part && named && named.decision.access !== 'hidden')
-    return {
-      route: { view: route.view as RouteView, tab: part.instead },
-      redirected: true,
-      reason: {
-        title: hiddenTabTitle(placeLabel(route.view), part.label, mode),
-        description: openedTabInstead(part.insteadLabel),
-      },
-    }
-  if (named?.decision.access !== 'hidden') return same
-  const first = firstManagerTab(route.view)
-  return {
-    route: { view: route.view as RouteView, tab: first?.key ?? '' },
-    redirected: true,
-    reason: {
-      title: hiddenTabTitle(placeLabel(route.view), named.label, mode),
-      description: openedTabInstead(first?.label ?? placeLabel(route.view)),
-    },
-  }
+export const MANAGER_POLICY: RolePolicy = {
+  mode: 'manager',
+  views: {
+    ...MANAGER_VIEWS,
+    actions: MANAGER_SURFACES['page:actions'],
+    data: MANAGER_SURFACES['page:data'],
+    dev: MANAGER_SURFACES['page:dev'],
+  },
+  tabs: MANAGER_TABS,
+  hiddenParts: MANAGER_HIDDEN_PARTS,
+  metrics: { hidePrefixes: MANAGER_HIDDEN_METRIC_PREFIXES, hide: MANAGER_HIDDEN_METRICS },
+  hiddenFigures: MANAGER_HIDDEN_FIGURES,
+  hiddenFigurePrefixes: MANAGER_HIDDEN_FIGURE_PREFIXES,
+  drillKinds: MANAGER_DRILL_KINDS,
+  drillListed: limited('Rows about people outside the org are left out.'),
+  datasets: MANAGER_DATASETS,
+  hiddenItemPrefixes: MANAGER_HIDDEN_ITEM_PREFIXES,
+  articles: MANAGER_ARTICLES,
+  tours: MANAGER_TOURS,
+  surfaces: {
+    ...MANAGER_SURFACES,
+    // Surfaces added with the eleven modes (docs/ROLES-V2.md 3.1, 4.4, 4.12).
+    ...payDecisions('manager'),
+    'person:ratings': limited("The person's final rating only."),
+    'ui:attention-lists': SHOWN,
+  },
 }

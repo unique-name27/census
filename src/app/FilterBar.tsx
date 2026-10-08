@@ -5,6 +5,10 @@
  * filter's menu has an Include / Exclude switch at the top (docs/FILTERS.md, part 3), and the
  * changes made while one menu is open are one history entry.
  *
+ * The mode shapes the row (docs/ROLES-V2.md 2.5): a scope pins its filter (Manager's leader, an
+ * HRBP's business unit or region, with the pin and why on hover) and every option list and count
+ * comes from inside the scope; Finance filters by business unit (include only) and period.
+ *
  * Widths (docs/DESIGN-REFRESH.md 2.13 and 3.4): from 1280px the data standard folds into the row's
  * right end as a compact menu beside the scope count, so the row is one line. Under 768px the row
  * is the period control and one "Filters (n)" button, which opens a bottom sheet with the saved
@@ -13,8 +17,21 @@
  */
 import { Dialog as BDialog } from '@base-ui/react/dialog'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { lockTip, NO_MANAGER_PICKED, orgOf, peopleInOrg, WHOLE_ORG } from '@/access/copy'
-import { openManagerPicker } from '@/access/store'
+import {
+  lockTip,
+  orgOf,
+  PICKER_COPY,
+  peopleInOrg,
+  peopleInScope,
+  reqsInScope,
+  scopeTip,
+  WHOLE_ORG,
+  WHOLE_REGION,
+  WHOLE_UNIT,
+} from '@/access/copy'
+import { PICK_OF } from '@/access/modes'
+import { FILTER_DIMS_OF } from '@/access/scopes/clamp'
+import type { ScopeLock } from '@/access/scopes/types'
 import {
   FILTER_DIMENSION_LABELS,
   filterChips,
@@ -22,11 +39,12 @@ import {
   leaderExcludedLabel,
   leaderOrgLabel,
 } from '@/components/filterLabels'
-import { IconChevronRight, IconClose, IconFilter, IconPin, IconReset } from '@/components/icons'
+import { IconChevronRight, IconClose, IconFilter, IconReset } from '@/components/icons'
 import { MultiSelect } from '@/components/MultiSelect'
 import { Button } from '@/components/ui'
 import { useMinWidth, useNarrow } from '@/components/useNarrow'
 import { useAnalytics } from '@/data/context'
+import type { Employee } from '@/data/schema'
 import { dropIdleModes, type FilterMode, hasOrgFilter, isExcluded, withMode } from '@/data/scope'
 import { useCensus } from '@/data/store'
 import { fmt, plural } from '@/lib/format'
@@ -40,14 +58,30 @@ import {
   dimensionOptions,
   leaderChain,
   leaderOptions,
+  offersExclude,
   otherFilters,
+  scopedLeaderOptions,
   tooFewToLeaveOut,
 } from './filterOptions'
 import { LeaderPicker } from './LeaderPicker'
 import { listModeHint, ModeSwitch } from './ModeSwitch'
 import { PeriodControl } from './PeriodControl'
 import { ViewsMenu } from './SavedViews'
+import { NoPickButton, PinnedFilter, RegionSites } from './ScopeControls'
 import { StandardControl } from './StandardControl'
+
+/** Who a scope holds, for its option lists and counts: the org, the unit's or the region's people. */
+function scopeMembers(scope: ScopeLock | null): ReadonlySet<string> | null {
+  if (scope?.kind === 'org') return scope.orgIds
+  if (scope?.kind === 'unit' || scope?.kind === 'region') return scope.memberIds
+  return null
+}
+
+/** The leader picker's words inside a business unit or region: "Whole business unit". */
+const SCOPED_LEADER = {
+  unit: { clearLabel: WHOLE_UNIT, emptyText: 'Nobody in this business unit leads 3 or more employees.' },
+  region: { clearLabel: WHOLE_REGION, emptyText: 'Nobody in this region leads 3 or more employees.' },
+} as const
 
 /** Why Exclude greys out some choices (`tooFewToLeaveOut`). */
 const tooFewNote = (what: string, min: number) =>
@@ -144,15 +178,22 @@ export function FilterBar() {
   const filters = useCensus((s) => s.filters)
   const setFilters = useCensus((s) => s.setFilters)
   const resetFilters = useCensus((s) => s.resetFilters)
-  // Manager mode pins the leader to the manager's org: the options and counts come from the org.
-  const lock = ctx.access.lock
-  // Manager mode with nobody usable picked: the row says so instead of naming an empty org.
+  const { mode, scope } = ctx.access
+  // Manager mode pins the leader to the manager's org; an HRBP mode pins the business unit or the
+  // region. The options and counts come from inside the scope.
+  const lock = scope?.kind === 'org' ? scope : null
+  // A scoped mode with nothing usable picked: the row says so instead of naming an empty scope.
   const unset = ctx.access.unset
+  const pickKind = PICK_OF[mode]
   const all = ctx.all.employees
-  const employees = useMemo(
-    () => (lock ? all.filter((e) => lock.orgIds.has(e.employeeId)) : all),
-    [all, lock],
-  )
+  const employees = useMemo(() => {
+    const members = scopeMembers(scope)
+    return members ? all.filter((e) => members.has(e.employeeId)) : all
+  }, [all, scope])
+  // The filters this mode's row offers (Finance: business unit and period only).
+  const dims = FILTER_DIMS_OF[mode]
+  const showLeader = dims.includes('leaderId') && ctx.access.can('filter:leader')
+  const shownDims = DIMENSIONS.filter((k) => dims.includes(k))
 
   // Each dimension counts within the rest of the row, so a count is who would be in scope.
   const options = useMemo(
@@ -173,15 +214,18 @@ export function FilterBar() {
   )
   // Leader sizes count within the other filters (exclusions included): who would be in scope.
   const leaders = useMemo(() => {
-    const list = leaderOptions(
-      ctx.org,
-      ctx.asOf,
-      3,
-      hasOrgFilter({ ...filters, leaderId: null }) ? otherFilters(filters, ctx.org, 'leaderId') : undefined,
-    )
+    const within = hasOrgFilter({ ...filters, leaderId: null })
+      ? otherFilters(filters, ctx.org, 'leaderId')
+      : undefined
+    // A business unit or region: leaders with 3 or more people inside it.
+    if (scope?.kind === 'unit' || scope?.kind === 'region') {
+      const members = scope.memberIds
+      return scopedLeaderOptions(ctx.org, ctx.asOf, (e: Employee) => members.has(e.employeeId), 3, within)
+    }
+    const list = leaderOptions(ctx.org, ctx.asOf, 3, within)
     // Manager mode: the manager and the leaders inside their org.
     return lock ? list.filter((o) => lock.orgIds.has(o.id) || o.id === lock.managerId) : list
-  }, [ctx.org, ctx.asOf, filters, lock])
+  }, [ctx.org, ctx.asOf, filters, lock, scope])
   // Excluding, a choice that would leave out 1 to min - 1 people can't be picked (the anonymity
   // rule Ask and the records panel apply); one already picked stays, so it can be taken off.
   const min = minGroupOf(ctx.metrics)
@@ -214,19 +258,37 @@ export function FilterBar() {
   useEffect(() => () => held.current?.(), [])
   const inScope = useMemo(() => headcountAt(ctx.data.employees, ctx.asOf), [ctx.data.employees, ctx.asOf])
   const total = useMemo(() => headcountAt(employees, ctx.asOf), [employees, ctx.asOf])
+  // Recruiter mode counts its reqs and their active candidates inside the row's filters.
+  const openReqs = useMemo(
+    () => ctx.data.requisitions.filter((r) => r.status === 'Open').length,
+    [ctx.data.requisitions],
+  )
+  const activeCandidates = useMemo(
+    () => ctx.data.candidates.filter((c) => c.status === 'Active').length,
+    [ctx.data.candidates],
+  )
 
   const nameOf = (id: string) => ctx.org.byId.get(id)?.name
-  const chips = filterChips(filters, nameOf).filter((c) => c.key !== 'leaderId')
-  // Manager mode: the manager's own org is the scope, not a filter. The scope line carries its
-  // pin, so it gets no chip, and with nothing else set there is nothing to reset.
+  // The region's whole set of sites is the scope, not a filter (a subset of them is).
+  const wholeRegion = scope?.kind === 'region' && scope.sites.every((l) => filters.location.includes(l))
+  const chips = filterChips(filters, nameOf).filter(
+    (c) =>
+      c.key !== 'leaderId' &&
+      !(scope?.kind === 'unit' && c.key === 'businessUnit') &&
+      !(wholeRegion && c.key === 'location'),
+  )
+  // A scope is not a filter: Manager's own org, an HRBP's business unit or whole region. The scope
+  // line carries its pin, so it gets no chip, and with nothing else set there is nothing to reset.
   const lockedLeader = !!lock && filters.leaderId === lock.managerId
   const leaderChip = !!filters.leaderId && !unset && !lockedLeader
   const showChips = isFiltered(filters) && (chips.length > 0 || leaderChip)
-  // A read-only data standard (Manager mode) is one short label at the row's end at every width.
+  // A read-only data standard (Finance and Manager mode) is one short label at the row's end at
+  // every width.
   const standardFixed = ctx.access.decide('filter:standard').access === 'limited'
 
   // A chip's remove button and Reset take themselves away: focus moves to the chip that took the
-  // removed one's place (or the one before it), and to the leader picker when no chip is left.
+  // removed one's place (or the one before it), and to the leader picker when no chip is left
+  // (the Views menu in Finance mode, which has no leader filter).
   const chipRow = useRef<HTMLDivElement>(null)
   const fieldset = useRef<HTMLFieldSetElement>(null)
   const refocus = useRef<number | null>(null)
@@ -237,7 +299,8 @@ export function FilterBar() {
     const left = chipRow.current?.querySelectorAll<HTMLElement>('[data-chip-remove]') ?? []
     const next =
       left[Math.min(at, left.length - 1)] ??
-      fieldset.current?.querySelector<HTMLElement>('[data-tour="filter-leader"]')
+      fieldset.current?.querySelector<HTMLElement>('[data-tour="filter-leader"]') ??
+      fieldset.current?.querySelector<HTMLElement>('[data-tour="filter-views"]')
     next?.focus()
   })
   const removedAt = (el: HTMLElement) => {
@@ -248,42 +311,69 @@ export function FilterBar() {
   const narrow = useNarrow()
   const wide = useMinWidth(1280)
   const [sheetOpen, setSheetOpen] = useState(false)
-  const activeCount = chips.length + (filters.leaderId && !lock ? 1 : 0)
+  const activeCount = chips.length + (leaderChip ? 1 : 0)
+  const tip = scope && !unset ? scopeTip(mode, scope.label) : ''
+  // The region's sites in list order, with who the rest of the row lets through at each.
+  const sites = useMemo(() => {
+    if (scope?.kind !== 'region') return []
+    const counts = new Map(options.location.map((o) => [o.value, o.count]))
+    return scope.sites.map((value) => ({ value, count: counts.get(value) ?? 0 }))
+  }, [scope, options.location])
 
+  const leaderControl = !showLeader ? null : unset && pickKind === 'manager' ? (
+    <NoPickButton kind="manager" />
+  ) : (
+    <LeaderPicker
+      options={leaderChoices}
+      value={filters.leaderId}
+      currentName={filters.leaderId ? nameOf(filters.leaderId) : undefined}
+      onChange={(leaderId) => setFilters({ leaderId })}
+      mode={leaderExcluded ? 'exclude' : 'include'}
+      onModeChange={lock ? undefined : (m) => setMode('leaderId', m)}
+      onOpenChange={onMenu}
+      {...(lock && {
+        clearLabel: WHOLE_ORG,
+        pinned: lockTip(lock.managerName),
+        youId: lock.managerId,
+        emptyText: 'Nobody in this org leads 3 or more employees.',
+      })}
+      {...((scope?.kind === 'unit' || scope?.kind === 'region') && SCOPED_LEADER[scope.kind])}
+      note={leaderChoices.some((o) => o.disabled) ? tooFewNote('Orgs', min) : undefined}
+    />
+  )
   const orgFilters = (
     <>
-      {unset ? (
-        <Button
-          data-tour="filter-leader"
-          icon={<IconPin className="text-muted" />}
-          aria-label={`Leader: ${NO_MANAGER_PICKED}. Choose a manager`}
-          onClick={() => openManagerPicker()}
-        >
-          <span className="flex items-baseline gap-1">
-            <span className="font-normal text-muted">Leader</span>
-            <span className="text-ink">{NO_MANAGER_PICKED}</span>
-          </span>
-        </Button>
-      ) : (
-        <LeaderPicker
-          options={leaderChoices}
-          value={filters.leaderId}
-          currentName={filters.leaderId ? nameOf(filters.leaderId) : undefined}
-          onChange={(leaderId) => setFilters({ leaderId })}
-          mode={leaderExcluded ? 'exclude' : 'include'}
-          onModeChange={lock ? undefined : (m) => setMode('leaderId', m)}
-          onOpenChange={onMenu}
-          {...(lock && {
-            clearLabel: WHOLE_ORG,
-            pinned: lockTip(lock.managerName),
-            youId: lock.managerId,
-            emptyText: 'Nobody in this org leads 3 or more employees.',
-          })}
-          note={leaderChoices.some((o) => o.disabled) ? tooFewNote('Orgs', min) : undefined}
-        />
-      )}
-      {DIMENSIONS.map((k) => {
-        const mode: FilterMode = isExcluded(filters, k) ? 'exclude' : 'include'
+      {/* Recruiter mode before its pick: the reqs it will show are named first. */}
+      {unset && pickKind === 'recruiter' && <NoPickButton kind="recruiter" />}
+      {leaderControl}
+      {shownDims.map((k) => {
+        if (scope?.kind === 'unit' && k === 'businessUnit')
+          return unset ? (
+            <NoPickButton key={k} kind="unit" />
+          ) : (
+            <PinnedFilter
+              key={k}
+              kind="unit"
+              label={FILTER_DIMENSION_LABELS[k]}
+              value={scope.unit}
+              tip={tip}
+            />
+          )
+        if (scope?.kind === 'region' && k === 'location')
+          return unset ? (
+            <NoPickButton key={k} kind="region" />
+          ) : (
+            <RegionSites
+              key={k}
+              region={scope.region}
+              sites={sites}
+              value={filters.location}
+              onChange={(location) => setFilters({ location })}
+              onOpenChange={onMenu}
+              tip={tip}
+            />
+          )
+        const listMode: FilterMode = isExcluded(filters, k) ? 'exclude' : 'include'
         const list = choices(k)
         return (
           <MultiSelect
@@ -294,28 +384,36 @@ export function FilterBar() {
             value={filters[k]}
             onChange={(v) => setFilters({ [k]: v })}
             width={k === 'department' ? 340 : 300}
-            excluded={mode === 'exclude'}
+            excluded={listMode === 'exclude'}
             onOpenChange={onMenu}
             header={
-              <ModeSwitch
-                label={FILTER_DIMENSION_LABELS[k]}
-                value={mode}
-                onChange={(m) => setMode(k, m)}
-                hint={listModeHint(mode)}
-              />
+              // Finance's business unit is include only: its totals cover whole business units.
+              offersExclude(mode, k) ? (
+                <ModeSwitch
+                  label={FILTER_DIMENSION_LABELS[k]}
+                  value={listMode}
+                  onChange={(m) => setMode(k, m)}
+                  hint={listModeHint(listMode)}
+                />
+              ) : undefined
             }
           />
         )
       })}
     </>
   )
-  const scopeCount = lock
-    ? unset
-      ? NO_MANAGER_PICKED
-      : peopleInOrg(fmt(inScope, 'int'), plural(total, 'person', 'people'), lock.managerName)
-    : ctx.isCompany
-      ? `${plural(inScope, 'person', 'people')} in scope`
-      : `${fmt(inScope, 'int')} of ${plural(total, 'person', 'people')} in scope`
+  const scopeCount =
+    unset && pickKind
+      ? PICKER_COPY[pickKind].none
+      : lock
+        ? peopleInOrg(fmt(inScope, 'int'), plural(total, 'person', 'people'), lock.managerName)
+        : scope?.kind === 'unit' || scope?.kind === 'region'
+          ? peopleInScope(fmt(inScope, 'int'), plural(total, 'person', 'people'), scope.label)
+          : scope?.kind === 'reqs'
+            ? reqsInScope(openReqs, activeCandidates, scope.label)
+            : ctx.isCompany
+              ? `${plural(inScope, 'person', 'people')} in scope`
+              : `${fmt(inScope, 'int')} of ${plural(total, 'person', 'people')} in scope`
 
   return (
     <div className="pt-4 pb-1">

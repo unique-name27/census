@@ -30,6 +30,8 @@ export type ParamType =
   | 'choice'
   | 'ratingMap'
   | 'range'
+  /** A calendar date 'YYYY-MM-DD', or '' for not set (the comp cycle's dates). */
+  | 'date'
 
 export type ParamValue = number | boolean | string | RatingMap | NumberRange
 
@@ -42,8 +44,8 @@ export interface ParamChoice {
  * A calculation setting an engine reads through `ctx.metrics.param(id, key)` instead of a
  * constant. Values by type: number, percent (fraction), days and months are numbers; boolean is
  * a boolean; choice is one of `choices[].value`; ratingMap is a `RatingMap`; range is a
- * `[low, high]` pair with low < high. `min`, `max` and `step` bound numbers and every element of
- * a rating map or range.
+ * `[low, high]` pair with low < high; date is 'YYYY-MM-DD' or '' (not set). `min`, `max` and
+ * `step` bound numbers and every element of a rating map or range.
  */
 export interface ParamDef {
   /** Unique within the metric, camelCase: 'firstYearDays'. */

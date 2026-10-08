@@ -7,8 +7,10 @@ import {
   dimensionOptions,
   leaderChain,
   leaderOptions,
+  offersExclude,
   orgSizes,
   otherFilters,
+  scopedLeaderOptions,
   shortRange,
   tooFewToLeaveOut,
 } from './filterOptions'
@@ -230,5 +232,44 @@ describe('period helpers', () => {
 
   it('prints a compact month range', () => {
     expect(shortRange('2025-10-01', '2026-09-30')).toBe("Oct '25 – Sep '26")
+  })
+})
+
+describe('scopedLeaderOptions (a business unit or region scope, docs/ROLES-V2.md 2.5)', () => {
+  const inUnit = (unit: string) => (e: Employee) => e.businessUnit === unit
+
+  it('lists leaders with 3 or more active employees inside the scope, themselves left out', () => {
+    const list = scopedLeaderOptions(index, AS_OF, inUnit('Compute'), 3)
+    expect(list.map((o) => [o.id, o.size])).toEqual([
+      ['ceo', 6],
+      ['vpA', 5],
+    ])
+  })
+
+  it('keeps a leader above the scope whose org holds it, and counts only the scope inside their org', () => {
+    // Networking holds vpB and b1 (the contractor, the leaver and the pre-hire are not counted).
+    expect(scopedLeaderOptions(index, AS_OF, inUnit('Networking'), 3)).toEqual([])
+    expect(scopedLeaderOptions(index, AS_OF, inUnit('Networking'), 2).map((o) => [o.id, o.size])).toEqual([
+      ['ceo', 2],
+    ])
+  })
+
+  it('sizes each leader by the rest of the filter row inside the scope', () => {
+    const list = scopedLeaderOptions(index, AS_OF, inUnit('Compute'), 3, (e) => e.level === 'L3')
+    expect(list.map((o) => [o.id, o.size])).toEqual([
+      ['ceo', 1],
+      ['vpA', 1],
+    ])
+  })
+})
+
+describe('offersExclude (Finance filters by whole business units)', () => {
+  it('offers Include / Exclude wherever the clamp keeps an exclusion', () => {
+    for (const k of ['businessUnit', 'department', 'location', 'level'] as const) {
+      expect(offersExclude('hr', k)).toBe(true)
+      expect(offersExclude('manager', k)).toBe(true)
+      expect(offersExclude('hrbp-region', k)).toBe(true)
+    }
+    expect(offersExclude('finance', 'businessUnit')).toBe(false)
   })
 })

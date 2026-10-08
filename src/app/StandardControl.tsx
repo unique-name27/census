@@ -3,7 +3,7 @@
  * many datasets sit at each tier. It applies to every view and is the same setting as
  * Settings → Data. From 1280px it folds into the filter row as a compact menu.
  */
-import { STANDARD_FIXED } from '@/access/copy'
+import { standardFixed } from '@/access/copy'
 import { MedalGlyph } from '@/components/tier/TierBadge'
 import { STANDARD_HINT, tierCountParts, tierCounts, tierCountsText } from '@/components/tier/tierModel'
 import { Button, Menu, Segmented, Tip } from '@/components/ui'
@@ -21,12 +21,12 @@ export function StandardControl({ compact = false }: { compact?: boolean }) {
   const setStandard = useCensus((s) => s.setDataStandard)
   const counts = tierCounts(ctx.quality)
   const parts = tierCountParts(counts)
-  // Manager mode shows the saved standard, read only (docs/ROLES.md, 3.10): one short label,
-  // like the compact menu button, with what it means and why it is fixed in the tooltip.
+  // Finance and Manager mode show the saved standard, read only (docs/ROLES-V2.md 4.10): one short
+  // label, like the compact menu button, with what it means and why it is fixed in the tooltip.
   if (ctx.access.decide('filter:standard').access === 'limited')
     return (
       <div data-tour="data-standard" className="inline-flex min-w-0 items-center whitespace-nowrap">
-        <Tip content={`${STANDARD_HINT[ctx.standard]} ${STANDARD_FIXED}`}>
+        <Tip content={`${STANDARD_HINT[ctx.standard]} ${standardFixed(ctx.access.mode)}`}>
           {/* biome-ignore lint/a11y/noNoninteractiveTabindex: focus shows why the standard is fixed, as hover does */}
           <span className="inline-flex items-center gap-1.5 text-meta text-ink-2" tabIndex={0}>
             <MedalGlyph tier={ctx.standard} className="size-3" />

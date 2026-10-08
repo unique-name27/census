@@ -14,10 +14,12 @@
  * ```
  *
  * Pure and cheap (the answers are prepared once per context); null when the survey has no
- * answers in scope, or for Engagement while the engagement surveys switch is off. The value is
+ * answers in scope, for Engagement while the engagement surveys switch is off, and when the mode
+ * hides the survey's Listening tab (`surveyShown`, docs/ROLES-V2.md 4.2). The value is
  * the latest wave's headline (NPS for candidate experience and engagement, else the mean on 1-5)
  * and is null with `suppressed` when that wave has fewer respondents than the minimum.
  */
+import { S } from '@/access/surfaces'
 import type { Kpi } from '@/components/types'
 import type { AnalyticsContext } from '@/data/context'
 import type { FieldRef } from '@/data/quality/fieldRef'
@@ -64,9 +66,20 @@ export interface SurveyHeadline {
   drill: DrillSource
 }
 
+/**
+ * The one rule for linked survey numbers in every mode (docs/ROLES-V2.md 4.2): another view shows a
+ * survey's number only while the mode shows the survey's own Listening tab (Manager mode hides
+ * Listening; Compensation hides Candidates & hiring, so no candidate survey number shows there).
+ */
+export function surveyShown(ctx: Pick<AnalyticsContext, 'access'>, survey: SurveyType): boolean {
+  const program = programOf.get(survey)
+  if (!program) return false
+  return ctx.access.can(S.view('listening')) && ctx.access.can(S.tab('listening', program.tab))
+}
+
 export function surveyHeadline(ctx: AnalyticsContext, survey: SurveyType): SurveyHeadline | null {
   const program = programOf.get(survey)
-  if (!program) return null
+  if (!program || !surveyShown(ctx, survey)) return null
   if (survey === 'Engagement' && !ctx.features.engagementSurveys) return null
   const p = prepare(ctx)
   const all = answersOf(p, survey)

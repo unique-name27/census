@@ -11,6 +11,7 @@ import {
   type JobChange,
   type LearningRecord,
   onboardingTaskByName,
+  REGIONS,
   type SurveyResponse,
   type SurveyType,
 } from '@/data/schema'
@@ -28,7 +29,7 @@ import {
   targetOf,
 } from '@/lib/surveys'
 import type { OnboardingBase } from './base'
-import { isLate, readyOnDayOne, regionOf, type Start, startersIn, startOf, type TaskView } from './starts'
+import { isLate, readyOnDayOne, type Start, startersIn, startOf, type TaskView } from './starts'
 
 export const CHECK_INS: readonly string[] = ['30-day check-in', '60-day check-in', '90-day check-in']
 export const PULSE_SURVEY: SurveyType = 'Onboarding pulse day 30'
@@ -403,7 +404,7 @@ function pulse(b: OnboardingBase, ctx: AnalyticsContext): PulseFacts {
     overall: aggregate(answers, { min }),
     byRegion: breakdown(
       answers,
-      respondentKey(who, (j) => regionOf(j.employee?.location)),
+      respondentKey(who, (j) => b.regions.regionOf(j.employee?.location)),
       { min },
     ),
     target: (item ? targetOf(items, PULSE_SURVEY, item) : null) ?? b.settings.targets.pulse?.value ?? null,
@@ -453,15 +454,15 @@ export function computeFirst90(b: OnboardingBase, ctx: AnalyticsContext): First9
 
 /* ───────────── late day-one tasks by task and place ───────────── */
 
-/** Regions in the order the heatmap shows them. */
-export const REGION_ORDER: readonly string[] = ['Americas', 'EMEA', 'Asia Pacific']
+/** Regions in the order the heatmap shows them (the region index's names; others follow by name). */
+export const REGION_ORDER: readonly string[] = REGIONS
 
 /** One day-one task of one starter, as `First90Model.readinessTasks` holds it. */
 export type ReadinessTask = First90Model['readinessTasks'][number]
 
 export interface LateCell {
   task: string
-  /** The region ("Asia Pacific") or site ("Bengaluru"). */
+  /** The region ("APAC") or site ("Bengaluru"). */
   place: string
   /** Starters with the task (not "Not needed"). */
   n: number

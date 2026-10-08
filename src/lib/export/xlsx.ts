@@ -1,9 +1,10 @@
 /**
  * Styled Excel workbooks with ExcelJS (loaded on demand, so it never weighs on first paint).
  *
- * Every sheet carries a small title block (title, subtitle, view and scope line, confidentiality
- * stamp), then a bold header row with a bottom rule, frozen panes, an autofilter, real Excel
- * dates, number formats from each column's `format`, and widths fitted to the content.
+ * Every sheet carries a small title block (title, subtitle, view and scope line, data standard,
+ * the mode lines outside HR and Developer, confidentiality stamp), then a bold header row with a
+ * bottom rule, frozen panes, an autofilter, real Excel dates, number formats from each column's
+ * `format`, and widths fitted to the content.
  */
 import type { CellValue, Workbook, Worksheet } from 'exceljs'
 import type { Column, ExportMeta } from '@/charts/types'
@@ -13,13 +14,15 @@ import {
   columnFormat,
   exportNumber,
   isNumericFormat,
+  type MoneyOpts,
+  moneyShown,
   sampleRow,
   sampleValue,
   visibleColumns,
 } from './columns'
 import { definitionsLineFor } from './definitions'
 import { downloadBlob, MIME } from './download'
-import { dataLine, fileStem, metaLine, stampLine, viewLine } from './names'
+import { dataLine, fileStem, metaLine, modeLines, stampLine, viewLine } from './names'
 import type { ExportOptions, ExportTable } from './types'
 import { exportNote } from './withheld'
 
@@ -152,9 +155,9 @@ export function addTableSheet(
   sheetName: string,
   table: ExportTable,
   meta: ExportMeta,
-  opts: { showPay: boolean },
+  opts: MoneyOpts,
 ): SheetLayout {
-  const cols = visibleColumns(table.columns, opts.showPay)
+  const cols = visibleColumns(table.columns, moneyShown(opts))
   const ws = wb.addWorksheet(sheetName, {
     properties: { defaultRowHeight: 16 },
     pageSetup: { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0 },
@@ -170,6 +173,8 @@ export function addTableSheet(
   if (data) block.push({ text: data, size: 9, color: XL.ink2 })
   const definitions = definitionsLineFor(meta)
   if (definitions) block.push({ text: definitions, size: 9, color: XL.ink2 })
+  // Outside HR and Developer: "Made in HRBP mode for APAC." and, in Finance, the cost line.
+  for (const line of modeLines(meta)) block.push({ text: line, size: 9, color: XL.ink2 })
   block.push({ text: stampLine(meta), size: 9, color: XL.muted, bold: true })
   // A withheld table prints no note: notes usually carry the numbers the standard hides.
   const note = exportNote(table)
@@ -264,7 +269,7 @@ export async function newWorkbook(meta: ExportMeta, title: string): Promise<Work
 export async function buildWorkbook(
   tables: readonly ExportTable[],
   meta: ExportMeta,
-  opts: { showPay: boolean },
+  opts: MoneyOpts,
 ): Promise<Workbook> {
   const wb = await newWorkbook(meta, tables[0]?.title ?? tables[0]?.name ?? 'Census export')
   const names = uniqueSheetNames(tables.map((t) => t.name))

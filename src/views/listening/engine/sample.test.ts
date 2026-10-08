@@ -97,12 +97,12 @@ describe('Listening on the sample company', () => {
     expect(f.detail).toMatch(/speed \(2\.\d\d\) and communication \(2\.\d\d\) score lowest/)
   })
 
-  it('story 3: day-30 readiness in Asia Pacific, tied to the late laptops', () => {
+  it('story 3: day-30 readiness in APAC, tied to the late laptops', () => {
     const f = find('listening-readiness')
     expect(f.title).toBe(
-      'Day-30 readiness is 3.42 of 5 in Asia Pacific, against 4.28 elsewhere; laptops shipped late for 41.1% of starts there.',
+      'Day-30 readiness is 3.42 of 5 in APAC, against 4.28 elsewhere; laptops shipped late for 41.1% of starts there.',
     )
-    expect(f.detail).toContain('51 of 124 Asia Pacific starts')
+    expect(f.detail).toContain('51 of 124 APAC starts')
     expect(m.readiness?.flag?.lateMean).toBeLessThan(3)
   })
 

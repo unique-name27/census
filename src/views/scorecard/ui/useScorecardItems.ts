@@ -43,5 +43,5 @@ export function useScorecardItems(): ScorecardItems | null {
     }
   }, [ctx])
   if (!latest) return null
-  return { open: latest.value.items.filter((a) => isOpen(a.id, marks, now)), stale: latest.ctx !== ctx }
+  return { open: latest.value.items.filter((a) => isOpen(a, marks, now)), stale: latest.ctx !== ctx }
 }

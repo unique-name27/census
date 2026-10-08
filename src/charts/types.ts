@@ -1,5 +1,27 @@
 /**
  * Contracts shared by figures, tables and exports.
+ *
+ * Money columns (docs/ROLES-V2.md 3.1). Mark every column that holds money with one of two flags:
+ *
+ * - `pay: true`: one person's amount (base salary, range midpoint, gap to minimum, an item's
+ *   `amount`). Shown only while `ctx.showPay` (a switch mode with "Show pay amounts" on).
+ * - `cost: true`: a total over a group of people (cost by cost center, merit spend by business
+ *   unit, budget cost). Shown while `ctx.showCost` (`showPay`, or Finance mode, where totals show
+ *   without the switch under the cost guard). Never set both: a column is one or the other.
+ *
+ * ```ts
+ * const columns: Column<Row>[] = [
+ *   { key: 'unit', label: 'Business unit' },
+ *   { key: 'people', label: 'People', format: 'int' },
+ *   { key: 'targetCashUsd', label: 'Target cash (USD)', format: 'money', cost: true },
+ *   { key: 'gapUsd', label: 'Gap to minimum (USD)', format: 'moneyFull', pay: true },
+ * ]
+ * ```
+ *
+ * `Figure`, `DataTable`, every export (CSV, Excel, slides, copy, whole-view workbook and deck) and
+ * the records panel drop what the context does not allow, through
+ * `visibleColumns(columns, moneyShown(ctx))` from `@/lib/export` (`{ pay, cost }`; a plain boolean
+ * still means "pay amounts on", which allows both). Ratios (compa-ratio, merit %) carry neither flag.
  */
 import type { DataStandard, Tier } from '@/data/quality/tier'
 import type { DrillSource } from '@/drill/Drill'
@@ -19,8 +41,13 @@ export interface Column<T = any> {
   label: string
   /** One format for the column, or one per row (`(row) => Format`); Excel gets a per-cell number format. */
   format?: Format | RowFormat<T>
-  /** Pay amount: hidden from the table and exports unless pay amounts are switched on. */
+  /** One person's pay amount: hidden from the table and exports unless pay amounts are switched on (`ctx.showPay`). */
   pay?: boolean
+  /**
+   * A cost total over a group of people (5 or more, under the cost guard): hidden unless cost
+   * totals may show (`ctx.showCost`: pay amounts on, or Finance mode). See the note at the top.
+   */
+  cost?: boolean
   align?: 'left' | 'right'
   /** Optional width hint for tables, in ch. */
   width?: number
@@ -148,7 +175,14 @@ export interface ExportMeta {
   standard?: DataStandard
   /**
    * The mode a whole-view export was made in, when it shapes what is in it: "Made in Manager mode
-   * for Priya Raman's org." (docs/ROLES.md, 3.11). The workbook's cover and the deck's title slide state it.
+   * for Priya Raman's org." (docs/ROLES.md, 3.11; docs/ROLES-V2.md 4.11: every mode but HR and
+   * Developer). The workbook's cover and every sheet, the deck's title slide, CSV preambles and
+   * image footers state it.
    */
   modeLine?: string
+  /**
+   * Finance mode's pay line, in place of "Pay amounts" (docs/ROLES-V2.md 3.2): "Cost totals cover
+   * groups of 5 or more people. Individual pay is left out." Stated with the mode line.
+   */
+  costLine?: string
 }

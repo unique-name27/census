@@ -121,18 +121,16 @@ describe('Ask in Manager mode', () => {
   it('neither offers nor runs explain_quality', () => {
     const tools = toolDefinitionsFor(ctx.access)
     expect(tools.map((t) => t.name)).not.toContain('explain_quality')
-    // explain_quality, and open_items while the Action center is not ready (Developer mode only).
-    expect(tools.map((t) => t.name)).not.toContain('open_items')
-    expect(tools.length).toBe(TOOL_DEFINITIONS.length - 2)
+    // explain_quality only: open_items lists the manager's Needs attention and Waiting on others.
+    expect(tools.map((t) => t.name)).toContain('open_items')
+    expect(tools.length).toBe(TOOL_DEFINITIONS.length - 1)
     // The last tool keeps the cache breakpoint.
     expect(tools[tools.length - 1].cache_control).toEqual({ type: 'ephemeral' })
     const r = call(new Conversation(), envOf(ctx), 'explain_quality', {})
     expect(r.isError).toBe(true)
     expect(r.json.error).toMatch(/not available in Manager mode/)
-    // HR mode offers every tool but open_items (not ready yet); Developer mode offers every tool.
-    expect(toolDefinitionsFor(company.access).map((t) => t.name)).toEqual(
-      TOOL_DEFINITIONS.map((t) => t.name).filter((n) => n !== 'open_items'),
-    )
+    // HR mode offers every tool, as Developer mode does.
+    expect(toolDefinitionsFor(company.access).map((t) => t.name)).toEqual(TOOL_DEFINITIONS.map((t) => t.name))
   })
 
   it('refuses the views and datasets Manager mode hides', () => {

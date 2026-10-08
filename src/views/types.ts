@@ -71,6 +71,8 @@ export type ActionOwnerRole =
   | 'immigration'
   | 'talent'
   | 'total-rewards'
+  | 'finance'
+  | 'benefits'
 
 /** Owner groups in the Action center's order. */
 export const ACTION_OWNER_ROLES: readonly ActionOwnerRole[] = [
@@ -86,6 +88,8 @@ export const ACTION_OWNER_ROLES: readonly ActionOwnerRole[] = [
   'immigration',
   'talent',
   'total-rewards',
+  'finance',
+  'benefits',
 ]
 
 /** Plain names for owner groups (sentence case). */
@@ -102,6 +106,8 @@ export const ACTION_OWNER_LABEL: Record<ActionOwnerRole, string> = {
   immigration: 'Global mobility',
   talent: 'Talent management',
   'total-rewards': 'Total rewards',
+  finance: 'Finance',
+  benefits: 'Benefits',
 }
 
 /** What an item is about: a person, candidate, case, req or task, by drill kind and id. */
@@ -148,6 +154,24 @@ export interface ActionItem {
    * by kind"); without it the kind comes from the id, else the view label.
    */
   kind?: string
+  /**
+   * The same matter across views ("license:E12069", "i9:E12069"): one item survives, the others
+   * fold into it (docs/ACTION-CENTER-AUDIT.md 4.1). Built from IDs, never labels.
+   */
+  matter?: string
+  /** Changes when the item's content changes (a count, the latest date): a handled mark with another fingerprint reopens. Roll-ups set it. */
+  fingerprint?: string
+  /**
+   * A money amount for this item, shown only where the mode and the "Show pay amounts" switch allow
+   * (an `Amount (USD)` pay column); never in `what` or `note`, in any mode (docs/ROLES-V2.md 3.2).
+   */
+  amount?: { usd: number; label: string }
+  /** Legal or regulatory exposure (I-9, export license, work authorization, final pay). Ranks first. */
+  exposure?: boolean
+  /** The record that would close it, for "why is this still open": "No completed date on the course". */
+  closesWhen?: string
+  /** Business unit, region and location of the person or req it is about, for the HRBP lenses. */
+  place?: { businessUnit?: string | null; region?: string | null; location?: string | null }
 }
 
 export interface ViewDef {

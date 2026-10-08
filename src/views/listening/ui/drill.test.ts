@@ -94,7 +94,7 @@ describe('Listening: Filter to and Leave out', () => {
     }
     expectFilterTo(ctx, starts)
     expectLeaveOut(ctx, starts, { sample: 2 })
-    // The actions name the region, not its sites: "Filter to Asia Pacific".
+    // The actions name the region, not its sites: "Filter to APAC".
     for (const r of rows(ctx).filter((x) => !x.suppressed))
       for (const src of [survey(ctx).survey(r), survey(ctx).starts(r)]) {
         const spec = resolveDrill(src)

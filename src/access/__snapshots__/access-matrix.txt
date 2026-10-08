@@ -1,360 +1,435 @@
-Surface                                        Dev       HR        Manager   How
---------------------------------------------------------------------------------
-view:team                                      Shown     Hidden    Shown     HR: HR mode leaves out the developer surfaces and My team.
-view:scorecard                                 Shown     Shown     Hidden    Manager: It judges the whole people function, including pay, HR ops and compliance.
-view:recruiting                                Shown     Shown     Limited   Manager: Sources & offers, recruiter load and hiring manager satisfaction are hidden.
-view:onboarding                                Shown     Shown     Limited   Manager: The hiring plan and I-9 measures are hidden.
-view:hrbp                                      Shown     Shown     Limited   Manager: Survey numbers and Copy talking points are hidden.
-view:org                                       Shown     Shown     Limited   Manager: Rooted at the manager; the Reorg sandbox is hidden.
-view:services                                  Shown     Shown     Hidden    Manager: Cases, transactions and leave are HR ops records.
-view:talent                                    Shown     Shown     Limited   Manager: Retention risk and key talent at risk are hidden.
-view:comp                                      Shown     Shown     Hidden    Manager: Compensation stays with total rewards and HR.
-view:compliance                                Shown     Shown     Hidden    Manager: Compliance records stay with HR.
-view:listening                                 Shown     Shown     Hidden    Manager: Survey results stay with HR.
-view:ai                                        Shown     Shown     Hidden    Manager: The agent catalog is for the HR team.
-tab:team.overview                              Shown     Hidden    Shown     HR: HR mode leaves out the developer surfaces and My team.
-tab:scorecard.overview                         Shown     Shown     Hidden    Manager: Its view is not shown in Manager mode.
-tab:recruiting.overview                        Shown     Shown     Limited   Manager: The "Hires vs plan" tile is hidden.
-tab:recruiting.pipeline                        Shown     Shown     Shown
-tab:recruiting.requisitions                    Shown     Shown     Limited   Manager: Recruiter load and hiring manager satisfaction are hidden.
-tab:recruiting.sources                         Shown     Shown     Hidden    Manager: Sourcing analytics are TA's.
-tab:onboarding.upcoming                        Shown     Shown     Shown
-tab:onboarding.first90                         Shown     Shown     Limited   Manager: I-9 Section 2 on time, new hires entered by day -3 and the day-30 pulse are hidden.
-tab:onboarding.plan                            Shown     Shown     Hidden    Manager: Plan versions are a finance and TA artifact.
-tab:hrbp.overview                              Shown     Shown     Shown
-tab:hrbp.workforce                             Shown     Shown     Shown
-tab:hrbp.attrition                             Shown     Shown     Limited   Manager: The exit survey number is hidden.
-tab:hrbp.movement                              Shown     Shown     Shown
-tab:hrbp.org                                   Shown     Shown     Limited   Manager: Manager feedback (a survey) is hidden.
-tab:hrbp.analyses                              Shown     Shown     Limited   Manager: Quality of hire and Why offers are declined are hidden, and planned hires from the hiring plan are left out of Engineering by stage.
-tab:org.chart                                  Shown     Shown     Limited   Manager: Rooted at the manager, with nothing above them.
-tab:org.sandbox                                Shown     Shown     Hidden    Manager: Reorg scenarios are worked through with the HRBP.
-tab:services.overview                          Shown     Shown     Hidden    Manager: Its view is not shown in Manager mode.
-tab:services.cases                             Shown     Shown     Hidden    Manager: Its view is not shown in Manager mode.
-tab:services.transactions                      Shown     Shown     Hidden    Manager: Its view is not shown in Manager mode.
-tab:services.leave                             Shown     Shown     Hidden    Manager: Its view is not shown in Manager mode.
-tab:services.levels                            Shown     Shown     Hidden    Manager: Its view is not shown in Manager mode.
-tab:talent.overview                            Shown     Shown     Limited   Manager: The key talent at risk tile, table and finding are hidden.
-tab:talent.performance                         Shown     Shown     Shown
-tab:talent.succession                          Shown     Shown     Limited   Manager: Successors outside the org show by readiness only.
-tab:talent.retention                           Shown     Shown     Hidden    Manager: Flight-risk scores about named people stay with HR.
-tab:talent.learning                            Shown     Shown     Limited   Manager: Training evaluation (a survey) is hidden.
-tab:comp.overview                              Shown     Shown     Hidden    Manager: Its view is not shown in Manager mode.
-tab:comp.ranges                                Shown     Shown     Hidden    Manager: Its view is not shown in Manager mode.
-tab:comp.performance                           Shown     Shown     Hidden    Manager: Its view is not shown in Manager mode.
-tab:comp.market                                Shown     Shown     Hidden    Manager: Its view is not shown in Manager mode.
-tab:comp.cycle                                 Shown     Shown     Hidden    Manager: Its view is not shown in Manager mode.
-tab:compliance.overview                        Shown     Shown     Hidden    Manager: Its view is not shown in Manager mode.
-tab:compliance.work                            Shown     Shown     Hidden    Manager: Its view is not shown in Manager mode.
-tab:compliance.export                          Shown     Shown     Hidden    Manager: Its view is not shown in Manager mode.
-tab:compliance.deadlines                       Shown     Shown     Hidden    Manager: Its view is not shown in Manager mode.
-tab:listening.overview                         Shown     Shown     Hidden    Manager: Its view is not shown in Manager mode.
-tab:listening.candidates                       Shown     Shown     Hidden    Manager: Its view is not shown in Manager mode.
-tab:listening.onboarding                       Shown     Shown     Hidden    Manager: Its view is not shown in Manager mode.
-tab:listening.stay-exit                        Shown     Shown     Hidden    Manager: Its view is not shown in Manager mode.
-tab:listening.managers                         Shown     Shown     Hidden    Manager: Its view is not shown in Manager mode.
-tab:listening.services                         Shown     Shown     Hidden    Manager: Its view is not shown in Manager mode.
-tab:listening.engagement                       Shown     Shown     Hidden    Manager: Its view is not shown in Manager mode.
-tab:ai.agents                                  Shown     Shown     Hidden    Manager: Its view is not shown in Manager mode.
-page:actions                                   Shown     Hidden    Hidden    HR: Not ready yet: Developer mode only. Manager: Not ready yet: Developer mode only.
-page:data                                      Shown     Shown     Hidden    Manager: The Data room is HR's.
-page:dev                                       Shown     Hidden    Hidden    HR: HR mode leaves out the developer surfaces and My team. Manager: Developer mode only.
-data:datasets                                  Shown     Shown     Hidden    Manager: The Data room is not shown in Manager mode.
-data:quality                                   Shown     Shown     Hidden    Manager: The Data room is not shown in Manager mode.
-data:metrics                                   Shown     Shown     Hidden    Manager: The Data room is not shown in Manager mode.
-data:mapping                                   Shown     Shown     Hidden    Manager: The Data room is not shown in Manager mode.
-data-panel:raw                                 Shown     Shown     Hidden    Manager: The Data room is not shown in Manager mode.
-data-panel:mapping                             Shown     Shown     Hidden    Manager: The Data room is not shown in Manager mode.
-data-panel:quality                             Shown     Shown     Hidden    Manager: The Data room is not shown in Manager mode.
-data-panel:certify                             Shown     Shown     Hidden    Manager: The Data room is not shown in Manager mode.
-masthead:wordmark                              Shown     Shown     Limited   Manager: Goes to My team.
-masthead:company                               Shown     Shown     Shown
-masthead:mode                                  Shown     Shown     Limited   Manager: Reads "Manager:" and the manager's name.
-masthead:pay-tags                              Shown     Shown     Hidden    Manager: Pay amounts and immigration details are off in this mode.
-masthead:tools                                 Shown     Shown     Limited   Manager: Lists only the links shown in this mode; hidden when none is left.
-masthead:actions                               Shown     Hidden    Hidden    HR: Not ready yet: Developer mode only. Manager: Not ready yet: Developer mode only.
-masthead:data                                  Shown     Shown     Hidden    Manager: The Data room is HR's.
-masthead:dev                                   Shown     Hidden    Hidden    HR: HR mode leaves out the developer surfaces and My team. Manager: Developer mode only.
-masthead:settings                              Shown     Shown     Limited   Manager: Lists only the sections shown in this mode.
-masthead:ask                                   Shown     Shown     Limited   Manager: Locked to the org: Manager mode views, datasets and leaders only.
-masthead:help                                  Shown     Shown     Limited   Manager: Lists only the articles and tours shown in this mode.
-masthead:skip                                  Shown     Shown     Shown
-header:team                                    Shown     Shown     Shown
-header:scorecard                               Shown     Shown     Hidden    Manager: Its view is not shown in Manager mode.
-header:recruiting                              Shown     Shown     Shown
-header:onboarding                              Shown     Shown     Shown
-header:hrbp                                    Shown     Shown     Hidden    Manager: Copy talking points is written for an HRBP to use with a leader.
-header:org                                     Shown     Shown     Shown
-header:services                                Shown     Shown     Hidden    Manager: Its view is not shown in Manager mode.
-header:talent                                  Shown     Shown     Shown
-header:comp                                    Shown     Shown     Hidden    Manager: Its view is not shown in Manager mode.
-header:compliance                              Shown     Shown     Hidden    Manager: Its view is not shown in Manager mode.
-header:listening                               Shown     Shown     Hidden    Manager: Its view is not shown in Manager mode.
-header:ai                                      Shown     Shown     Hidden    Manager: Its view is not shown in Manager mode.
-header:scope                                   Shown     Shown     Limited   Manager: The scope line starts with the pin and names the org.
-header:about                                   Shown     Shown     Limited   Manager: Follows the view's article.
-header:agents                                  Shown     Shown     Hidden    Manager: AI in HR is not shown in this mode.
-settings:mode                                  Shown     Shown     Limited   Manager: With "Change manager…".
-settings:display                               Shown     Shown     Shown
-settings:data                                  Shown     Shown     Hidden    Manager: The data standard and reporting date are HR's.
-settings:formulas                              Shown     Shown     Limited   Manager: Metrics of the shown views only, without links to Metric definitions.
-settings:lists                                 Shown     Shown     Hidden    Manager: The official lists are HR's.
-settings:privacy                               Shown     Shown     Hidden    Manager: The views these switches change are hidden; all three are off.
-settings:ask                                   Shown     Shown     Shown
-settings:compensation                          Shown     Shown     Hidden    Manager: Its view is not shown in Manager mode.
-settings:tools                                 Shown     Shown     Hidden    Manager: The related tool links are HR's.
-settings:device                                Shown     Shown     Limited   Manager: Clear everything only; settings files are hidden.
-settings:device-files                          Shown     Shown     Hidden    Manager: Team configuration is HR's.
-tools:pipeline                                 Shown     Shown     Hidden    Manager: The pipeline dashboard is TA's.
-tools:lattice                                  Shown     Shown     Shown
-tools:toolkit                                  Shown     Shown     Shown
-tools:catalog                                  Shown     Shown     Hidden    Manager: The process catalog and Atlas links are HR's.
-tools:edit                                     Shown     Shown     Hidden    Manager: Links are edited in Settings, Related tools, which this mode hides.
-help:article:what-census-is                    Shown     Shown     Shown
-help:article:moving-around                     Shown     Shown     Shown
-help:article:reading-a-number                  Shown     Shown     Shown
-help:article:clicking-down                     Shown     Shown     Shown
-help:article:exporting                         Shown     Shown     Shown
-help:article:ask-census                        Shown     Shown     Shown
-help:article:modes                             Shown     Shown     Shown
-help:article:view-team                         Shown     Hidden    Shown     HR: HR mode leaves out the developer surfaces and My team.
-help:article:view-scorecard                    Shown     Shown     Hidden    Manager: Not shown in Manager mode.
-help:article:view-recruiting                   Shown     Shown     Shown
-help:article:view-onboarding                   Shown     Shown     Shown
-help:article:view-hrbp                         Shown     Shown     Shown
-help:article:view-org                          Shown     Shown     Shown
-help:article:view-services                     Shown     Shown     Hidden    Manager: Not shown in Manager mode.
-help:article:view-talent                       Shown     Shown     Shown
-help:article:view-comp                         Shown     Shown     Hidden    Manager: Not shown in Manager mode.
-help:article:view-compliance                   Shown     Shown     Hidden    Manager: Not shown in Manager mode.
-help:article:view-listening                    Shown     Shown     Hidden    Manager: Not shown in Manager mode.
-help:article:view-ai                           Shown     Shown     Hidden    Manager: Not shown in Manager mode.
-help:article:view-actions                      Shown     Hidden    Hidden    HR: Not ready yet: Developer mode only. Manager: Not ready yet: Developer mode only.
-help:article:data-loading                      Shown     Shown     Hidden    Manager: Not shown in Manager mode.
-help:article:data-mapping                      Shown     Shown     Hidden    Manager: Not shown in Manager mode.
-help:article:data-categories                   Shown     Shown     Hidden    Manager: Not shown in Manager mode.
-help:article:data-official-lists               Shown     Shown     Hidden    Manager: Not shown in Manager mode.
-help:article:data-tiers                        Shown     Shown     Hidden    Manager: Not shown in Manager mode.
-help:article:data-certify                      Shown     Shown     Hidden    Manager: Not shown in Manager mode.
-help:article:data-quality-tab                  Shown     Shown     Hidden    Manager: Not shown in Manager mode.
-help:article:data-wrong                        Shown     Shown     Hidden    Manager: Not shown in Manager mode.
-help:article:definitions-how                   Shown     Shown     Limited   Manager: Its Data room links read as text.
-help:article:glossary                          Shown     Shown     Limited   Manager: Metrics shown in this mode only.
-help:article:privacy-browser                   Shown     Shown     Shown
-help:article:privacy-pay                       Shown     Shown     Hidden    Manager: Not shown in Manager mode.
-help:article:privacy-small-groups              Shown     Shown     Shown
-help:article:privacy-er                        Shown     Shown     Hidden    Manager: Not shown in Manager mode.
-help:article:privacy-surveys                   Shown     Shown     Hidden    Manager: Not shown in Manager mode.
-help:article:privacy-immigration               Shown     Shown     Hidden    Manager: Not shown in Manager mode.
-help:article:privacy-sample                    Shown     Shown     Shown
-help:article:shortcuts                         Shown     Shown     Shown
-help:article:report-problem                    Shown     Shown     Shown
-help:article:troubleshooting                   Shown     Shown     Shown
-help:article:faq                               Shown     Shown     Shown
-help:article:whats-new                         Shown     Shown     Shown
-help:article:developer-tools                   Shown     Hidden    Hidden    HR: HR mode leaves out the developer surfaces and My team. Manager: Not shown in Manager mode.
-help:tour:getting-started                      Shown     Shown     Hidden    Manager: Not shown in Manager mode.
-help:tour:manager-start                        Shown     Hidden    Shown     HR: HR mode leaves out the developer surfaces and My team.
-help:tour:view-team                            Shown     Hidden    Shown     HR: HR mode leaves out the developer surfaces and My team.
-help:tour:own-data                             Shown     Shown     Hidden    Manager: Not shown in Manager mode.
-help:tour:quality-definitions                  Shown     Shown     Hidden    Manager: Not shown in Manager mode.
-help:tour:view-scorecard                       Shown     Shown     Hidden    Manager: Not shown in Manager mode.
-help:tour:view-recruiting                      Shown     Shown     Limited   Manager: Steps on hidden tabs or controls are skipped.
-help:tour:view-onboarding                      Shown     Shown     Limited   Manager: Steps on hidden tabs or controls are skipped.
-help:tour:view-hrbp                            Shown     Shown     Limited   Manager: Steps on hidden tabs or controls are skipped.
-help:tour:view-org                             Shown     Shown     Limited   Manager: Steps on hidden tabs or controls are skipped.
-help:tour:view-services                        Shown     Shown     Hidden    Manager: Not shown in Manager mode.
-help:tour:view-talent                          Shown     Shown     Limited   Manager: Steps on hidden tabs or controls are skipped.
-help:tour:view-comp                            Shown     Shown     Hidden    Manager: Not shown in Manager mode.
-help:tour:view-compliance                      Shown     Shown     Hidden    Manager: Not shown in Manager mode.
-help:tour:view-listening                       Shown     Shown     Hidden    Manager: Not shown in Manager mode.
-help:tour:view-ai                              Shown     Shown     Hidden    Manager: Not shown in Manager mode.
-help:tour:view-actions                         Shown     Hidden    Hidden    HR: Not ready yet: Developer mode only. Manager: Not ready yet: Developer mode only.
-help:tour:developer-tools                      Shown     Hidden    Hidden    HR: HR mode leaves out the developer surfaces and My team. Manager: Not shown in Manager mode.
-help:search                                    Shown     Shown     Limited   Manager: Covers the shown articles and the glossary of shown metrics.
-help:shortcuts                                 Shown     Shown     Shown
-help:report                                    Shown     Shown     Limited   Manager: Adds "Mode: Manager (manager set, name left out)".
-help:whats-new                                 Shown     Shown     Shown
-help:links                                     Shown     Shown     Limited   Manager: Links to hidden targets read as plain text.
-help:learn-more                                Shown     Shown     Limited   Manager: Shown when its article is shown in this mode.
-ask                                            Shown     Shown     Limited   Manager: Off with a plain reason when the org has fewer than the anonymity minimum of employees.
-ask:get_context                                Shown     Shown     Limited   Manager: Locked to the org: Manager mode views, datasets and leaders only.
-ask:find_metrics                               Shown     Shown     Limited   Manager: Metrics of the shown views after the hide lists.
-ask:view_summary                               Shown     Shown     Limited   Manager: Recruiting, Onboarding, People stats and Talent; hidden figures dropped.
-ask:compare_groups                             Shown     Shown     Limited   Manager: The same views; by leader lists leaders inside the org only.
-ask:query_records                              Shown     Shown     Limited   Manager: The eight Manager mode datasets only.
-ask:explain_quality                            Shown     Shown     Hidden    Manager: Not sent to Claude, and refused if called.
-ask:open_items                                 Shown     Hidden    Hidden    HR: Not ready yet: Developer mode only. Manager: Not ready yet: Developer mode only.
-ask:get_screen                                 Shown     Shown     Limited   Manager: The views, tabs and figures Manager mode shows.
-ask:set_filters                                Shown     Shown     Limited   Manager: Through the clamp: the scope stays inside the manager's org.
-ask:reset_filters                              Shown     Shown     Limited   Manager: Back to the manager's whole org.
-ask:open_view                                  Shown     Shown     Limited   Manager: Only the views and tabs Manager mode shows; others are refused with the reason.
-ask:show_figure                                Shown     Shown     Limited   Manager: Only the figures Manager mode shows.
-ask:open_records                               Shown     Shown     Limited   Manager: The records panel keeps to the org and the kinds Manager mode lists.
-ask:apply_saved_view                           Shown     Shown     Limited   Manager: Applied through the clamp; a page this mode hides opens My team.
-ask:make_chart                                 Shown     Shown     Limited   Manager: From the Manager mode tools and the figures it shows.
-ask:console                                    Shown     Hidden    Hidden    HR: HR mode leaves out the developer surfaces and My team. Manager: Developer mode only.
-filter:saved-views                             Shown     Shown     Limited   Manager: Every view applies through the pin; one whose page is hidden opens My team.
-filter:period                                  Shown     Shown     Shown
-filter:leader                                  Shown     Shown     Limited   Manager: Pinned to the manager; leaders inside the org can be picked.
-filter:exclude                                 Shown     Shown     Hidden    Manager: The leader filter has no Include / Exclude switch in this mode.
-filter:chain                                   Shown     Shown     Limited   Manager: Starts at the manager; nobody above.
-filter:lists                                   Shown     Shown     Limited   Manager: Values and counts from the org.
-filter:in-scope                                Shown     Shown     Limited   Manager: Counts people in the org.
-filter:standard                                Shown     Shown     Limited   Manager: Read only: the saved data standard.
-filter:lens                                    Shown     Shown     Hidden    Manager: The quality lens is off in this mode.
-filter:chips                                   Shown     Shown     Shown
-filter:reset                                   Shown     Shown     Limited   Manager: Returns to the manager's whole org and the default period.
-export:figure                                  Shown     Shown     Limited   Manager: Shown figures only; no Edit definition.
-export:view                                    Shown     Shown     Limited   Manager: Shown tabs and figures only, with a Manager mode line.
-export:link                                    Shown     Shown     Shown
-export:monthly-report                          Shown     Shown     Hidden    Manager: Its view is not shown in Manager mode.
-export:org-slide                               Shown     Shown     Shown
-export:reorg                                   Shown     Shown     Hidden    Manager: Its view is not shown in Manager mode.
-export:talking-points                          Shown     Shown     Hidden    Manager: Written for an HRBP to use with a leader.
-export:action-list                             Shown     Shown     Shown
-export:records                                 Shown     Shown     Limited   Manager: The rows the panel lists.
-export:drill-spec                              Shown     Hidden    Hidden    HR: HR mode leaves out the developer surfaces and My team. Manager: Developer mode only.
-export:ask                                     Shown     Shown     Shown
-export:data-room                               Shown     Shown     Hidden    Manager: The Data room is HR's.
-export:formulas                                Shown     Shown     Limited   Manager: The shown metrics only.
-drill:employees                                Shown     Shown     Limited   Manager: Rows about people outside the org are left out.
-drill:jobChanges                               Shown     Shown     Limited   Manager: Rows about people outside the org are left out.
-drill:requisitions                             Shown     Shown     Limited   Manager: Rows about people outside the org are left out.
-drill:candidates                               Shown     Shown     Limited   Manager: Rows about people outside the org are left out.
-drill:cases                                    Shown     Shown     Hidden    Manager: These records are not shown in Manager mode.
-drill:transactions                             Shown     Shown     Hidden    Manager: These records are not shown in Manager mode.
-drill:reviews                                  Shown     Shown     Limited   Manager: Rows about people outside the org are left out.
-drill:succession                               Shown     Shown     Limited   Manager: Rows about people outside the org are left out.
-drill:learning                                 Shown     Shown     Limited   Manager: Rows about people outside the org are left out.
-drill:comp                                     Shown     Shown     Hidden    Manager: These records are not shown in Manager mode.
-drill:hiringPlan                               Shown     Shown     Hidden    Manager: These records are not shown in Manager mode.
-drill:onboardingTasks                          Shown     Shown     Limited   Manager: Rows about people outside the org are left out.
-drill:rightToWork                              Shown     Shown     Hidden    Manager: These records are not shown in Manager mode.
-drill:surveyResponses                          Shown     Shown     Hidden    Manager: These records are not shown in Manager mode.
-drill:surveyItems                              Shown     Shown     Hidden    Manager: These records are not shown in Manager mode.
-drill:surveyGroups                             Shown     Shown     Hidden    Manager: These records are not shown in Manager mode.
-drill:leaveGroups                              Shown     Shown     Hidden    Manager: These records are not shown in Manager mode.
-drill:actionItems                              Shown     Hidden    Hidden    HR: Not ready yet: Developer mode only. Manager: Not ready yet: Developer mode only.
-drill:actionOwners                             Shown     Hidden    Hidden    HR: Not ready yet: Developer mode only. Manager: Not ready yet: Developer mode only.
-dataset:employees                              Shown     Shown     Shown
-dataset:jobChanges                             Shown     Shown     Shown
-dataset:requisitions                           Shown     Shown     Shown
-dataset:candidates                             Shown     Shown     Shown
-dataset:cases                                  Shown     Shown     Hidden    Manager: Not one of the datasets Manager mode reads.
-dataset:transactions                           Shown     Shown     Hidden    Manager: Not one of the datasets Manager mode reads.
-dataset:reviews                                Shown     Shown     Shown
-dataset:succession                             Shown     Shown     Shown
-dataset:learning                               Shown     Shown     Shown
-dataset:comp                                   Shown     Shown     Hidden    Manager: Not one of the datasets Manager mode reads.
-dataset:hiringPlan                             Shown     Shown     Hidden    Manager: Not one of the datasets Manager mode reads.
-dataset:onboardingTasks                        Shown     Shown     Shown
-dataset:rightToWork                            Shown     Shown     Hidden    Manager: Not one of the datasets Manager mode reads.
-dataset:surveyResponses                        Shown     Shown     Hidden    Manager: Not one of the datasets Manager mode reads.
-dataset:surveyItems                            Shown     Shown     Hidden    Manager: Not one of the datasets Manager mode reads.
-person:inside-org                              Shown     Shown     Limited   Manager: No compa-ratio; open items show overdue required courses only.
-person:outside-org                             Shown     Shown     Limited   Manager: Name, title, department and "Outside … org" only, with no actions.
-person:compa-ratio                             Shown     Shown     Hidden    Manager: Compensation is not part of Manager mode.
-person:open-cases                              Shown     Shown     Hidden    Manager: HR ops cases are not part of Manager mode.
-person:chain-links                             Shown     Shown     Limited   Manager: Names above the manager read as plain text.
-person:focus                                   Shown     Shown     Limited   Manager: For people inside the org.
-person:org-chart                               Shown     Shown     Limited   Manager: For people inside the org.
-person:row-open                                Shown     Shown     Limited   Manager: Rows open only people inside the org.
-focus:filter-to                                Shown     Shown     Limited   Manager: Offered only when the result stays inside the org.
-focus:leave-out                                Shown     Shown     Limited   Manager: Offered only when the result stays inside the org.
-focus:leave-out-leader                         Shown     Shown     Hidden    Manager: Leaving out a leader would leave the org.
-focus:finding                                  Shown     Shown     Limited   Manager: Offered only when the result stays inside the org.
-shortcut:help                                  Shown     Shown     Shown
-shortcut:ask                                   Shown     Shown     Limited   Manager: The sheet explains when Ask is off.
-shortcut:keys                                  Shown     Shown     Shown
-shortcut:tabs                                  Shown     Shown     Limited   Manager: Arrows move over the shown tabs only.
-shortcut:org                                   Shown     Shown     Limited   Manager: Inside the org.
-shortcut:tour                                  Shown     Shown     Shown
-shortcut:dev-overlays                          Shown     Hidden    Hidden    HR: HR mode leaves out the developer surfaces and My team. Manager: Developer mode only.
-overlay:figures                                Shown     Hidden    Hidden    HR: HR mode leaves out the developer surfaces and My team. Manager: Developer mode only.
-overlay:tours                                  Shown     Hidden    Hidden    HR: HR mode leaves out the developer surfaces and My team. Manager: Developer mode only.
-overlay:metrics                                Shown     Hidden    Hidden    HR: HR mode leaves out the developer surfaces and My team. Manager: Developer mode only.
-figure:recruiting-recruiter-load               Shown     Shown     Hidden    Manager: On the Manager mode figure list.
-figure:recruiting-candidate-survey             Shown     Shown     Hidden    Manager: On the Manager mode figure list.
-figure:recruiting-hiring-manager-survey        Shown     Shown     Hidden    Manager: On the Manager mode figure list.
-figure:onboarding-new-hire-entered             Shown     Shown     Hidden    Manager: On the Manager mode figure list.
-figure:onboarding-pulse                        Shown     Shown     Hidden    Manager: On the Manager mode figure list.
-figure:hrbp-exit-survey                        Shown     Shown     Hidden    Manager: On the Manager mode figure list.
-figure:hrbp-manager-feedback                   Shown     Shown     Hidden    Manager: On the Manager mode figure list.
-figure:talent-key-talent-top                   Shown     Shown     Hidden    Manager: On the Manager mode figure list.
-figure:talent-key-talent-at-risk               Shown     Shown     Hidden    Manager: On the Manager mode figure list.
-figure:talent-stay-interviews                  Shown     Shown     Hidden    Manager: On the Manager mode figure list.
-figure:talent-training-evaluation              Shown     Shown     Hidden    Manager: On the Manager mode figure list.
-figure:talent-rating-by-manager                Shown     Shown     Hidden    Manager: On the Manager mode figure list.
-figure:recruiting-time-to-fill-quarter         Shown     Shown     Hidden    Manager: On the Manager mode figure list.
-figure:onboarding-late-tasks-by-region         Shown     Shown     Hidden    Manager: On the Manager mode figure list.
-figure:onboarding-task-timing                  Shown     Shown     Hidden    Manager: On the Manager mode figure list.
-figure:hrbp-declines-candidate-survey          Shown     Shown     Hidden    Manager: On the Manager mode figure list.
-figure:hrbp-quality-*                          Shown     Shown     Hidden    Manager: Its analysis is not shown in Manager mode.
-figure:hrbp-declines-*                         Shown     Shown     Hidden    Manager: Its analysis is not shown in Manager mode.
-figure:team-kpis                               Shown     Hidden    Shown     HR: HR mode leaves out the developer surfaces and My team.
-figure:team-readout                            Shown     Hidden    Shown     HR: HR mode leaves out the developer surfaces and My team.
-figure:team-headcount-trend                    Shown     Hidden    Shown     HR: HR mode leaves out the developer surfaces and My team.
-figure:team-hires-exits                        Shown     Hidden    Shown     HR: HR mode leaves out the developer surfaces and My team.
-figure:team-attrition-vs-company               Shown     Hidden    Shown     HR: HR mode leaves out the developer surfaces and My team.
-figure:team-tenure                             Shown     Hidden    Shown     HR: HR mode leaves out the developer surfaces and My team.
-figure:team-levels                             Shown     Hidden    Shown     HR: HR mode leaves out the developer surfaces and My team.
-figure:team-span                               Shown     Hidden    Shown     HR: HR mode leaves out the developer surfaces and My team.
-figure:team-pipeline                           Shown     Hidden    Shown     HR: HR mode leaves out the developer surfaces and My team.
-figure:team-start-calendar                     Shown     Hidden    Shown     HR: HR mode leaves out the developer surfaces and My team.
-figure:team-open-reqs                          Shown     Hidden    Shown     HR: HR mode leaves out the developer surfaces and My team.
-figure:team-starts-table                       Shown     Hidden    Shown     HR: HR mode leaves out the developer surfaces and My team.
-figure:team-rating-mix                         Shown     Hidden    Shown     HR: HR mode leaves out the developer surfaces and My team.
-figure:team-succession                         Shown     Hidden    Shown     HR: HR mode leaves out the developer surfaces and My team.
-figure:team-training-by-course                 Shown     Hidden    Shown     HR: HR mode leaves out the developer surfaces and My team.
-figure:team-training-overdue                   Shown     Hidden    Shown     HR: HR mode leaves out the developer surfaces and My team.
-figure:team-critical-roles                     Shown     Hidden    Shown     HR: HR mode leaves out the developer surfaces and My team.
-figure:team-waiting                            Shown     Hidden    Hidden    HR: Not ready yet: Developer mode only. Manager: Not ready yet: Developer mode only.
-figure:scorecard-standing                      Shown     Shown     Hidden    Manager: Its view is not shown in Manager mode.
-figure:scorecard-measures                      Shown     Shown     Hidden    Manager: Its view is not shown in Manager mode.
-figure:scorecard-findings                      Shown     Shown     Hidden    Manager: Its view is not shown in Manager mode.
-figure:scorecard-headcount                     Shown     Shown     Hidden    Manager: Its view is not shown in Manager mode.
-figure:scorecard-flow                          Shown     Shown     Hidden    Manager: Its view is not shown in Manager mode.
-figure:scorecard-attrition-trend               Shown     Shown     Hidden    Manager: Its view is not shown in Manager mode.
-figure:scorecard-attrition-bu                  Shown     Shown     Hidden    Manager: Its view is not shown in Manager mode.
-figure:scorecard-pipeline                      Shown     Shown     Hidden    Manager: Its view is not shown in Manager mode.
-figure:scorecard-items                         Shown     Hidden    Hidden    HR: Not ready yet: Developer mode only. Manager: Not ready yet: Developer mode only.
-figure:scorecard-people                        Shown     Shown     Hidden    Manager: Its view is not shown in Manager mode.
-metric:onboarding.first90.i9Section2           Shown     Shown     Hidden    Manager: On the Manager mode metric list.
-metric:onboarding.first90.newHireEntered       Shown     Shown     Hidden    Manager: On the Manager mode metric list.
-metric:onboarding.first90.pulseReady           Shown     Shown     Hidden    Manager: On the Manager mode metric list.
-metric:recruiting.recruiters.load              Shown     Shown     Hidden    Manager: On the Manager mode metric list.
-metric:recruiting.offers.declineReasons        Shown     Shown     Hidden    Manager: On the Manager mode metric list.
-metric:recruiting.offers.acceptanceByLocation  Shown     Shown     Hidden    Manager: On the Manager mode metric list.
-metric:recruiting.data.reqMatch                Shown     Shown     Hidden    Manager: On the Manager mode metric list.
-metric:talent.retention.flightRisk             Shown     Shown     Hidden    Manager: On the Manager mode metric list.
-metric:talent.retention.keyTalent              Shown     Shown     Hidden    Manager: On the Manager mode metric list.
-metric:talent.retention.riskBands              Shown     Shown     Hidden    Manager: On the Manager mode metric list.
-metric:talent.retention.backTest               Shown     Shown     Hidden    Manager: On the Manager mode metric list.
-metric:talent.retention.riskDrivers            Shown     Shown     Hidden    Manager: On the Manager mode metric list.
-metric:talent.finding.keyTalent                Shown     Shown     Hidden    Manager: On the Manager mode metric list.
-metric:talent.performance.byReviewer           Shown     Shown     Hidden    Manager: On the Manager mode metric list.
-metric:hrbp.stages.planned                     Shown     Shown     Hidden    Manager: On the Manager mode metric list.
-metric:scorecard.*                             Shown     Shown     Hidden    Manager: On the Manager mode metric list.
-metric:services.*                              Shown     Shown     Hidden    Manager: On the Manager mode metric list.
-metric:comp.*                                  Shown     Shown     Hidden    Manager: On the Manager mode metric list.
-metric:compliance.*                            Shown     Shown     Hidden    Manager: On the Manager mode metric list.
-metric:listening.*                             Shown     Shown     Hidden    Manager: On the Manager mode metric list.
-metric:ai.*                                    Shown     Shown     Hidden    Manager: On the Manager mode metric list.
-metric:onboarding.plan.*                       Shown     Shown     Hidden    Manager: On the Manager mode metric list.
-metric:recruiting.sources.*                    Shown     Shown     Hidden    Manager: On the Manager mode metric list.
-metric:org.scenario.*                          Shown     Shown     Hidden    Manager: On the Manager mode metric list.
-metric:hrbp.quality.*                          Shown     Shown     Hidden    Manager: On the Manager mode metric list.
-metric:hrbp.declines.*                         Shown     Shown     Hidden    Manager: On the Manager mode metric list.
-item:onboarding:i9:                            Shown     Shown     Hidden    Manager: An I-9 item is a Compliance measure.
-ui:error-details                               Shown     Hidden    Hidden    HR: HR mode leaves out the developer surfaces and My team. Manager: Developer mode only.
-ui:tier-badge                                  Shown     Shown     Limited   Manager: Glyph, word and hover explanation; not a button.
-ui:edit-definition                             Shown     Shown     Hidden    Manager: The metric dictionary is in the Data room.
-ui:kpi-delta-company                           Shown     Shown     Hidden    Manager: A company comparison opens no records: the company's records are not listed.
-ui:route-link                                  Shown     Shown     Limited   Manager: A link to a page this mode hides reads as plain text.
-ui:actions-team                                Shown     Hidden    Hidden    HR: Not ready yet: Developer mode only. Manager: Not ready yet: Developer mode only.
-org:simulate-exit                              Shown     Shown     Hidden    Manager: An exit what-if is a reorg scenario, worked through with the HRBP.
-tab:hrbp.analyses:quality                      Shown     Shown     Hidden    Manager: Education with first ratings is an HR and TA analysis, and a manager's org makes university groups small enough to point at people.
-tab:hrbp.analyses:declines                     Shown     Shown     Hidden    Manager: Offer analytics are TA's, as Recruiting's Sources & offers is.
-tab:hrbp.analyses:stages                       Shown     Shown     Limited   Manager: Planned hires from the hiring plan are left out.
-tab:hrbp.analyses:pyramid                      Shown     Shown     Limited   Manager: Inside the org; the company's shape is an aggregate outline.
+Surface                                        Dev  HR  CHRO  BU  Rgn  Comp  Tal  Ops  Rec  Fin  Mgr
+----------------------------------------------------------------------------------------------------
+view:home                                      S    H   S     S   S    S     S    S    S    S    H
+view:team                                      S    H   H     H   H    H     H    H    H    H    S
+view:scorecard                                 S    S   S     S   S    S     S    S    H    H    H
+view:recruiting                                S    S   S     S   S    H     H    H    L    L    L
+view:onboarding                                S    S   S     S   S    H     L    L    L    L    L
+view:hrbp                                      S    S   S     S   S    L     L    L    H    L    L
+view:org                                       S    S   S     L   L    L     L    L    H    L    L
+view:services                                  S    S   S     S   S    H     H    S    H    H    H
+view:talent                                    S    S   S     L   L    L     S    H    H    H    L
+view:comp                                      S    S   S     L   L    S     H    H    H    L    H
+view:compliance                                S    S   S     L   L    H     H    S    H    H    H
+view:listening                                 S    S   S     S   S    L     L    L    H    H    H
+view:ai                                        S    S   S     L   L    L     L    L    L    H    H
+tab:home.overview                              S    H   S     S   S    S     S    S    S    S    H
+tab:team.overview                              S    H   H     H   H    H     H    H    H    H    S
+tab:scorecard.overview                         S    S   S     S   S    S     S    S    H    H    H
+tab:recruiting.overview                        S    S   S     S   S    H     H    H    L    H    L
+tab:recruiting.pipeline                        S    S   S     S   S    H     H    H    S    H    S
+tab:recruiting.requisitions                    S    S   S     S   S    H     H    H    L    L    L
+tab:recruiting.sources                         S    S   S     S   S    H     H    H    L    H    H
+tab:onboarding.upcoming                        S    S   S     S   S    H     H    S    L    L    S
+tab:onboarding.first90                         S    S   S     S   S    H     L    S    H    H    L
+tab:onboarding.plan                            S    S   S     S   S    H     H    H    H    S    H
+tab:hrbp.overview                              S    S   S     S   S    S     S    S    H    S    S
+tab:hrbp.workforce                             S    S   S     S   S    S     S    S    H    S    S
+tab:hrbp.attrition                             S    S   S     S   S    S     S    L    H    L    L
+tab:hrbp.movement                              S    S   S     S   S    S     S    S    H    H    S
+tab:hrbp.org                                   S    S   S     S   S    L     S    L    H    H    L
+tab:hrbp.analyses                              S    S   S     S   S    L     L    H    H    L    L
+tab:org.chart                                  S    S   S     L   L    L     L    L    H    L    L
+tab:org.sandbox                                S    S   S     S   S    H     H    H    H    H    H
+tab:services.overview                          S    S   S     S   S    H     H    S    H    H    H
+tab:services.cases                             S    S   S     S   S    H     H    S    H    H    H
+tab:services.transactions                      S    S   S     S   S    H     H    S    H    H    H
+tab:services.leave                             S    S   S     S   S    H     H    S    H    H    H
+tab:services.levels                            S    S   S     S   S    H     H    S    H    H    H
+tab:talent.overview                            S    S   S     S   S    L     S    H    H    H    L
+tab:talent.performance                         S    S   S     S   S    S     S    H    H    H    S
+tab:talent.succession                          S    S   S     L   L    H     S    H    H    H    L
+tab:talent.retention                           S    S   S     S   S    H     S    H    H    H    H
+tab:talent.learning                            S    S   S     S   S    H     S    H    H    H    L
+tab:comp.overview                              S    S   S     L   L    S     H    H    H    H    H
+tab:comp.ranges                                S    S   S     L   L    S     H    H    H    H    H
+tab:comp.performance                           S    S   S     L   L    S     H    H    H    H    H
+tab:comp.market                                S    S   S     L   L    S     H    H    H    H    H
+tab:comp.cycle                                 S    S   S     L   L    S     H    H    H    H    H
+tab:comp.cost                                  S    S   S     H   H    S     H    H    H    S    H
+tab:compliance.overview                        S    S   S     L   L    H     H    S    H    H    H
+tab:compliance.work                            S    S   S     L   L    H     H    S    H    H    H
+tab:compliance.export                          S    S   S     L   L    H     H    S    H    H    H
+tab:compliance.deadlines                       S    S   S     L   L    H     H    S    H    H    H
+tab:listening.overview                         S    S   S     S   S    S     S    S    H    H    H
+tab:listening.candidates                       S    S   S     S   S    H     H    H    H    H    H
+tab:listening.onboarding                       S    S   S     S   S    H     S    S    H    H    H
+tab:listening.stay-exit                        S    S   S     S   S    S     S    H    H    H    H
+tab:listening.managers                         S    S   S     S   S    H     S    H    H    H    H
+tab:listening.services                         S    S   S     S   S    H     S    S    H    H    H
+tab:listening.engagement                       S    S   S     L   L    H     L    H    H    H    H
+tab:ai.agents                                  S    S   S     S   S    S     S    S    S    H    H
+tab:hrbp.analyses:quality                      S    S   S     S   S    H     S    H    H    H    H
+tab:hrbp.analyses:declines                     S    S   S     S   S    L     H    H    H    H    H
+tab:hrbp.analyses:stages                       S    S   S     S   S    H     L    H    H    S    L
+tab:hrbp.analyses:pyramid                      S    S   S     S   S    S     S    H    H    S    L
+page:actions                                   S    S   S     L   L    L     L    L    L    L    L
+page:data                                      S    S   S     H   H    H     H    S    H    H    H
+page:dev                                       S    H   H     H   H    H     H    H    H    H    H
+data:datasets                                  S    S   S     H   H    H     H    S    H    H    H
+data:quality                                   S    S   S     H   H    H     H    S    H    H    H
+data:metrics                                   S    S   S     H   H    H     H    S    H    H    H
+data:mapping                                   S    S   S     H   H    H     H    S    H    H    H
+data-panel:raw                                 S    S   S     H   H    H     H    S    H    H    H
+data-panel:mapping                             S    S   S     H   H    H     H    S    H    H    H
+data-panel:quality                             S    S   S     H   H    H     H    S    H    H    H
+data-panel:certify                             S    S   S     H   H    H     H    S    H    H    H
+masthead:wordmark                              S    S   S     L   L    L     L    L    L    L    L
+masthead:company                               S    S   S     S   S    S     S    S    S    S    S
+masthead:mode                                  S    S   S     L   L    S     S    S    L    S    L
+masthead:pay-tags                              S    S   S     H   H    L     H    L    H    H    H
+masthead:tools                                 S    S   S     L   L    L     L    L    L    L    L
+masthead:actions                               S    S   S     L   L    L     L    L    L    L    L
+masthead:data                                  S    S   S     H   H    H     H    S    H    H    H
+masthead:dev                                   S    H   H     H   H    H     H    H    H    H    H
+masthead:settings                              S    S   S     L   L    L     L    L    L    L    L
+masthead:ask                                   S    S   S     L   L    L     L    L    L    L    L
+masthead:help                                  S    S   S     L   L    L     L    L    L    L    L
+masthead:skip                                  S    S   S     S   S    S     S    S    S    S    S
+header:home                                    S    S   S     S   S    S     S    S    S    S    H
+header:team                                    S    S   S     H   H    H     H    H    H    H    S
+header:scorecard                               S    S   S     S   S    S     S    S    H    H    H
+header:recruiting                              S    S   S     S   S    H     H    H    S    S    S
+header:onboarding                              S    S   S     S   S    H     S    S    S    S    S
+header:hrbp                                    S    S   S     S   S    H     H    H    H    H    H
+header:org                                     S    S   S     S   S    S     S    S    H    S    S
+header:services                                S    S   S     S   S    H     H    S    H    H    H
+header:talent                                  S    S   S     S   S    S     S    H    H    H    S
+header:comp                                    S    S   S     H   H    S     H    H    H    H    H
+header:compliance                              S    S   S     H   H    H     H    S    H    H    H
+header:listening                               S    S   S     S   S    S     S    S    H    H    H
+header:ai                                      S    S   S     H   H    H     H    H    H    H    H
+header:scope                                   S    S   S     L   L    S     S    S    L    S    L
+header:about                                   S    S   S     L   L    L     L    L    L    L    L
+header:agents                                  S    S   S     S   S    S     S    S    S    H    H
+settings:mode                                  S    S   S     L   L    S     S    S    L    S    L
+settings:display                               S    S   S     S   S    S     S    S    S    S    S
+settings:data                                  S    S   S     H   H    H     H    S    H    H    H
+settings:formulas                              S    S   S     L   L    L     L    S    L    L    L
+settings:lists                                 S    S   S     H   H    H     H    S    H    H    H
+settings:privacy                               S    S   S     H   H    L     H    L    H    H    H
+settings:ask                                   S    S   S     S   S    S     S    S    S    S    S
+settings:compensation                          S    S   S     H   H    S     H    H    H    H    H
+settings:tools                                 S    S   S     H   H    H     H    H    H    H    H
+settings:device                                S    S   S     L   L    L     L    S    L    L    L
+settings:device-files                          S    S   S     H   H    H     H    S    H    H    H
+tools:pipeline                                 S    S   S     S   S    H     H    H    S    H    H
+tools:lattice                                  S    S   S     S   S    S     S    S    S    H    S
+tools:toolkit                                  S    S   S     S   S    S     S    S    S    H    S
+tools:catalog                                  S    S   S     S   S    S     S    S    S    H    H
+tools:edit                                     S    S   S     H   H    H     H    H    H    H    H
+help:article:what-census-is                    S    S   S     S   S    S     S    S    S    S    S
+help:article:moving-around                     S    S   S     S   S    S     S    S    S    S    S
+help:article:reading-a-number                  S    S   S     S   S    S     S    S    S    S    S
+help:article:clicking-down                     S    S   S     S   S    S     S    S    S    S    S
+help:article:exporting                         S    S   S     S   S    S     S    S    S    S    S
+help:article:ask-census                        S    S   S     S   S    S     S    S    S    S    S
+help:article:modes                             S    S   S     S   S    S     S    S    S    S    S
+help:article:view-team                         S    H   H     H   H    H     H    H    H    H    S
+help:article:view-scorecard                    S    S   S     S   S    S     S    S    H    H    H
+help:article:view-recruiting                   S    S   S     S   S    H     H    H    S    S    S
+help:article:view-onboarding                   S    S   S     S   S    H     S    S    S    S    S
+help:article:view-hrbp                         S    S   S     S   S    S     S    S    H    S    S
+help:article:view-org                          S    S   S     S   S    S     S    S    H    S    S
+help:article:view-services                     S    S   S     S   S    H     H    S    H    H    H
+help:article:view-talent                       S    S   S     S   S    S     S    H    H    H    S
+help:article:view-comp                         S    S   S     S   S    S     H    H    H    S    H
+help:article:view-compliance                   S    S   S     S   S    H     H    S    H    H    H
+help:article:view-listening                    S    S   S     S   S    S     S    S    H    H    H
+help:article:view-ai                           S    S   S     S   S    S     S    S    S    H    H
+help:article:view-actions                      S    S   S     S   S    S     S    S    S    S    S
+help:article:data-loading                      S    S   S     H   H    H     H    S    H    H    H
+help:article:data-mapping                      S    S   S     H   H    H     H    S    H    H    H
+help:article:data-categories                   S    S   S     H   H    H     H    S    H    H    H
+help:article:data-official-lists               S    S   S     H   H    H     H    S    H    H    H
+help:article:data-tiers                        S    S   S     H   H    H     H    S    H    H    H
+help:article:data-certify                      S    S   S     H   H    H     H    S    H    H    H
+help:article:data-quality-tab                  S    S   S     H   H    H     H    S    H    H    H
+help:article:data-wrong                        S    S   S     H   H    H     H    S    H    H    H
+help:article:definitions-how                   S    S   S     L   L    L     L    S    L    L    L
+help:article:glossary                          S    S   S     L   L    L     L    S    L    L    L
+help:article:privacy-browser                   S    S   S     S   S    S     S    S    S    S    S
+help:article:privacy-pay                       S    S   S     S   S    S     H    H    H    S    H
+help:article:privacy-small-groups              S    S   S     S   S    S     S    S    S    S    S
+help:article:privacy-er                        S    S   S     S   S    H     H    S    H    H    H
+help:article:privacy-surveys                   S    S   S     S   S    S     S    S    H    H    H
+help:article:privacy-immigration               S    S   S     S   S    H     H    S    H    H    H
+help:article:privacy-sample                    S    S   S     S   S    S     S    S    S    S    S
+help:article:shortcuts                         S    S   S     S   S    S     S    S    S    S    S
+help:article:report-problem                    S    S   S     S   S    S     S    S    S    S    S
+help:article:troubleshooting                   S    S   S     S   S    S     S    S    S    S    S
+help:article:faq                               S    S   S     S   S    S     S    S    S    S    S
+help:article:whats-new                         S    S   S     S   S    S     S    S    S    S    S
+help:article:developer-tools                   S    H   H     H   H    H     H    H    H    H    H
+help:tour:getting-started                      S    S   S     H   H    H     H    H    H    H    H
+help:tour:manager-start                        S    H   H     H   H    H     H    H    H    H    S
+help:tour:view-team                            S    H   H     H   H    H     H    H    H    H    S
+help:tour:own-data                             S    S   S     H   H    H     H    S    H    H    H
+help:tour:quality-definitions                  S    S   S     H   H    H     H    S    H    H    H
+help:tour:view-scorecard                       S    S   S     S   S    S     S    S    H    H    H
+help:tour:view-recruiting                      S    S   S     S   S    H     H    H    L    H    L
+help:tour:view-onboarding                      S    S   S     S   S    H     H    L    L    L    L
+help:tour:view-hrbp                            S    S   S     S   S    L     L    L    H    L    L
+help:tour:view-org                             S    S   S     L   L    L     L    L    H    L    L
+help:tour:view-services                        S    S   S     S   S    H     H    S    H    H    H
+help:tour:view-talent                          S    S   S     L   L    H     S    H    H    H    L
+help:tour:view-comp                            S    S   S     L   L    S     H    H    H    H    H
+help:tour:view-compliance                      S    S   S     L   L    H     H    S    H    H    H
+help:tour:view-listening                       S    S   S     L   L    L     L    L    H    H    H
+help:tour:view-ai                              S    S   S     L   L    L     L    L    L    H    H
+help:tour:view-actions                         S    S   S     L   L    L     L    L    L    L    L
+help:tour:developer-tools                      S    H   H     H   H    H     H    H    H    H    H
+help:search                                    S    S   S     L   L    L     L    L    L    L    L
+help:shortcuts                                 S    S   S     S   S    S     S    S    S    S    S
+help:report                                    S    S   S     L   L    S     S    S    L    S    L
+help:whats-new                                 S    S   S     S   S    S     S    S    S    S    S
+help:links                                     S    S   S     L   L    L     L    L    L    L    L
+help:learn-more                                S    S   S     L   L    L     L    L    L    L    L
+ask                                            S    S   S     L   L    L     L    L    L    L    L
+ask:get_context                                S    S   S     L   L    L     L    L    L    L    L
+ask:find_metrics                               S    S   S     L   L    L     L    L    L    L    L
+ask:view_summary                               S    S   S     L   L    L     L    L    L    L    L
+ask:compare_groups                             S    S   S     L   L    L     L    L    L    L    L
+ask:query_records                              S    S   S     L   L    L     L    L    L    L    L
+ask:explain_quality                            S    S   S     H   H    H     H    S    H    H    H
+ask:open_items                                 S    S   S     L   L    L     L    L    L    L    L
+ask:get_screen                                 S    S   S     L   L    L     L    L    L    L    L
+ask:set_filters                                S    S   S     L   L    L     L    L    L    L    L
+ask:reset_filters                              S    S   S     L   L    L     L    L    L    L    L
+ask:open_view                                  S    S   S     L   L    L     L    L    L    L    L
+ask:show_figure                                S    S   S     L   L    L     L    L    L    L    L
+ask:open_records                               S    S   S     L   L    L     L    L    L    L    L
+ask:apply_saved_view                           S    S   S     L   L    L     L    L    L    L    L
+ask:make_chart                                 S    S   S     L   L    L     L    L    L    L    L
+ask:console                                    S    H   H     H   H    H     H    H    H    H    H
+filter:saved-views                             S    S   S     L   L    L     L    L    L    L    L
+filter:period                                  S    S   S     S   S    S     S    S    S    S    S
+filter:leader                                  S    S   S     L   L    S     S    S    S    H    L
+filter:exclude                                 S    S   S     S   S    S     S    S    S    H    H
+filter:chain                                   S    S   S     L   L    S     S    S    S    H    L
+filter:lists                                   S    S   S     L   L    S     S    S    S    L    L
+filter:in-scope                                S    S   S     L   L    S     S    S    L    S    L
+filter:standard                                S    S   S     S   S    S     S    S    S    L    L
+filter:lens                                    S    S   S     S   S    S     S    S    S    H    H
+filter:chips                                   S    S   S     S   S    S     S    S    S    S    S
+filter:reset                                   S    S   S     L   L    S     S    S    L    S    L
+export:figure                                  S    S   S     L   L    L     L    L    L    L    L
+export:view                                    S    S   S     L   L    L     L    L    L    L    L
+export:link                                    S    S   S     S   S    S     S    S    L    S    S
+export:monthly-report                          S    S   S     S   S    S     S    S    H    H    H
+export:org-slide                               S    S   S     S   S    S     S    S    H    S    S
+export:reorg                                   S    S   S     S   S    H     H    H    H    H    H
+export:talking-points                          S    S   S     S   S    H     H    H    H    H    H
+export:action-list                             S    S   S     S   S    S     S    S    S    S    S
+export:records                                 S    S   S     L   L    S     S    S    L    L    L
+export:drill-spec                              S    H   H     H   H    H     H    H    H    H    H
+export:ask                                     S    S   S     S   S    S     S    S    S    S    S
+export:data-room                               S    S   S     H   H    H     H    S    H    H    H
+export:formulas                                S    S   S     L   L    L     L    S    L    L    L
+drill:employees                                S    S   S     L   L    S     S    S    L    L    L
+drill:jobChanges                               S    S   S     L   L    S     S    S    H    H    L
+drill:requisitions                             S    S   S     L   L    S     S    S    L    S    L
+drill:candidates                               S    S   S     L   L    S     H    S    L    H    L
+drill:cases                                    S    S   S     L   L    H     H    S    H    H    H
+drill:transactions                             S    S   S     L   L    H     H    S    H    H    H
+drill:reviews                                  S    S   S     L   L    S     S    H    H    H    L
+drill:succession                               S    S   S     L   L    H     S    H    H    H    L
+drill:learning                                 S    S   S     L   L    H     S    S    H    H    L
+drill:comp                                     S    S   S     L   L    S     H    H    H    H    H
+drill:hiringPlan                               S    S   S     L   L    H     H    H    H    S    H
+drill:onboardingTasks                          S    S   S     L   L    H     S    S    L    H    L
+drill:rightToWork                              S    S   S     L   L    H     H    S    H    H    H
+drill:surveyResponses                          S    S   S     H   H    H     H    S    H    H    H
+drill:surveyItems                              S    S   S     L   L    S     S    S    H    H    H
+drill:budget                                   S    S   S     H   H    S     H    H    H    S    H
+drill:surveyGroups                             S    S   S     L   L    S     S    S    H    H    H
+drill:leaveGroups                              S    S   S     L   L    H     H    S    H    H    H
+drill:actionItems                              S    S   S     L   L    S     S    S    L    S    L
+drill:actionOwners                             S    S   S     L   L    S     S    S    L    S    L
+dataset:employees                              S    S   S     S   S    S     S    S    H    S    S
+dataset:jobChanges                             S    S   S     S   S    S     S    S    H    H    S
+dataset:requisitions                           S    S   S     S   S    S     S    S    S    S    S
+dataset:candidates                             S    S   S     S   S    S     H    S    S    H    S
+dataset:cases                                  S    S   S     S   S    H     H    S    H    H    H
+dataset:transactions                           S    S   S     S   S    H     H    S    H    H    H
+dataset:reviews                                S    S   S     S   S    S     S    H    H    H    S
+dataset:succession                             S    S   S     S   S    H     S    H    H    H    S
+dataset:learning                               S    S   S     S   S    H     S    S    H    H    S
+dataset:comp                                   S    S   S     S   S    S     H    H    H    H    H
+dataset:hiringPlan                             S    S   S     S   S    H     H    H    H    S    H
+dataset:onboardingTasks                        S    S   S     S   S    H     S    S    S    H    S
+dataset:rightToWork                            S    S   S     S   S    H     H    S    H    H    H
+dataset:surveyResponses                        S    S   S     S   S    S     S    S    H    H    H
+dataset:surveyItems                            S    S   S     S   S    S     S    S    H    H    H
+dataset:budget                                 S    S   S     H   H    S     H    H    H    S    H
+pay:switch                                     S    S   S     H   H    S     H    H    H    H    H
+pay:amounts                                    S    S   S     H   H    S     H    H    H    H    H
+pay:totals                                     S    S   S     H   H    S     H    H    H    L    H
+person:inside-org                              S    S   S     S   S    S     S    S    L    L    L
+person:outside-org                             S    S   S     L   L    S     S    S    L    S    L
+person:compa-ratio                             S    S   S     S   S    S     H    H    H    H    H
+person:open-cases                              S    S   S     S   S    H     H    S    H    H    H
+person:chain-links                             S    S   S     L   L    S     S    S    H    S    L
+person:focus                                   S    S   S     L   L    S     S    S    H    S    L
+person:org-chart                               S    S   S     L   L    S     S    S    H    S    L
+person:row-open                                S    S   S     L   L    S     S    S    L    S    L
+person:ratings                                 S    S   S     S   S    S     S    H    H    H    L
+focus:filter-to                                S    S   S     L   L    S     S    S    S    L    L
+focus:leave-out                                S    S   S     L   L    S     S    S    S    H    L
+focus:leave-out-leader                         S    S   S     L   L    S     S    S    S    H    H
+focus:finding                                  S    S   S     L   L    S     S    S    S    L    L
+shortcut:help                                  S    S   S     S   S    S     S    S    S    S    S
+shortcut:ask                                   S    S   S     L   L    S     S    S    L    S    L
+shortcut:keys                                  S    S   S     S   S    S     S    S    S    S    S
+shortcut:tabs                                  S    S   S     L   L    L     L    L    L    L    L
+shortcut:org                                   S    S   S     L   L    S     S    S    H    S    L
+shortcut:tour                                  S    S   S     S   S    S     S    S    S    S    S
+shortcut:dev-overlays                          S    H   H     H   H    H     H    H    H    H    H
+overlay:figures                                S    H   H     H   H    H     H    H    H    H    H
+overlay:tours                                  S    H   H     H   H    H     H    H    H    H    H
+overlay:metrics                                S    H   H     H   H    H     H    H    H    H    H
+ui:attention-lists                             S    H   H     S   S    S     S    S    S    S    S
+figure:recruiting-recruiter-load               S    S   S     S   S    H     H    H    S    H    H
+figure:recruiting-candidate-survey             S    S   S     S   S    H     H    H    H    S    H
+figure:recruiting-hiring-manager-survey        S    S   S     S   S    H     H    H    H    H    H
+figure:onboarding-new-hire-entered             S    S   S     S   S    H     H    S    S    S    H
+figure:onboarding-pulse                        S    S   S     S   S    H     S    S    S    S    H
+figure:hrbp-exit-survey                        S    S   S     S   S    S     S    H    H    H    H
+figure:hrbp-manager-feedback                   S    S   S     S   S    H     S    H    H    S    H
+figure:talent-key-talent-top                   S    S   S     S   S    H     S    H    H    H    H
+figure:talent-key-talent-at-risk               S    S   S     S   S    H     S    H    H    H    H
+figure:talent-stay-interviews                  S    S   S     S   S    S     S    H    H    H    H
+figure:talent-training-evaluation              S    S   S     S   S    S     S    H    H    H    H
+figure:talent-rating-by-manager                S    S   S     S   S    S     S    H    H    H    H
+figure:recruiting-time-to-fill-quarter         S    S   S     S   S    H     H    H    S    S    H
+figure:onboarding-late-tasks-by-region         S    S   S     S   S    H     S    S    S    S    H
+figure:onboarding-task-timing                  S    S   S     S   S    H     S    S    S    S    H
+figure:hrbp-declines-candidate-survey          S    S   S     S   S    H     H    H    H    H    H
+figure:hrbp-quality-*                          S    S   S     S   S    H     S    H    H    H    H
+figure:hrbp-declines-*                         S    S   S     S   S    S     H    H    H    H    H
+figure:hrbp-exit-reasons                       S    S   S     S   S    S     S    S    H    H    S
+figure:hrbp-regretted-leavers                  S    S   S     S   S    S     S    S    H    H    S
+figure:hrbp-exits-rating                       S    S   S     S   S    S     S    S    H    H    S
+figure:hrbp-stages-*                           S    S   S     S   S    H     S    H    H    S    S
+figure:hrbp-pyramid-*                          S    S   S     S   S    S     S    H    H    S    S
+figure:team-kpis                               S    H   H     H   H    H     H    H    H    H    S
+figure:team-readout                            S    H   H     H   H    H     H    H    H    H    S
+figure:team-headcount-trend                    S    H   H     H   H    H     H    H    H    H    S
+figure:team-hires-exits                        S    H   H     H   H    H     H    H    H    H    S
+figure:team-attrition-vs-company               S    H   H     H   H    H     H    H    H    H    S
+figure:team-tenure                             S    H   H     H   H    H     H    H    H    H    S
+figure:team-levels                             S    H   H     H   H    H     H    H    H    H    S
+figure:team-span                               S    H   H     H   H    H     H    H    H    H    S
+figure:team-pipeline                           S    H   H     H   H    H     H    H    H    H    S
+figure:team-start-calendar                     S    H   H     H   H    H     H    H    H    H    S
+figure:team-open-reqs                          S    H   H     H   H    H     H    H    H    H    S
+figure:team-starts-table                       S    H   H     H   H    H     H    H    H    H    S
+figure:team-rating-mix                         S    H   H     H   H    H     H    H    H    H    S
+figure:team-succession                         S    H   H     H   H    H     H    H    H    H    S
+figure:team-training-by-course                 S    H   H     H   H    H     H    H    H    H    S
+figure:team-training-overdue                   S    H   H     H   H    H     H    H    H    H    S
+figure:team-critical-roles                     S    H   H     H   H    H     H    H    H    H    S
+figure:team-waiting                            S    H   H     H   H    H     H    H    H    H    S
+figure:scorecard-standing                      S    S   S     S   S    S     S    S    H    H    H
+figure:scorecard-measures                      S    S   S     S   S    S     S    S    H    H    H
+figure:scorecard-findings                      S    S   S     S   S    S     S    S    H    H    H
+figure:scorecard-headcount                     S    S   S     S   S    S     S    S    H    H    H
+figure:scorecard-flow                          S    S   S     S   S    S     S    S    H    H    H
+figure:scorecard-attrition-trend               S    S   S     S   S    S     S    S    H    H    H
+figure:scorecard-attrition-bu                  S    S   S     S   S    S     S    S    H    H    H
+figure:scorecard-pipeline                      S    S   S     S   S    S     S    S    H    H    H
+figure:scorecard-items                         S    S   S     S   S    S     S    S    H    H    H
+figure:scorecard-people                        S    S   S     S   S    S     S    S    H    H    H
+metric:onboarding.first90.i9Section2           S    S   S     S   S    H     H    S    H    H    H
+metric:onboarding.first90.newHireEntered       S    S   S     S   S    H     H    S    H    H    H
+metric:onboarding.first90.pulseReady           S    S   S     S   S    H     S    S    H    H    H
+metric:recruiting.recruiters.load              S    S   S     S   S    H     H    H    S    H    H
+metric:recruiting.offers.declineReasons        S    S   S     S   S    S     H    H    S    H    H
+metric:recruiting.offers.acceptanceByLocation  S    S   S     S   S    H     H    H    S    H    H
+metric:recruiting.data.reqMatch                S    S   S     S   S    H     H    H    H    H    H
+metric:talent.retention.flightRisk             S    S   S     S   S    H     S    H    H    H    H
+metric:talent.retention.keyTalent              S    S   S     S   S    H     S    H    H    H    H
+metric:talent.retention.riskBands              S    S   S     S   S    H     S    H    H    H    H
+metric:talent.retention.backTest               S    S   S     S   S    H     S    H    H    H    H
+metric:talent.retention.riskDrivers            S    S   S     S   S    H     S    H    H    H    H
+metric:talent.finding.keyTalent                S    S   S     S   S    H     S    H    H    H    H
+metric:talent.performance.byReviewer           S    S   S     S   S    S     S    H    H    H    H
+metric:hrbp.stages.planned                     S    S   S     S   S    H     H    H    H    S    H
+metric:scorecard.*                             S    S   S     S   S    S     S    S    H    H    H
+metric:services.*                              S    S   S     S   S    H     H    S    H    H    H
+metric:comp.*                                  S    S   S     S   S    S     H    H    H    H    H
+metric:compliance.*                            S    S   S     S   S    H     H    S    H    H    H
+metric:listening.*                             S    S   S     S   S    S     S    S    H    H    H
+metric:ai.*                                    S    S   S     S   S    S     S    S    S    H    H
+metric:onboarding.plan.*                       S    S   S     S   S    H     H    H    H    S    H
+metric:recruiting.sources.*                    S    S   S     S   S    H     H    H    S    H    H
+metric:org.scenario.*                          S    S   S     S   S    H     H    H    H    H    H
+metric:hrbp.quality.*                          S    S   S     S   S    H     S    H    H    H    H
+metric:hrbp.declines.*                         S    S   S     S   S    S     H    H    H    H    H
+metric:talent.finding.criticalNotReady         S    S   S     S   S    H     S    H    H    H    S
+metric:talent.finding.successionExposed        S    S   S     S   S    H     S    H    H    H    S
+metric:talent.finding.trainingOverdue          S    S   S     S   S    H     S    H    H    H    S
+metric:talent.finding.goodSuccession           S    S   S     S   S    H     S    H    H    H    S
+metric:talent.finding.goodTraining             S    S   S     S   S    H     S    H    H    H    S
+metric:recruiting.offers.acceptanceDrop        S    S   S     S   S    H     H    H    S    H    S
+metric:recruiting.offers.waiting               S    S   S     S   S    H     H    H    S    H    S
+metric:onboarding.upcoming.starts              S    S   S     S   S    H     H    S    S    S    S
+metric:onboarding.upcoming.dayMinus3           S    S   S     S   S    H     H    S    S    S    S
+metric:onboarding.upcoming.contingencies       S    S   S     S   S    H     H    S    S    S    S
+metric:onboarding.upcoming.acceptToStart       S    S   S     S   S    H     H    S    S    S    S
+metric:onboarding.upcoming.readiness           S    S   S     S   S    H     H    S    S    S    S
+metric:onboarding.upcoming.readinessByTask     S    S   S     S   S    H     H    S    S    S    S
+metric:onboarding.upcoming.readinessByOwner    S    S   S     S   S    H     H    S    S    S    S
+metric:onboarding.upcoming.calendar            S    S   S     S   S    H     H    S    S    S    S
+metric:listening.score.candidateExperience     S    S   S     S   S    H     H    H    H    H    H
+metric:listening.score.hiringManager           S    S   S     S   S    H     H    H    H    H    H
+metric:listening.score.onboardingDay30         S    S   S     S   S    H     S    S    H    H    H
+metric:listening.score.onboardingDay90         S    S   S     S   S    H     S    S    H    H    H
+metric:listening.score.managerFeedback         S    S   S     S   S    H     S    H    H    H    H
+metric:listening.score.hrService               S    S   S     S   S    H     S    S    H    H    H
+metric:listening.score.returnToWork            S    S   S     S   S    H     S    S    H    H    H
+metric:listening.score.training                S    S   S     S   S    H     S    S    H    H    H
+metric:listening.score.engagement              S    S   S     S   S    H     S    H    H    H    H
+metric:listening.score.stayInterview           S    S   S     S   S    S     S    H    H    H    H
+metric:listening.score.exitSurvey              S    S   S     S   S    S     S    H    H    H    H
+metric:hrbp.attrition.exitReasons              S    S   S     S   S    S     S    S    H    H    S
+metric:comp.cost.*                             S    S   S     H   H    S     H    H    H    S    H
+metric:talent.retention.*                      S    S   S     S   S    H     S    H    H    H    S
+metric:talent.succession.*                     S    S   S     S   S    H     S    H    H    H    S
+metric:talent.learning.*                       S    S   S     S   S    H     S    H    H    H    S
+metric:onboarding.first90.*                    S    S   S     S   S    H     S    S    H    H    S
+metric:onboarding.readout.*                    S    S   S     S   S    H     S    S    H    H    S
+metric:recruiting.reqs.*                       S    S   S     S   S    H     H    H    S    S    S
+metric:recruiting.hires.*                      S    S   S     S   S    H     H    H    S    H    S
+metric:recruiting.pipeline.*                   S    S   S     S   S    H     H    H    S    H    S
+metric:recruiting.flow.*                       S    S   S     S   S    H     H    H    S    H    S
+metric:recruiting.recruiters.*                 S    S   S     S   S    H     H    H    S    H    S
+metric:recruiting.data.*                       S    S   S     S   S    H     H    H    S    H    S
+metric:hrbp.stages.*                           S    S   S     S   S    H     S    H    H    S    S
+metric:listening.candidates.*                  S    S   S     S   S    H     H    H    H    H    H
+metric:listening.onboarding.*                  S    S   S     S   S    H     S    S    H    H    H
+metric:listening.managers.*                    S    S   S     S   S    H     S    H    H    H    H
+metric:listening.services.*                    S    S   S     S   S    H     S    S    H    H    H
+metric:listening.engagement.*                  S    S   S     S   S    H     S    H    H    H    H
+metric:recruiting.*                            S    S   S     S   S    S     H    H    S    H    S
+metric:onboarding.upcoming.*                   S    S   S     S   S    S     H    S    S    S    S
+metric:talent.*                                S    S   S     S   S    S     S    H    H    H    S
+metric:hrbp.pyramid.*                          S    S   S     S   S    S     S    H    H    S    S
+metric:listening.stay.*                        S    S   S     S   S    S     S    H    H    H    H
+metric:listening.exit.*                        S    S   S     S   S    S     S    H    H    H    H
+item:onboarding:i9:                            S    S   S     S   S    S     H    S    H    H    H
+item:onboarding:task:                          S    S   S     S   S    S     S    S    S    H    S
+item:onboarding:probation:                     S    S   S     S   S    S     S    S    S    H    S
+item:hrbp:stay-conversations:                  S    S   S     S   S    S     S    S    S    H    S
+item:hrbp:span:                                S    S   S     S   S    S     S    S    S    H    S
+item:org:new-manager:                          S    S   S     S   S    S     S    S    S    H    S
+item:org:single-report-chain:                  S    S   S     S   S    S     S    S    S    H    S
+item:comp:below-minimum:                       S    S   S     S   S    S     S    S    S    H    S
+item:comp:guideline-exception:                 S    S   S     S   S    S     S    S    S    H    S
+ui:error-details                               S    H   H     H   H    H     H    H    H    H    H
+ui:tier-badge                                  S    S   S     L   L    L     L    S    L    L    L
+ui:edit-definition                             S    S   S     H   H    H     H    S    H    H    H
+ui:kpi-delta-company                           S    S   S     H   H    S     S    S    H    S    H
+ui:route-link                                  S    S   S     L   L    L     L    L    L    L    L
+ui:actions-team                                S    S   S     H   H    H     H    H    H    H    L
+org:simulate-exit                              S    S   S     S   S    H     H    H    H    H    H

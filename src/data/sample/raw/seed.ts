@@ -11,6 +11,7 @@ import type { SampleSeed, SampleSeedEntry } from '../../quality/seed'
 import { type Candidate, type DatasetKey, type Datasets, datasetDef, type Employee } from '../../schema'
 import { cachedSample } from '..'
 import type { RawExtract } from './extract'
+import { budgetExtract } from './extracts/budget'
 import { candidatesExtract } from './extracts/candidates'
 import { casesExtract } from './extracts/cases'
 import { hiringPlanExtract } from './extracts/hiringPlan'
@@ -38,6 +39,7 @@ const EXTRACTS: { [K in RawDataset]: (base: Datasets) => RawExtract<K> } = {
   rightToWork: rightToWorkExtract,
   surveyResponses: surveyResponsesExtract,
   surveyItems: surveyItemsExtract,
+  budget: budgetExtract,
 }
 
 /** The raw extract of one dataset, built from the clean sample (with the certified gaps applied). */

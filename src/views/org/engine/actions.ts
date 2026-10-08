@@ -9,12 +9,15 @@
  *
  * Both go to the manager's HR business partner, as polite asks to review with the manager. The
  * flags are the chart's own (`computeFlags`, thresholds from the metric dictionary), kept to the
- * people in scope so the leader filter gives a leader's own list. Pure: no React.
+ * people in scope so the leader filter gives a leader's own list. Each carries the manager's place
+ * for the HRBP lenses and a fingerprint of what the flag is about, so a handled mark reopens when
+ * the layer or the team changes. Pure: no React.
  */
 import type { AnalyticsContext } from '@/data/context'
-import { formatDate } from '@/lib/dates'
+import { dateWords } from '@/lib/dates'
 import { plural } from '@/lib/format'
 import { firstName, hrbpOwner, ownerLookup } from '../../hrbp/engine/owners'
+import { placeOf } from '../../hrbp/engine/places'
 import type { ActionItem } from '../../types'
 import { peopleDrill, scopeLine } from './drill'
 import { becameManagerDates, flagName, managingSince } from './flags'
@@ -35,6 +38,7 @@ export function orgActions(ctx: AnalyticsContext): ActionItem[] {
     const e = tree.people.get(id)
     if (!e) continue
     const owner = { ownerRole: 'hrbp' as const, ...hrbpOwner(e, look) }
+    const place = placeOf(ctx, ctx.org.byId.get(id) ?? e)
     const who = firstName(e.name)
     const directs = tree.directs.get(id) ?? 0
     for (const f of list) {
@@ -61,6 +65,9 @@ export function orgActions(ctx: AnalyticsContext): ActionItem[] {
             }),
           note: `Could we review with ${who} whether this layer is still needed, or whether ${name(only)} could report one level up?`,
           uses: REPORTING_USES,
+          fingerprint: `${only}/${below}`,
+          closesWhen: 'A second direct report, or the layer removed, in the Employees data',
+          place,
         })
       } else if (f.kind === 'new-manager-large-team') {
         const since = managingSince(e, became)
@@ -69,7 +76,7 @@ export function orgActions(ctx: AnalyticsContext): ActionItem[] {
           ...owner,
           due: null,
           severity: 'warning',
-          what: `${e.name} has managed since ${formatDate(since)} and already leads ${plural(directs, 'direct report')}`,
+          what: `${e.name} has managed since ${dateWords(since, ctx.asOf)} and already leads ${plural(directs, 'direct report')}`,
           subject: { kind: 'employees', id, label: e.name },
           view: 'org',
           tab: 'chart',
@@ -78,10 +85,13 @@ export function orgActions(ctx: AnalyticsContext): ActionItem[] {
               title: `Direct reports of ${e.name}, a new manager`,
               subtitle: scopeLine(scope),
               columns: ['directs', 'totalOrg'],
-              note: `Managing since ${formatDate(since)}: new means within ${plural(rules.newManagerMonths, 'month')} of the as-of date, with ${rules.largeTeam} or more direct reports.`,
+              note: `Managing since ${dateWords(since, ctx.asOf)}: new means within ${plural(rules.newManagerMonths, 'month')} of the as-of date, with ${rules.largeTeam} or more direct reports.`,
             }),
           note: `Could we set up a monthly check-in with ${who} on team load for their first year as a manager?`,
           uses: flagUses(m.gates.jobChanges.ok),
+          fingerprint: `${directs}`,
+          closesWhen: 'A first year as a manager completed, or a smaller team',
+          place,
         })
       }
     }
