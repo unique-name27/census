@@ -343,6 +343,8 @@ export interface SettingsFile {
   lists?: ListsFileSection
   /** Your saved views (the Views menu in the filter row). */
   views?: ViewsFileSection
+  /** The Security center's draft (docs/SECURITY-CENTER.md), when one is kept in this browser. */
+  accessDraft?: unknown
 }
 
 export const settingsFileName = (today: ISODate): string => `census-settings-${today}.json`
@@ -354,6 +356,7 @@ export function settingsBlob(
   metrics?: MetricsFileSection,
   lists?: ListsFileSection,
   views?: ViewsFileSection,
+  accessDraft?: unknown,
 ): Blob {
   const file: SettingsFile = {
     kind: SETTINGS_FILE_KIND,
@@ -363,6 +366,7 @@ export function settingsBlob(
     ...(metrics ? { metrics } : {}),
     ...(lists ? { lists } : {}),
     ...(views ? { views } : {}),
+    ...(accessDraft ? { accessDraft } : {}),
   }
   return new Blob([JSON.stringify(file, null, 2)], { type: 'application/json' })
 }
@@ -378,6 +382,8 @@ export type ImportSettingsResult =
       listsSection?: unknown
       /** The file's saved views, for the views store to merge (`useSavedViews().importSection`). */
       viewsSection?: unknown
+      /** The file's Security center draft, for the Security center to take (`useDraft().importSection`). */
+      accessDraftSection?: unknown
       /** Cycle values from a file saved before the dictionary; the store moves them into the comp metrics. */
       compCycle?: CompCycleSettings
       /** What the store changed in the metric dictionary (set by the store's `importSettings`). */
@@ -442,7 +448,8 @@ export function parseSettingsFile(
   const metricsSection = d.metrics && typeof d.metrics === 'object' ? d.metrics : undefined
   const listsSection = d.lists && typeof d.lists === 'object' ? d.lists : undefined
   const viewsSection = d.views && typeof d.views === 'object' ? d.views : undefined
-  if (!applied.length && !cycle && !metricsSection && !listsSection && !viewsSection)
+  const accessDraftSection = d.accessDraft && typeof d.accessDraft === 'object' ? d.accessDraft : undefined
+  if (!applied.length && !cycle && !metricsSection && !listsSection && !viewsSection && !accessDraftSection)
     return { ok: false, error: 'The file holds no settings Census can use.' }
   delete next.compCycle
   return {
@@ -452,6 +459,7 @@ export function parseSettingsFile(
     ...(metricsSection ? { metricsSection } : {}),
     ...(listsSection ? { listsSection } : {}),
     ...(viewsSection ? { viewsSection } : {}),
+    ...(accessDraftSection ? { accessDraftSection } : {}),
     ...(cycle ? { compCycle: cycle } : {}),
   }
 }

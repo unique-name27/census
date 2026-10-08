@@ -223,6 +223,8 @@ export function articlesFor(s: HelpSpec): Record<string, Decision> {
 export function toursFor(s: HelpSpec): Record<string, Decision> {
   const out: Record<string, Decision> = {
     'home-start': SHOWN,
+    // The Home page's own tour (every step is on the role's home).
+    'view-home': SHOWN,
     'getting-started': hidden('"Getting started with your home" takes its place.'),
     'manager-start': hidden('The tour for Manager mode.'),
     'view-team': hidden(TEAM_HOW),

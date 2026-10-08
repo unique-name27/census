@@ -14,6 +14,7 @@ export {
   startsAfterCalendar,
   type WeekRow,
 } from './hiring'
+export { FIRST_DAYS, type TeamPersonRow, teamPeople } from './list'
 export {
   type LabelOf,
   orgUnderMinimum,
@@ -49,4 +50,4 @@ export {
   overdueRows,
   overdueSpec,
 } from './talent'
-export { WAITING_SHOWN, waitingItems, waitingKpi } from './waiting'
+export { type TeamLists, teamLists, WAITING_SHOWN, waitingKpi } from './waiting'

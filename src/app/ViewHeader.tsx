@@ -164,7 +164,7 @@ export function ViewHeader({ view, tab }: { view: ViewDef; tab: string }) {
       <div className="flex flex-wrap items-start gap-x-6 gap-y-3">
         <div className="min-w-0 flex-1 basis-[420px]">
           <h1 className="cut-head text-page-title leading-[1.1] font-[650] tracking-[-0.01em]">
-            {view.label}
+            {view.title?.(ctx) ?? view.label}
           </h1>
           {/* A view that reads no datasets (AI in HR) has no scope, window, as-of date or data source. */}
           {view.datasets.length > 0 && (
@@ -209,7 +209,8 @@ export function ViewHeader({ view, tab }: { view: ViewDef; tab: string }) {
             ) : (
               extra
             ))}
-          <ExportMenu view={view} tab={tab} />
+          {/* Hidden where a policy file hides whole-view exports for the mode (docs/SECURITY-CENTER.md). */}
+          {access.can('export:view') && <ExportMenu view={view} tab={tab} />}
         </div>
       </div>
       <div className={cx('mt-4 border-b border-rule', view.tabs.length < 2 && 'mt-5')}>

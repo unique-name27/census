@@ -4,7 +4,8 @@
  * verbatim wherever modes are explained. A test keeps them free of em dashes and of the words that
  * would make a mode sound like security. Pure.
  */
-import { HOME_LABEL, MODE_LABEL, MODE_NAME, type Mode, type PickKind } from './modes'
+import { VIEW_LABEL } from '@/data/schema'
+import { HOME_LABEL, HOME_OF, homeViewOf, MODE_LABEL, MODE_NAME, type Mode, type PickKind } from './modes'
 
 export const NOT_SECURITY_SHORT = 'Modes change what Census shows, not who can see the data.'
 
@@ -56,7 +57,12 @@ export const hiddenPageTitle = (page: string, mode: Mode): string =>
 /** "Compensation, Range position is not shown in Finance mode". */
 export const hiddenTabTitle = (view: string, tab: string, mode: Mode): string =>
   `${view}, ${tab} is not shown in ${modeName(mode)}`
-export const openedInstead = (mode: Mode): string => `Census opened ${HOME_LABEL[mode]} instead.`
+/** The page a mode opens on, as the redirect toast names it (a policy file can set another view). */
+export const homeLabelOf = (mode: Mode): string => {
+  const view = homeViewOf(mode)
+  return view === HOME_OF[mode] ? HOME_LABEL[mode] : ((VIEW_LABEL as Record<string, string>)[view] ?? view)
+}
+export const openedInstead = (mode: Mode): string => `Census opened ${homeLabelOf(mode)} instead.`
 export const openedTabInstead = (tab: string): string => `Census opened ${tab} instead.`
 export const CHANGE_MODE = 'Change mode'
 
@@ -70,6 +76,8 @@ export const scopeTip = (mode: Mode, scope: string): string =>
 export const WHOLE_ORG = 'Whole org'
 export const WHOLE_UNIT = 'Whole business unit'
 export const WHOLE_REGION = 'Whole region'
+/** The action that clears what another scope left, in Recruiter mode: back to every req of the pick. */
+export const WHOLE_REQS = 'All their reqs'
 export const YOU = 'You'
 export const peopleInOrg = (inScope: string, total: string, name: string): string =>
   `${inScope} of ${total} in ${orgOf(name)} in scope`
@@ -195,6 +203,16 @@ export const recruiterRowLine = (openReqs: number, active: number): string =>
 /** Settings > Mode's pick line: "Showing Census for APAC", "for Maya Chen's reqs". */
 export const showingForScope = (scope: string): string => `Showing Census for ${scope}`
 export const SHOWING_EVERY_RECRUITER = "Showing Census for every recruiter's reqs"
+/**
+ * Settings > Mode in HRBP for a region: the regional HR business partner the Regions list names
+ * (docs/ACTION-CENTER-AUDIT.md 5.8), and where it is set; `here` when this mode shows Official lists.
+ */
+export function regionOwnerLine(region: string, owner: string | null, here: boolean): string {
+  const where = `Official lists, Regions${here ? '' : ', in HR mode'}`
+  return owner
+    ? `Regional HR business partner: ${owner}. Their own items and the region's site matters are in Needs attention. Change it in ${where}.`
+    : `No regional HR business partner is named for ${region}, so the Action center lists its items by kind. Name one in ${where}.`
+}
 
 /** A scope under the anonymity minimum: the home's note (1.3). */
 export function smallScopeNote(kind: PickKind, scope: string, min: number): string {

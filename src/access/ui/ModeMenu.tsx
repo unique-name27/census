@@ -13,7 +13,7 @@ import { cx } from '@/components/ui'
 import { useAnalytics } from '@/data/context'
 import { openHelp } from '@/help/store'
 import { ABOUT_MODES, NOT_SECURITY_SHORT, PICKER_COPY } from '../copy'
-import { MODE_GROUPS, MODE_HINT, MODE_LABEL, MODES, type Mode, PICK_OF } from '../modes'
+import { MODE_GROUPS, MODE_HINT, MODE_LABEL, MODES, type Mode, modeOffered, PICK_OF } from '../modes'
 import { openPicker, useMode } from '../store'
 import { disabledHint, pickNameOf, pickText } from './pickModel'
 import { usePickAvailability } from './usePickRows'
@@ -44,7 +44,9 @@ export function ModeChoices({
   const available = usePickAvailability()
   const name = useId()
   const refs = useRef<Partial<Record<Mode, HTMLInputElement | null>>>({})
-  const usable = MODES.filter((m) => !disabledHint(m, available))
+  // A policy file can leave a role out of the menu (docs/SECURITY-CENTER.md); the mode in use stays listed.
+  const listed = (m: Mode) => modeOffered(m) || m === mode
+  const usable = MODES.filter((m) => listed(m) && !disabledHint(m, available))
   // The pick as the page shows it: the context follows the store a moment later after a change.
   const pickName = pickNameOf(access.mode, access.scope, access.unset, { recruiter })
 
@@ -81,10 +83,10 @@ export function ModeChoices({
       aria-labelledby={labelledBy}
       className="-mx-1 flex flex-col gap-2"
     >
-      {MODE_GROUPS.map((g) => (
+      {MODE_GROUPS.filter((g) => g.modes.some(listed)).map((g) => (
         <fieldset key={g.key} className="m-0 flex min-w-0 flex-col border-0 p-0">
           <legend className="px-2 pb-0.5 text-label font-medium text-muted">{g.label}</legend>
-          {g.modes.map((m) => {
+          {g.modes.filter(listed).map((m) => {
             const hint = disabledHint(m, available)
             const checked = m === mode
             const kind = PICK_OF[m]

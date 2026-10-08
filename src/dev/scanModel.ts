@@ -1,10 +1,12 @@
 /**
- * The figure scan (docs/ROLES.md, 5.3) as data: what every view's tabs declared when they were laid
- * out off screen with `renderWholeView`, in one mode. "Scan figures" runs it in Developer mode,
- * "Scan as Manager" with Manager mode's access, and "Run contract checks" reads the same result.
+ * The figure scan (docs/ROLES.md, 5.3; docs/ROLES-V2.md 5.13) as data: what every view's tabs
+ * declared when they were laid out off screen with `renderWholeView`, in one mode. "Scan figures"
+ * runs it in Developer mode, "Scan as role" with another mode's access (and its pick), and "Run
+ * contract checks" reads the Developer result. A Developer scan lays out the Home view once per
+ * role, each in its own mode: its tabs are keyed by role and its figures say which role (`as`).
  * Results stay in memory until reload. Pure: the DOM part is in `scan.ts`.
  */
-import type { Mode } from '@/access/modes'
+import type { Mode, ModePicks } from '@/access/modes'
 import type { FigureFacts, FigureItemFacts } from '@/charts/types'
 import type { Tier } from '@/data/quality/tier'
 
@@ -27,6 +29,8 @@ export interface ScannedFigure {
   image: boolean
   kind: 'figure' | 'table'
   items: { kind: 'kpi' | 'finding'; list: readonly FigureItemFacts[] } | null
+  /** The role a home was laid out as inside another mode's scan (the Developer scan's homes). */
+  as?: Mode
 }
 
 export interface ScannedTab {
@@ -35,6 +39,8 @@ export interface ScannedTab {
   /** The tab threw while it was laid out. */
   failed: boolean
   ms: number
+  /** The role this tab was laid out as (a home in the Developer scan; the key is the mode). */
+  as?: Mode
 }
 
 export interface ScannedView {
@@ -45,8 +51,10 @@ export interface ScannedView {
 
 export interface FigureScan {
   mode: Mode
-  /** Manager mode: whose org. */
-  managerId: string | null
+  /** The pick the mode was laid out for (only the mode's own kind; empty for a mode with none). */
+  picks: Partial<ModePicks>
+  /** That pick in words: "APAC", "Priya Raman's org", "every recruiter"; null for none. */
+  scope: string | null
   /** ISO date-time the scan finished. */
   at: string
   ms: number
@@ -57,7 +65,7 @@ export interface FigureScan {
 /** One tab's facts as scanned figures, in on-screen order. */
 export function scannedFigures(
   view: { key: string; label: string },
-  tab: { key: string; label: string },
+  tab: { key: string; label: string; as?: Mode },
   facts: readonly FigureFacts[],
 ): ScannedFigure[] {
   return [...facts]
@@ -78,8 +86,13 @@ export function scannedFigures(
       image: f.image,
       kind: f.kind,
       items: f.items ?? null,
+      ...(tab.as ? { as: tab.as } : {}),
     }))
 }
+
+/** Where a scanned figure is decided: a home laid out as a role sits on the Home view's one tab. */
+export const figurePlace = (f: Pick<ScannedFigure, 'view' | 'tab' | 'as'>): { view: string; tab: string } =>
+  f.as ? { view: f.view, tab: 'overview' } : { view: f.view, tab: f.tab }
 
 /** Figures only (no KPI strips or readouts), deduplicated by view and id: what "Figures" counts. */
 export function figuresOnly(scan: Pick<FigureScan, 'figures'> | null | undefined): ScannedFigure[] {

@@ -6,11 +6,14 @@
  * new state for Claude, plus an action record for the answer's action line and Undo.
  *
  * Actions never change data, settings, the mode, metric definitions, mappings or official lists.
- * In Manager mode every action passes the same clamp and route guard as a click, and a refusal
+ * In every mode each action passes the same clamp and route guard as a click (Manager's org, a
+ * business unit, a region, a recruiter's reqs, Finance's business unit and period), and a refusal
  * says why in the mode's words. Nothing here is sent before the privacy pass in `runScreenTool`.
  */
-import { KIND_NOT_SHOWN } from '@/access/copy'
+import { kindNotShown, modeName } from '@/access/copy'
 import { routeDecision } from '@/access/policy'
+import { clampFilters } from '@/access/scopes/clamp'
+import { scopeOfAccess } from '@/access/scopes/records'
 import type { Column } from '@/charts/types'
 import type { AnalyticsContext } from '@/data/context'
 import type { DataStandard } from '@/data/quality/tier'
@@ -34,8 +37,9 @@ import {
   type ScreenState,
 } from '../app'
 import { figureMeasure } from '../chart'
+import { scopeText } from '../roles'
 import type { FilterInput } from '../scope'
-import { contextFor, EXCLUDE_ARGS, type ExcludeArg, resolveFilters, scopeOut } from '../scope'
+import { contextFor, type ExcludeArg, resolveFilters, scopeOut } from '../scope'
 import { periodWords, placeOf, placeWords, scopeInWords, shownViews } from '../screen'
 import { figureHelpers, figureRefusal, isIdColumn, listsPeople, recordsForClaude } from '../screenPrivacy'
 import { inputOf, type ToolRuntime, unknownKeys, viewLink } from './shared'
@@ -178,9 +182,12 @@ function changedParts(a: Filters, b: Filters): string[] {
   return out
 }
 
+/** The mode's scope in a sentence ("Silicon Engineering", "{{P7}}'s reqs"), or null without one. */
+const heldScope = (rt: ToolRuntime): string | null => scopeText(scopeOfAccess(rt.base.access), rt.tokens)
+
 /** "Filtered to Bengaluru, last 6 months"; "Filters set to the whole company". */
 function filterLine(f: Filters, periodChanged: boolean, rt: ToolRuntime): string {
-  const scope = scopeInWords(f, rt.tokens)
+  const scope = scopeInWords(f, rt.tokens, scopeOfAccess(rt.base.access))
   const head = scope === 'the whole company' ? 'Filters set to the whole company' : `Filtered to ${scope}`
   return periodChanged ? `${head}, ${periodWords(f)}` : head
 }
@@ -207,10 +214,12 @@ export function setFilters(rt: ToolRuntime, app: AskApp, raw: unknown, id: strin
   const before = app.snapshot()
   app.setFilters(r.filters)
   const now = app.screen()
+  const held = heldScope(rt)
+  const mode = rt.base.access?.mode
   if (sameFilters(state.filters, now.filters))
     return fail(
-      rt.base.access?.lock
-        ? `Manager mode keeps Census on ${rt.tokens.forEmployee(rt.base.access.lock.managerId)}'s org, so these filters change nothing on screen.`
+      held && mode
+        ? `${modeName(mode)} keeps Census on ${held}, so these filters change nothing on screen.`
         : 'The filters did not change.',
     )
   const changed = changedParts(state.filters, now.filters)
@@ -223,7 +232,12 @@ export function setFilters(rt: ToolRuntime, app: AskApp, raw: unknown, id: strin
       ...scopeResult(rt, now),
       ...(sameFilters(now.filters, r.filters)
         ? {}
-        : { note: 'Manager mode kept the scope inside the org, so part of what was asked was left out.' }),
+        : {
+            note:
+              held && mode
+                ? `${modeName(mode)} kept the scope inside ${held}, so part of what was asked was left out.`
+                : 'The filter row kept part of what was asked out of the scope.',
+          }),
       undo: UNDO_NOTE,
     },
     action: actionOf(id, 'set_filters', line, app, before, ['scope']),
@@ -237,10 +251,13 @@ export function resetFilters(rt: ToolRuntime, app: AskApp, raw: unknown, id: str
   const bad = unknownKeys(inputOf(raw), [])
   if (bad) return fail(bad)
   const state = app.screen()
-  const lock = rt.base.access?.lock
-  const target: Filters = lock
-    ? { ...DEFAULT_FILTERS, leaderId: lock.managerId, modes: {} }
-    : { ...DEFAULT_FILTERS, modes: {} }
+  // The defaults through the mode's clamp, as Reset in the filter row: a manager's whole org, a
+  // business unit, a region, every one of a recruiter's reqs, or the whole company.
+  const target: Filters = clampFilters(
+    { ...DEFAULT_FILTERS, modes: {} },
+    scopeOfAccess(rt.base.access),
+    rt.base.access?.mode,
+  )
   if (sameFilters(state.filters, target))
     return {
       ok: true,
@@ -253,7 +270,7 @@ export function resetFilters(rt: ToolRuntime, app: AskApp, raw: unknown, id: str
   const before = app.snapshot()
   app.resetFilters()
   const now = app.screen()
-  const scope = scopeInWords(now.filters, rt.tokens)
+  const scope = scopeInWords(now.filters, rt.tokens, scopeOfAccess(rt.base.access))
   const line = `Reset the filters to ${scope}, ${periodWords(now.filters)}`
   return {
     ok: true,
@@ -343,10 +360,7 @@ export function routeFor(
       if (!ctx.metrics.def(metric))
         return { ok: false, error: `No metric "${metric}" in the dictionary. find_metrics lists the ids.` }
       if (ctx.access && !ctx.access.can(`metric:${metric}`))
-        return {
-          ok: false,
-          error: `That metric is not shown in ${ctx.access.mode === 'manager' ? 'Manager' : 'this'} mode.`,
-        }
+        return { ok: false, error: `That metric is not shown in ${modeName(ctx.access.mode)}.` }
       return { ok: true, view, tab: metricsTab({ metric }) }
     }
     if (raw.dataset != null) {
@@ -477,7 +491,7 @@ export async function showFigure(
   if (!fig) {
     const access = rt.base.access
     if (access && access.mode !== 'developer' && !access.can(`figure:${want}`))
-      return fail(`That figure is not shown in ${access.mode === 'manager' ? 'Manager' : 'HR'} mode.`)
+      return fail(`That figure is not shown in ${modeName(access.mode)}.`)
     return fail(
       state.figures.length
         ? `No figure "${want}" on ${placeWords(place)}. Figures here: ${state.figures.map((f) => `${f.id} (${rt.tokens.scan(f.title)})`).join(', ')}. For a figure on another tab, open_view it first.`
@@ -536,7 +550,7 @@ export async function openRecords(
     const figureId = input.figure.trim()
     const mode = rt.base.access
     if (mode && mode.mode !== 'developer' && !mode.can(`figure:${figureId}`))
-      return fail(`That figure is not shown in ${mode.mode === 'manager' ? 'Manager' : 'HR'} mode.`)
+      return fail(`That figure is not shown in ${modeName(mode.mode)}.`)
     if (input.column != null && typeof input.column !== 'string')
       return fail('column must be a column key or label of the figure.')
     if (figureHiddenFromAsk(figureId)) return fail(FIGURE_HIDDEN_FROM_ASK)
@@ -600,7 +614,7 @@ export async function openRecords(
     if (!spec) return fail('That row has no records to open.')
   } else return fail('Give ref (from an earlier result) or figure and row.')
   const access = rt.base.access
-  if (access && !access.can(`drill:${spec.kind}`)) return fail(KIND_NOT_SHOWN)
+  if (access && !access.can(`drill:${spec.kind}`)) return fail(kindNotShown(access.mode))
   app.openRecords(spec)
   // The action line stays here (names shown locally); Claude gets the records as screenPrivacy
   // allows: one person's records, or pay, ratings, right to work, cases or survey records, by kind only.
@@ -703,7 +717,3 @@ export const ACTION_TOOLS: readonly ActionTool[] = [
 ]
 
 export const isActionTool = (n: string): n is ActionTool => (ACTION_TOOLS as readonly string[]).includes(n)
-
-/** The exclude names a mode can set (Manager mode never leaves a leader out). */
-export const excludeArgsFor = (manager: boolean): readonly ExcludeArg[] =>
-  manager ? EXCLUDE_ARGS.filter((a) => a !== 'leader') : EXCLUDE_ARGS

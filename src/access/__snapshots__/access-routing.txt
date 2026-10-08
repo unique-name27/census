@@ -1,44 +1,46 @@
-Kind                                Dev  HR   CHRO BU   Rgn  Comp Tal  Ops  Rec  Fin  Mgr
--------------------------------------------------------------------------------------------
-comp:below-minimum                  E    E    E    W    W    N    -    -    -    -    -
-comp:guideline-exception            E    E    E    W    W    N    -    -    -    -    -
-comp:high-rated-low-compa           E    E    E    W    W    N    -    -    -    -    -
-comp:no-proposal                    E    E    E    W    W    N    -    -    -    -    -
-comp:over-budget                    E    E    E    -    -    N    -    -    -    W    -
-compliance:i9                       E    E    E    W    W    -    -    N    -    -    -
-compliance:license                  E    E    E    W    W    -    -    N    -    -    -
-compliance:reverification           E    E    E    W    W    -    -    N    -    -    -
-hrbp:span                           E    E    E    N    N    -    -    -    -    -    M
-hrbp:stay-conversations             E    E    E    W    W    -    -    -    -    -    M
-listening:exit                      E    E    E    W    W    N    -    -    -    -    -
-listening:manager                   E    E    E    N    N    -    -    -    -    -    -
-listening:readiness                 E    E    E    W    W    -    -    W    -    -    -
-listening:stay                      E    E    E    W    W    -    N    -    -    -    -
-onboarding:i9                       E    E    E    W    W    -    -    N    -    -    -
-onboarding:not-in-plan              E    E    E    -    -    -    -    -    -    N    M
-onboarding:plan-behind              E    E    E    -    -    -    -    -    -    N    M
-onboarding:plan-no-req              E    E    E    -    -    -    -    -    -    N    M
-onboarding:probation                E    E    E    W    W    -    -    W    -    -    M
-onboarding:task                     E    E    E    W    W    -    -    n    W    -    M
-org:new-manager                     E    E    E    N    N    -    -    -    -    -    M
-org:single-report-chain             E    E    E    N    N    -    -    -    -    -    M
-recruiting:decision                 E    E    E    W    W    -    -    -    W    -    M
-recruiting:empty-funnel             E    E    E    W    W    -    -    -    M    -    M
-recruiting:offer                    E    E    E    W    W    -    -    -    M    -    M
-recruiting:offer-answer             E    E    E    W    W    -    -    -    M    -    M
-recruiting:past-target              E    E    E    W    W    -    -    -    M    -    M
-recruiting:review                   E    E    E    W    W    -    -    -    M    -    M
-recruiting:schedule-hiring-manager  E    E    E    W    W    -    -    -    W    -    M
-recruiting:schedule-onsite          E    E    E    W    W    -    -    -    W    -    M
-recruiting:schedule-screen          E    E    E    W    W    -    -    -    M    -    M
-services:case                       E    E    E    W    W    -    -    N    -    -    -
-services:return                     E    E    E    W    W    -    -    N    -    -    -
-services:tx                         E    E    E    W    W    -    -    N    -    -    -
-talent:course-below-target          E    E    E    W    W    -    N    -    -    -    M
-talent:critical-role                E    E    E    W    W    -    N    -    -    -    M
-talent:promotion-overdue            E    E    E    N    N    -    -    -    -    -    M
-talent:review-missing               E    E    E    W    W    -    N    -    -    -    M
-talent:training-overdue             E    -    -    W    W    -    -    -    -    -    M
+Kind                                Dev  HR   CHRO BU   Rgn  Rgn+ Comp Tal  Ops  Rec  Fin  Mgr
+------------------------------------------------------------------------------------------------
+comp:below-minimum                  E    E    E    W    W    W    N    -    -    -    -    -
+comp:guideline-exception            E    E    E    W    W    W    N    -    -    -    -    -
+comp:high-rated-low-compa           E    E    E    W    W    W    N    -    -    -    -    -
+comp:no-proposal                    E    E    E    W    W    W    N    -    -    -    -    -
+comp:over-budget                    E    E    E    -    -    -    N    -    -    -    W    -
+compliance:i9                       E    E    E    W    W    W    -    -    N    -    -    -
+compliance:license                  E    E    E    W    W    W    -    -    N    -    -    -
+compliance:reverification           E    E    E    W    W    W    -    -    N    -    -    -
+hrbp:span                           E    E    E    N    N    W    -    -    -    -    -    M
+hrbp:stay-conversations             E    E    E    W    W    W    -    -    -    -    -    M
+listening:exit                      E    E    E    W    W    S    N    -    -    -    -    -
+listening:manager                   E    E    E    N    N    S    -    -    -    -    -    -
+listening:readiness                 E    E    E    W    W    S    -    -    W    -    -    -
+listening:stay                      E    E    E    W    W    S    -    N    -    -    -    -
+onboarding:i9                       E    E    E    W    W    W    -    -    N    -    -    -
+onboarding:not-in-plan              E    E    E    -    -    -    -    -    -    -    N    M
+onboarding:plan-behind              E    E    E    -    -    -    -    -    -    -    N    M
+onboarding:plan-no-req              E    E    E    -    -    -    -    -    -    -    N    M
+onboarding:probation                E    E    E    W    W    W    -    -    W    -    -    M
+onboarding:task                     E    E    E    W    W    W    -    -    n    W    -    M
+org:new-manager                     E    E    E    N    N    W    -    -    -    -    -    M
+org:single-report-chain             E    E    E    N    N    W    -    -    -    -    -    M
+recruiting:decision                 E    E    E    W    W    W    -    -    -    W    -    M
+recruiting:empty-funnel             E    E    E    W    W    W    -    -    -    M    -    M
+recruiting:offer                    E    E    E    W    W    W    -    -    -    M    -    M
+recruiting:offer-answer             E    E    E    W    W    W    -    -    -    M    -    M
+recruiting:past-target              E    E    E    W    W    W    -    -    -    M    -    M
+recruiting:review                   E    E    E    W    W    W    -    -    -    M    -    M
+recruiting:schedule-hiring-manager  E    E    E    W    W    W    -    -    -    W    -    M
+recruiting:schedule-onsite          E    E    E    W    W    W    -    -    -    W    -    M
+recruiting:schedule-screen          E    E    E    W    W    W    -    -    -    M    -    M
+services:case                       E    E    E    W    W    W    -    -    N    -    -    -
+services:return                     E    E    E    W    W    W    -    -    N    -    -    -
+services:tx                         E    E    E    W    W    W    -    -    N    -    -    -
+talent:course-below-target          E    E    E    W    W    W    -    N    -    -    -    M
+talent:critical-role                E    E    E    W    W    W    -    N    -    -    -    M
+talent:promotion-overdue            E    E    E    N    N    W    -    -    -    -    -    M
+talent:review-missing               E    E    E    W    W    W    -    N    -    -    -    M
+talent:training-overdue             E    -    -    W    W    W    -    -    -    -    -    M
 
 Owner groups where a kind splits:
 onboarding:task  Ops  needs: facilities, hr-ops; waiting: manager; not listed: none
+
+Rgn+ is HRBP for a region with a regional HR business partner named in Settings (Official lists, Regions): items they own are always Needs attention; S is Needs attention when about a site or the region.

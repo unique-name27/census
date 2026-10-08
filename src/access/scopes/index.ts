@@ -7,7 +7,7 @@ import type { Datasets, ISODate } from '@/data/schema'
 import type { OrgIndex } from '@/data/scope'
 import { EVERY_RECRUITER, type Mode, type ModePicks, SCOPE_OF } from '../modes'
 import { heldLock } from './org'
-import { emptyRegionScope, regionScope } from './region'
+import { emptyRegionScope, regionOwnerOf, regionScope } from './region'
 import { type RegionIndex, regionIndex } from './regions'
 import { DEFAULT_DEDUP_DAYS, emptyReqsScope, reqsScope } from './reqs'
 import type { ScopeLock } from './types'
@@ -35,6 +35,8 @@ export interface ScopeEnv {
   regions?: RegionIndex | null
   /** Department → business unit on the official Departments list, for the unit clamp. */
   departmentParents?: ReadonlyMap<string, string | null> | null
+  /** Region → its HR business partner on the Regions list (`regionOwners`), for the region's owner. */
+  regionOwners?: ReadonlyMap<string, string> | null
   /** The onboarding matching window (`onboarding.upcoming.starts`, `dedupDays`). */
   dedupDays?: number
 }
@@ -65,7 +67,8 @@ export function scopeFor(mode: Mode, picks: Partial<ModePicks>, env: ScopeEnv): 
       const region = picks.region?.trim()
       if (!region) return { scope: emptyRegionScope(null), unset: true }
       const regions = env.regions ?? regionIndex(null, env.all)
-      const s = regionScope(env.all.employees, env.asOf, region, regions)
+      const owner = regionOwnerOf(env.regionOwners?.get(region), env.all.employees, env.asOf)
+      const s = regionScope(env.all.employees, env.asOf, region, regions, owner)
       return s.sites.length ? { scope: s, unset: false } : { scope: emptyRegionScope(region), unset: true }
     }
     case 'reqs': {

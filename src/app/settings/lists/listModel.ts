@@ -195,9 +195,10 @@ const datasetsOf = (def: ListDef) => [
   ...new Set(def.refs.map((r) => parseFieldRef(r)?.dataset).filter((d): d is NonNullable<typeof d> => !!d)),
 ]
 
-/** "Checks Employees, Requisitions, Job changes and Hiring plan." */
+/** "Checks Employees, Requisitions, Job changes and Hiring plan."; nothing for a list no field is checked against. */
 export function checksText(list: EffectiveList): string {
   const names = listText(datasetsOf(list.def).map((d) => datasetDef(d).label))
+  if (!names) return ''
   if (list.paused === 'sample') return `Checks ${names} while the sample is loaded.`
   if (list.paused === 'yours') return `Checks ${names} while your own data is loaded.`
   return list.validates ? `Checks ${names}.` : `Will check ${names} once official.`
@@ -209,7 +210,9 @@ export function originText(list: EffectiveList, saved: ListsState): string {
   const when = last ? ` Last changed ${whenText(last.at)} by ${last.by ?? 'you'}.` : ''
   switch (list.source) {
     case 'sample':
-      return 'The sample company’s list, official so you can see the checks at work.'
+      return list.def.refs.length
+        ? 'The sample company’s list, official so you can see the checks at work.'
+        : 'The sample company’s list.'
     case 'census':
       return list.def.kind === 'fixed' ? 'Census reads these exact values.' : 'Census’s own list.'
     case 'data':
@@ -235,6 +238,11 @@ export function originText(list: EffectiveList, saved: ListsState): string {
  * list saved from the sample's while your data is loaded is worth rebuilding from your data.
  */
 export function pauseText(list: EffectiveList): string | null {
+  // A list no field is checked against (Regions) is used, not checked.
+  if (!list.def.refs.length && (list.paused === 'sample' || list.paused === 'yours'))
+    return list.paused === 'sample'
+      ? 'You saved this list while Census showed the sample company, so Census does not use it with your data. Keep using it as it is, or change its values for your company.'
+      : 'You saved this list for your own data, so Census does not use it with the sample company. It is used again once you load your data.'
   switch (list.paused) {
     case 'sample':
       return 'You saved this list while Census showed the sample company, so it checks nothing in your data. Rebuild it from your data, or keep checking your data against it as it is.'
@@ -260,8 +268,10 @@ export function pausedNote(def: ListDef, pause: ListPause | null | undefined): s
 }
 
 /** The note under a list's values table. */
-export const valuesNote = (n: number): string =>
-  `${plural(n, 'value')}. Rows counts uses across the list's fields (a job change that names a department as both its old and new one counts twice) and opens them when one field holds them all. Choose a row to see the rows in each field, or to rename, move, retire or change it.`
+export const valuesNote = (n: number, checksFields = true): string =>
+  checksFields
+    ? `${plural(n, 'value')}. Rows counts uses across the list's fields (a job change that names a department as both its old and new one counts twice) and opens them when one field holds them all. Choose a row to see the rows in each field, or to rename, move, retire or change it.`
+    : `${plural(n, 'value')}. Choose a row to change it.`
 
 /** What the "In data, not on the list" block says about its values. */
 export function offListNote(list: EffectiveList, items: readonly OffListItem[]): string {

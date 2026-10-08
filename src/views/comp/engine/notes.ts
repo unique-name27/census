@@ -89,3 +89,15 @@ export function emptyScope(m: {
     dataRoom: false,
   }
 }
+
+/**
+ * The Range position tab's "Outside the range" lead: it names the "Show pay amounts" switch only in
+ * the modes that have it (docs/ROLES-V2.md 3.1); the HRBP modes see ratios and counts only.
+ */
+export function outsideRangeDek(paySwitch: boolean): string {
+  return `People paid below the minimum or above the maximum of their salary range. ${
+    paySwitch
+      ? 'Amounts appear only with Show pay amounts on.'
+      : 'This mode shows ratios and counts, never amounts.'
+  }`
+}

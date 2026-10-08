@@ -2,26 +2,40 @@
  * Addresses inside the Developer page (docs/ROLES.md, 5.1), carried in the route's tab with the
  * colon form the Data room uses:
  *
- *   #dev                       Overview
- *   #dev.inventory             Inventory, the Views list
- *   #dev.inventory:figures     Inventory, the Figures list
- *   #dev.access                Access
- *   #dev.ask:query_records     Ask tools, with query_records picked
+ *   #dev                         Overview
+ *   #dev.inventory               Inventory, the Views list
+ *   #dev.inventory:figures       Inventory, the Figures list
+ *   #dev.inventory:homes/finance Inventory, Role homes, with the Finance home previewed
+ *   #dev.access                  Access
+ *   #dev.security                Security center (docs/SECURITY-CENTER.md)
+ *   #dev.ask:query_records       Ask tools, with query_records picked
  *   #dev.state  #dev.timings
+ *
+ * The Security center is built in `src/dev/security/` by its own owner. This list keeps its slot,
+ * after Access: the tab shows once `src/dev/security/index.tsx` exists, and the page renders its
+ * `SecurityTab({ sub })` export (or its default export) with what follows the colon.
  *
  * Tiny and pure, so Help's link checks and the shell can read it without loading the page.
  */
 
-export type DevTab = 'overview' | 'inventory' | 'access' | 'ask' | 'state' | 'timings'
+export type DevTab = 'overview' | 'inventory' | 'access' | 'security' | 'ask' | 'state' | 'timings'
 
-export const DEV_TABS: readonly { key: DevTab; label: string }[] = [
+/** Whether this build has the Security center (its module is only looked up, never loaded here). */
+export const HAS_SECURITY_CENTER: boolean = Object.keys(import.meta.glob('./security/index.tsx')).length > 0
+
+const ALL_TABS: readonly { key: DevTab; label: string }[] = [
   { key: 'overview', label: 'Overview' },
   { key: 'inventory', label: 'Inventory' },
   { key: 'access', label: 'Access' },
+  { key: 'security', label: 'Security center' },
   { key: 'ask', label: 'Ask tools' },
   { key: 'state', label: 'State' },
   { key: 'timings', label: 'Timings' },
 ]
+
+export const DEV_TABS: readonly { key: DevTab; label: string }[] = ALL_TABS.filter(
+  (t) => t.key !== 'security' || HAS_SECURITY_CENTER,
+)
 
 export const DEV_TAB_KEYS: readonly DevTab[] = DEV_TABS.map((t) => t.key)
 

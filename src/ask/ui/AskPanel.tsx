@@ -176,7 +176,7 @@ function Suggestions({ onAsk }: { onAsk: (q: string) => void }) {
           {NO_DATA.has(view) ? 'Questions to start with' : `Questions about ${pageLabel(view)}`}
         </h3>
         <ul className="flex flex-col">
-          {suggestionsFor(view, tab, (k) => access.can(analysisSurface(k))).map((q) => (
+          {suggestionsFor(view, tab, (k) => access.can(analysisSurface(k)), access.mode).map((q) => (
             <li key={q}>
               <button
                 type="button"
@@ -649,7 +649,7 @@ function OpenPanel({ dock }: { dock: Exclude<DockLayout, { kind: 'none' | 'rail'
   const notice = useAsk((s) => s.notice)
   const showPinned = useAsk((s) => s.showPinned)
   const ctx = useAnalytics()
-  // Manager mode with an org under the anonymity minimum: Ask is off, and says why.
+  // A scoped mode under the anonymity minimum, or without its pick: Ask is off, and says why.
   const off = askOffReason(ctx)
   const hasKey = keyNow(version, nonce) != null
   const inputRef = useRef<HTMLTextAreaElement | null>(null)

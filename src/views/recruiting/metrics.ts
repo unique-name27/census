@@ -193,6 +193,15 @@ const LACKING_PARAMS: readonly ParamDef[] = [
     min: 0.01,
     max: 1,
   }),
+  days({
+    key: 'staleDays',
+    label: 'No activity for',
+    description:
+      'An application whose last activity date is more than this many days before the as-of date is left out of the Action center: it is more likely a record nobody closed than a candidate waiting on a step. The action queue on Pipeline still lists it. Without a last activity date nothing is left out.',
+    default: 90,
+    min: 14,
+    max: 730,
+  }),
 ]
 
 const TTF_END: ParamDef = {

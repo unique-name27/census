@@ -20,7 +20,7 @@ import { articleForMetric, LEARN_MORE_ARTICLES } from './learnMore'
 import { checkLink, type LinkWorld } from './links'
 import { articleLinks, blockTexts, linksIn, plainText } from './markup'
 import { TOURS, targetName, tourById, tourForRoute } from './tours'
-import { HELP_GROUPS } from './types'
+import { HELP_GROUPS, type Tour, type TourStep } from './types'
 import { APP_VERSION, RELEASE_NOTES } from './whatsNew'
 
 const SRC = join(__dirname, '..')
@@ -108,17 +108,31 @@ function sentenceCaseProblem(title: string): string | null {
 /** The missing-value placeholder in quotes is allowed; an em dash in a sentence is not. */
 const hasEmDash = (s: string) => s.replace(/"—"/g, '').includes('—')
 
-/** Every sentence of help text: articles, tours, release notes. */
+/** Every step's wordings for particular modes, each as a step. */
+const stepWordings = (s: TourStep): TourStep[] =>
+  (s.wording ?? []).map((w) => ({
+    ...s,
+    title: w.title ?? s.title,
+    body: w.body,
+    target: w.target ?? s.target,
+  }))
+
+/** Every step a tour can show, in any mode's wording. */
+const everyStep = (t: Tour): TourStep[] => t.steps.flatMap((s) => [s, ...stepWordings(s)])
+
+/** Every sentence of help text: articles, tours (every mode's wording), release notes. */
 function allText(): { where: string; text: string }[] {
   const out: { where: string; text: string }[] = []
   for (const a of ARTICLES) {
     out.push({ where: a.id, text: a.title }, { where: a.id, text: a.summary })
+    for (const w of a.without ?? []) out.push({ where: a.id, text: w.summary })
     for (const b of a.body) for (const t of blockTexts(b)) out.push({ where: a.id, text: t })
     for (const k of a.keywords ?? []) out.push({ where: `${a.id} keyword`, text: k })
   }
   for (const t of TOURS) {
     out.push({ where: t.id, text: t.title }, { where: t.id, text: t.summary })
-    for (const s of t.steps)
+    for (const w of t.without ?? []) out.push({ where: t.id, text: w.summary })
+    for (const s of everyStep(t))
       out.push({ where: `${t.id} step`, text: s.title }, { where: `${t.id} step`, text: s.body })
   }
   for (const r of RELEASE_NOTES) {
@@ -257,8 +271,10 @@ describe('tours', () => {
       expect(t!.steps.length, v).toBeGreaterThanOrEqual(4)
       expect(t!.steps.length, v).toBeLessThanOrEqual(6)
     }
-    for (const id of ['getting-started', 'own-data', 'quality-definitions'])
+    for (const id of ['getting-started', 'home-start', 'manager-start', 'own-data', 'quality-definitions'])
       expect(tourById(id), id).not.toBeNull()
+    // "Getting started with your home" has no page of its own: it is no page's "Tour this page".
+    expect(tourById('home-start')!.route).toBeUndefined()
   })
 
   it('every step points at a data-tour attribute or a Figure id that exists in the components', () => {
@@ -266,7 +282,7 @@ describe('tours', () => {
     expect(ALL_SOURCE).toContain('data-tour={`figure-$' + '{id}`}')
     const missing: string[] = []
     for (const t of TOURS)
-      for (const s of t.steps) {
+      for (const s of everyStep(t)) {
         if (!s.target) continue
         const name = targetName(s)
         if (!name) {
@@ -294,7 +310,7 @@ describe('tours', () => {
       'masthead-ask',
     ])
     for (const t of TOURS)
-      for (const [i, s] of t.steps.entries()) {
+      for (const [i, s] of everyStep(t).entries()) {
         if (s.view) {
           expect(ROUTE_VIEWS, `${t.id} ${i}`).toContain(s.view)
           expect(routeProblem(s.view, s.tab), `${t.id} step ${i + 1}`).toBeNull()
@@ -340,7 +356,7 @@ describe('wording', () => {
   it('titles are sentence case', () => {
     const titles = [
       ...ARTICLES.map((a) => a.title),
-      ...TOURS.flatMap((t) => [t.title, ...t.steps.map((s) => s.title)]),
+      ...TOURS.flatMap((t) => [t.title, ...everyStep(t).map((s) => s.title)]),
       ...HELP_GROUPS.map((g) => g.label),
       ...RELEASE_NOTES.map((r) => r.title),
     ]

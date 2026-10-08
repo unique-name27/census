@@ -34,6 +34,7 @@ The approved values Census validates data against, one list per category, with t
 | Job functions | name, chip development stage (a choice from Chip development stages; blank: proposed from keywords) | job family |
 | Levels | code (L1-L6, M1-M2, E1-E3), label, track | none (fixed codes, labels editable) |
 | Locations | site, country, region, jurisdiction, currency | none |
+| Regions | the regions Census reads (Americas, APAC, EMEA), HR business partner (a name or employee ID; HRBP for a region lists that person's own items and the region's site matters as Needs attention, docs/ACTION-CENTER-AUDIT.md 5.8) | none (fixed; checks nothing; the sample company names one per region) |
 | Cost centers | code, name | department |
 | Case categories | name, Atlas process, team, response/resolution targets | none |
 | Candidate sources | name, source type | none |

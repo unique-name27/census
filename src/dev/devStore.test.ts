@@ -5,7 +5,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { isOverlayShortcut } from './DevLayer'
-import { devTab, isDevRouteTab, parseDevTab } from './tabs'
+import { DEV_TABS, devTab, HAS_SECURITY_CENTER, isDevRouteTab, parseDevTab } from './tabs'
 
 class MemoryStorage {
   private m = new Map<string, string>()
@@ -40,6 +40,13 @@ describe('Developer page addresses', () => {
     expect(isDevRouteTab('nope')).toBe(false)
     for (const t of ['inventory', 'access', 'ask', 'state', 'timings'] as const)
       expect(parseDevTab(devTab(t)).tab).toBe(t)
+    // A role home preview on the Role homes list.
+    expect(parseDevTab('inventory:homes/finance')).toEqual({ tab: 'inventory', sub: 'homes/finance' })
+    // The Security center's slot: listed after Access exactly when this build has its module.
+    const keys = DEV_TABS.map((t) => t.key)
+    expect(keys.includes('security')).toBe(HAS_SECURITY_CENTER)
+    expect(isDevRouteTab('security')).toBe(HAS_SECURITY_CENTER)
+    if (HAS_SECURITY_CENTER) expect(keys.indexOf('security')).toBe(keys.indexOf('access') + 1)
   })
 })
 
@@ -115,6 +122,20 @@ describe('the Developer store', () => {
     store.useDev.getState().reload()
     expect(store.useDev.getState().overlays.tours).toBe(false)
     vi.stubGlobal('localStorage', local)
+  })
+
+  it('keeps picks made on the page apart from the mode and its remembered picks', () => {
+    const s = store.useDev.getState()
+    expect(s.pagePicks).toEqual({})
+    s.setPagePick({ kind: 'unit', unit: 'Silicon Engineering' })
+    s.setPagePick({ kind: 'recruiter', name: '*', id: null })
+    expect(store.useDev.getState().pagePicks).toEqual({
+      unit: 'Silicon Engineering',
+      recruiter: { name: '*', id: null },
+    })
+    // Nothing of it is written to the browser.
+    expect(local.getItem('census:mode')).toBeNull()
+    expect(JSON.stringify(local.getItem('census:dev'))).not.toContain('Silicon')
   })
 
   it('seeds the console and focuses an inventory list, each request new', () => {

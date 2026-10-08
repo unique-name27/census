@@ -4,6 +4,7 @@
  */
 export const TEAM_FIGURES: readonly string[] = [
   'team-kpis',
+  'team-waiting',
   'team-readout',
   'team-headcount-trend',
   'team-hires-exits',
@@ -11,6 +12,7 @@ export const TEAM_FIGURES: readonly string[] = [
   'team-tenure',
   'team-levels',
   'team-span',
+  'team-people',
   'team-pipeline',
   'team-start-calendar',
   'team-open-reqs',
@@ -20,5 +22,4 @@ export const TEAM_FIGURES: readonly string[] = [
   'team-training-by-course',
   'team-training-overdue',
   'team-critical-roles',
-  'team-waiting',
 ]

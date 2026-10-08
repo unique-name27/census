@@ -13,13 +13,14 @@
 import { createRef } from 'react'
 import { create } from 'zustand'
 import { ASK_NEW_CHAT } from '@/access/copy'
-import { useMode } from '@/access/store'
+import { picksOfState, useMode } from '@/access/store'
 import {
   type AskChart,
   type Conversation,
   createConversation,
   KEY_STORAGE_KEY,
   MODEL_STORAGE_KEY,
+  pickOfMode,
   SCREEN_ACTIONS_STORAGE_KEY,
   WORKSPACE_STORAGE_KEY,
 } from '@/ask/engine'
@@ -247,10 +248,16 @@ export function leaveAsk(): void {
   if (s.open && s.tall) s.setHeight('half')
 }
 
-// Any mode change starts a new chat (docs/ROLES.md, 1.5): earlier answers may hold numbers the new
-// mode does not show.
+// Any mode change starts a new chat (docs/ROLES.md, 1.5), and so does a new pick in a scoped mode
+// (manager, business unit, region, recruiter): earlier answers may hold numbers the new mode or
+// scope does not show.
 useMode.subscribe((s, prev) => {
-  if (s.mode !== prev.mode || s.managerId !== prev.managerId) useAsk.getState().modeChanged()
+  if (
+    s.mode !== prev.mode ||
+    s.managerId !== prev.managerId ||
+    pickOfMode(s.mode, picksOfState(s)) !== pickOfMode(prev.mode, picksOfState(prev))
+  )
+    useAsk.getState().modeChanged()
 })
 
 // A key kept on this device (or the model choice, workspace ID or "Let Ask change the screen")

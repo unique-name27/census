@@ -22,7 +22,7 @@ import { scorecardTable, standingLine } from '../engine/report'
 import { M } from '../metrics'
 import { KeyFigures, Measures, Standing } from './Band'
 import { ScoreTable } from './ScoreTable'
-import { MovingSection, PressureSection } from './Sections'
+import { AttentionSection, MovingSection, PressureSection } from './Sections'
 import { useScorecard } from './useScorecard'
 import { useScorecardItems } from './useScorecardItems'
 
@@ -166,9 +166,9 @@ export function ScorecardPage() {
     <>
       <Grid>
         <WelcomeCard />
-        <Standing model={model} className={cx(fade)} />
+        <Standing id="scorecard-standing" model={model} className={cx(fade)} />
         <KeyFigures items={items} />
-        <Measures model={model} className={cx(fade)} />
+        <Measures id="scorecard-measures" model={model} className={cx(fade)} />
         <Readout
           id="scorecard-findings"
           title="Top findings across Census"
@@ -181,8 +181,9 @@ export function ScorecardPage() {
           className={cx(SIDE, 'lg:sticky lg:top-4', fade)}
         />
       </Grid>
+      <AttentionSection items={items} />
       <MovingSection />
-      <PressureSection items={items} />
+      <PressureSection />
       <Section
         title="People scorecard"
         dek="Every measure with its value, target, status, change, trend and tier: the record behind the charts above, and what the monthly report exports."

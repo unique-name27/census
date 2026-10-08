@@ -30,7 +30,6 @@ import {
   WHOLE_UNIT,
 } from '@/access/copy'
 import { PICK_OF } from '@/access/modes'
-import { FILTER_DIMS_OF } from '@/access/scopes/clamp'
 import type { ScopeLock } from '@/access/scopes/types'
 import {
   FILTER_DIMENSION_LABELS,
@@ -56,6 +55,7 @@ import {
   type DimensionKey,
   type DimensionOption,
   dimensionOptions,
+  filterRowParts,
   leaderChain,
   leaderOptions,
   offersExclude,
@@ -113,7 +113,8 @@ function LeaderCrumbs({ leaderId, onRemove }: { leaderId: string; onRemove: () =
   const full = leaderChain(ctx.org, leaderId)
   // Manager mode: the chain starts at the manager, nobody above (docs/ROLES.md, 3.10).
   const from = lock ? full.findIndex((e) => e.employeeId === lock.managerId) : -1
-  const chain = from > 0 ? full.slice(from) : full
+  // Without the chain (a mode that hides `filter:chain`) the chip names the leader alone.
+  const chain = !ctx.access.can('filter:chain') ? full.slice(-1) : from > 0 ? full.slice(from) : full
   if (excluded) {
     const nameOf = (id: string) => ctx.org.byId.get(id)?.name
     return (
@@ -190,10 +191,11 @@ export function FilterBar() {
     const members = scopeMembers(scope)
     return members ? all.filter((e) => members.has(e.employeeId)) : all
   }, [all, scope])
-  // The filters this mode's row offers (Finance: business unit and period only).
-  const dims = FILTER_DIMS_OF[mode]
-  const showLeader = dims.includes('leaderId') && ctx.access.can('filter:leader')
-  const shownDims = DIMENSIONS.filter((k) => dims.includes(k))
+  // What this mode's row offers, each part by its `filter:*` decision (Finance: the saved views,
+  // the period and the business unit, include only).
+  const parts = filterRowParts(ctx.access)
+  const showLeader = parts.leader
+  const shownDims = parts.dims
 
   // Each dimension counts within the rest of the row, so a count is who would be in scope.
   const options = useMemo(
@@ -281,10 +283,11 @@ export function FilterBar() {
   // line carries its pin, so it gets no chip, and with nothing else set there is nothing to reset.
   const lockedLeader = !!lock && filters.leaderId === lock.managerId
   const leaderChip = !!filters.leaderId && !unset && !lockedLeader
-  const showChips = isFiltered(filters) && (chips.length > 0 || leaderChip)
+  const showChips = parts.chips && isFiltered(filters) && (chips.length > 0 || leaderChip)
   // A read-only data standard (Finance and Manager mode) is one short label at the row's end at
-  // every width.
-  const standardFixed = ctx.access.decide('filter:standard').access === 'limited'
+  // every width; a mode that hides it shows none.
+  const standardFixed = parts.standard === 'read-only'
+  const standardShown = parts.standard !== 'hidden'
 
   // A chip's remove button and Reset take themselves away: focus moves to the chip that took the
   // removed one's place (or the one before it), and to the leader picker when no chip is left
@@ -329,7 +332,7 @@ export function FilterBar() {
       currentName={filters.leaderId ? nameOf(filters.leaderId) : undefined}
       onChange={(leaderId) => setFilters({ leaderId })}
       mode={leaderExcluded ? 'exclude' : 'include'}
-      onModeChange={lock ? undefined : (m) => setMode('leaderId', m)}
+      onModeChange={lock || !parts.leaderExclude ? undefined : (m) => setMode('leaderId', m)}
       onOpenChange={onMenu}
       {...(lock && {
         clearLabel: WHOLE_ORG,
@@ -421,7 +424,7 @@ export function FilterBar() {
         <legend className="sr-only">Filters</legend>
         {narrow ? (
           <>
-            <PeriodControl />
+            {parts.period && <PeriodControl />}
             <BDialog.Root open={sheetOpen} onOpenChange={(o) => setSheetOpen(o)}>
               <BDialog.Trigger
                 render={
@@ -439,9 +442,11 @@ export function FilterBar() {
                   <div className="flex items-center gap-3 border-b border-rule px-4 pt-4 pb-3">
                     <div className="min-w-0 flex-1">
                       <BDialog.Title className="cut-head text-section font-semibold">Filters</BDialog.Title>
-                      <BDialog.Description className="mt-0.5 text-meta text-muted">
-                        {scopeCount}
-                      </BDialog.Description>
+                      {parts.inScope && (
+                        <BDialog.Description className="mt-0.5 text-meta text-muted">
+                          {scopeCount}
+                        </BDialog.Description>
+                      )}
                     </div>
                     <BDialog.Close
                       aria-label="Close"
@@ -452,12 +457,14 @@ export function FilterBar() {
                   </div>
                   <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
                     <div className="flex flex-wrap items-center gap-2">
-                      <ViewsMenu />
+                      {parts.views && <ViewsMenu />}
                       {orgFilters}
                     </div>
-                    <div className="mt-4 border-t border-rule pt-4">
-                      <StandardControl />
-                    </div>
+                    {standardShown && (
+                      <div className="mt-4 border-t border-rule pt-4">
+                        <StandardControl />
+                      </div>
+                    )}
                   </div>
                 </BDialog.Popup>
               </BDialog.Portal>
@@ -465,19 +472,32 @@ export function FilterBar() {
           </>
         ) : (
           <>
-            <ViewsMenu />
-            <span aria-hidden="true" className="mx-0.5 hidden h-5 w-px bg-rule-strong sm:block" />
-            <PeriodControl />
-            <span aria-hidden="true" className="mx-0.5 hidden h-5 w-px bg-rule-strong sm:block" />
+            {parts.views && (
+              <>
+                <ViewsMenu />
+                <span aria-hidden="true" className="mx-0.5 hidden h-5 w-px bg-rule-strong sm:block" />
+              </>
+            )}
+            {parts.period && (
+              <>
+                <PeriodControl />
+                <span aria-hidden="true" className="mx-0.5 hidden h-5 w-px bg-rule-strong sm:block" />
+              </>
+            )}
             {orgFilters}
           </>
         )}
-        <p aria-live="polite" className="ml-auto pl-2 text-meta whitespace-nowrap text-muted max-md:sr-only">
-          {scopeCount}
-        </p>
-        {(wide || (standardFixed && !narrow)) && <StandardControl compact />}
+        {parts.inScope && (
+          <p
+            aria-live="polite"
+            className="ml-auto pl-2 text-meta whitespace-nowrap text-muted max-md:sr-only"
+          >
+            {scopeCount}
+          </p>
+        )}
+        {standardShown && (wide || (standardFixed && !narrow)) && <StandardControl compact />}
       </fieldset>
-      {!wide && !narrow && !standardFixed && (
+      {standardShown && !wide && !narrow && !standardFixed && (
         <div className="mt-2.5">
           <StandardControl />
         </div>
@@ -505,18 +525,20 @@ export function FilterBar() {
               />
             </span>
           ))}
-          <Button
-            size="sm"
-            variant="ghost"
-            icon={<IconReset className="size-3.5" />}
-            onClick={() => {
-              refocus.current = Number.MAX_SAFE_INTEGER
-              resetFilters()
-            }}
-            className="ml-0.5"
-          >
-            Reset
-          </Button>
+          {parts.reset && (
+            <Button
+              size="sm"
+              variant="ghost"
+              icon={<IconReset className="size-3.5" />}
+              onClick={() => {
+                refocus.current = Number.MAX_SAFE_INTEGER
+                resetFilters()
+              }}
+              className="ml-0.5"
+            >
+              Reset
+            </Button>
+          )}
         </div>
       )}
     </div>

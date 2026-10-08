@@ -43,6 +43,7 @@ import { contextDeclineReasons } from './lists/declines'
 import { EMPTY_LISTS } from './lists/edit'
 import { effectiveLists, validationVocab } from './lists/effective'
 import { contextJobs, type JobArchitecture } from './lists/jobs'
+import { regionOwners } from './lists/regions'
 import { useLists } from './lists/store'
 import type { ListsState, ListValue } from './lists/types'
 import { contextUniversities } from './lists/universities'
@@ -256,6 +257,11 @@ export function buildContext(args: {
   regions?: RegionIndex | null
   /** Department → business unit on the Departments list in force, for HRBP for a business unit's clamp. */
   departmentParents?: ReadonlyMap<string, string | null> | null
+  /**
+   * Region → its HR business partner on the Regions list (HRBP for a region's owner); read from
+   * `lists` when not given.
+   */
+  regionOwners?: ReadonlyMap<string, string> | null
 }): AnalyticsContext {
   const { sources, asOfOverride } = args
   const metrics = args.metrics ?? defaultMetrics()
@@ -279,6 +285,10 @@ export function buildContext(args: {
       all,
       regions: args.regions,
       departmentParents: args.departmentParents,
+      regionOwners:
+        SCOPE_OF[mode] === 'region'
+          ? (args.regionOwners ?? regionOwners(args.lists ?? EMPTY_LISTS, sources))
+          : null,
       dedupDays: metrics.paramDef(DEDUP_METRIC, 'dedupDays')
         ? metrics.num(DEDUP_METRIC, 'dedupDays')
         : DEFAULT_DEDUP_DAYS,

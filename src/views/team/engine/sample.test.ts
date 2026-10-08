@@ -14,7 +14,7 @@ import { resolveDrill } from '@/drill/Drill'
 import { addDays } from '@/lib/dates'
 import { snapshotDates } from '@/lib/people'
 import { median } from '@/lib/stats'
-import { collectActions } from '@/views/actions/engine'
+import { collectActions, roleView } from '@/views/actions/engine'
 import { view as hrbp } from '@/views/hrbp'
 import { view as onboarding } from '@/views/onboarding'
 import { view as org } from '@/views/org'
@@ -40,8 +40,9 @@ import {
   TEAM_TILES,
   teamFindings,
   teamKpis,
+  teamLists,
+  teamPeople,
   teamSources,
-  waitingItems,
   waitingKpi,
 } from './index'
 
@@ -258,23 +259,39 @@ describe('Talent', () => {
   })
 })
 
-describe('Waiting on this org', () => {
-  it('lists open items the leader or the org owns that Manager mode shows, the leader first', () => {
+describe('Needs attention and Waiting on others', () => {
+  it("splits the org's open items the way the Action center does, the manager's own in Needs attention", () => {
     const collected = collectActions(ctx, [recruiting, onboarding, hrbp, org, talent])
-    const items = waitingItems(ctx, collected, () => true)
-    expect(items.length).toBeGreaterThan(0)
-    let leaderDone = false
-    for (const a of items) {
-      expect(inOrg(a.ownerId), a.ownerName).toBe(true)
-      expect(a.id.startsWith('onboarding:i9:')).toBe(false)
-      if (a.team !== 'leader') leaderDone = true
-      else expect(leaderDone, 'leader items come first').toBe(false)
-    }
-    const k = waitingKpi(ctx, items)!
-    expect(k.value).toBe(items.length)
+    const lists = teamLists(ctx, collected, () => true)
+    const view = roleView(collected, ctx, () => true)
+    expect(lists.needs.map((a) => a.id)).toEqual(view.needs.map((a) => a.id))
+    expect(lists.waiting.map((a) => a.id)).toEqual(view.waiting.map((a) => a.id))
+    for (const a of lists.needs) expect(a.ownerId ?? a.ownerName, a.id).toBe(a.ownerId ? mid.id : a.ownerName)
+    for (const a of [...lists.needs, ...lists.waiting])
+      expect(a.id.startsWith('onboarding:i9:'), a.id).toBe(false)
+    const k = waitingKpi(ctx, lists.needs)!
+    expect(k.value).toBe(lists.needs.length)
     expect(k.metricId).toBe('actions.items.open')
     // Handled or snoozed items are left out.
-    expect(waitingItems(ctx, collected, () => false)).toEqual([])
+    expect(teamLists(ctx, collected, () => false)).toEqual({ needs: [], waiting: [] })
+  })
+})
+
+describe('My list: my team', () => {
+  it('lists the active people of the org, direct reports first, with their own records only', () => {
+    const rows = teamPeople(ctx, s, mid.id)
+    expect(rows.length).toBeGreaterThan(0)
+    let indirect = false
+    for (const r of rows) {
+      expect(inOrg(r.employeeId), r.name).toBe(true)
+      if (!r.direct) indirect = true
+      else expect(indirect, 'direct reports come first').toBe(false)
+      for (const l of r.courses) expect(l.employeeId).toBe(r.employeeId)
+      for (const q of r.reqs) expect(q.hiringManagerId).toBe(r.employeeId)
+      if (r.probation) expect(r.probation.employeeId).toBe(r.employeeId)
+      expect(r.overdueCourses).toBe(r.courses.length)
+    }
+    expect(rows.some((r) => r.employeeId === mid.id)).toBe(false)
   })
 })
 

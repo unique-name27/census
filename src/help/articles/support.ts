@@ -1,5 +1,6 @@
 /** Help articles, Help and support: shortcuts, reporting a problem, troubleshooting and the FAQ. */
 import type { HelpArticle } from '../types'
+import { DATA_ROOM, NO_DATA_ROOM, NO_PAY, PAY_SWITCH, PAY_TOTALS, RECRUITER } from './when'
 
 export const SUPPORT_ARTICLES: readonly HelpArticle[] = [
   {
@@ -33,7 +34,7 @@ export const SUPPORT_ARTICLES: readonly HelpArticle[] = [
           'Records or a person card opened from an answer open above the panel: Esc closes them first.',
         ],
       },
-      { h: 'Org chart' },
+      { h: 'Org chart', surface: 'view:org' },
       {
         ul: [
           '/ jumps to Find a person. Up and down arrows pick a match, Enter goes to it.',
@@ -70,6 +71,7 @@ export const SUPPORT_ARTICLES: readonly HelpArticle[] = [
       { h: 'What the summary holds' },
       {
         ul: [
+          'The mode, with the business unit or region an HRBP mode keeps to. A manager or a recruiter is never named.',
           'The view and tab you are on, the period, and which filters are set.',
           "The data standard, the as-of date, and each dataset's tier and row count, and whether it is the sample or uploaded.",
           'How many metric definitions differ from the defaults, and your display settings.',
@@ -82,6 +84,7 @@ export const SUPPORT_ARTICLES: readonly HelpArticle[] = [
       },
       {
         p: 'Before you report, the [When numbers look wrong](article:data-wrong) checklist solves most surprises.',
+        surface: 'help:article:data-wrong',
       },
     ],
   },
@@ -128,10 +131,14 @@ export const SUPPORT_ARTICLES: readonly HelpArticle[] = [
       {
         ul: [
           'If a view fails to load, it offers to reset the filters. Try that first.',
-          'Settings, This device, "Clear everything on this device" removes everything Census stored here and starts over on the sample. Download a settings file first if you want to keep your settings and metric definitions.',
-          'Then [report a problem](article:report-problem).',
+          'Settings, This device, "Clear everything on this device" removes everything Census stored here and starts over on the sample.',
         ],
       },
+      {
+        ul: ['Download a settings file first if you want to keep your settings and metric definitions.'],
+        surface: 'settings:device-files',
+      },
+      { ul: ['Then [report a problem](article:report-problem).'] },
     ],
   },
   {
@@ -156,22 +163,46 @@ export const SUPPORT_ARTICLES: readonly HelpArticle[] = [
       { h: 'Can I change how a metric is calculated?' },
       {
         p: 'Yes, within its settings. Open "Edit definition" from the info button. [How metrics are defined and changed](article:definitions-how)',
+        ...DATA_ROOM,
       },
-      { h: 'How do I show only numbers we trust for a leadership meeting?' },
+      {
+        p: 'HR can, within its settings, and the change reaches every view. [How metrics are defined and changed](article:definitions-how)',
+        ...NO_DATA_ROOM,
+      },
+      { h: 'How do I show only numbers we trust for a leadership meeting?', surface: 'filter:lens' },
       { p: 'Set the data standard to Production. Only gold numbers show. [Data tiers](article:data-tiers)' },
-      { h: "How do I see one leader's organization?" },
+      { h: "How do I see one leader's organization?", surface: 'filter:leader' },
       {
         p: 'Pick them in the Leader filter, or use "Focus on their org" on their person card. Every view follows. [Moving around](article:moving-around)',
+        surface: 'person:focus',
+      },
+      {
+        p: 'Pick them in the Leader filter: your reqs then keep to the ones whose hiring manager is in their org. [Moving around](article:moving-around)',
+        ...RECRUITER,
       },
       { h: 'Why can I not see salaries?' },
       {
         p: 'Pay amounts are off by default and last one session when turned on. [Pay amounts](article:privacy-pay)',
+        ...PAY_SWITCH,
       },
-      { h: 'Can I see who answered a survey?' },
+      {
+        p: "Finance mode shows cost totals over groups of 5 or more people, never one person's pay. [Pay amounts](article:privacy-pay)",
+        ...PAY_TOTALS,
+      },
+      {
+        p: 'This mode never shows a pay amount. Pay amounts stay with Total rewards. [Pay amounts](article:privacy-pay)',
+        ...NO_PAY,
+      },
+      { h: 'Can I see who answered a survey?', surface: 'view:listening' },
       { p: 'No. Survey results are always grouped. [Surveys](article:privacy-surveys)' },
       { h: 'Will my settings follow me to another computer?' },
       {
         p: 'Not on their own. Download a settings file in [Settings, This device](settings:device) and import it on the other computer. Data files need to be added again.',
+        surface: 'settings:device-files',
+      },
+      {
+        p: 'Not on their own. Your mode, filters, saved views and display settings are kept in this browser, so on another computer you choose them again.',
+        unless: 'settings:device-files',
       },
     ],
   },

@@ -49,6 +49,18 @@ export interface RegionScope extends ScopeBase {
   sites: readonly string[]
   /** Employee IDs at the region's sites, current and former. */
   memberIds: ReadonlySet<string>
+  /**
+   * The regional HR business partner the Regions list names (Settings > Official lists), matched
+   * on the roster by employee ID or name (`id` null when nobody matches); null when none is named.
+   * The Action center's "me" in HRBP for a region mode (docs/ACTION-CENTER-AUDIT.md 5.8).
+   */
+  owner?: RegionOwner | null
+}
+
+/** A regional HR business partner. */
+export interface RegionOwner {
+  name: string
+  id: string | null
 }
 
 /** Recruiter: one recruiter's requisitions, their candidates and the starts they produce. */

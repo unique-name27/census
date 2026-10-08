@@ -11,8 +11,7 @@
  * across tool calls (and the live context itself is used whenever nothing differs from it).
  */
 
-import { askOrgTooSmall } from '@/access/copy'
-import { applyScope, clampFilters, scopeLabelOf, scopeOfAccess } from '@/access/scopes'
+import { applyScope, clampFilters, type ScopeLock, scopeLabelOf, scopeOfAccess } from '@/access/scopes'
 import { leaderOptions } from '@/app/filterOptions'
 import type { AnalyticsContext } from '@/data/context'
 import { activeEmployees, smallExcludedValues } from '@/data/exclusion'
@@ -33,6 +32,7 @@ import {
 import { isCalendarDate } from '@/lib/dates'
 import { minGroupOf } from '@/metrics/privacy'
 import type { TokenMap } from './privacy'
+import { askOff, FINANCE_NO_EXCLUDE, financeFilterRefused, scopeText } from './roles'
 
 /** The `filters` argument every scoped tool takes. */
 export interface FilterInput {
@@ -65,12 +65,15 @@ export const PERIODS: readonly PeriodPreset[] = ['t12m', 'ytd', 'lastQuarter', '
 
 const pays = new WeakMap<AnalyticsContext, AnalyticsContext>()
 
-/** The live context with pay amounts and immigration details off (the same object when both are off). */
+/**
+ * The live context with pay amounts, cost totals and immigration details off (the same object when
+ * all are off). Ask never sends an amount or a cost total, in any mode (docs/ROLES-V2.md 3 and 8.5).
+ */
 export function chatContext(live: AnalyticsContext): AnalyticsContext {
-  if (!live.showPay && !live.showImmigration) return live
+  if (!live.showPay && !live.showImmigration && !live.showCost) return live
   let out = pays.get(live)
   if (!out) {
-    out = { ...live, showPay: false, showImmigration: false }
+    out = { ...live, showPay: false, showCost: false, showImmigration: false }
     pays.set(live, out)
   }
   return out
@@ -185,12 +188,13 @@ export function resolveFilters(base: AnalyticsContext, input: unknown, tokens: T
   return filters === r.filters ? r : { ok: true, filters }
 }
 
-/** Why Ask is off for this context, or null (Manager mode needs an org of the anonymity minimum). */
+/**
+ * Why Ask is off for this context, or null: every scoped mode needs a scope of the anonymity
+ * minimum (an org, business unit or region of 5 or more employees, 5 or more candidates on a
+ * recruiter's reqs) and its pick (docs/ROLES-V2.md 7).
+ */
 export function askOffReason(ctx: Pick<AnalyticsContext, 'access' | 'metrics'>): string | null {
-  const lock = ctx.access?.lock
-  if (!lock) return null
-  const min = minGroupOf(ctx.metrics)
-  return lock.size < min ? askOrgTooSmall(min) : null
+  return askOff(ctx)
 }
 
 function resolveAsked(base: AnalyticsContext, input: unknown, tokens: TokenMap): FilterResult {
@@ -219,6 +223,14 @@ function resolveAsked(base: AnalyticsContext, input: unknown, tokens: TokenMap):
       ok: false,
       error: `Unknown filter ${unknownKeys.map((k) => `"${k}"`).join(', ')}. Filters are leader, business_unit, department, location, level, period, start, end and exclude.`,
     }
+  const scope = scopeOfAccess(base.access)
+  // Finance filters by business unit and period only, so every cost total covers whole business
+  // units (docs/ROLES-V2.md 2.3): another filter is refused with the reason, never dropped quietly.
+  if (!scope && base.access?.mode === 'finance') {
+    for (const [arg, word] of FINANCE_REFUSED)
+      if (given(f[arg])) return { ok: false, error: financeFilterRefused(word) }
+    if (given(f.exclude)) return { ok: false, error: FINANCE_NO_EXCLUDE }
+  }
   // Exclude: the dimensions whose values are left out. Each must also be given values.
   const modes: FilterModes = {}
   if (f.exclude != null) {
@@ -239,6 +251,11 @@ function resolveAsked(base: AnalyticsContext, input: unknown, tokens: TokenMap):
         return {
           ok: false,
           error: `In Manager mode the scope is ${tokens.forEmployee(lock.managerId)}'s org, so a leader cannot be left out. Narrow to a leader inside it instead.`,
+        }
+      if (a === 'business_unit' && scope?.kind === 'unit')
+        return {
+          ok: false,
+          error: `In HRBP mode the business unit stays ${scope.unit}, so it cannot be left out. Narrow inside it instead.`,
         }
       modes[EXCLUDE_DIM[a as ExcludeArg]] = 'exclude'
     }
@@ -321,9 +338,67 @@ function resolveAsked(base: AnalyticsContext, input: unknown, tokens: TokenMap):
     out.customStart = start
     out.customEnd = end
   }
+  const outside = scopeProblem(base, scope, out, f.leader)
+  if (outside) return { ok: false, error: outside }
   const left = exclusionProblem(base, out, tokens)
   if (left) return { ok: false, error: left }
   return { ok: true, filters: out }
+}
+
+/** The filters Finance refuses, as the tools name them and in words. */
+const FINANCE_REFUSED = [
+  ['leader', 'leader'],
+  ['department', 'department'],
+  ['location', 'location'],
+  ['level', 'level'],
+] as const
+
+const given = (v: unknown): boolean => v != null && v !== '' && !(Array.isArray(v) && !v.length)
+
+/** A list in a sentence, at most 40 values. */
+const listed = (values: readonly string[]): string =>
+  `${values.slice(0, 40).join(', ')}${values.length > 40 ? ' ...' : ''}`
+
+/**
+ * Why filters asked for inside a business unit or region scope reach outside it, or null
+ * (docs/ROLES-V2.md 7): a business unit, department or leader outside the unit, or a location
+ * outside the region, is refused with the reason, never clamped quietly. No business unit (or
+ * location) means the scope itself, never the whole company: the clamp pins it afterwards.
+ */
+function scopeProblem(
+  base: Pick<AnalyticsContext, 'all' | 'asOf'>,
+  scope: ScopeLock | null,
+  out: Filters,
+  leaderToken: unknown,
+): string | null {
+  if (scope?.kind === 'unit') {
+    if (out.businessUnit.some((u) => u !== scope.unit))
+      return `In HRBP mode a business unit filter must be ${scope.unit}.`
+    const dept = out.department.find((d) => scope.otherDepartments.has(d))
+    if (dept) {
+      const own = [
+        ...new Set(
+          base.all.employees
+            .filter(
+              (e) =>
+                e.businessUnit === scope.unit && e.department && !scope.otherDepartments.has(e.department),
+            )
+            .map((e) => e.department),
+        ),
+      ].sort((a, b) => a.localeCompare(b))
+      return `${dept} is not a department of ${scope.unit}. In HRBP mode a department filter must be inside it: ${listed(own)}.`
+    }
+    if (out.leaderId && !scope.leaderIds.has(out.leaderId))
+      return `${typeof leaderToken === 'string' ? leaderToken : 'That leader'} leads nobody in ${scope.unit}. In HRBP mode a leader filter must lead people in it.`
+  }
+  if (scope?.kind === 'region') {
+    const at = new Set(scope.sites)
+    if (out.location.some((l) => !at.has(l)))
+      return `In HRBP mode a location filter must be in ${scope.region}: ${scope.sites.join(', ')}.`
+    if (isExcluded(out, 'location') && scope.sites.every((l) => out.location.includes(l)))
+      return `Leaving out every location of ${scope.region} leaves nobody. Leave out fewer locations.`
+  }
+  return null
 }
 
 /**
@@ -419,11 +494,14 @@ export function leaderProblem(
 
 /**
  * The scope in words with the leader as a token: "{{P3}}'s org · Bengaluru", "Whole company",
- * "Whole company except Sales", or "Silicon Engineering · not Bengaluru".
+ * "Whole company except Sales", or "Silicon Engineering · not Bengaluru". With the mode's scope:
+ * a region's every site reads as the region ("APAC · L4"), and a recruiter's reqs come first
+ * ("{{P7}}'s reqs · Bengaluru").
  */
-export function scopeWords(filters: Filters, tokens: TokenMap): string {
+export function scopeWords(filters: Filters, tokens: TokenMap, scope?: ScopeLock | null): string {
   const inc: string[] = []
   const exc: string[] = []
+  if (scope?.kind === 'reqs') inc.push(scopeText(scope, tokens) ?? 'the reqs')
   if (filters.leaderId) {
     const org = `${tokens.forEmployee(filters.leaderId)}'s org`
     if (isExcluded(filters, 'leaderId')) exc.push(org)
@@ -433,6 +511,8 @@ export function scopeWords(filters: Filters, tokens: TokenMap): string {
     const list = filters[d]
     if (!list.length) continue
     if (isExcluded(filters, d)) exc.push(list.join(', '))
+    else if (d === 'location' && scope?.kind === 'region' && sameSet(list, scope.sites))
+      inc.push(scope.region)
     else inc.push(list.join(', '))
   }
   if (!inc.length && !exc.length) return 'Whole company'
@@ -440,11 +520,18 @@ export function scopeWords(filters: Filters, tokens: TokenMap): string {
   return [...inc, ...exc.map((x) => `not ${x}`)].join(' · ')
 }
 
+const sameSet = (a: readonly string[], b: readonly string[]): boolean =>
+  a.length === b.length && a.every((v) => b.includes(v))
+
+/** A context's scope in words (`scopeWords` with the mode's scope). */
+export const scopeWordsOf = (ctx: Pick<AnalyticsContext, 'filters' | 'access'>, tokens: TokenMap): string =>
+  scopeWords(ctx.filters, tokens, scopeOfAccess(ctx.access))
+
 /** The scope and period of a context as tool output. */
 export function scopeOut(ctx: AnalyticsContext, tokens: TokenMap) {
   const f = ctx.filters
   return {
-    scope: scopeWords(f, tokens),
+    scope: scopeWords(f, tokens, scopeOfAccess(ctx.access)),
     filters: {
       leader: f.leaderId ? tokens.forEmployee(f.leaderId) : null,
       business_unit: f.businessUnit,
@@ -469,6 +556,9 @@ export function scopePhrase(base: AnalyticsContext, input: unknown, tokens: Toke
   if (input == null) return ''
   const r = resolveFilters(base, input, tokens)
   if (!r.ok) return ''
-  const words = scopeWords(r.filters, tokens).replace(/^Whole company/, 'the whole company')
+  const words = scopeWords(r.filters, tokens, scopeOfAccess(base.access)).replace(
+    /^Whole company/,
+    'the whole company',
+  )
   return ` for ${words.replaceAll(' · ', ', ')}`
 }

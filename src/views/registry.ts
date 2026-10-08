@@ -2,6 +2,7 @@ import type { AnalyticsContext } from '@/data/context'
 import { view as ai } from './ai'
 import { view as comp } from './comp'
 import { view as compliance } from './compliance'
+import { view as home } from './home'
 import { view as hrbp } from './hrbp'
 import { view as listening } from './listening'
 import { view as onboarding } from './onboarding'
@@ -14,10 +15,12 @@ import { view as team } from './team'
 import { type ViewDef, withAccessTabs } from './types'
 
 /**
- * Folder-tab order: My team (Manager mode's home) and the scorecard first, then the employee
- * lifecycle, then AI in HR. Each mode shows its own subset (`visibleViews`).
+ * Folder-tab order: Home (the CHRO's and the role modes' home), My team (Manager mode's home) and
+ * the scorecard first, then the employee lifecycle, then AI in HR. Each mode shows its own subset
+ * (`visibleViews`).
  */
 export const VIEWS: ViewDef[] = [
+  home,
   team,
   scorecard,
   recruiting,

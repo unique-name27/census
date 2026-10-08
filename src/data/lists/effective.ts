@@ -12,7 +12,9 @@
  * - while every dataset a list reads is the sample, the list is the sample company's, official;
  * - once one of them is your own data, and you saved nothing, the list is proposed from your data
  *   (the rows of the datasets you loaded) and checks nothing until you make it official;
- * - Census's own vocabularies (levels, case categories, sources …) are always official.
+ * - Census's own vocabularies (levels, case categories, sources …) are always official. A fixed
+ *   list that describes the data (`reads`: the Regions list's HR business partners) is the sample
+ *   company's while that data is the sample.
  */
 import { parseFieldRef } from '../quality/fieldRef'
 import type { VocabOverlay } from '../quality/vocab'
@@ -34,9 +36,11 @@ import type {
 /** Whether each dataset is the sample or yours (only the kind is read). */
 export type SourceKinds = Readonly<Record<DatasetKey, { kind: 'sample' | 'upload' }>>
 
-const datasetsOf = (def: ListDef): DatasetKey[] => [
-  ...new Set(def.refs.map((r) => parseFieldRef(r)?.dataset).filter((k): k is DatasetKey => !!k)),
-]
+/** The datasets a list checks, or for a list with no field to check, the ones its values describe. */
+const datasetsOf = (def: ListDef): DatasetKey[] =>
+  def.refs.length
+    ? [...new Set(def.refs.map((r) => parseFieldRef(r)?.dataset).filter((k): k is DatasetKey => !!k))]
+    : [...(def.reads ?? [])]
 
 /** Every dataset the list reads is the sample. */
 export const onSample = (def: ListDef, sources: SourceKinds): boolean =>
@@ -50,7 +54,7 @@ export function sampleLists(): Partial<Record<ListId, ListValue[]>> {
 }
 
 /** A short key of which datasets are yours, for memo keys. */
-const kindsKey = (sources: SourceKinds): string =>
+export const kindsKey = (sources: SourceKinds): string =>
   (Object.keys(sources) as DatasetKey[])
     .filter((k) => sources[k]?.kind === 'upload')
     .sort()
@@ -63,7 +67,9 @@ const kindsKey = (sources: SourceKinds): string =>
  */
 export function savedPause(def: ListDef, s: SavedList, sources: SourceKinds): ListPause | null {
   if (s.draft) return 'draft'
-  if (s.always || def.kind !== 'org' || s.basis === 'census') return null
+  if (s.always || s.basis === 'census') return null
+  // Census's own lists always check; one that describes the data (the Regions list) follows it.
+  if (def.kind !== 'org' && !def.reads) return null
   const sample = onSample(def, sources)
   if (s.basis === 'sample') return sample ? null : 'sample'
   return sample ? 'yours' : null
@@ -93,12 +99,13 @@ export function officialLists(saved: ListsState, sources: SourceKinds): Record<L
       continue
     }
     if (def.kind !== 'org') {
+      const sample = def.reads && onSample(def, sources) ? sampleLists()[def.id] : undefined
       out[def.id] = {
         def,
         status: 'official',
-        source: 'census',
+        source: sample ? 'sample' : 'census',
         basis: null,
-        values: censusValues(def.id),
+        values: sample ?? censusValues(def.id),
         validates: true,
       }
       continue

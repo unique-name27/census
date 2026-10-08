@@ -6,10 +6,12 @@
  * recount rebuilds the same ids from the raw rows; where the rule leans on a view's norms or
  * settings, every id is checked to name a raw record that meets the rule's core condition.
  */
+
 import { beforeAll, describe, expect, it } from 'vitest'
 import { sampleCtx, sampleData } from '@/ask/engine/testkit'
 import type { AnalyticsContext } from '@/data/context'
 import type { Datasets, Employee } from '@/data/schema'
+import { resolveDrill } from '@/drill/Drill'
 import { addDays, addMonths, daysBetween } from '@/lib/dates'
 import { VIEWS } from '@/views/registry'
 import type { ActionItem } from '@/views/types'
@@ -207,11 +209,13 @@ describe('recounts from raw rows', () => {
   })
 
   it('comp:guideline-exception, comp:high-rated-low-compa and comp:over-budget: people and units with comp rows', () => {
-    const comp = new Set(data.comp.map((c) => c.employeeId))
-    for (const i of byKind.get('comp:guideline-exception') ?? [])
-      expect(comp.has(tail(i.id)), i.id).toBe(true)
     const units = new Set(data.employees.map((e) => e.businessUnit))
-    for (const k of ['comp:high-rated-low-compa', 'comp:over-budget', 'comp:no-proposal'])
+    for (const k of [
+      'comp:guideline-exception',
+      'comp:high-rated-low-compa',
+      'comp:over-budget',
+      'comp:no-proposal',
+    ])
       for (const i of byKind.get(k) ?? []) expect(units.has(tail(i.id)), i.id).toBe(true)
   })
 
@@ -260,13 +264,19 @@ describe('recounts from raw rows', () => {
   it('onboarding:plan-behind and onboarding:plan-no-req: plan lines that exist', () => {
     const pairs = new Set(data.hiringPlan.map((l) => `${l.businessUnit}:${l.department}`))
     for (const i of byKind.get('onboarding:plan-behind') ?? []) expect(pairs.has(tail(i.id)), i.id).toBe(true)
-    const positions = new Set(data.hiringPlan.map((l) => l.positionId).filter(Boolean))
+    // One roll-up per business unit with a planned role and no open req; its lines exist and are uncovered.
+    const units = new Set(data.hiringPlan.map((l) => l.businessUnit))
     const reqs = new Map(data.requisitions.map((r) => [r.reqId, r]))
     for (const i of byKind.get('onboarding:plan-no-req') ?? []) {
-      expect(positions.has(tail(i.id)) || tail(i.id).includes(':') || tail(i.id).length > 0, i.id).toBe(true)
+      expect(units.has(tail(i.id)), i.id).toBe(true)
       expect((i.due as string) >= addDays(asOf, -31), i.id).toBe(true)
-      const line = data.hiringPlan.find((l) => l.positionId === tail(i.id))
-      if (line?.reqId) expect(['On hold', 'Cancelled'], i.id).toContain(reqs.get(line.reqId)?.status)
+      const spec = resolveDrill(i.drill)
+      expect(spec?.kind, i.id).toBe('hiringPlan')
+      for (const line of (spec?.rows ?? []) as typeof data.hiringPlan) {
+        expect(line.businessUnit, i.id).toBe(tail(i.id))
+        if (line.reqId)
+          expect(['On hold', 'Cancelled', undefined], i.id).toContain(reqs.get(line.reqId)?.status)
+      }
     }
   })
 

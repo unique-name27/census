@@ -85,6 +85,7 @@ export {
   sanitizeListsState,
   saveLists,
 } from './persist'
+export { regionOwners } from './regions'
 export { censusValues, listFromData, sampleListValues } from './seed'
 export {
   proposeEngineering,

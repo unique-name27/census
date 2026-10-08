@@ -22,7 +22,8 @@ import type { AskChart } from './chart'
 import type { Conversation } from './conversation'
 import { type AskError, CUT_OFF, classifyError, DECLINED, EMPTY_QUESTION, errorLog, STOPPED } from './errors'
 import { type ModelId, modelById } from './models'
-import { ROUND_LIMIT_NOTE, SYSTEM_BLOCKS, systemBlocksFor } from './prompt'
+import { ROUND_LIMIT_NOTE, rolePromptLine, SYSTEM_BLOCKS, systemBlocksFor } from './prompt'
+import { scopePerson } from './roles'
 import { askOffReason, withScope } from './scope'
 import { screenLine } from './screen'
 import { isScreenTool, type PriorResult, runScreenTool, type ScreenRun } from './screenTools'
@@ -177,7 +178,7 @@ export function buildRequest(
   model: ModelId | undefined,
   messages: BetaMessageParam[],
   final: boolean,
-  /** The mode's system blocks and tools (Manager mode: docs/ROLES.md, 4.7); every tool by default. */
+  /** The mode's system blocks and tools (docs/ROLES-V2.md 7); every tool by default. */
   mode?: { system: AskRequest['system']; tools: AskRequest['tools'] },
 ): AskRequest {
   const info = modelById(model)
@@ -223,7 +224,7 @@ export async function ask(o: AskOptions): Promise<AskResult> {
       error: EMPTY_QUESTION,
       model: modelById(o.model).id,
     }
-  // Manager mode needs an org of the anonymity minimum, so no answer is about one person.
+  // A scoped mode needs a scope of the anonymity minimum, so no answer is about one person.
   const off = askOffReason(o.env.ctx)
   if (off)
     return {
@@ -250,14 +251,16 @@ export async function ask(o: AskOptions): Promise<AskResult> {
   const screen = app ? lineFor(env, conv) : null
   const sent = screen ? [screen, question].join('\n\n') : question
   emit({ type: 'question', sent, screen })
-  // The mode's system blocks and tool definitions: the Manager line names the manager by token.
-  // With the app connected, the screen tools follow (the action tools while Ask may change it).
+  // The mode's system blocks and tool definitions: the mode's line names a manager or a recruiter
+  // by token. With the app connected, the screen tools follow (the action tools while Ask may
+  // change it).
   const access = env.ctx.access
   conv.tokens.index(env.ctx)
   const actionsOn = !!app && safeActionsOn(app)
+  const held = access?.scope ?? access?.lock ?? null
   const mode = {
     system: systemBlocksFor(
-      access?.lock ? conv.tokens.forEmployee(access.lock.managerId) : null,
+      access ? rolePromptLine(access.mode, held, scopePerson(held, conv.tokens)) : null,
       app ? { actions: actionsOn } : null,
     ),
     tools: toolDefinitionsFor(access, app ? { views: env.views, actions: actionsOn } : null),

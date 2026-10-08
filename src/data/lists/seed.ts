@@ -27,6 +27,7 @@ import {
   levelIndex,
   levelTrack,
   OFFER_DECLINE_REASONS,
+  REGIONS,
   SITES,
   SOURCES,
   SURVEY_PROGRAMS,
@@ -86,6 +87,9 @@ export function censusValues(id: ListId): ListValue[] {
       return OFFER_DECLINE_REASONS.map((r) => built(r.reason, { theme: r.theme }))
     case 'chipStage':
       return CHIP_STAGES.map((c) => built(c.label, { label: c.label, phase: c.phase }))
+    case 'region':
+      // No regional HR business partner until someone names one.
+      return REGIONS.map((r) => built(r, { hrbp: null }))
     default:
       return []
   }
@@ -117,6 +121,13 @@ class Tally {
       this.m.set(key, c)
     }
     c.set(value, (c.get(value) ?? 0) + 1)
+  }
+  /** The value named most often (the first one found on a tie), or null. */
+  top(key: string): string | null {
+    let best: string | null = null
+    let bestN = 0
+    for (const [v, n] of this.m.get(key) ?? []) if (n > bestN) [best, bestN] = [v, n]
+    return best
   }
   /** The value over half of the counts name, or null. */
   majority(key: string): string | null {
@@ -310,5 +321,37 @@ export function sampleListValues(clean: Datasets): Partial<Record<ListId, ListVa
       schools.push({ value: short, retired: true, replacedBy: name })
   }
   schools.sort(byValue)
+
+  out.region = sampleRegions(emps)
   return out
+}
+
+/** "Director, HR Business Partners", "Senior HR Business Partner". */
+const HRBP_TITLE = /HR Business Partner/i
+
+/**
+ * The sample company's regional HR business partners (docs/ACTION-CENTER-AUDIT.md 5.8): in each
+ * region, the most senior active HR business partner working at one of its sites; a region with
+ * none takes the business unit HRBP who covers the most of its people.
+ */
+function sampleRegions(emps: Datasets['employees']): ListValue[] {
+  const regionOf = (loc: string | null | undefined) =>
+    loc ? (siteByLocation.get(loc)?.region ?? null) : null
+  const active = emps.filter((e) => !e.terminationDate && e.employmentType === 'Employee')
+  return REGIONS.map((region) => {
+    const here = active.filter((e) => regionOf(e.location) === region)
+    const partner = here
+      .filter((e) => HRBP_TITLE.test(e.jobTitle ?? ''))
+      .sort(
+        (a, b) =>
+          levelIndex(b.level ?? '') - levelIndex(a.level ?? '') || a.hireDate.localeCompare(b.hireDate),
+      )[0]
+    let name: string | null = partner?.name ?? null
+    if (!name) {
+      const covers = new Tally()
+      for (const e of here) if (e.hrbp) covers.add(region, e.hrbp)
+      name = covers.top(region)
+    }
+    return { value: region, attrs: { hrbp: name }, builtIn: true }
+  })
 }

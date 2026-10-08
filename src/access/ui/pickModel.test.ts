@@ -19,6 +19,7 @@ import {
   pickNameOf,
   pickText,
   recruiterRows,
+  regionOwnerText,
   regionRows,
   rowMatches,
   showingLine,
@@ -218,5 +219,27 @@ describe('the pick on the Mode button, in the menu and in Settings', () => {
       expect(l).not.toMatch(/—/)
       expect(l.toLowerCase()).not.toMatch(/\b(access|permission|restricted|secure|authorized)\b/)
     }
+  })
+})
+
+describe('the regional HR business partner in Settings > Mode', () => {
+  it('names the partner on the Regions list, and where to change it', () => {
+    const named = { ...region, owner: { name: 'Ya-Wen Chang', id: 'E10458' } }
+    expect(regionOwnerText(named, false, false)).toBe(
+      "Regional HR business partner: Ya-Wen Chang. Their own items and the region's site matters are in Needs attention. Change it in Official lists, Regions, in HR mode.",
+    )
+    expect(regionOwnerText(named, false, true)).toMatch(/Change it in Official lists, Regions\.$/)
+  })
+
+  it('says items route by kind while nobody is named', () => {
+    expect(regionOwnerText(region, false, false)).toBe(
+      'No regional HR business partner is named for APAC, so the Action center lists its items by kind. Name one in Official lists, Regions, in HR mode.',
+    )
+  })
+
+  it('says nothing outside a picked region', () => {
+    expect(regionOwnerText(emptyRegionScope(null), true, false)).toBeNull()
+    expect(regionOwnerText(unit, false, false)).toBeNull()
+    expect(regionOwnerText(null, false, false)).toBeNull()
   })
 })

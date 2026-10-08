@@ -5,8 +5,10 @@
  * population as `headcountAt` in src/lib/people.ts.
  */
 
+import type { AccessContext } from '@/access/context'
 import type { Mode } from '@/access/modes'
-import { clampFilters } from '@/access/scopes/clamp'
+import { clampFilters, FILTER_DIMS_OF } from '@/access/scopes/clamp'
+import { type FilterControl, S } from '@/access/surfaces'
 import { type Employee, type ISODate, LEVEL_LABELS, type Level, levelIndex } from '@/data/schema'
 import {
   DEFAULT_FILTERS,
@@ -104,6 +106,48 @@ export function dimensionOptions(
 export function offersExclude(mode: Mode, key: DimensionKey): boolean {
   const probe: Filters = { ...DEFAULT_FILTERS, [key]: ['probe'], modes: { [key]: 'exclude' } }
   return isExcluded(clampFilters(probe, null, mode), key)
+}
+
+/** Which parts of the filter row a mode shows: its `filter:*` decisions, read in one place. */
+export interface FilterRowParts {
+  views: boolean
+  period: boolean
+  leader: boolean
+  /** The leader filter's Include / Exclude switch (a list's switch also needs `offersExclude`). */
+  leaderExclude: boolean
+  /** The leader chips' chain of the leaders above (widening). */
+  chain: boolean
+  /** The list filters the row offers, in row order (Finance: business unit only). */
+  dims: readonly DimensionKey[]
+  inScope: boolean
+  chips: boolean
+  reset: boolean
+  /** The data standard: a control, the saved one read only, or nothing. */
+  standard: 'shown' | 'read-only' | 'hidden'
+}
+
+/**
+ * The filter row for a mode (docs/ROLES-V2.md 2.5 and 4.10): each control follows its `filter:*`
+ * decision (so the Security center's overrides reach the row), and the list filters are the mode's
+ * dimensions (`FILTER_DIMS_OF`). Finance's row is the saved views, the period and the business
+ * unit, include only. Pure.
+ */
+export function filterRowParts(access: Pick<AccessContext, 'mode' | 'decide'>): FilterRowParts {
+  const can = (c: FilterControl) => access.decide(S.filter(c)).access !== 'hidden'
+  const dims = FILTER_DIMS_OF[access.mode]
+  const standard = access.decide(S.filter('standard')).access
+  return {
+    views: can('saved-views'),
+    period: can('period'),
+    leader: dims.includes('leaderId') && can('leader'),
+    leaderExclude: can('exclude'),
+    chain: can('chain'),
+    dims: can('lists') ? DIMENSIONS.filter((k) => dims.includes(k)) : [],
+    inScope: can('in-scope'),
+    chips: can('chips'),
+    reset: can('reset'),
+    standard: standard === 'hidden' ? 'hidden' : standard === 'limited' ? 'read-only' : 'shown',
+  }
 }
 
 /**

@@ -10,7 +10,9 @@
 
 import type { BetaTool } from '@anthropic-ai/sdk/resources/beta/messages/messages'
 import type { AccessContext } from '@/access/context'
-import { modeName } from '@/access/copy'
+import { toolNotInMode } from '@/access/copy'
+import { isTableMode, policyVersion } from '@/access/policy'
+import { scopeOfAccess } from '@/access/scopes/records'
 import { errorMessage, logDevError } from '@/app/devlog'
 import { DATASET_KEYS, DATASETS } from '@/data/schema'
 import { recordSince } from '@/lib/timing'
@@ -20,6 +22,7 @@ import { MODE_CHANGED, modeMoved } from './app'
 import { ReleaseAudit } from './audit'
 import type { TokenMap } from './privacy'
 import type { RefRegistry } from './refs'
+import { excludeArgsIn, type FilterArg, filterArgsIn, toolsKey } from './roles'
 import { askOffReason, chatContext, EXCLUDE_ARGS, PERIODS, scopePhrase } from './scope'
 import { SCREEN_TOOL_NAMES, screenToolDefinitions, screenToolLabel } from './screenTools'
 import { openItems } from './tools/actions'
@@ -28,7 +31,7 @@ import { findMetrics } from './tools/metrics'
 import { explainQuality } from './tools/quality'
 import { DATE_PARTS, MEASURE_OPS, OPS, queryRecords } from './tools/query'
 import type { ToolOutput, ToolRuntime } from './tools/shared'
-import { COMPARE_BY, compareGroups, SUMMARY_TABS, viewSummary } from './tools/summary'
+import { COMPARE_BY, compareByIn, compareGroups, SUMMARY_TABS, viewSummary } from './tools/summary'
 import type { AnyToolName, ScreenToolName, ToolEnv, ToolName } from './types'
 
 /** The tools that compute numbers (the Developer page's Ask tools console runs these). */
@@ -277,18 +280,117 @@ export const TOOL_DEFINITIONS: BetaTool[] = [
   },
 ]
 
-/* ───────────── per mode (docs/ROLES.md, 4.7) ───────────── */
+/* ───────────── per mode (docs/ROLES-V2.md 7) ───────────── */
 
-type ModeAccess = Pick<AccessContext, 'mode' | 'can'>
+type ModeAccess = Pick<AccessContext, 'mode' | 'can'> &
+  Partial<Pick<AccessContext, 'scope' | 'lock' | 'unset'>>
 
-let managerTools: BetaTool[] | null = null
-let hrTools: BetaTool[] | null = null
+/** What a mode's scope or restriction does to every tool's filters, in one sentence for Claude. */
+export function scopeRule(access: ModeAccess | null | undefined): string {
+  if (!access) return ''
+  switch (scopeOfAccess(access)?.kind) {
+    case 'org':
+      return " In Manager mode every scope stays inside the manager's org: a leader outside it is refused, and a leader cannot be left out."
+    case 'unit':
+      return " In HRBP mode every scope stays inside the mode's business unit: no business_unit means the whole unit, and a business unit, department or leader outside it is refused."
+    case 'region':
+      return " In HRBP mode every scope stays inside the mode's region: no location means the whole region, and a location outside it is refused."
+    case 'reqs':
+      return " In Recruiter mode every scope stays inside the recruiter's reqs: the filters narrow those reqs, their candidates and their starts."
+  }
+  return access.mode === 'finance'
+    ? ' Finance mode filters by business unit and period only: leader, department, location, level and exclude are refused.'
+    : ''
+}
+
+/** The filters argument a mode's tools take: its filter dimensions, and exclude where it can leave any out. */
+function filtersSchemaFor(access: ModeAccess | null | undefined): Record<string, unknown> {
+  const args = new Set<string>(filterArgsIn(access))
+  const excl = excludeArgsIn(access)
+  const props: Record<string, unknown> = Object.fromEntries(
+    Object.entries(FILTERS_SCHEMA.properties).filter(
+      ([k]) =>
+        (!(EXCLUDE_ARGS as readonly string[]).includes(k) || args.has(k as FilterArg)) &&
+        (k !== 'exclude' || excl.length > 0),
+    ),
+  )
+  if (props.exclude && excl.length !== EXCLUDE_ARGS.length)
+    props.exclude = { ...FILTERS_SCHEMA.properties.exclude, items: { type: 'string', enum: [...excl] } }
+  return {
+    ...FILTERS_SCHEMA,
+    description: `${FILTERS_SCHEMA.description}${scopeRule(access)}`,
+    properties: props,
+  }
+}
+
+/** The surfaces fields of query_records need (the analyses they feed), part of a mode's cache key. */
+const FIELD_NEEDS: readonly string[] = [
+  ...new Set(QUERY_DATASETS.flatMap((d) => d.fields.flatMap((f) => (f.needs ? [f.needs] : [])))),
+]
+
+const cache = new Map<string, BetaTool[]>()
+
+/** The data tools sent in a mode, cached per mode and scope kind (and the policy file and fields in force). */
+function dataToolsFor(access: ModeAccess | null | undefined): BetaTool[] {
+  if (!access || access.mode === 'developer') return TOOL_DEFINITIONS
+  const key = `${toolsKey(access)}|${policyVersion()}|${FIELD_NEEDS.map((n) => (access.can(n) ? 1 : 0)).join('')}`
+  const hit = cache.get(key)
+  if (hit) return hit
+  const views = VIEW_KEYS_WITH_DATA.filter((v) => access.can(`view:${v}`))
+  const datasets = QUERY_DATASETS.filter((d) => access.can(`dataset:${d.key}`))
+  const filters = filtersSchemaFor(access)
+  const lists = isTableMode(access.mode) && access.can('ui:attention-lists')
+  const withProps = (schema: BetaTool['input_schema'], over: Record<string, Record<string, unknown>>) => {
+    const props = (schema.properties ?? {}) as Record<string, Record<string, unknown>>
+    const next = { ...props }
+    for (const [k, v] of Object.entries(over)) if (props[k]) next[k] = { ...props[k], ...v }
+    if (props.filters) next.filters = filters
+    return { ...schema, properties: next }
+  }
+  const out = TOOL_DEFINITIONS.filter((t) => access.can(`ask:${t.name}`)).map((t): BetaTool => {
+    const { cache_control: _cache, ...rest } = t
+    switch (t.name) {
+      case 'view_summary':
+        return { ...rest, input_schema: withProps(t.input_schema, { view: { enum: views } }) }
+      case 'compare_groups':
+        return {
+          ...rest,
+          input_schema: withProps(t.input_schema, {
+            view: { enum: views.filter((v) => v !== 'scorecard' && v !== 'org') },
+            by: { enum: [...compareByIn(access)] },
+          }),
+        }
+      case 'query_records':
+        return {
+          ...rest,
+          description: queryDescription(fieldHelp(datasets, access)),
+          input_schema: withProps(t.input_schema, { dataset: { enum: datasets.map((d) => d.key) } }),
+        }
+      case 'open_items':
+        return lists
+          ? {
+              ...rest,
+              description:
+                'The Action center as this mode lists it: Needs attention (the open items that wait on this role) and Waiting on others (items in its area that someone else owns), counted by owner group, severity, due date and source view, with the owners who have the most pressing items as person tokens. Uses the user’s scope.',
+            }
+          : rest
+      default:
+        return rest
+    }
+  })
+  // One cache breakpoint, on the last tool.
+  const last = out[out.length - 1]
+  if (last) out[out.length - 1] = { ...last, cache_control: { type: 'ephemeral' } }
+  cache.set(key, out)
+  return out
+}
 
 /**
- * The tool definitions sent to Claude in a mode. HR and Developer mode send every data tool; the
- * other modes leave out the tools their policy hides. Manager mode leaves out `explain_quality`, and the view and
- * dataset enums and descriptions list only what Manager mode shows. The screen tools follow when
- * the app is connected. The last tool keeps the cache breakpoint.
+ * The tool definitions sent to Claude in a mode (docs/ROLES-V2.md 7): the tools the mode's policy
+ * hides are left out; view_summary and compare_groups list only the mode's views; query_records
+ * only the mode's datasets (`decide('dataset:…')`) with their field help; every tool's filters say
+ * the scope's rule (Finance: business unit and period only). The screen tools follow when the app
+ * is connected. Cached per mode and scope kind; one cache breakpoint, on the last tool.
  */
 export function toolDefinitionsFor(
   access: ModeAccess | null | undefined,
@@ -319,63 +421,6 @@ export function toolDefinitionsFor(
 }
 
 const withScreen = new WeakMap<BetaTool[], WeakMap<BetaTool[], BetaTool[]>>()
-
-function dataToolsFor(access: ModeAccess | null | undefined): BetaTool[] {
-  if (!access || access.mode === 'developer') return TOOL_DEFINITIONS
-  if (access.mode !== 'manager') {
-    // Every tool the mode's policy shows. The last tool keeps the cache breakpoint.
-    if (hrTools) return hrTools
-    const shown = TOOL_DEFINITIONS.filter((t) => access.can(`ask:${t.name}`))
-    if (shown.length === TOOL_DEFINITIONS.length) {
-      hrTools = TOOL_DEFINITIONS
-      return hrTools
-    }
-    hrTools = shown.map(({ cache_control: _cache, ...rest }, i) =>
-      i === shown.length - 1 ? { ...rest, cache_control: { type: 'ephemeral' as const } } : rest,
-    )
-    return hrTools
-  }
-  if (managerTools) return managerTools
-  const views = VIEW_KEYS_WITH_DATA.filter((v) => access.can(`view:${v}`))
-  const datasets = QUERY_DATASETS.filter((d) => access.can(`dataset:${d.key}`))
-  const withEnum = (schema: BetaTool['input_schema'], key: string, values: readonly string[]) => {
-    const props = schema.properties as Record<string, Record<string, unknown>> | undefined
-    if (!props?.[key]) return schema
-    return { ...schema, properties: { ...props, [key]: { ...props[key], enum: values } } }
-  }
-  const out = TOOL_DEFINITIONS.filter((t) => access.can(`ask:${t.name}`)).map((t): BetaTool => {
-    const { cache_control: _cache, ...rest } = t
-    switch (t.name) {
-      case 'view_summary':
-        return { ...rest, input_schema: withEnum(t.input_schema, 'view', views) }
-      case 'compare_groups':
-        return {
-          ...rest,
-          input_schema: withEnum(
-            t.input_schema,
-            'view',
-            views.filter((v) => v !== 'scorecard' && v !== 'org'),
-          ),
-        }
-      case 'query_records':
-        return {
-          ...rest,
-          description: queryDescription(fieldHelp(datasets, access)),
-          input_schema: withEnum(
-            t.input_schema,
-            'dataset',
-            datasets.map((d) => d.key),
-          ),
-        }
-      default:
-        return rest
-    }
-  })
-  const last = out[out.length - 1]
-  if (last) out[out.length - 1] = { ...last, cache_control: { type: 'ephemeral' } }
-  managerTools = out
-  return out
-}
 
 /* ───────────── progress lines ───────────── */
 
@@ -480,13 +525,11 @@ export function runTool(
   // An answer that outlived a change of mode: its context is the old mode's.
   if (modeMoved(env.app, access))
     return { content: JSON.stringify({ error: MODE_CHANGED }), isError: true, label, ms: clock() - t }
-  const off = access?.lock ? askOffReason(env.ctx) : null
+  const off = askOffReason(env.ctx)
   if (off) return { content: JSON.stringify({ error: off }), isError: true, label, ms: clock() - t }
   if (access && isToolName(name) && !access.can(`ask:${name}`))
     return {
-      content: JSON.stringify({
-        error: `${name} is not available in ${modeName(access.mode)}.`,
-      }),
+      content: JSON.stringify({ error: toolNotInMode(name, access.mode) }),
       isError: true,
       label,
       ms: clock() - t,

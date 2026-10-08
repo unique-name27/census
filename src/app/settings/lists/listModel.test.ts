@@ -46,7 +46,7 @@ describe('Official lists view model', () => {
     // Requisitions are still the sample: their "DV verif" is in the data but not on the list.
     expect(dept).toMatchObject({ official: false, values: 2, retired: 0, notOnList: 1, notOnListRows: 1 })
     expect(valuesText({ values: 24, retired: 2 })).toBe('24 values, 2 retired')
-    expect(items.map((i) => i.id)).toHaveLength(18)
+    expect(items.map((i) => i.id)).toHaveLength(19)
   })
 
   it('builds table rows with parent, rows in data, status and a department’s cost centers', () => {

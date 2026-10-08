@@ -21,7 +21,12 @@ export interface HelpPrefs {
   completed: readonly string[]
   /** My team's welcome line (Manager mode) was dismissed; set only once it is. */
   managerWelcomeDismissed?: true
+  /** The modes whose Home welcome line was dismissed (CHRO, HRBP, Compensation and the rest), each on its own. */
+  homeWelcomeDismissed?: readonly string[]
 }
+
+/** Whose welcome line: HR mode's on the Scorecard, Manager mode's on My team, or a role's on Home. */
+export type WelcomeLine = 'hr' | 'manager' | { home: string }
 
 const DEFAULT_PREFS: HelpPrefs = { welcomeDismissed: false, completed: [] }
 
@@ -31,12 +36,14 @@ export function parsePrefs(raw: string | null): HelpPrefs {
   try {
     const v = JSON.parse(raw) as Partial<HelpPrefs> | null
     if (!v || typeof v !== 'object') return DEFAULT_PREFS
+    const strings = (x: unknown): string[] =>
+      Array.isArray(x) ? [...new Set(x.filter((y): y is string => typeof y === 'string'))] : []
+    const home = strings(v.homeWelcomeDismissed)
     return {
       welcomeDismissed: v.welcomeDismissed === true,
       ...(v.managerWelcomeDismissed === true ? { managerWelcomeDismissed: true as const } : {}),
-      completed: Array.isArray(v.completed)
-        ? [...new Set(v.completed.filter((x): x is string => typeof x === 'string'))]
-        : [],
+      ...(home.length ? { homeWelcomeDismissed: home } : {}),
+      completed: strings(v.completed),
     }
   } catch {
     return DEFAULT_PREFS
@@ -93,8 +100,8 @@ interface HelpState {
   startTour: (id: string) => void
   goToStep: (index: number) => void
   endTour: (how: TourEnd) => void
-  /** Dismiss the welcome line: HR mode's on the Scorecard (default) or Manager mode's on My team. */
-  dismissWelcome: (which?: 'hr' | 'manager') => void
+  /** Dismiss a welcome line: HR mode's on the Scorecard (default), Manager mode's, or one role's Home. */
+  dismissWelcome: (which?: WelcomeLine) => void
   /** Re-read the remembered prefs (another tab changed them). */
   reloadPrefs: () => void
 }
@@ -162,10 +169,8 @@ export const useHelp = create<HelpState>((set, get) => ({
     }))
   },
   dismissWelcome(which = 'hr') {
-    const prefs: HelpPrefs =
-      which === 'manager'
-        ? { ...get().prefs, managerWelcomeDismissed: true }
-        : { ...get().prefs, welcomeDismissed: true }
+    const prefs = withDismissed(get().prefs, which)
+    if (prefs === get().prefs) return
     savePrefs(prefs)
     set({ prefs })
   },
@@ -173,6 +178,25 @@ export const useHelp = create<HelpState>((set, get) => ({
     set({ prefs: loadPrefs() })
   },
 }))
+
+/** The prefs with a welcome line dismissed (the same object when it already was). */
+export function withDismissed(p: HelpPrefs, which: WelcomeLine): HelpPrefs {
+  if (which === 'manager') return p.managerWelcomeDismissed ? p : { ...p, managerWelcomeDismissed: true }
+  if (which === 'hr') return p.welcomeDismissed ? p : { ...p, welcomeDismissed: true }
+  const done = p.homeWelcomeDismissed ?? []
+  return done.includes(which.home) ? p : { ...p, homeWelcomeDismissed: [...done, which.home] }
+}
+
+/**
+ * Whether a welcome line is gone: dismissed, or its tour finished. A role's Home line is its own
+ * (dismissing it as CHRO leaves Compensation's), and finishing "Getting started with your home" in
+ * any mode ends them all.
+ */
+export function welcomeDismissed(p: HelpPrefs, which: WelcomeLine): boolean {
+  if (which === 'manager') return p.managerWelcomeDismissed === true || p.completed.includes('manager-start')
+  if (which === 'hr') return p.welcomeDismissed || p.completed.includes('getting-started')
+  return (p.homeWelcomeDismissed ?? []).includes(which.home) || p.completed.includes('home-start')
+}
 
 /** The prefs with a tour marked finished (the same object when it already was). */
 export function withCompleted(p: HelpPrefs, id: string): HelpPrefs {

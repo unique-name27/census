@@ -11,6 +11,7 @@ import {
   EVERY_RECRUITER_ROW,
   PICKER_COPY,
   recruiterRowLine,
+  regionOwnerLine,
   regionRowLine,
   SHOWING_EVERY_RECRUITER,
   showingForScope,
@@ -195,6 +196,16 @@ export function showingLine(
   if (mode === 'recruiter' && picks.recruiter?.name === EVERY_RECRUITER) return SHOWING_EVERY_RECRUITER
   if (unset || !scope?.label) return `${PICKER_COPY[kind].none} yet.`
   return showingForScope(scope.label)
+}
+
+/**
+ * HRBP for a region: who the regional HR business partner is (the Regions official list) and where
+ * that is set; null in every other mode and while no region is picked. `here` when the mode shows
+ * Official lists.
+ */
+export function regionOwnerText(scope: ScopeLock | null, unset: boolean, here: boolean): string | null {
+  if (unset || scope?.kind !== 'region' || !scope.label) return null
+  return regionOwnerLine(scope.region, scope.owner?.name ?? null, here)
 }
 
 /** Which pick kinds have anything to pick in the loaded data (a mode with none is disabled). */

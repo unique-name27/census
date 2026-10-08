@@ -7,11 +7,12 @@ export const SCORECARD_FIGURES: readonly string[] = [
   'scorecard-standing',
   'scorecard-measures',
   'scorecard-findings',
+  'scorecard-items',
+  'scorecard-attention',
   'scorecard-headcount',
   'scorecard-flow',
   'scorecard-attrition-trend',
   'scorecard-attrition-bu',
   'scorecard-pipeline',
-  'scorecard-items',
   'scorecard-people',
 ]

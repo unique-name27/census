@@ -130,7 +130,31 @@ export const HOME_OF: Record<Mode, RouteView> = {
   developer: 'dev',
 }
 
-export const homeOf = (mode: Mode): Route => ({ view: HOME_OF[mode], tab: '' })
+/**
+ * Role settings a policy file can change (docs/SECURITY-CENTER.md): a mode's home, and whether the
+ * Mode menu offers it. Set with the policy overrides (`setPolicyOverrides`); the defaults otherwise.
+ */
+export interface RoleOverrides {
+  home: ReadonlyMap<Mode, RouteView>
+  offered: ReadonlyMap<Mode, boolean>
+}
+
+let roleOverrides: RoleOverrides | null = null
+
+/** Called by `setPolicyOverrides`; null puts every mode back on its default home and in the menu. */
+export function setRoleOverrides(next: RoleOverrides | null): void {
+  roleOverrides = next
+}
+
+/** The view a mode opens on: the policy file's choice, else `HOME_OF`. */
+export const homeViewOf = (mode: Mode): RouteView =>
+  (mode === 'developer' ? undefined : roleOverrides?.home.get(mode)) ?? HOME_OF[mode]
+
+export const homeOf = (mode: Mode): Route => ({ view: homeViewOf(mode), tab: '' })
+
+/** Whether the Mode menu and Settings > Mode offer a mode. Developer always is. */
+export const modeOffered = (mode: Mode): boolean =>
+  mode === 'developer' || roleOverrides?.offered.get(mode) !== false
 
 /**
  * The slug of each role home's figure ids (`home-<slug>-<thing>`, docs/ROLES-V2.md 5.1); both HRBP

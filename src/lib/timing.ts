@@ -8,7 +8,7 @@
  *
  * Names: `census:context`, `census:quality`, `census:headline:<view>`, `census:scorecard:<view>`
  * (the scorecard records those itself, in every mode, as it always has), `census:actions:<view>`,
- * `census:drill:<kind>`, `census:ask:<tool>`, `census:export:<view>`. Every access to the User
+ * `census:drill:<kind>`, `census:ask:<tool>`, `census:export:<view>`, `census:home:<home>`. Every access to the User
  * Timing API is in try/catch: without it nothing is recorded and nothing breaks. Pure (no React).
  */
 

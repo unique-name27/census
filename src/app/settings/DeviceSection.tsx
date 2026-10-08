@@ -10,6 +10,7 @@ import { useAnalytics } from '@/data/context'
 import { settingsFileName } from '@/data/settings'
 import { clearDevice, exportSettings, importSettings } from '@/data/store'
 import { useSavedViews } from '@/data/viewsStore'
+import { accessDraftFileSection, useDraft } from '@/dev/security/store'
 import { todayISO } from '@/lib/dates'
 import { downloadBlob } from '@/lib/export/download'
 import { MarksFileButtons } from '@/views/actions/ui/MarksName'
@@ -103,7 +104,8 @@ export function DeviceSection() {
   // Action center marks are personal: every mode that shows the Action center can pass them along.
   const marks = access.can('page:actions')
   const onExport = () => {
-    downloadBlob(exportSettings(), settingsFileName(todayISO()))
+    // The Security center's draft rides along when one is kept (docs/SECURITY-CENTER.md).
+    downloadBlob(exportSettings({ accessDraft: accessDraftFileSection() }), settingsFileName(todayISO()))
     toast('Settings file downloaded', { tone: 'good', description: 'Pay amounts are never in it.' })
   }
   const onImport = async (file: File | undefined) => {
@@ -123,6 +125,11 @@ export function DeviceSection() {
     // Saved views in the file join yours (a view with the same name is replaced).
     const views = r.viewsSection !== undefined ? useSavedViews.getState().importSection(r.viewsSection) : null
     const viewsText = views?.ok ? `Saved views: ${views.summary}.` : null
+    // A Security center draft in the file replaces the one in this browser; nothing it holds is in force.
+    const draft =
+      r.accessDraftSection !== undefined ? useDraft.getState().importSection(r.accessDraftSection) : null
+    if (draft && !draft.ok)
+      toast('The Security center draft was not imported', { tone: 'critical', description: draft.error })
     toast('Settings imported', {
       tone: 'good',
       description:

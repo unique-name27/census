@@ -8,10 +8,12 @@ import { type At, type Decision, hidden, SHOWN } from './types'
 export const NOT_IN_HR = 'HR mode leaves out the developer surfaces and My team.'
 export const HOME_NOT_IN_HR = 'HR mode opens on the Scorecard. Home is the first page of the other HR roles.'
 
-/** The role homes (`#home`): its view, tab, figures, article and tour. */
+/** The role homes (`#home`): its view, header actions, tab, figures, article and tour. */
 export const HOME_SURFACES: readonly string[] = [
   'view:home',
+  'header:home',
   'help:article:view-home',
+  'help:tour:view-home',
   'help:tour:home-start',
 ]
 export const HOME_PREFIXES: readonly string[] = ['tab:home.', 'figure:home-']

@@ -1,10 +1,14 @@
 /**
- * My team, Waiting on this org: the Action center's open items that the leader or someone in their
- * org owns, the leader's own first, at most ten, with the Action center one link away. Each item
- * opens its own records; an employee relations item never names anyone (the Action center's rule).
+ * My team's Needs attention (docs/ROLES-V2.md 5.12): the manager's own open items (interview
+ * decisions on their reqs, probation decisions, the training item for their team, stay
+ * conversations), the most pressing first, and one switch away the items in their area that
+ * someone else holds ("Waiting on others": day-one contingencies held by People operations). The
+ * first ten show; the Action center lists every one. Each item opens its own records; an employee
+ * relations item never names anyone (the Action center's rule).
  */
+import { useState } from 'react'
 import { type Column, Figure } from '@/charts'
-import { Pending, RouteLink, Section } from '@/components'
+import { Pending, RouteLink, Section, Segmented } from '@/components'
 import { useAnalytics } from '@/data/context'
 import { drill } from '@/drill'
 import { fmt, plural } from '@/lib/format'
@@ -25,8 +29,11 @@ interface Row {
   a: OpenAction
 }
 
+type List = 'needs' | 'waiting'
+
 export function WaitingSection({ items }: { items: TeamItems | null }) {
   const ctx = useAnalytics()
+  const [list, setList] = useState<List>('needs')
   // Where a mode hides the Action center, its items stay off My team too.
   if (!ctx.access.can('page:actions')) return null
   const actions = (
@@ -34,14 +41,21 @@ export function WaitingSection({ items }: { items: TeamItems | null }) {
       Open the Action center
     </RouteLink>
   )
-  const dek = 'Open items that the leader or someone in their org owns, anywhere in the company.'
+  const dek =
+    'Your own open items, the most pressing first, and the ones in your org that someone else holds.'
   if (!items)
     return (
-      <Section title="Waiting on this org" dek={dek} actions={actions}>
-        <Pending title="Open items" span={12} height={200} message="Collecting open items from each view." />
+      <Section title="Needs attention" dek={dek} actions={actions}>
+        <Pending
+          title="Needs attention"
+          span={12}
+          height={200}
+          message="Collecting open items from each view."
+        />
       </Section>
     )
-  const rows: Row[] = items.items.map((a) => ({
+  const shown = list === 'needs' ? items.needs : items.waiting
+  const rows: Row[] = shown.map((a) => ({
     severity: SEVERITY_WORD[a.item.severity],
     what: a.item.what,
     owner: a.ownerName,
@@ -61,26 +75,47 @@ export function WaitingSection({ items }: { items: TeamItems | null }) {
     { key: 'from', label: 'From' },
   ]
   const overdue = rows.filter((r) => r.a.item.due && r.a.item.due < ctx.asOf).length
-  // The page lists the first ten (ROLES.md 2.2); the Action center lists every one.
+  // The page lists the first ten; the Action center lists every one.
   const listed = rows.slice(0, WAITING_SHOWN)
   return (
-    <Section title="Waiting on this org" dek={dek} actions={actions}>
+    <Section title="Needs attention" dek={dek} actions={actions}>
       <Figure
         id="team-waiting"
         metric={ACTIONS.open}
-        uses={usesOf(items.items)}
-        title="Open items"
-        subtitle="The leader's own items first, then by severity and due date"
+        uses={usesOf(shown)}
+        title={list === 'needs' ? 'Needs attention' : 'Waiting on others'}
+        subtitle={
+          list === 'needs'
+            ? 'Your own open items: severity, then the due date'
+            : 'Open items in your org that someone else holds'
+        }
         data={listed}
         columns={columns}
         note={`${plural(rows.length, 'open item')}${overdue ? ` · ${fmt(overdue, 'int')} overdue` : ''}${rows.length > WAITING_SHOWN ? ` · the first ${WAITING_SHOWN} listed; the Action center lists every one` : ''}`}
         span={12}
         tableOnly
+        actions={
+          <Segmented<List>
+            label="List"
+            value={list}
+            onChange={setList}
+            options={[
+              { value: 'needs', label: `Needs attention (${fmt(items.needs.length, 'int')})` },
+              { value: 'waiting', label: `Waiting on others (${fmt(items.waiting.length, 'int')})` },
+            ]}
+          />
+        }
         table={{
           onRowClick: (r) => drill(open(r)),
         }}
         className={items.stale ? 'opacity-60 transition-opacity' : undefined}
-        empty={rows.length ? null : 'Nothing that this org owns is open.'}
+        empty={
+          rows.length
+            ? null
+            : list === 'needs'
+              ? 'Nothing is waiting on you.'
+              : 'Nothing in your org waits on someone else.'
+        }
       />
     </Section>
   )

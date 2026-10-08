@@ -67,9 +67,9 @@ describe('labels', () => {
       'Onboarding, People stats, Org chart, HR ops, Talent, Compensation, Compliance, Listening',
     )
     expect(text.rightToWork).toBe('Compliance')
-    // Every view's declared datasets are listed as feeding it. The scorecard reads the views'
-    // summaries, not the datasets, so it is never listed.
-    for (const v of VIEWS.filter((x) => x.key !== 'scorecard' && x.key !== 'team'))
+    // Every view's declared datasets are listed as feeding it. The scorecard, My team and Home read
+    // the views' numbers, not the datasets, so they are never listed.
+    for (const v of VIEWS.filter((x) => x.key !== 'scorecard' && x.key !== 'team' && x.key !== 'home'))
       for (const d of v.datasets) expect(rows.find((r) => r.key === d)?.feeds).toContain(v.key)
   })
 

@@ -38,7 +38,10 @@
  *
  *   OrgScope    { kind: 'org', label, size, managerId, managerName, orgIds }          Manager
  *   UnitScope   { kind: 'unit', label, size, unit, memberIds, leaderIds, otherDepartments }   HRBP BU
- *   RegionScope { kind: 'region', label, size, region, sites, memberIds }             HRBP region
+ *   RegionScope { kind: 'region', label, size, region, sites, memberIds, owner }      HRBP region
+ *     (`owner`: the regional HR business partner on the Regions official list, matched on the
+ *     roster; the Action center's "me" in that mode. `regionOwners(lists, sources)` in
+ *     '@/data/lists' reads the list; `scopeFor`'s env takes it as `regionOwners`.)
  *   ReqsScope   { kind: 'reqs', label, size, recruiter, recruiterId, reqIds, appIds, startIds,
  *                 openReqs, activeCandidates, asOf }                                  Recruiter
  *
@@ -92,6 +95,21 @@
  *     …
  *   }
  *
+ * ── Overrides: the Security center (`overrides/`, docs/SECURITY-CENTER.md) ──────────────────
+ *
+ *   The policy file in force (`access-policy.json`, loaded at startup by `src/dev/security/boot.ts`)
+ *   is a list of lines { role, surface, decision, reason, by, at }. `setPolicyOverrides(overridesOf(
+ *   lines))` lays them over every decision: a view an override hides takes its tabs, figures, header
+ *   and view-only metrics along; one it shows brings them back (`overrides/overlay.ts`). The pay
+ *   surfaces set `payView(mode)`; `role:home` and `role:offered` set `homeViewOf(mode)` and
+ *   `modeOffered(mode)`. `decideUnder(overrides | null, mode, surface, at?, info?)` answers under any
+ *   set (null: the built-in defaults) without putting it in force. Guard rails (`guardRailFor`,
+ *   `GUARD_RAILS`) refuse what no line may do. Nothing here asks for sign-in: modes stay an open
+ *   switch, and the Security center's banner says so.
+ *
+ *   // An engine that caches decisions keys its cache on the policy in force:
+ *   const key = `${access.mode}|${policyVersion()}`
+ *
  * ── Pay (`pay.ts`, docs/ROLES-V2.md part 3) ────────────────────────────────────────────────────
  *
  *   ctx.showPay    individual amounts may show (`pay: true` columns): a switch mode, switch on
@@ -109,7 +127,8 @@
  *     drill kind and id prefix it shows (Developer, HR and CHRO list every item)
  *   itemInScope(access, item)   about the scope (subject or `place`) or owned by someone in it
  *   roleItems(items, lensOf(ctx.access, ctx.asOf, days))   { needs, waiting, left } by the routing
- *     table in policy/routing.ts (`ROUTING[mode]`, plain data: kinds, owner groups, "me", escalations)
+ *     table in policy/routing.ts (`ROUTING[mode]`, plain data: kinds, owner groups, "me", escalations,
+ *     site matters, and `owned` rules for a regional HRBP named in Settings)
  *
  * ── How a new figure, KPI, finding, view or tab declares its access ──────────────────────────
  *
@@ -171,6 +190,7 @@ export { useAccess, useAt, useCan, useDecision, useLock, useScope } from './hook
 export {
   escalationRank,
   isMine,
+  isSiteMatter,
   itemInScope,
   itemShown,
   itemsShown,
@@ -202,6 +222,7 @@ export {
   type DecideInfo,
   type Decision,
   decide,
+  decideUnder,
   firstManagerTab,
   firstShownTab,
   hidesMetricId,
@@ -222,6 +243,7 @@ export {
   type PolicyOverrides,
   placeLabel,
   policyOf,
+  policyOverrides,
   policyVersion,
   ROLE_POLICY,
   type RolePolicy,

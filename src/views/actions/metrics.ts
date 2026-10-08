@@ -48,6 +48,7 @@ export const ITEM_USES: readonly FieldRef[] = [
   'candidates.currentStage',
   'candidates.hiredDate',
   'candidates.hmDate',
+  'candidates.lastActivityDate',
   'candidates.nextEventDate',
   'candidates.offerDate',
   'candidates.onsiteDate',

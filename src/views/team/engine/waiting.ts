@@ -1,48 +1,64 @@
 /**
- * My team, Waiting on this org (docs/ROLES.md 2.2, docs/DESIGN-REFRESH.md 4.2): the Action
- * center's open items that the scope's leader or someone in their org owns, anywhere in the
- * company, the leader's own first. The items are the Action center's (`collectActions` for the
- * same context), kept to what Manager mode lists. Pure.
+ * My team's Needs attention (docs/ROLES-V2.md 5.12; docs/ROLES.md 2.2): the Action center's split
+ * for Manager mode over the views it shows, so the page, the masthead and the Action center agree
+ * (6.2, check 1). "Needs attention" is the manager's own items (interview decisions on their reqs,
+ * probation decisions, the training item for their team, stay conversations); "Waiting on others"
+ * holds the rest of their area, such as day-one contingencies held by People operations. Items are
+ * open in this browser by the marks the Action center keeps (a changed roll-up reopens). In
+ * Developer mode, previewing a leader's page, the same split is made with Manager mode's lists and
+ * the leader as the manager. Pure.
  */
-import { itemShown } from '@/access/items'
+import { itemShown, lensOf, roleItems } from '@/access/items'
 import type { Kpi } from '@/components/types'
 import type { AnalyticsContext } from '@/data/context'
-import { actionKpis, type Collected, compareActions, type OpenAction } from '@/views/actions/engine'
+import { actionKpis, type Collected, type OpenAction, roleView, settingsOf } from '@/views/actions/engine'
 import { M as ACTIONS } from '@/views/actions/metrics'
-import { managerAnswers } from './sources'
+import { managerAnswers, teamLeader } from './sources'
 
-/** How many items the page lists before "Open the Action center". */
+/** How many items the page lists before "Show all" (the Action center lists every one). */
 export const WAITING_SHOWN = 10
 
-/**
- * Open items owned by the leader or someone in their org (the Action center's "My team" relation),
- * that Manager mode lists, the leader's own first, then by severity and due date.
- */
-export function waitingItems(
-  ctx: AnalyticsContext,
-  collected: Collected,
-  isOpen: (id: string) => boolean,
-): OpenAction[] {
-  const manager = managerAnswers(ctx)
-  return collected.items
-    .filter((a) => (a.team === 'leader' || a.team === 'org') && isOpen(a.id) && itemShown(manager, a.item))
-    .sort((a, b) => (a.team === 'leader' ? 0 : 1) - (b.team === 'leader' ? 0 : 1) || compareActions(a, b))
+export interface TeamLists {
+  /** The manager's own open items, most pressing first. */
+  needs: OpenAction[]
+  /** Open items in their area that someone else holds. */
+  waiting: OpenAction[]
 }
 
-/**
- * The tile: the Action center's "Open items" count over the items the org owns, opening the same
- * items and the Action center from its label.
- */
-export function waitingKpi(ctx: AnalyticsContext, items: readonly OpenAction[]): Kpi | null {
-  const open = actionKpis(items, ctx).find((k) => k.metricId === ACTIONS.open)
+/** The two lists for the org on screen, over the items open in this browser. */
+export function teamLists(
+  ctx: AnalyticsContext,
+  collected: Collected,
+  isOpen: (a: OpenAction) => boolean,
+): TeamLists {
+  if (ctx.access.mode === 'manager') {
+    const v = roleView(collected, ctx, isOpen)
+    return { needs: v.needs, waiting: v.waiting }
+  }
+  // A preview: Manager mode's lists, with the leader on screen as the manager.
+  const leader = teamLeader(ctx)
+  const answers = managerAnswers(ctx)
+  const items = collected.items.filter((a) => isOpen(a) && itemShown(answers, a.item))
+  const lens = {
+    ...lensOf({ mode: 'manager', scope: null, lock: null }, ctx.asOf, settingsOf(ctx.metrics).escalationDays),
+    me: leader,
+  }
+  const r = roleItems(items, lens)
+  return { needs: r.needs, waiting: r.waiting }
+}
+
+/** The tile: Needs attention's count, opening the same items and the Action center from its label. */
+export function waitingKpi(ctx: AnalyticsContext, needs: readonly OpenAction[]): Kpi | null {
+  const open = actionKpis(needs, ctx).find((k) => k.metricId === ACTIONS.open)
   if (!open) return null
-  const leader = items.filter((a) => a.team === 'leader').length
+  const overdue = needs.filter((a) => a.item.due && a.item.due < ctx.asOf).length
   return {
     ...open,
     id: 'waiting',
-    // The items the org holds, not the ones about it (the masthead and Action center count both).
-    label: 'Owned by people in this org',
-    note: leader ? `Open items, ${leader} the leader's own` : 'Open items they hold, not those about the org',
+    label: 'Needs attention',
+    note: needs.length
+      ? `Your own open items${overdue ? `, ${overdue} overdue` : ''}`
+      : 'Nothing is waiting on you',
     link: { view: 'actions', label: 'Action center' },
   }
 }

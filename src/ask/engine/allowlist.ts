@@ -17,6 +17,8 @@
  * candidates). A job family is the broad group (Silicon Engineering) and contains job functions
  * (Design RTL).
  */
+import { modeName } from '@/access/copy'
+import type { Mode } from '@/access/modes'
 import type { AnalyticsContext } from '@/data/context'
 import type { JobArchitecture } from '@/data/lists/jobs'
 import type { FieldRef } from '@/data/quality/fieldRef'
@@ -189,6 +191,8 @@ export const DECLINE_REASONS_NEED = 'metric:recruiting.offers.declineReasons'
 /** What `fieldShown` asks of the mode. */
 export interface FieldAccess {
   can(surface: string): boolean
+  /** The mode, for the reason a field is not read (absent: "this mode"). */
+  mode?: Mode
 }
 
 /** Whether the mode lets Ask read a field (true without an access answer, as in tests). */
@@ -580,11 +584,11 @@ export const groupableFields = (d: QueryDataset): QueryField[] => d.fields.filte
 export const shownFields = (d: QueryDataset, access?: FieldAccess | null): QueryField[] =>
   d.fields.filter((f) => fieldShown(f, access))
 
-const NEEDS_REASON: Readonly<Record<string, string>> = {
-  'metric:hrbp.quality.score':
-    'Quality of hire is not shown in Manager mode, so Ask does not read education.',
-  'metric:hrbp.declines.rate':
-    'Offer declines is not shown in Manager mode, so Ask does not read offer details.',
+const NEEDS_REASON: Readonly<Record<string, (mode: string) => string>> = {
+  'metric:hrbp.quality.score': (mode) =>
+    `Quality of hire is not shown in ${mode}, so Ask does not read education.`,
+  'metric:hrbp.declines.rate': (mode) =>
+    `Offer declines is not shown in ${mode}, so Ask does not read offer details.`,
 }
 
 /** A dataset as the mode lets Ask read it: the fields it hides move to `denied`, with the reason. */
@@ -592,7 +596,9 @@ export function readableDataset(d: QueryDataset, access?: FieldAccess | null): Q
   const hidden = d.fields.filter((f) => !fieldShown(f, access))
   if (!hidden.length) return d
   const denied = new Map(d.denied)
-  for (const f of hidden) denied.set(f.name, (f.needs && NEEDS_REASON[f.needs]) ?? 'Not shown in this mode.')
+  const mode = access?.mode ? modeName(access.mode) : 'this mode'
+  for (const f of hidden)
+    denied.set(f.name, (f.needs && NEEDS_REASON[f.needs]?.(mode)) ?? `Not shown in ${mode}.`)
   return { ...d, fields: d.fields.filter((f) => !hidden.includes(f)), denied }
 }
 

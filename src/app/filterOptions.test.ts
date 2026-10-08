@@ -1,10 +1,15 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
+import { accessFor } from '@/access/context'
+import { MODES } from '@/access/modes'
+import { setPolicyOverrides } from '@/access/policy'
+import { hidden } from '@/access/policy/types'
 import { activeEmployees, smallExcludedValues } from '@/data/exclusion'
 import type { Employee } from '@/data/schema'
 import { buildOrgIndex, DEFAULT_FILTERS, type Filters, withMode } from '@/data/scope'
 import {
   customRangeError,
   dimensionOptions,
+  filterRowParts,
   leaderChain,
   leaderOptions,
   offersExclude,
@@ -271,5 +276,57 @@ describe('offersExclude (Finance filters by whole business units)', () => {
       expect(offersExclude('hrbp-region', k)).toBe(true)
     }
     expect(offersExclude('finance', 'businessUnit')).toBe(false)
+  })
+})
+
+describe('filterRowParts (each control by its filter:* decision)', () => {
+  afterEach(() => setPolicyOverrides(null))
+
+  it('gives Finance the saved views, the period and the business unit, include only', () => {
+    const fin = filterRowParts(accessFor('finance'))
+    expect(fin).toMatchObject({
+      views: true,
+      period: true,
+      leader: false,
+      leaderExclude: false,
+      chain: false,
+      dims: ['businessUnit'],
+      standard: 'read-only',
+    })
+    expect(offersExclude('finance', 'businessUnit')).toBe(false)
+  })
+
+  it('gives every other mode the full row, with the data standard fixed in Manager mode', () => {
+    for (const mode of MODES) {
+      if (mode === 'finance') continue
+      const p = filterRowParts(accessFor(mode))
+      expect(p.dims, mode).toEqual(['businessUnit', 'department', 'location', 'level'])
+      expect(p.period && p.views && p.chips && p.reset && p.inScope, mode).toBe(true)
+      expect(p.leader, mode).toBe(true)
+      expect(p.standard, mode).toBe(mode === 'manager' ? 'read-only' : 'shown')
+    }
+    // Manager's leader is pinned: it has no Include / Exclude switch.
+    expect(filterRowParts(accessFor('manager')).leaderExclude).toBe(false)
+    expect(filterRowParts(accessFor('hr')).leaderExclude).toBe(true)
+  })
+
+  it('follows an override of a filter:* surface (the Security center)', () => {
+    setPolicyOverrides(
+      new Map([
+        [
+          'hr-ops',
+          new Map([
+            ['filter:period', hidden('Test.')],
+            ['filter:lists', hidden('Test.')],
+            ['filter:standard', hidden('Test.')],
+          ]),
+        ],
+      ]),
+    )
+    const p = filterRowParts(accessFor('hr-ops'))
+    expect(p.period).toBe(false)
+    expect(p.dims).toEqual([])
+    expect(p.standard).toBe('hidden')
+    expect(filterRowParts(accessFor('hr')).period).toBe(true)
   })
 })

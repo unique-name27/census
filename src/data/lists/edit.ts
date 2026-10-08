@@ -50,7 +50,12 @@ const who = (s: string | null | undefined) => (s?.trim() ? s.trim() : null)
 /** Trimmed, inner spaces collapsed. */
 export const cleanName = (s: unknown): string => (typeof s === 'string' ? s.replace(/\s+/g, ' ').trim() : '')
 
-const lower = (s: string) => s.toLowerCase()
+/** Lower case for a sentence, keeping acronyms: "HR business partner", "business units". */
+const lower = (s: string) =>
+  s
+    .split(' ')
+    .map((w) => (/^[A-Z0-9]{2,}$/.test(w) ? w : w.toLowerCase()))
+    .join(' ')
 
 /** A copy that shares nothing with the original. */
 export function cloneValue(v: ListValue): ListValue {
@@ -467,7 +472,11 @@ function opsFor(
       return {
         ok: true,
         ops: [{ op: 'save', list: id, before: saved ? cloneSaved(saved) : null, after }],
-        what: after.always ? `Kept checking the data against ${many}.` : `Made ${many} official.`,
+        what: after.always
+          ? def.refs.length
+            ? `Kept checking the data against ${many}.`
+            : `Kept using ${many}.`
+          : `Made ${many} official.`,
       }
     }
     case 'replace': {

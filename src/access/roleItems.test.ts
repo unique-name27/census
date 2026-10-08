@@ -12,7 +12,7 @@ import { KIND_LABEL } from '@/views/actions/engine/kind'
 import { everyMode } from '@/views/actions/engine/roleKit'
 import { VIEWS } from '@/views/registry'
 import { ACTION_OWNER_LABEL, type ActionItem, type ActionOwnerRole } from '@/views/types'
-import { escalationRank, isMine, type RoleLens, type RoutedItem, roleItems } from './items'
+import { escalationRank, isMine, isSiteMatter, type RoleLens, type RoutedItem, roleItems } from './items'
 import { MODES, type Mode } from './modes'
 import { can } from './policy'
 import { itemKindOf, kindMatches, ROUTING, routingText } from './policy/routing'
@@ -79,6 +79,41 @@ describe('roleItems', () => {
     expect(ids(r.needs)).toEqual(['onboarding:probation:E5'])
     expect(ids(r.waiting)).toEqual(['talent:training-overdue:E3'])
     expect(r.left).toBe(1)
+  })
+
+  it("gives a regional HR business partner named in Settings their own items and the region's site matters", () => {
+    const yaWen = { id: 'E10458', name: 'Ya-Wen Chang' }
+    const own = routed('hrbp:span:E11501', 'hrbp', { ownerId: 'E10458', ownerName: 'Ya-Wen Chang' })
+    const unitHrbp = routed('hrbp:span:E10668', 'hrbp', { ownerId: 'E10963', ownerName: 'Amanda Sullivan' })
+    const promotion = routed('talent:promotion-overdue:Silicon Engineering', 'hrbp', {
+      ownerId: 'E11217',
+      ownerName: 'Michael Thomas',
+      place: { businessUnit: 'Silicon Engineering', region: null, location: null },
+    })
+    const readiness = routed('listening:readiness:APAC', 'it', { place: { region: 'APAC' } })
+    const exit = routed('listening:exit:Bengaluru', 'total-rewards', {
+      place: { businessUnit: null, location: 'Bengaluru', region: 'APAC' },
+    })
+    const queue = routed('hrbp:span:E10542', 'hrbp', { ownerName: 'HR business partners' })
+    const review = routed('recruiting:review:APP-1', 'recruiter', { ownerId: 'E9', ownerName: 'Maya Chen' })
+    const all = [own, unitHrbp, promotion, readiness, exit, queue, review]
+
+    // Named: their own items and the site matters they co-own; the unit HRBPs keep theirs.
+    const named = roleItems(all, lens('hrbp-region', yaWen))
+    expect(ids(named.needs)).toEqual([own, readiness, exit, queue].map((x) => x.item.id))
+    expect(ids(named.waiting)).toEqual([unitHrbp, promotion, review].map((x) => x.item.id))
+
+    // Nobody named: region items route by kind inside the scope, as in HRBP for a business unit.
+    const byKind = roleItems(all, lens('hrbp-region'))
+    expect(ids(byKind.needs)).toEqual([own, unitHrbp, promotion, queue].map((x) => x.item.id))
+    expect(ids(byKind.waiting)).toEqual([readiness, exit, review].map((x) => x.item.id))
+    expect(roleItems(all, lens('hrbp-unit'))).toEqual({ ...byKind })
+
+    // A site matter is about a place, never one person.
+    expect(isSiteMatter(exit.item)).toBe(true)
+    expect(isSiteMatter(promotion.item)).toBe(false)
+    const aboutPerson = { kind: 'employees' as const, id: 'E11501', label: 'A manager' }
+    expect(isSiteMatter({ ...own.item, subject: aboutPerson, place: { location: 'Hsinchu' } })).toBe(false)
   })
 
   it('matches "me" by employee ID, else by name, and says nothing without a person', () => {
@@ -285,6 +320,20 @@ describe('each mode on the sample', () => {
       const seen = new Set([...lists.needs, ...lists.waiting].map((a) => a.id))
       expect(seen.size, mode).toBe(lists.needs.length + lists.waiting.length)
     }
+  })
+
+  it("routes HRBP for a region to the sample's regional HR business partner", () => {
+    const rgn = modes.find((m) => m.mode === 'hrbp-region')!
+    const s = rgn.ctx.access.scope
+    expect(s?.kind === 'region' && s.owner).toEqual({ name: 'Ya-Wen Chang', id: 'E10458' })
+    const needs = rgn.lists.needs
+    expect(needs.length).toBeGreaterThan(0)
+    // Every item they need to act on is theirs or about a site or the region.
+    for (const a of needs) expect(a.ownerId === 'E10458' || isSiteMatter(a.item) || a.isTeam, a.id).toBe(true)
+    expect(needs.some((a) => isSiteMatter(a.item))).toBe(true)
+    // Another HR business partner's items about people in the region wait on them.
+    const others = rgn.lists.waiting.filter((a) => a.role === 'hrbp' && a.ownerId && a.ownerId !== 'E10458')
+    expect(others.length).toBeGreaterThan(0)
   })
 
   it('collects the same items whichever views array a reader passes', () => {

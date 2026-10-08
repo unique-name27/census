@@ -66,6 +66,7 @@ export {
   type AskAction,
   type AskApp,
   type FigureData,
+  pickOfMode,
   type SavedViewInfo,
   type ScreenFigure,
   type ScreenRecords,
@@ -174,11 +175,13 @@ export { AMOUNT_WITHHELD, TOKEN_RE, TokenMap, tokenText } from './privacy'
 export {
   managerPromptLine,
   ROUND_LIMIT_NOTE,
+  rolePromptLine,
   SYSTEM_PROMPT,
   screenPrompt,
   systemBlocksFor,
 } from './prompt'
 export { type RefEntry, RefRegistry } from './refs'
+export { askNeedsPick, askOff, scopeText } from './roles'
 export {
   askOffReason,
   chatContext,

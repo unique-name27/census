@@ -35,7 +35,12 @@ import { aboveExpectedRow, daysWords } from '../engine/findings'
 import { DECLINES_FIGURES as F } from '../engine/ids'
 import { DM } from '../engine/metrics'
 import type { ReasonRow, ThemeRow } from '../engine/reasons'
-import { CANDIDATE_SURVEY, type SurveyNpsRow, type SurveyReasonRow } from '../engine/survey'
+import {
+  CANDIDATE_SURVEY,
+  candidateSurveyShown,
+  type SurveyNpsRow,
+  type SurveyReasonRow,
+} from '../engine/survey'
 import { type BucketRow, DECIDE_BUCKETS } from '../engine/timing'
 import { COMPANY_SERIES, type QuarterRow } from '../engine/trend'
 import { ParetoChart } from './ParetoChart'
@@ -60,7 +65,6 @@ export function Panel({ def, model: m, ctx, offscreen }: AnalysisPanelProps<Decl
   const lead = useChartHeight('lead')
   const standard = useChartHeight('standard')
   const dataRoom = useRouteShown('data')
-  const listening = useRouteShown('listening')
   const [chosenCut, setCut] = useState<CutKey>('level')
   const cut = offscreen ? 'level' : chosenCut
   const s = m.settings
@@ -267,7 +271,9 @@ export function Panel({ def, model: m, ctx, offscreen }: AnalysisPanelProps<Decl
   const rangeGap = gap(F.rangePosition)
 
   /* ───────── survey and next steps ───────── */
-  const survey = m.survey && listening ? m.survey : null
+  // The survey shows only where the mode shows its Listening tab and the figure (Compensation mode
+  // hides Candidates & hiring), and the section is titled for what it holds.
+  const survey = m.survey && candidateSurveyShown(ctx) ? m.survey : null
   const program = programOf.get(CANDIDATE_SURVEY)
   const surveyRows: SurveyTableRow[] = survey
     ? [

@@ -282,7 +282,8 @@ export interface CensusState extends Settings {
   openSettings: (section?: SettingsSection | null, focus?: string) => void
   closeSettings: () => void
   /** The settings as a JSON file (never pay amounts). */
-  exportSettings: () => Blob
+  /** `extra.accessDraft`: the Security center's draft section, which the settings file carries too. */
+  exportSettings: (extra?: { accessDraft?: unknown }) => Blob
   /** Apply a settings file's text or parsed JSON; invalid fields keep their current values. */
   importSettings: (json: unknown) => ImportSettingsResult
   /** Delete everything Census stored on this device and start over on the sample with default settings. */
@@ -824,7 +825,7 @@ export const useCensus = create<CensusState>((set, getState) => {
     closeSettings() {
       set((s) => ({ settingsOpen: { ...s.settingsOpen, open: false } }))
     },
-    exportSettings: () =>
+    exportSettings: (extra) =>
       settingsBlob(
         { ...pickSettings(getState()), dataStandard: savedStandard },
         new Date(),
@@ -834,6 +835,7 @@ export const useCensus = create<CensusState>((set, getState) => {
         LS.get<unknown>(VIEWS_KEY.replace(/^census:/, ''), null) == null
           ? undefined
           : viewsFileSection(loadViews((v) => ROUTE_VIEWS.includes(v as RouteView))),
+        extra?.accessDraft,
       ),
     importSettings(json) {
       const st = getState()
@@ -1077,7 +1079,8 @@ export const useCensus = create<CensusState>((set, getState) => {
 export const openSettings = (section?: SettingsSection | null, focus?: string): void =>
   useCensus.getState().openSettings(section, focus)
 export const closeSettings = (): void => useCensus.getState().closeSettings()
-export const exportSettings = (): Blob => useCensus.getState().exportSettings()
+export const exportSettings = (extra?: { accessDraft?: unknown }): Blob =>
+  useCensus.getState().exportSettings(extra)
 export const importSettings = (json: unknown): ImportSettingsResult =>
   useCensus.getState().importSettings(json)
 export const clearDevice = (): Promise<void> => useCensus.getState().clearDevice()

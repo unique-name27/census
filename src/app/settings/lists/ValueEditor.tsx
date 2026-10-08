@@ -219,27 +219,30 @@ export function ValueEditor({
         </IconButton>
       </div>
 
-      <div className="flex flex-col gap-1">
-        <span className={LABEL}>Used in</span>
-        {byRef.length ? (
-          <ul className="flex flex-col gap-0.5 text-small text-ink-2">
-            {byRef.map(([ref, idx]) => (
-              <li key={ref} className="flex items-baseline justify-between gap-3">
-                <span className="min-w-0 truncate">{fieldLabel(ref)}</span>
-                <Drill
-                  spec={drillFor(ref, idx)}
-                  label={`Show the ${rowsText(idx.length)} in ${fieldLabel(ref)}`}
-                  className="shrink-0 font-semibold text-ink tnum"
-                >
-                  {rowsText(idx.length)}
-                </Drill>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="text-small text-ink-2">No rows in the data use it.</p>
-        )}
-      </div>
+      {/* A list no field is checked against (Regions) has no rows to show. */}
+      {def.refs.length > 0 && (
+        <div className="flex flex-col gap-1">
+          <span className={LABEL}>Used in</span>
+          {byRef.length ? (
+            <ul className="flex flex-col gap-0.5 text-small text-ink-2">
+              {byRef.map(([ref, idx]) => (
+                <li key={ref} className="flex items-baseline justify-between gap-3">
+                  <span className="min-w-0 truncate">{fieldLabel(ref)}</span>
+                  <Drill
+                    spec={drillFor(ref, idx)}
+                    label={`Show the ${rowsText(idx.length)} in ${fieldLabel(ref)}`}
+                    className="shrink-0 font-semibold text-ink tnum"
+                  >
+                    {rowsText(idx.length)}
+                  </Drill>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-small text-ink-2">No rows in the data use it.</p>
+          )}
+        </div>
+      )}
 
       {canRename && (
         <div className={BLOCK}>
@@ -364,64 +367,68 @@ export function ValueEditor({
         </div>
       )}
 
-      <div className={BLOCK}>
-        <span className={LABEL}>{value.retired ? 'Retired' : 'Retire'}</span>
-        {value.retired ? (
-          <>
-            <p className="text-meta text-ink-2">
-              Older rows that use it are still recognized. Restore it to offer it in template dropdowns again.
-            </p>
-            <div>
-              <Button
-                size="sm"
-                onClick={() => run('retire', { kind: 'restore', list: def.id, value: value.value })}
-              >
-                Restore
-              </Button>
-            </div>
-          </>
-        ) : (
-          <>
-            <p className="text-meta text-ink-2">
-              A retired value stays recognized in older rows but leaves the template dropdowns.
-              {rows ? ` ${intText(rows)} ${rows === 1 ? 'row uses' : 'rows use'} it now.` : ''}
-            </p>
-            <div className="flex flex-wrap items-center gap-2">
-              {def.kind !== 'fixed' && (
-                <Select
-                  label="Replaced by"
-                  value={replacedBy}
-                  onChange={setReplacedBy}
-                  className="w-56 max-w-full"
+      {/* A list that describes the data (Regions) keeps every value Census reads. */}
+      {!def.reads && (
+        <div className={BLOCK}>
+          <span className={LABEL}>{value.retired ? 'Retired' : 'Retire'}</span>
+          {value.retired ? (
+            <>
+              <p className="text-meta text-ink-2">
+                Older rows that use it are still recognized. Restore it to offer it in template dropdowns
+                again.
+              </p>
+              <div>
+                <Button
+                  size="sm"
+                  onClick={() => run('retire', { kind: 'restore', list: def.id, value: value.value })}
                 >
-                  <option value="">No replacement</option>
-                  {list.values
-                    .filter((v) => !v.retired && v.value !== value.value)
-                    .map((v) => (
-                      <option key={v.value} value={v.value}>
-                        Replaced by {v.value}
-                      </option>
-                    ))}
-                </Select>
-              )}
-              <Button
-                size="sm"
-                onClick={() =>
-                  run('retire', {
-                    kind: 'retire',
-                    list: def.id,
-                    value: value.value,
-                    replacedBy: replacedBy || null,
-                  })
-                }
-              >
-                Retire
-              </Button>
-            </div>
-          </>
-        )}
-        {err('retire')}
-      </div>
+                  Restore
+                </Button>
+              </div>
+            </>
+          ) : (
+            <>
+              <p className="text-meta text-ink-2">
+                A retired value stays recognized in older rows but leaves the template dropdowns.
+                {rows ? ` ${intText(rows)} ${rows === 1 ? 'row uses' : 'rows use'} it now.` : ''}
+              </p>
+              <div className="flex flex-wrap items-center gap-2">
+                {def.kind !== 'fixed' && (
+                  <Select
+                    label="Replaced by"
+                    value={replacedBy}
+                    onChange={setReplacedBy}
+                    className="w-56 max-w-full"
+                  >
+                    <option value="">No replacement</option>
+                    {list.values
+                      .filter((v) => !v.retired && v.value !== value.value)
+                      .map((v) => (
+                        <option key={v.value} value={v.value}>
+                          Replaced by {v.value}
+                        </option>
+                      ))}
+                  </Select>
+                )}
+                <Button
+                  size="sm"
+                  onClick={() =>
+                    run('retire', {
+                      kind: 'retire',
+                      list: def.id,
+                      value: value.value,
+                      replacedBy: replacedBy || null,
+                    })
+                  }
+                >
+                  Retire
+                </Button>
+              </div>
+            </>
+          )}
+          {err('retire')}
+        </div>
+      )}
 
       {value.added && rows === 0 && (
         <div className={BLOCK}>

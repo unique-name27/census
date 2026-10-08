@@ -12,7 +12,7 @@ import { NOT_SECURITY_LONG, PICKER_COPY } from '../copy'
 import { PICK_OF } from '../modes'
 import { openPicker, useMode } from '../store'
 import { ModeChoices } from './ModeMenu'
-import { showingLine } from './pickModel'
+import { regionOwnerText, showingLine } from './pickModel'
 
 export function ModeSection() {
   const { access } = useAnalytics()
@@ -20,6 +20,7 @@ export function ModeSection() {
   // The mode as the page shows it, so the line names the scope on screen.
   const kind = PICK_OF[access.mode]
   const line = showingLine(access.mode, access.scope, access.unset, { recruiter })
+  const owner = regionOwnerText(access.scope, access.unset, access.can('settings:lists'))
   return (
     <SettingsBlock section="mode" intro={NOT_SECURITY_LONG}>
       <ModeChoices />
@@ -29,6 +30,7 @@ export function ModeSection() {
           <Button size="sm" onClick={() => openPicker(kind)}>
             {PICKER_COPY[kind].change}
           </Button>
+          {owner && <p className="basis-full max-w-[60ch] text-meta leading-snug text-ink-2">{owner}</p>}
         </div>
       )}
       {/* Developer mode: the debug overlay switches (docs/ROLES.md, 5.8). */}

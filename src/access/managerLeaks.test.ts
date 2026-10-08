@@ -21,6 +21,7 @@ import { buildGlossary } from '@/help/glossary'
 import { blockTexts } from '@/help/markup'
 import { buildIndex, search } from '@/help/search'
 import { TOURS } from '@/help/tours'
+import type { Block } from '@/help/types'
 import { METRICS } from '@/metrics/catalog'
 import { computeOnboarding } from '@/views/onboarding/engine'
 import { blockingWords, CONTINGENCY_TASKS, isI9Task } from '@/views/onboarding/engine/upcoming'
@@ -271,10 +272,14 @@ describe('Help, Report a problem and notices say only what the mode shows', () =
       ).not.toContain(article)
       for (const t of r.terms) expect(t.entry.id, q).not.toMatch(/^org\.scenario\.|^talent\.retention\./)
     }
-    // HR keeps everything.
+    // HR keeps everything it shows: every section, the usual summary. (Blocks written for one
+    // mode, such as Manager's "successor outside your org", are left out of HR's.)
     const usual = articleById('view-talent')!
     const full = articleInMode(hr.access, usual)
-    expect([full.body, full.summary]).toEqual([usual.body, usual.summary])
+    const headings = (body: readonly Block[]) => body.flatMap((b) => ('h' in b ? [b.h] : []))
+    expect(headings(full.body)).toEqual(headings(usual.body))
+    expect(full.summary).toBe(usual.summary)
+    expect(full.body.flatMap((b) => blockTexts(b)).join(' ')).toMatch(/flight-risk score from 0 to 100/)
     expect(full.keywords).toContain('flight risk')
     expect(
       search(buildIndex(articlesInMode(hr.access, ARTICLES), glossary), 'reorg').articles.length,

@@ -21,11 +21,12 @@
 import { VIEW_LABEL } from '@/data/schema'
 import type { Route, RouteView } from '@/data/store'
 import { hiddenPageTitle, hiddenTabTitle, openedInstead, openedTabInstead } from '../copy'
-import { HOME_OF, homeOf, type Mode } from '../modes'
+import { homeOf, homeViewOf, type Mode, type PayView, type RoleOverrides, setRoleOverrides } from '../modes'
+import { overlayTable, overrideDecision } from '../overrides/overlay'
+import { setPayOverrides } from '../pay'
 import type { SurfaceId } from '../surfaces'
 import { decideChro } from './chro'
 import { COMPENSATION_POLICY } from './compensation'
-import { isGuardedDeveloperSurface } from './developer'
 import { FINANCE_POLICY } from './finance'
 import { decideHr } from './hr'
 import { HRBP_REGION_POLICY, HRBP_UNIT_POLICY } from './hrbp'
@@ -71,57 +72,134 @@ export const ROLE_POLICY: Readonly<Record<TableMode, RolePolicy>> = {
   manager: MANAGER_POLICY,
 }
 
-/** The table a mode is answered by, or null for Developer, HR and CHRO. */
-export const policyOf = (mode: Mode): RolePolicy | null => (isTableMode(mode) ? ROLE_POLICY[mode] : null)
+/** The table a mode is answered by, with the overrides in force laid over it; null for Developer, HR and CHRO. */
+export const policyOf = (mode: Mode): RolePolicy | null =>
+  isTableMode(mode) ? tableUnder(overrides, mode) : null
 
 /* ───────────── overrides (docs/SECURITY-CENTER.md) ───────────── */
 
-/** Exact surface decisions per mode laid over the defaults (the policy file in force). */
+/**
+ * Surface decisions per mode laid over the defaults (the policy file in force). Two kinds of key
+ * are role settings rather than surfaces: `role:offered` hidden leaves the mode out of the Mode
+ * menu, and `role:home:<view>` shown makes that view the mode's home (`src/access/overrides`).
+ */
 export type PolicyOverrides = ReadonlyMap<Mode, ReadonlyMap<string, Decision>>
 
 let overrides: PolicyOverrides | null = null
 let version = 0
 
+/** Each table mode's table with a policy's overrides written in, built once per overrides object. */
+const tables = new WeakMap<PolicyOverrides, Map<TableMode, RolePolicy>>()
+
+function tableUnder(ov: PolicyOverrides | null, mode: TableMode): RolePolicy {
+  const own = ov?.get(mode)
+  if (!ov || !own?.size) return ROLE_POLICY[mode]
+  let byMode = tables.get(ov)
+  if (!byMode) {
+    byMode = new Map()
+    tables.set(ov, byMode)
+  }
+  let t = byMode.get(mode)
+  if (!t) {
+    t = overlayTable(ROLE_POLICY[mode], own)
+    byMode.set(mode, t)
+  }
+  return t
+}
+
 /**
  * Lay a policy file's decisions over the defaults (null: the defaults alone). Developer mode is
- * never overridden, and a Developer-only surface never shows in another mode. Bumps `policyVersion`
- * so callers that cache decisions can tell.
+ * never overridden, and a Developer-only surface never shows in another mode. A view an override
+ * hides takes its tabs, figures and metrics with it; one it shows brings them back
+ * (`src/access/overrides/overlay.ts`). The pay surfaces set the mode's pay view, and the role
+ * settings its home and its place in the Mode menu. Bumps `policyVersion` so callers that cache
+ * decisions can tell.
  */
 export function setPolicyOverrides(next: PolicyOverrides | null): void {
   overrides = next?.size ? next : null
+  setRoleOverrides(roleSettingsOf(overrides))
+  setPayOverrides(payViewsUnder(overrides))
   version++
 }
+
+/** The policy overrides in force (the Security center compares its draft with them). */
+export const policyOverrides = (): PolicyOverrides | null => overrides
 
 /** Changes whenever the overrides in force change. */
 export const policyVersion = (): number => version
 
-function overrideFor(mode: Mode, surface: string): Decision | undefined {
-  const o = overrides?.get(mode)?.get(surface)
-  if (!o) return undefined
-  if (o.access !== 'hidden' && isGuardedDeveloperSurface(surface)) return undefined
-  return o
+/** The home and Mode menu settings a policy's `role:` keys hold. */
+function roleSettingsOf(ov: PolicyOverrides | null): RoleOverrides | null {
+  if (!ov) return null
+  const home = new Map<Mode, RouteView>()
+  const offered = new Map<Mode, boolean>()
+  for (const [mode, own] of ov) {
+    if (mode === 'developer') continue
+    for (const [s, d] of own) {
+      if (s === 'role:offered') offered.set(mode, d.access !== 'hidden')
+      else if (s.startsWith('role:home:') && d.access !== 'hidden') home.set(mode, s.slice(10) as RouteView)
+    }
+  }
+  return home.size || offered.size ? { home, offered } : null
+}
+
+/** The pay view of every mode whose pay surfaces a policy changes: amounts, else totals, else none. */
+function payViewsUnder(ov: PolicyOverrides | null): ReadonlyMap<Mode, PayView> | null {
+  if (!ov) return null
+  const out = new Map<Mode, PayView>()
+  for (const [mode, own] of ov) {
+    if (mode === 'developer' || ![...own.keys()].some((s) => s.startsWith('pay:'))) continue
+    const on = (s: string) => decideUnder(ov, mode, s).access !== 'hidden'
+    out.set(mode, on('pay:amounts') && on('pay:switch') ? 'switch' : on('pay:totals') ? 'totals' : 'none')
+  }
+  return out.size ? out : null
 }
 
 /* ───────────── decide ───────────── */
 
-/** Shown, limited or hidden: the one answer for a surface in a mode. */
-export function decide(mode: Mode, surface: SurfaceId | string, at?: At, info?: DecideInfo): Decision {
+/**
+ * The decision for a surface under a given set of overrides (null: the built-in defaults). The
+ * Security center weighs its draft with it before anything is in force.
+ */
+export function decideUnder(
+  ov: PolicyOverrides | null,
+  mode: Mode,
+  surface: SurfaceId | string,
+  at?: At,
+  info?: DecideInfo,
+): Decision {
   if (mode === 'developer') return SHOWN
-  const o = overrides ? overrideFor(mode, surface) : undefined
-  if (o) return o
+  const own = ov?.get(mode)
+  if (own?.size) {
+    const o = overrideDecision(
+      own,
+      surface,
+      at,
+      info,
+      (view) =>
+        decideUnder(ov, mode, PAGE_KEYS.has(view) ? `page:${view}` : `view:${view}`).access === 'hidden',
+    )
+    if (o) return o
+  }
   if (mode === 'hr') return decideHr(surface, at)
   if (mode === 'chro') return decideChro(surface, at)
-  return decideTable(ROLE_POLICY[mode], surface, at, info)
+  return decideTable(tableUnder(ov, mode), surface, at, info)
+}
+
+/** Shown, limited or hidden: the one answer for a surface in a mode. */
+export function decide(mode: Mode, surface: SurfaceId | string, at?: At, info?: DecideInfo): Decision {
+  return decideUnder(overrides, mode, surface, at, info)
 }
 
 /** Anything but hidden. */
 export const can = (mode: Mode, surface: SurfaceId | string, at?: At, info?: DecideInfo): boolean =>
   decide(mode, surface, at, info).access !== 'hidden'
 
-/** Whether a metric id is on a table mode's hide lists or outside its allowlist; false elsewhere. */
+/** Whether a metric id is on a table mode's hide lists or outside its allowlist (or hidden by an override). */
 export function hidesMetricId(mode: Mode, id: string): boolean {
-  if (mode === 'developer' || mode === 'hr' || mode === 'chro') return false
-  return decideTable(ROLE_POLICY[mode], `metric:${id}`).access === 'hidden'
+  if (mode === 'developer') return false
+  if ((mode === 'hr' || mode === 'chro') && !overrides?.get(mode)?.size) return false
+  return decide(mode, `metric:${id}`).access === 'hidden'
 }
 
 /** Kept for Manager mode's callers. */
@@ -190,7 +268,7 @@ export function routeDecision(mode: Mode, route: Route): RouteDecision {
   const same: RouteDecision = { route, redirected: false }
   if (mode === 'developer') return same
   if (!placeShown(mode, route.view)) {
-    if (route.view === HOME_OF[mode]) return same
+    if (route.view === homeViewOf(mode)) return same
     return {
       route: homeOf(mode),
       redirected: true,

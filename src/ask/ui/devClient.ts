@@ -416,8 +416,11 @@ const lower = (s: string) => (/^[A-Z][a-z]/.test(s) ? s.charAt(0).toLowerCase() 
 const link = (label: string, ref: unknown) =>
   typeof ref === 'string' && ref ? `[${label}](ref:${ref})` : label
 
+/** A scope inside a sentence: "whole company" in lower case; a place, unit or person keeps its capitals. */
+const scopeWord = (s: string): string => s.replace(/^Whole company/, 'whole company')
+
 function scopeText(v: Json): string {
-  const scope = typeof v?.scope === 'string' ? lower(v.scope) : 'the scope you picked'
+  const scope = typeof v?.scope === 'string' ? scopeWord(v.scope) : 'the scope you picked'
   const period = typeof v?.period?.label === 'string' ? lower(v.period.label) : null
   return period ? `${scope}, ${period}` : scope
 }
@@ -456,7 +459,7 @@ function summaryText(v: Json): string[] {
     v.analysis
       ? `**${md(v.label)}, ${md(v.analysis)}** for ${
           w?.ignores_period
-            ? `${lower(typeof v.scope === 'string' ? v.scope : 'the scope you picked')}, ${md(lower(w.label))}`
+            ? `${typeof v.scope === 'string' ? scopeWord(v.scope) : 'the scope you picked'}, ${md(lower(w.label))}`
             : scopeText(v)
         }:`
       : `**${md(v.label)}** for ${scopeText(v)}:`,
@@ -534,6 +537,13 @@ function openItemsText(v: Json): string[] {
   const out = [
     `The Action center has ${link(`${num(v.open?.count ?? 0)} open items`, v.open?.ref)}: ${link(`${v.overdue?.count ?? 0} overdue`, v.overdue?.ref)}, ${link(`${v.critical?.count ?? 0} critical`, v.critical?.ref)} and ${link(`${v.due_soon?.count ?? 0} due within ${v.due_soon?.within_days ?? 7} days`, v.due_soon?.ref)}.`,
   ]
+  // A role mode lists its two lists; HR, CHRO and Developer count the escalations.
+  if (v.needs_attention)
+    out.push(
+      `${link(`${num(v.needs_attention.count ?? 0)} need your attention`, v.needs_attention.ref)} and ${link(`${num(v.waiting_on_others?.count ?? 0)} are waiting on others`, v.waiting_on_others?.ref)}.`,
+    )
+  else if (v.escalations)
+    out.push(`${link(`${num(v.escalations.count ?? 0)} are escalations`, v.escalations.ref)}.`)
   const groups: Json[] = [...(v.by_owner_group ?? [])]
     .sort((a, b) => (b.open ?? 0) - (a.open ?? 0))
     .slice(0, 5)
@@ -642,7 +652,7 @@ export interface ToolResult {
 }
 
 /** A tool's refusal says what is hidden; Ask answers for the person, not with the tool's instructions. */
-const HIDDEN_IN_MODE = /is not shown in (Manager|this) mode/
+const HIDDEN_IN_MODE = /is not (shown|available) in (this|[A-Z][A-Za-z ]*?) mode\b/
 const forReader = (error: unknown): string =>
   String(error)
     .replace(/\s*Say so, and do not estimate it\.?$/, '')

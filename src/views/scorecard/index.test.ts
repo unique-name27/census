@@ -8,7 +8,8 @@ import { OTHER_VIEWS } from './views'
 
 describe('the scorecard view', () => {
   it('reads every other view, in folder-tab order, without importing the registry', () => {
-    expect(OTHER_VIEWS).toEqual(VIEWS.filter((v) => v.key !== 'scorecard'))
+    // Home composes the Scorecard (it has no summary and no items): reading it back would be a cycle.
+    expect(OTHER_VIEWS).toEqual(VIEWS.filter((v) => v.key !== 'scorecard' && v.key !== 'home'))
     expect(VIEWS.find((v) => v.key === 'scorecard')).toBe(view)
   })
 

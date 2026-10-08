@@ -16,8 +16,10 @@
  * history entry is still the one on screen, else puts back only what the action changed (`undoState`)
  * as a new entry, as "Filter to this" does (src/drill/focus.ts).
  */
+
+import type { Mode, ModePicks } from '@/access/modes'
 import { routeDecision } from '@/access/policy'
-import { useMode } from '@/access/store'
+import { picksOfState, useMode } from '@/access/store'
 import type { FigureFacts, RegisteredFigure } from '@/charts/types'
 import { goTo } from '@/components/navigation'
 import { batchAddress, currentEntry, lensOn, setLensOn } from '@/data/address'
@@ -36,6 +38,7 @@ import {
   asLeft,
   type FigureData,
   figureHiddenFromAsk,
+  pickOfMode,
   type ScreenFigure,
   type ScreenRecords,
   type ScreenState,
@@ -301,6 +304,29 @@ const DIM_WORD: Readonly<Record<string, string>> = {
   level: 'level',
 }
 
+/**
+ * What the mode's clamp did to a saved view's filters, in a sentence, or null when it kept them:
+ * Manager mode replaces a leader outside the org, HRBP mode keeps its business unit or region,
+ * Finance keeps the business unit and period.
+ */
+function clampedWords(mode: Mode, picks: ModePicks, asked: Filters, now: Filters): string | null {
+  if (sameFilters(normalizeFilters(asked), normalizeFilters(now))) return null
+  switch (mode) {
+    case 'manager':
+      return asked.leaderId && now.leaderId !== asked.leaderId
+        ? "Manager mode keeps Census on the manager's org, so its leader was replaced."
+        : null
+    case 'hrbp-unit':
+      return `HRBP mode keeps Census on ${picks.unit ?? 'its business unit'}, so its filters outside it were left out.`
+    case 'hrbp-region':
+      return `HRBP mode keeps Census on ${picks.region ?? 'its region'}, so its locations outside it were left out.`
+    case 'finance':
+      return 'Finance mode filters by business unit and period only, so its other filters were left out.'
+    default:
+      return null
+  }
+}
+
 /** Apply a saved view as the Views menu does (one history entry), saying what of it was left out. */
 function applySavedView(id: string): { leftOut: string | null } {
   const view = useSavedViews.getState().views.find((v) => v.id === id)
@@ -328,12 +354,13 @@ function applySavedView(id: string): { leftOut: string | null } {
   }
   const sentences: string[] = []
   if (parts.length) sentences.push(`Not in the loaded data, so left out: ${parts.join('; ')}.`)
-  // The mode's guards, each with its own reason: the clamp replaced the leader, the route guard the page.
+  // The mode's guards, each with its own reason: the clamp kept the scope, the route guard the page.
   const now = useCensus.getState().filters
-  if (checked.scope.filters.leaderId && now.leaderId !== checked.scope.filters.leaderId)
-    sentences.push("Manager mode keeps Census on the manager's org, so its leader was replaced.")
+  const m = useMode.getState()
+  const kept = clampedWords(m.mode, picksOfState(m), checked.scope.filters, now)
+  if (kept) sentences.push(kept)
   if (page) {
-    const d = routeDecision(useMode.getState().mode, { view: page.view as RouteView, tab: page.tab })
+    const d = routeDecision(m.mode, { view: page.view as RouteView, tab: page.tab })
     if (d.redirected && d.reason)
       sentences.push(`Its page was not opened: ${d.reason.title.replace(/\.$/, '')}. ${d.reason.description}`)
   }
@@ -421,7 +448,7 @@ export const liveAskApp: AskApp = {
   figure,
   mode: () => {
     const m = useMode.getState()
-    return { mode: m.mode, managerId: m.managerId }
+    return { mode: m.mode, managerId: m.managerId, pick: pickOfMode(m.mode, picksOfState(m)) }
   },
 }
 

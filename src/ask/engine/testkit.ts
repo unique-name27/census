@@ -22,6 +22,7 @@ import {
   type AppSnapshot,
   type AskApp,
   type FigureData,
+  pickOfAccess,
   type SavedViewInfo,
   type ScreenRoute,
   type ScreenState,
@@ -256,12 +257,14 @@ export interface FakeAppOptions {
 
 /**
  * An `AskApp` over plain state, with a history stack, the mode's filter clamp and route guard
- * (as the store's guards apply them), for the engine's tests.
+ * (as the store's guards apply them), for the engine's tests. It reports the mode and its pick
+ * (`mode()`) as the live app does.
  */
 export function fakeApp(ctx: AnalyticsContext, o: FakeAppOptions = {}) {
-  const lock = ctx.access?.lock ?? null
+  const scope = ctx.access?.scope ?? ctx.access?.lock ?? null
   const mode = ctx.access?.mode ?? 'hr'
-  const guard = (f: Filters): Filters => clampFilters(normalizeFilters(f), lock)
+  // The store's filter guard: the mode's one clamp (every scope kind, and Finance's restriction).
+  const guard = (f: Filters): Filters => clampFilters(normalizeFilters(f), scope, mode)
   const start: FakeEntry = {
     route: o.route ?? { view: 'hrbp', tab: 'overview' },
     filters: guard(o.filters ?? ctx.filters),
@@ -272,7 +275,8 @@ export function fakeApp(ctx: AnalyticsContext, o: FakeAppOptions = {}) {
   let stack: DrillSpec[] = []
   let applied: string | null = null
   const events: { id: string; table: boolean }[] = []
-  const state = { actions: o.actions ?? true }
+  // Tests move these to play a change of mode or pick while an answer is being written.
+  const state: { actions: boolean; mode?: string; pick?: string | null } = { actions: o.actions ?? true }
   const now = () => history[at] as FakeEntry
   const push = (e: FakeEntry) => {
     history.splice(at + 1)
@@ -356,6 +360,11 @@ export function fakeApp(ctx: AnalyticsContext, o: FakeAppOptions = {}) {
       return { leftOut: null }
     },
     figure: async (id) => (o.figures ?? []).find((f) => f.id === id) ?? null,
+    mode: () => ({
+      mode: state.mode ?? mode,
+      managerId: ctx.access?.lock?.managerId ?? null,
+      pick: state.pick !== undefined ? state.pick : pickOfAccess({ ...ctx.access, scope }),
+    }),
   }
   return {
     app,

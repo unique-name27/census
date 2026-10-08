@@ -5,7 +5,8 @@
  * own answers. Pure.
  */
 import type { MetricsApi } from '@/metrics/types'
-import { type Mode, type ModePicks, PAY_OF, type PayView } from './modes'
+import type { Mode, ModePicks, PayView } from './modes'
+import { payView } from './pay'
 import { type At, type DecideInfo, type Decision, decide, policyVersion } from './policy'
 import type { OrgScope, ScopeLock } from './scopes/types'
 import type { SurfaceId } from './surfaces'
@@ -58,7 +59,7 @@ function scopeKey(s: ScopeLock | null): string {
     case 'unit':
       return `unit:${s.unit}:${s.label}:${s.size}:${s.memberIds.size}`
     case 'region':
-      return `region:${s.region}:${s.label}:${s.sites.join(',')}:${s.size}`
+      return `region:${s.region}:${s.label}:${s.sites.join(',')}:${s.size}:${s.owner?.id ?? ''}:${s.owner?.name ?? ''}`
     case 'reqs':
       return `reqs:${s.recruiter}:${s.asOf}:${s.reqIds.size}:${s.startIds.size}`
   }
@@ -92,7 +93,7 @@ export function accessFor(
     scope,
     lock: scope?.kind === 'org' ? scope : null,
     unset,
-    pay: PAY_OF[mode],
+    pay: payView(mode),
     decide: decideHere,
     can: (s, at, info) => decideHere(s, at, info).access !== 'hidden',
   }

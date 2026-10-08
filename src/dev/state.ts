@@ -4,9 +4,9 @@
  * filters; the Ask key and the workspace ID are never in it (only whether they are set). Pure: the
  * page passes a snapshot of the stores.
  */
-import type { Mode } from '@/access/modes'
-import { MODE_LABEL } from '@/access/modes'
+import { MODE_LABEL, MODE_OF_PICK, type Mode, type ModePicks, type PayView, PICK_KINDS } from '@/access/modes'
 import type { Access } from '@/access/policy'
+import type { ScopeKind } from '@/access/scopes/types'
 import type { AnalyticsContext } from '@/data/context'
 import { type DataStandard, STANDARD_LABEL, TIER_LABEL, type Tier } from '@/data/quality/tier'
 import type { DatasetVersion } from '@/data/quality/types'
@@ -14,6 +14,7 @@ import { DATASET_KEYS, type DatasetKey, datasetDef } from '@/data/schema'
 import { isEmployee } from '@/data/scope'
 import { fmt } from '@/lib/format'
 import { bytesText } from './overview'
+import { PICK_NOUN, pickLabel } from './roles'
 import { type StorageRow, storageTotals } from './storageKeys'
 
 export const COPY_NOTE = 'Copied state holds employee IDs from the filters. Use Report a problem for tickets.'
@@ -59,6 +60,8 @@ export interface StateInput {
   lens: boolean
   versions: Partial<Record<DatasetKey, DatasetVersion | null>>
   counts: Record<Mode, Record<Access, number>>
+  /** Every pick `census:mode` remembers (manager IDs, not names: the copy says IDs). */
+  picks?: Partial<ModePicks>
   savedViews: { count: number; applied: string | null; startup: string | null }
   panels: {
     drillDepth: number
@@ -75,6 +78,19 @@ export interface StateInput {
 }
 
 const onOff = (b: boolean) => (b ? 'On' : 'Off')
+
+const SCOPE_WORD: Record<ScopeKind, string> = {
+  org: "A manager's org",
+  unit: 'A business unit',
+  region: 'A region',
+  reqs: "A recruiter's reqs",
+}
+
+const PAY_WORD: Record<PayView, string> = {
+  switch: 'Amounts behind Show pay amounts',
+  totals: 'Cost totals only',
+  none: 'Ratios only',
+}
 const yes = (b: boolean) => (b ? 'Yes' : 'No')
 const json = (v: unknown) => JSON.stringify(v)
 
@@ -87,7 +103,7 @@ function peopleInScope(ctx: StateInput['ctx']): number {
 
 export function stateSections(s: StateInput): StateSection[] {
   const { ctx } = s
-  const lock = ctx.access.lock
+  const scope = ctx.access.scope
   const tiers = DATASET_KEYS.map((k) => ({ key: k, tier: ctx.quality.datasetTier(k) }))
   const fieldTiers: Record<Tier, number> = { none: 0, bronze: 0, silver: 0, gold: 0 }
   for (const k of DATASET_KEYS) for (const f of ctx.quality.fields(k)) fieldTiers[f.tier]++
@@ -143,8 +159,23 @@ export function stateSections(s: StateInput): StateSection[] {
       title: 'Mode',
       rows: [
         { label: 'Mode', value: MODE_LABEL[ctx.access.mode] },
-        { label: 'Manager', value: lock ? `${lock.managerName} (${lock.managerId})` : 'None' },
-        { label: 'People in the manager’s org', value: lock ? fmt(lock.size, 'int') : '—' },
+        { label: 'Scope held', value: scope ? `${SCOPE_WORD[scope.kind]}: ${scope.label}` : 'None' },
+        {
+          label: scope?.kind === 'reqs' ? 'Candidates on the reqs' : 'People in the scope',
+          value: scope ? fmt(scope.size, 'int') : '—',
+        },
+        { label: 'Pick missing or gone', value: yes(ctx.access.unset) },
+        { label: 'Pay', value: PAY_WORD[ctx.access.pay] },
+        {
+          label: 'Picks remembered',
+          value:
+            PICK_KINDS.map((k) => {
+              const v = pickLabel(MODE_OF_PICK[k], s.picks ?? {})
+              return v ? `${PICK_NOUN[k]}: ${v}` : null
+            })
+              .filter(Boolean)
+              .join('; ') || 'None',
+        },
         {
           label: 'Surfaces in this mode',
           value: `${fmt(modeCounts.shown, 'int')} shown, ${fmt(modeCounts.limited, 'int')} limited, ${fmt(modeCounts.hidden, 'int')} hidden`,
@@ -152,8 +183,10 @@ export function stateSections(s: StateInput): StateSection[] {
       ],
       json: {
         mode: ctx.access.mode,
-        managerId: lock?.managerId ?? null,
-        orgSize: lock?.size ?? null,
+        scope: scope ? { kind: scope.kind, label: scope.label, size: scope.size } : null,
+        unset: ctx.access.unset,
+        pay: ctx.access.pay,
+        picks: s.picks ?? null,
         surfaces: s.counts,
       },
     },

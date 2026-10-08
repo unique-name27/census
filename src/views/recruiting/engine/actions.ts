@@ -8,7 +8,9 @@
  *    decisions owned by the hiring manager first, scheduling by the coordinator, reviews and
  *    offers by the recruiter, the recruiter as the fallback), plus empty-funnel reqs and reqs past
  *    their time-to-fill target for their recruiter. No candidate item sits on a req that is on
- *    hold, cancelled, filled or closed on the as-of date (docs/ACTION-CENTER-AUDIT.md 4.2).
+ *    hold, cancelled, filled or closed on the as-of date, or is about an application with no
+ *    activity for longer than the `staleDays` setting (docs/ACTION-CENTER-AUDIT.md 4.2): a record
+ *    nobody closed, which the action queue on Pipeline still lists.
  *
  * Wording follows the recruiting tone rules: `what` describes the state ("Scorecards and a
  * decision are not in for the onsite on 12 Sep"), `note` is a polite ask ("Could you ask the
@@ -17,7 +19,7 @@
  */
 import type { AnalyticsContext } from '@/data/context'
 import type { ISODate } from '@/data/schema'
-import { addDays, dateWords } from '@/lib/dates'
+import { addDays, dateWords, daysBetween, isCalendarDate } from '@/lib/dates'
 import { median } from '@/lib/stats'
 import { type OwnerLookup, ownerLookup } from '../../hrbp/engine/owners'
 import { placeOf, TEAM_OWNER } from '../../hrbp/engine/places'
@@ -66,8 +68,8 @@ const STAGE_KEY = ['applied', 'screen', 'hiring-manager', 'onsite', 'offer']
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 const days = (n: number) => `${n} d`
 
-/** The fields every candidate item reads: its next-step state and who owns it. */
-const QUEUE_USES = uses(NEXT_STEP, OWNER)
+/** The fields every candidate item reads: its next-step state, who owns it and when it last moved. */
+const QUEUE_USES = uses(NEXT_STEP, OWNER, ['candidates.lastActivityDate'])
 /** An empty funnel: an open req, how long it has been open, and how far its candidates got. */
 const FUNNEL_USES = uses(OPEN_REQ, REQ_JOIN, STAGE_REACHED, ['requisitions.recruiter'])
 /** A req past target: the open req's age, its level, and the fills it is measured against. */
@@ -302,6 +304,15 @@ function pastTargetItems(ctx: AnalyticsContext, b: RecruitingBase, look: OwnerLo
 const onOpenReq = (x: ActiveItem, asOf: ISODate): boolean => !x.app.req || isOpenAt(x.app.req, asOf)
 
 /**
+ * An application with no activity for more than `staleDays` before the as-of date, by its last
+ * activity date. Without one (the column is optional) an application is never stale.
+ */
+export function isStale(x: Pick<ActiveItem, 'app'>, asOf: ISODate, staleDays: number): boolean {
+  const last = x.app.raw.lastActivityDate
+  return !!last && isCalendarDate(last) && daysBetween(last, asOf) > staleDays
+}
+
+/**
  * Open items: every candidate in the action queue (lacking a timely next step, scheduled ones
  * left out because they are in motion) on a req open on the as-of date, every empty-funnel req,
  * and every req past its time-to-fill target. Overdue first, then by due date.
@@ -310,7 +321,9 @@ export function recruitingActions(ctx: AnalyticsContext): ActionItem[] {
   const b = computeRecruiting(ctx).base
   const look = ownerLookup(ctx.all.employees, b.asOf)
   const items = [
-    ...b.actives.filter((x) => inQueue(x) && onOpenReq(x, b.asOf)).map((x) => candidateItem(ctx, b, x, look)),
+    ...b.actives
+      .filter((x) => inQueue(x) && onOpenReq(x, b.asOf) && !isStale(x, b.asOf, b.settings.staleDays))
+      .map((x) => candidateItem(ctx, b, x, look)),
     ...b.req.emptyFunnel.map((r) => funnelItem(ctx, b, r, look)),
     ...pastTargetItems(ctx, b, look),
   ]

@@ -5,7 +5,7 @@
  * describe. Every storage access is in try/catch.
  */
 import { get as idbGet, keys as idbKeys } from 'idb-keyval'
-import { useMode } from '@/access/store'
+import { picksOfState, useMode } from '@/access/store'
 import { readKey, readWorkspaceId } from '@/ask/engine/keys'
 import { DEFAULT_MODEL, readModelChoice } from '@/ask/engine/models'
 import { type AnalyticsContext, buildContext } from '@/data/context'
@@ -120,7 +120,7 @@ export function freshContext(live: AnalyticsContext): AnalyticsContext {
     standard: live.standard,
     quality: live.quality,
     metrics: live.metrics,
-    access: mode.mode === 'manager' ? { mode: 'manager', managerId: mode.managerId } : { mode: mode.mode },
+    access: { mode: mode.mode, picks: picksOfState(mode) },
     lists: useLists.getState().state,
   })
 }
@@ -135,14 +135,16 @@ function askKeyState(): SettingsSnapshot['askKey'] {
 }
 
 /** What the Settings list shows, read from the stores now. */
-export function settingsSnapshot(ctx: Pick<AnalyticsContext, 'access'>): SettingsSnapshot {
+export function settingsSnapshot(ctx: Pick<AnalyticsContext, 'org'>): SettingsSnapshot {
   const st = useCensus.getState()
+  const mode = useMode.getState()
   return {
     settings: pickSettings(st),
     showPay: st.showPay,
     showImmigration: st.showImmigration,
-    mode: useMode.getState().mode,
-    managerName: ctx.access.lock?.managerName ?? null,
+    mode: mode.mode,
+    picks: picksOfState(mode),
+    managerName: (id) => ctx.org.byId.get(id)?.name ?? null,
     overlays: useDev.getState().overlays,
     lens: useQualityLens.getState().on,
     askModel: readModelChoice(),

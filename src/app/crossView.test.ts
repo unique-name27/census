@@ -136,7 +136,8 @@ describe('new hire readiness by site', () => {
 describe('AI in HR header links', () => {
   it('reach every view with an HR area, Onboarding and Compliance included', () => {
     // My team shows no AI agents link: it is Manager mode's home, and Manager mode hides AI in HR.
-    const none = new Set(['team', 'scorecard', 'listening', 'ai'])
+    // Home is the role modes' first page and composes other views, so it has no agents link either.
+    const none = new Set(['home', 'team', 'scorecard', 'listening', 'ai'])
     for (const v of VIEWS) {
       const link = agentLinkFor(v.key, SAMPLE_AGENTS)
       if (none.has(v.key)) expect(link, v.key).toBeNull()

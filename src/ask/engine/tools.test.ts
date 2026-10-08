@@ -323,9 +323,10 @@ describe('the other tools', () => {
     const r = call(conv, envOf(ctx), 'get_context')
     expect(r.json.as_of).toBe(ctx.asOf)
     expect((r.json.datasets as unknown[]).length).toBe(16)
-    // The views HR mode shows: every one but My team, Manager mode's home (docs/ROLES.md, 3.2).
+    // The views HR mode shows: every one but My team (Manager mode's home, docs/ROLES.md, 3.2) and
+    // Home (the other roles' first page, docs/ROLES-V2.md part 5).
     expect((r.json.views as { view: string }[]).map((v) => v.view)).toEqual(
-      VIEWS.filter((v) => v.key !== 'team').map((v) => v.key),
+      VIEWS.filter((v) => v.key !== 'team' && v.key !== 'home').map((v) => v.key),
     )
     expect((r.json.features as Record<string, unknown>).pay_amounts).toBe('never sent to Claude')
     expectClean(r.content, 'get_context')

@@ -25,7 +25,11 @@ const BY_KEY = new Map(
   ]),
 )
 
-/** Every view but the scorecard, in folder-tab order. */
+/**
+ * Every view but the scorecard and Home, in folder-tab order. Home (the role homes) composes the
+ * Scorecard and other views' numbers, with no summary and no open items of its own, so leaving it
+ * out changes nothing the Scorecard or the Action center reads, and avoids an import cycle.
+ */
 export const OTHER_VIEWS: readonly ViewDef[] = VIEW_KEYS.flatMap((k) => {
   const v = BY_KEY.get(k)
   return v ? [v] : []

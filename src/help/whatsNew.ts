@@ -14,6 +14,17 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: readonly ReleaseNote[] = [
   {
+    date: '2026-10-08',
+    title: 'A mode for every role',
+    items: [
+      'Eleven modes in five groups: HR and CHRO, an HR business partner for a business unit or a region, Compensation, Talent management, Recruiter and HR ops, Finance and Manager, and Developer. Switch with Mode in the masthead.',
+      'Each role mode opens on its own Home: the number the role is judged on, Needs attention (your own open items) and My list (the records you work on).',
+      'The Action center is back in every mode. In a role mode it splits the items into Needs attention and Waiting on others.',
+      "Finance sees cost totals over groups of 5 or more people, never one person's pay.",
+      'Help follows the mode: articles and tours describe only what the mode shows, and "Getting started with your home" walks through each home.',
+    ],
+  },
+  {
     date: '2026-10-04',
     title: 'Ask Census',
     items: [

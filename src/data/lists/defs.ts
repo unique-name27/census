@@ -1,5 +1,5 @@
 /**
- * The eighteen official lists: what each holds, the fields it checks, its parent list and the
+ * The nineteen official lists: what each holds, the fields it checks, its parent list and the
  * attributes its values carry (docs/SETTINGS-LISTS.md, the list table).
  */
 import type { FieldRef } from '../quality/fieldRef'
@@ -129,6 +129,27 @@ export const LIST_DEFS: readonly ListDef[] = [
     sheet: 'Locations',
     name: 'Locations',
     about: 'Work sites, with the country, region, jurisdiction and pay currency of each.',
+  },
+  {
+    id: 'region',
+    label: 'Regions',
+    singular: 'Region',
+    kind: 'fixed',
+    // No field holds a region: each location's region is on the Locations list.
+    refs: [],
+    reads: ['employees'],
+    attrs: [
+      {
+        key: 'hrbp',
+        label: 'HR business partner',
+        readBy:
+          'HRBP for a region mode lists the site matters of the region, and this person’s own items, as their Needs attention.',
+      },
+    ],
+    sheet: 'Regions',
+    name: 'Regions',
+    about:
+      'The regions locations roll up to, each with its regional HR business partner: a name or employee ID from Employees. Census reads these exact regions.',
   },
   {
     id: 'costCenter',

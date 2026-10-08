@@ -4,11 +4,12 @@
  * the mode, the debug overlays, the quality lens and Ask's choices. The Ask key and the workspace ID
  * show as set or not set, never their values. Pure: the page passes a snapshot of the stores.
  */
-import { MODE_LABEL, type Mode } from '@/access/modes'
+import { MODE_LABEL, MODE_OF_PICK, type Mode, type ModePicks, PICK_KINDS } from '@/access/modes'
 import { STANDARD_LABEL } from '@/data/quality/tier'
 import { DEFAULT_SETTINGS, MOTION_LABEL, type Settings, TEXT_SIZE_LABEL, THEME_LABEL } from '@/data/settings'
 import { fmt } from '@/lib/format'
 import type { SettingFact } from './inventory'
+import { PICK_NOUN, pickLabel } from './roles'
 import { OVERLAY_KEYS, OVERLAY_LABEL, type Overlays } from './store'
 
 export interface SettingsSnapshot {
@@ -16,7 +17,10 @@ export interface SettingsSnapshot {
   showPay: boolean
   showImmigration: boolean
   mode: Mode
-  managerName: string | null
+  /** Every pick `census:mode` remembers (each is kept when the mode changes). */
+  picks: ModePicks
+  /** A manager's name from their ID, for the manager pick. */
+  managerName: (id: string) => string | null
   overlays: Overlays
   lens: boolean
   askModel: string
@@ -108,16 +112,26 @@ export function settingFacts(snap: SettingsSnapshot): SettingFact[] {
       inFile: false,
     },
   ]
+  const pickOf = (m: Mode) => pickLabel(m, snap.picks, snap.managerName)
+  const current = pickOf(snap.mode)
   const mode: SettingFact[] = [
     {
       setting: 'Mode',
       section: 'mode',
-      value:
-        snap.mode === 'manager' && snap.managerName ? `Manager: ${snap.managerName}` : MODE_LABEL[snap.mode],
+      value: current ? `${MODE_LABEL[snap.mode]}: ${current}` : MODE_LABEL[snap.mode],
       defaultValue: 'HR',
       where: 'localStorage census:mode',
       inFile: false,
     },
+    // The pick each scoped mode remembers, kept when the mode changes (docs/ROLES-V2.md 1.4).
+    ...PICK_KINDS.map((kind) => ({
+      setting: `Mode pick: ${PICK_NOUN[kind].toLowerCase()}`,
+      section: 'mode' as const,
+      value: pickOf(MODE_OF_PICK[kind]) ?? 'None',
+      defaultValue: 'None',
+      where: 'localStorage census:mode',
+      inFile: false,
+    })),
     ...OVERLAY_KEYS.map((k) => ({
       setting: `Debug overlay: ${OVERLAY_LABEL[k].toLowerCase()}`,
       section: 'mode' as const,

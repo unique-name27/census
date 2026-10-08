@@ -5,7 +5,8 @@
  * a centered card. Tests check every target exists in the source and every route is real.
  */
 import type { RouteView } from '@/data/store'
-import type { Tour, TourStep } from './types'
+import { EVERY_ITEM, FINANCE, HRBP, NO_DATA_ROOM, NO_PAY, RECRUITER, ROLE_LISTS } from './articles/when'
+import type { Condition, Tour, TourStep } from './types'
 
 /** The selector for a `data-tour` name. */
 export const tourTarget = (name: string): string => `[data-tour="${name}"]`
@@ -286,6 +287,12 @@ const SCORECARD: Tour = {
       title: 'Targets',
       body: "Every measure's target in one list. Targets live in Metric definitions, so every view judges a measure against the same one.",
       placement: 'bottom',
+      wording: [
+        {
+          ...NO_DATA_ROOM,
+          body: "Every measure's target in one list. HR keeps them with the metric definitions, so every view judges a measure against the same one.",
+        },
+      ],
     },
     {
       ...at('scorecard'),
@@ -297,6 +304,7 @@ const SCORECARD: Tour = {
     {
       ...at('scorecard'),
       target: tourTarget('scorecard-report'),
+      surface: 'export:monthly-report',
       title: 'Monthly people report',
       body: "One click builds the report as a PowerPoint deck or an Excel workbook: targets met by practice, the scorecard, the top findings and each practice's lead chart.",
       placement: 'bottom',
@@ -317,6 +325,16 @@ const RECRUITING: Tour = {
       title: 'Hiring at a glance',
       body: 'Open reqs, offers accepted, time to fill and to hire, offer acceptance, candidates lacking a next step, and hires against the hiring plan.',
       placement: 'bottom',
+      wording: [
+        {
+          ...RECRUITER,
+          body: 'Your open reqs, offers accepted, time to fill and to hire, offer acceptance and candidates lacking a next step. Time to fill and offer acceptance compare with all reqs.',
+        },
+        {
+          unless: 'tab:onboarding.plan',
+          body: 'Open reqs, offers accepted, time to fill and to hire, offer acceptance and candidates lacking a next step.',
+        },
+      ],
     },
     {
       ...at('recruiting', 'overview'),
@@ -361,6 +379,11 @@ const ONBOARDING: Tour = {
   title: 'Onboarding',
   summary: 'Upcoming starts and their readiness, the first 90 days and the hiring plan.',
   without: [
+    { when: RECRUITER, summary: 'Upcoming starts and their readiness.' },
+    {
+      surface: 'tab:onboarding.first90',
+      summary: 'Upcoming starts and their readiness, and the hiring plan.',
+    },
     {
       surface: 'tab:onboarding.plan',
       summary: 'Upcoming starts and their readiness, and the first 90 days.',
@@ -396,6 +419,12 @@ const ONBOARDING: Tour = {
       title: 'The first 90 days',
       body: 'Day-one readiness against its 95% target, then I-9 timing, check-ins, probation decisions and early leavers on this tab.',
       placement: 'top',
+      wording: [
+        {
+          unless: 'metric:onboarding.first90.i9Section2',
+          body: 'Day-one readiness against its 95% target, then check-ins, probation decisions and early leavers on this tab.',
+        },
+      ],
     },
     {
       ...at('onboarding', 'plan'),
@@ -418,6 +447,9 @@ const PEOPLE_STATS: Tour = {
   id: 'view-hrbp',
   title: 'People stats',
   summary: "A leader's organization, how it is changing and what to raise in the next 1:1.",
+  without: [
+    { when: FINANCE, summary: 'The workforce, how it is changing, and attrition as rates and counts.' },
+  ],
   length: '1 minute',
   route: 'hrbp',
   steps: [
@@ -427,6 +459,18 @@ const PEOPLE_STATS: Tour = {
       title: 'Pick a leader',
       body: 'People stats is built for leader conversations. Pick a leader to see their whole organization; the changes then compare with the company.',
       placement: 'bottom',
+      wording: [
+        {
+          ...FINANCE,
+          target: tourTarget('filter-row'),
+          title: 'Pick a business unit',
+          body: 'Finance mode filters by business unit and period only, so every number covers whole business units.',
+        },
+        {
+          ...HRBP,
+          body: 'Your business unit or region is pinned. Pick a leader inside it to see their organization; the changes compare with the whole company.',
+        },
+      ],
     },
     {
       ...at('hrbp', 'overview'),
@@ -434,6 +478,12 @@ const PEOPLE_STATS: Tour = {
       title: 'Headcount and attrition',
       body: 'Headcount, hires, attrition (all, voluntary, regretted and first-year, annualized) and promotion rate.',
       placement: 'bottom',
+      wording: [
+        {
+          unless: 'metric:hrbp.movement.promotionRate',
+          body: 'Headcount, hires and attrition: all, voluntary, regretted and first-year, annualized.',
+        },
+      ],
     },
     {
       ...at('hrbp', 'overview'),
@@ -441,6 +491,14 @@ const PEOPLE_STATS: Tour = {
       title: 'Sub-org scorecard',
       body: 'One row per org under the leader, or per business unit. Shaded cells are materially off the company. Click a row to focus on that org.',
       placement: 'top',
+      wording: [
+        {
+          unless: 'metric:hrbp.scorecard.offCompany',
+          target: figureTarget('hrbp-headcount-trend'),
+          title: 'Headcount over time',
+          body: 'Employees at each month end, then hires and exits by month and the headcount bridge from 12 months ago to today.',
+        },
+      ],
     },
     {
       ...at('hrbp', 'overview'),
@@ -483,6 +541,16 @@ const ORG_CHART: Tour = {
       title: 'The chart',
       body: "Reporting lines on the as-of date. A leader in the filter row becomes the top; other filters dim people instead of removing them. Click a card for the person's details and team.",
       placement: 'top',
+      wording: [
+        {
+          ...HRBP,
+          body: "Reporting lines on the as-of date. Cards outside your business unit or region are dimmed and open a short card; search finds people inside it. Click a card for the person's details and team.",
+        },
+        {
+          ...FINANCE,
+          body: "Reporting lines on the as-of date. A business unit in the filter row dims the people outside it instead of removing them. Click a card for the person's details.",
+        },
+      ],
     },
     {
       ...at('org', 'chart'),
@@ -497,6 +565,14 @@ const ORG_CHART: Tour = {
       title: 'Flags in this org',
       body: 'Span outliers, single-report chains and new managers with large teams. Click a row to find the person on the chart.',
       placement: 'top',
+      wording: [
+        {
+          unless: 'metric:org.flags.structure',
+          target: tourTarget('kpi-strip'),
+          title: 'The org at a glance',
+          body: 'People, managers, layers and open roles for the scope on screen. Each number opens the people behind it.',
+        },
+      ],
     },
     {
       ...at('org', 'sandbox'),
@@ -583,6 +659,12 @@ const TALENT: Tour = {
       title: 'Talent at a glance',
       body: 'Rating coverage, high performers against the 35% guideline, high potentials, critical roles covered, regretted high performers, training and key talent at risk.',
       placement: 'bottom',
+      wording: [
+        {
+          unless: 'tab:talent.retention',
+          body: 'Rating coverage, high performers against the 35% guideline, high potentials, critical roles covered and required training.',
+        },
+      ],
     },
     {
       ...at('talent', 'overview'),
@@ -632,6 +714,7 @@ const COMPENSATION: Tour = {
     {
       ...at('comp', 'overview'),
       target: tourTarget('comp-pay-switch'),
+      surface: 'pay:switch',
       title: 'Pay amounts stay private',
       body: 'Ratios such as compa-ratio always show. Salaries and other amounts show only while this switch is on, for this session only, and the masthead says so on every page.',
       placement: 'bottom',
@@ -656,6 +739,7 @@ const COMPENSATION: Tour = {
       title: 'Below the range minimum',
       body: 'Who is paid below their range minimum and by how much, in percent. The amounts appear only with pay amounts on.',
       placement: 'top',
+      wording: [{ ...NO_PAY, body: 'Who is paid below their range minimum and by how much, in percent.' }],
     },
     {
       ...at('comp', 'performance'),
@@ -670,6 +754,17 @@ const COMPENSATION: Tour = {
       title: 'Merit cycle',
       body: 'Merit spend by business unit against the budget. The budget, healthy band and merit guideline are settings in Metric definitions, a click away with "Cycle settings".',
       placement: 'top',
+      wording: [
+        {
+          surface: 'header:comp',
+          unless: 'page:data',
+          body: 'Merit spend by business unit against the budget. "Cycle settings" opens the cycle\'s dates in Settings; the close date is when your items fall due.',
+        },
+        {
+          unless: 'header:comp',
+          body: 'Merit spend by business unit against the budget, as a share of the budget.',
+        },
+      ],
     },
   ],
 }
@@ -698,6 +793,7 @@ const COMPLIANCE: Tour = {
     {
       ...at('compliance', 'overview'),
       target: tourTarget('compliance-immigration-switch'),
+      surface: 'header:compliance',
       title: 'Immigration details',
       body: "Each person's authorization type shows only while this is on, for this session. Counts by type always show.",
       placement: 'bottom',
@@ -730,6 +826,20 @@ const LISTENING: Tour = {
   id: 'view-listening',
   title: 'Listening',
   summary: 'Every survey program, its scores by driver, and how survey privacy works.',
+  without: [
+    {
+      when: {
+        unless: [
+          'tab:listening.candidates',
+          'tab:listening.onboarding',
+          'tab:listening.stay-exit',
+          'tab:listening.managers',
+          'tab:listening.services',
+        ],
+      },
+      summary: 'The survey programs this mode shows, their scores by driver, and how survey privacy works.',
+    },
+  ],
   length: '1 minute',
   route: 'listening',
   steps: [
@@ -753,6 +863,18 @@ const LISTENING: Tour = {
       title: 'One tab per area',
       body: 'Candidates & hiring, Onboarding, Stay & exit, Managers, and Services & learning each show their surveys by driver, by org and against the last wave.',
       placement: 'bottom',
+      wording: [
+        {
+          unless: [
+            'tab:listening.candidates',
+            'tab:listening.onboarding',
+            'tab:listening.stay-exit',
+            'tab:listening.managers',
+            'tab:listening.services',
+          ],
+          body: 'Each area tab this mode shows has its surveys by driver, by org and against the last wave.',
+        },
+      ],
     },
     {
       ...at('listening', 'onboarding'),
@@ -807,6 +929,7 @@ const AI_IN_HR: Tour = {
     {
       ...at('ai', 'agents'),
       target: tourTarget('view-controls'),
+      surface: 'header:ai',
       title: 'Keep the catalog current',
       body: 'Add an agent, or use the Catalog menu to import or download the AI agents sheet, or reset to the sample. Changes stay in this browser.',
       placement: 'bottom',
@@ -818,6 +941,12 @@ const ACTION_CENTER: Tour = {
   id: 'view-actions',
   title: 'Action center',
   summary: 'Open items from every view, who they wait on, and how to follow up politely.',
+  without: [
+    {
+      when: ROLE_LISTS,
+      summary: 'Your Needs attention, what waits on others, and how to follow up politely.',
+    },
+  ],
   length: '1 minute',
   route: 'actions',
   steps: [
@@ -827,6 +956,13 @@ const ACTION_CENTER: Tour = {
       title: 'Everything open, in one place',
       body: 'Items every view raises: decisions, tasks, deadlines and follow-ups, with counts by severity that open the items.',
       placement: 'bottom',
+      wording: [
+        {
+          ...ROLE_LISTS,
+          title: 'Everything open in your area',
+          body: 'Items the views this mode shows raise: decisions, tasks, deadlines and follow-ups, with counts by severity that open the items.',
+        },
+      ],
     },
     {
       ...at('actions'),
@@ -916,6 +1052,293 @@ const MANAGER_START: Tour = {
   ],
 }
 
+/** A role's own wording: its home's hero figure is shown, and this is not Developer mode. */
+const role = (slug: string): Condition => ({ surface: `figure:${HOME_HERO[slug]}`, unless: 'page:dev' })
+
+/** Each role home's hero figure (docs/ROLES-V2.md 5.4 to 5.10). */
+const HOME_HERO: Readonly<Record<string, string>> = {
+  chro: 'home-chro-standing',
+  hrbp: 'home-hrbp-standing',
+  comp: 'home-comp-in-band',
+  talent: 'home-talent-coverage',
+  ops: 'home-ops-sla',
+  rec: 'home-rec-next-step',
+  fin: 'home-fin-vs-plan',
+}
+
+/** The hero step: each role's number, and what its bar splits. */
+const HERO_STEP: TourStep = {
+  ...at('home'),
+  target: tourTarget('home-hero'),
+  title: 'The number your role is judged on',
+  body: 'Each home leads with one number for its role, with how it splits under it. The number and each part of the bar open the records behind them.',
+  placement: 'right',
+  wording: [
+    {
+      ...role('chro'),
+      title: 'Targets met',
+      body: 'How many measures with a target meet it, split by status. A part of the bar lists its measures, and each value opens its records.',
+    },
+    {
+      ...role('hrbp'),
+      title: 'Targets met in your scope',
+      body: 'The scorecard of your business unit or region: how many measures meet their target, split by status. A part of the bar lists its measures.',
+    },
+    {
+      ...role('comp'),
+      title: 'In the healthy band',
+      body: "The share of people paid within the healthy band, over everyone's position in their range. Each part of the bar opens its people.",
+    },
+    {
+      ...role('talent'),
+      title: 'Succession coverage',
+      body: "The share of critical roles with a successor ready now, split by their best successor's readiness. Each part opens its roles.",
+    },
+    {
+      ...role('ops'),
+      title: 'Resolution SLA met',
+      body: 'Cases resolved within target, over where every open case stands against its target. Employee relations cases are counted, never listed.',
+    },
+    {
+      ...role('rec'),
+      title: 'Lacking a next step',
+      body: 'Your candidates with nothing pending, split by what they wait on: a review, scheduling, a decision or an offer. Each part opens its candidates.',
+    },
+    {
+      ...role('fin'),
+      title: 'Against the budget',
+      body: 'Headcount against the budget, or starts against the hiring plan when no budget is loaded. Each part opens its records.',
+    },
+  ],
+}
+
+/** Needs attention: the role's own items (the CHRO's escalations). */
+const ATTENTION_STEP: TourStep = {
+  ...at('home'),
+  target: tourTarget('home-attention'),
+  title: 'Needs attention',
+  body: 'Your own open items, the most pressing first: legal exposure, then severity and days overdue. They are the items the Action center lists as yours; "Waiting on others" opens what someone else holds in your area.',
+  placement: 'top',
+  wording: [
+    {
+      ...role('chro'),
+      title: 'Escalations',
+      body: 'Items someone must act on now: legal exposure, critical roles at high risk of loss, exit clusters and critical items long overdue, each with who holds it. The risks the data shows follow.',
+    },
+    {
+      ...role('hrbp'),
+      body: 'Your own items in your scope: spans of control, single-report chains, new managers with large teams, promotions to review, and exit and stay signals. "Waiting on others" lists what others hold in your scope.',
+    },
+    {
+      ...role('comp'),
+      body: 'Your cycle items: everyone below their range minimum as one item, merit outside the guideline, and spend over budget, high performers paid low and missing proposals by business unit. They fall due on the cycle close date.',
+    },
+    {
+      ...role('talent'),
+      body: 'Critical roles without a ready successor, required courses below their on-time target, missing ratings and stay conversations, the most pressing first.',
+    },
+    {
+      ...role('ops'),
+      body: 'Cases past target, transactions past due, returns without systems ready, I-9s, reverifications, export licenses and day-one tasks, legal exposure first.',
+    },
+    {
+      ...role('rec'),
+      body: 'Applications to review, offers to send or waiting on an answer, empty funnels and reqs past their time-to-fill target. Interview decisions are with the hiring managers, under "Waiting on others".',
+    },
+    {
+      ...role('fin'),
+      body: 'Open reqs not in the plan, hiring behind plan and planned roles with no open req. None of them is about one person.',
+    },
+  ],
+}
+
+/** My list: the records the role works on. */
+const LIST_STEP: TourStep = {
+  ...at('home'),
+  target: figureTarget('home-list'),
+  title: 'My list',
+  body: 'The records you work on, in one table. Sort it, switch lists where there are two, and export every row.',
+  placement: 'top',
+  wording: [
+    {
+      ...role('chro'),
+      title: "My list: leaders' orgs",
+      body: "Each of the top leader's direct reports with headcount, attrition against the company, open reqs, critical items and their HR business partner. A row focuses every view on that org.",
+    },
+    {
+      ...role('hrbp'),
+      body: "Your leaders, or your sites, and the key talent at risk. A leader's row focuses every view on their org, ready for Copy talking points.",
+    },
+    {
+      ...role('comp'),
+      body: 'The people below their range minimum or above their maximum. Amounts show only while "Show pay amounts" is on.',
+    },
+    {
+      ...role('talent'),
+      body: 'The critical roles and their bench, or the high potentials. A row opens its records.',
+    },
+    {
+      ...role('ops'),
+      body: 'The open case queue, oldest first, transactions in flight, or returns from leave. Employee relations cases are counted under the table, never listed.',
+    },
+    {
+      ...role('rec'),
+      body: 'Your open reqs with their pipeline, or your candidates in the queue. A row opens its records.',
+    },
+    {
+      ...role('fin'),
+      body: 'The departments behind the hiring plan, or the cost centers. A cost center under 5 people folds into Other.',
+    },
+  ],
+}
+
+/** "Getting started with your home" (docs/ROLES-V2.md 4.8): the Mode button, the hero, Needs attention, My list, the Action center. */
+const HOME_START: Tour = {
+  id: 'home-start',
+  title: 'Getting started with your home',
+  summary:
+    'The Mode button, the number your role is judged on, Needs attention, My list and the Action center.',
+  length: '1 minute',
+  steps: [
+    {
+      ...at('home'),
+      target: tourTarget('masthead-mode'),
+      title: 'The mode',
+      body: 'Each role opens on its own home, in its own mode: CHRO, the two HRBP modes, Compensation, Talent management, HR ops, Recruiter and Finance. Switch here to see one.',
+      placement: 'bottom',
+      wording: [
+        {
+          ...role('chro'),
+          body: 'Census is in CHRO mode: everything HR mode shows, opening on this executive home. Switch modes here.',
+        },
+        {
+          ...role('hrbp'),
+          body: 'Census is in HRBP mode for one business unit or region, and every number is for it. Change the business unit or region here, or switch modes.',
+        },
+        {
+          ...role('comp'),
+          body: 'Census is in Compensation mode for the whole company. Switch modes here; "Show pay amounts" turns off whenever you do.',
+        },
+        {
+          ...role('talent'),
+          body: 'Census is in Talent management mode for the whole company. Switch modes here.',
+        },
+        {
+          ...role('ops'),
+          body: 'Census is in HR ops mode for the whole company, with the Data room. Switch modes here.',
+        },
+        {
+          ...role('rec'),
+          body: "Census is in Recruiter mode for one recruiter's reqs, or for every recruiter's. Change the recruiter here, or switch modes.",
+        },
+        {
+          ...role('fin'),
+          body: 'Census is in Finance mode: the filters are business unit and period only, so every cost total covers whole business units. Switch modes here.',
+        },
+      ],
+    },
+    HERO_STEP,
+    ATTENTION_STEP,
+    LIST_STEP,
+    {
+      target: tourTarget('masthead-actions'),
+      surface: 'masthead:actions',
+      title: 'The Action center',
+      body: 'The Action center lists every item in full. In a role mode it splits them into Needs attention and Waiting on others, with Mark handled, Snooze and a note to copy for each owner.',
+      placement: 'bottom',
+      wording: [
+        {
+          ...EVERY_ITEM,
+          body: 'The Action center lists every open item, grouped by who it waits on, with Mark handled, Snooze and a note to copy for each owner. The number on this button counts every open item.',
+        },
+        {
+          ...ROLE_LISTS,
+          body: 'The Action center has your Needs attention and Waiting on others in full, with Mark handled, Snooze and a note to copy for each owner. The number on this button counts your Needs attention.',
+        },
+      ],
+    },
+  ],
+}
+
+/** The Home page's own tour (docs/ROLES-V2.md part 5): its parts, in each role's words. */
+const HOME: Tour = {
+  id: 'view-home',
+  title: 'Home',
+  summary:
+    "Your role's first page: the number you are judged on, what needs attention and the records you work on.",
+  length: '1 minute',
+  route: 'home',
+  steps: [
+    HERO_STEP,
+    {
+      ...at('home'),
+      target: tourTarget('kpi-strip'),
+      title: 'Key figures',
+      body: "The producing views' own tiles for your scope, each opening the tab that explains it.",
+      placement: 'bottom',
+    },
+    {
+      ...at('home'),
+      title: 'The lead charts',
+      body: "Beside the key figures, each home's lead charts: the measures, distribution or trend its role watches most.",
+      wording: [
+        {
+          ...role('chro'),
+          target: figureTarget('home-chro-measures'),
+          title: 'Measures against target',
+          body: 'Every measure on its own scale with its target as a tick, by practice. Click a bar for its records, or a name to open its view.',
+        },
+        {
+          ...role('hrbp'),
+          target: figureTarget('home-hrbp-measures'),
+          title: 'Measures against target',
+          body: "Your scope's measures on their own scales with their targets. Click a bar for its records, or a name to open its view.",
+        },
+        {
+          ...role('comp'),
+          target: figureTarget('home-comp-distribution'),
+          title: 'Compa-ratio distribution',
+          body: 'Everyone by compa-ratio, with the healthy band shaded. A bin opens its people.',
+        },
+        {
+          ...role('talent'),
+          target: figureTarget('home-talent-exposure'),
+          title: 'Succession exposure',
+          body: "Critical roles by the incumbent's risk of loss and the best successor's readiness. A cell opens its roles.",
+        },
+        {
+          ...role('ops'),
+          target: figureTarget('home-ops-backlog'),
+          title: 'Open backlog by age',
+          body: 'Open cases by how long they have waited, stacked by status. A segment opens its cases.',
+        },
+        {
+          ...role('rec'),
+          target: figureTarget('home-rec-pipeline'),
+          title: 'Pipeline today',
+          body: 'Your active candidates at each stage by their next-step state. A bar opens its candidates.',
+        },
+        {
+          ...role('fin'),
+          target: figureTarget('home-fin-plan'),
+          title: 'Against the budget by month',
+          body: 'Headcount against the budget month by month, or plan against actual starts when no budget is loaded. A point opens its records.',
+        },
+      ],
+      placement: 'top',
+    },
+    ATTENTION_STEP,
+    LIST_STEP,
+    {
+      ...at('home'),
+      target: tourTarget('view-export'),
+      title: 'Take it to a meeting',
+      body: 'Export writes the page as an Excel workbook or PowerPoint slides, with a line saying the mode it was made in.',
+      placement: 'bottom',
+    },
+  ],
+}
+
 /** My team, Manager mode's home (docs/ROLES.md, 2.2). */
 const MY_TEAM: Tour = {
   id: 'view-team',
@@ -934,7 +1357,7 @@ const MY_TEAM: Tour = {
     {
       ...at('team'),
       target: tourTarget('readout'),
-      title: 'What needs attention',
+      title: 'What the data shows',
       body: 'The most serious findings from People stats, Recruiting, Onboarding and Talent for your org, each with the view that explains it.',
       placement: 'right',
     },
@@ -1019,6 +1442,8 @@ const DEVELOPER_TOOLS: Tour = {
 export const TOURS: readonly Tour[] = [
   GETTING_STARTED,
   MANAGER_START,
+  HOME_START,
+  HOME,
   MY_TEAM,
   OWN_DATA,
   QUALITY_DEFINITIONS,

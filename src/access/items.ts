@@ -112,6 +112,8 @@ export interface RoutedItem {
   ownerName: string
   /** The owner group. */
   role: ActionOwnerRole
+  /** Owned by a team queue rather than a named person (without it: a person when an ID is known). */
+  isTeam?: boolean
 }
 
 export interface RoleLists<T> {
@@ -132,16 +134,27 @@ export function lensOf(
   escalationDays: number = ESCALATION_DAYS,
 ): RoleLens {
   const s = scopeOfAccess(access)
+  // The regional HR business partner named in Settings (Official lists, Regions), if any.
   const me =
     s?.kind === 'org'
       ? { id: s.managerId, name: s.managerName }
       : s?.kind === 'reqs'
         ? { id: s.recruiterId, name: s.recruiter }
-        : null
+        : s?.kind === 'region'
+          ? (s.owner ?? null)
+          : null
   return { mode: access.mode, me, asOf, escalationDays }
 }
 
 const sameName = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase()
+
+/**
+ * About a site or the region rather than one person or record: no subject record, and a place
+ * that names a location or region (an exit survey reason at a site, day-30 readiness in a region).
+ */
+export function isSiteMatter(item: Pick<ActionItem, 'subject' | 'place'>): boolean {
+  return item.subject.kind === 'none' && !!(item.place?.location || item.place?.region)
+}
 
 /** Whether the lens's person owns an item: by employee ID, else by name. Null without a person. */
 export function isMine(
@@ -197,6 +210,8 @@ export function roleItems<T extends RoutedItem>(items: readonly T[], lens: RoleL
       severity: a.item.severity,
       mine: isMine(lens, a),
       escalation: rank != null,
+      site: isSiteMatter(a.item),
+      person: a.isTeam === undefined ? !!a.ownerId : !a.isTeam,
     })
     if (list === 'needs') needs.push({ a, rank: rank ?? 0 })
     else if (list === 'waiting') waiting.push(a)

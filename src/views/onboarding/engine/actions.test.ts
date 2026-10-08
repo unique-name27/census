@@ -157,16 +157,26 @@ describe('the hiring plan, for Finance', () => {
     expect(spec.filter?.businessUnit).toEqual(['Silicon Engineering'])
   })
 
-  it('lists future roles with no open req, a warning within 60 days of the start', () => {
-    const soon = byId(items, 'onboarding:plan-no-req:POS-1')
-    expect(soon).toMatchObject({ severity: 'warning', due: '2026-11-01' })
-    expect(soon.what).toBe(
-      'Design engineer in Digital Design, Silicon Engineering is planned to start in Nov; no req is open',
+  it('rolls future roles with no open req up per business unit, a warning within 60 days of the first start', () => {
+    const x = byId(items, 'onboarding:plan-no-req:Silicon Engineering')
+    expect(x).toMatchObject({
+      ownerRole: 'finance',
+      severity: 'warning',
+      due: '2026-11-01',
+      subject: { kind: 'none' },
+    })
+    expect(x.what).toBe(
+      '3 planned roles in Silicon Engineering have no open req, the first planned to start in Nov; 1 has its req on hold or cancelled',
     )
-    expect(byId(items, 'onboarding:plan-no-req:POS-2')).toMatchObject({ severity: 'info' })
-    expect(byId(items, 'onboarding:plan-no-req:POS-3').what).toMatch(/its req R-HOLD is on hold$/)
-    // A line whose req is open is covered.
-    expect(items.filter((i) => i.id.startsWith('onboarding:plan-no-req:')).length).toBe(3)
+    expect(x.fingerprint).toBeTruthy()
+    const spec = resolveDrill(x.drill)!
+    expect(spec.kind).toBe('hiringPlan')
+    expect(spec.rows).toHaveLength(3)
+    expect(spec.filter?.businessUnit).toEqual(['Silicon Engineering'])
+    // A line whose req is open is covered; one roll-up per unit, never one per line.
+    expect(items.filter((i) => i.id.startsWith('onboarding:plan-no-req:')).map((i) => i.id)).toEqual([
+      'onboarding:plan-no-req:Silicon Engineering',
+    ])
     for (const i of items) expect(i.subject.kind === 'employees', i.id).toBe(false)
   })
 })

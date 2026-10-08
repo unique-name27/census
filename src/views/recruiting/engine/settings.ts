@@ -36,6 +36,11 @@ export interface RecruitingSettings {
   minGroup: number
   aging: AgingRules
   norms: NormRules
+  /**
+   * An application with no activity for more than this many days (its last activity date) is left
+   * out of the Action center's items (docs/ACTION-CENTER-AUDIT.md 4.2); the action queue keeps it.
+   */
+  staleDays: number
   /** The lacking-a-next-step finding is critical from this count or share of active candidates. */
   lackingCritical: { count: number; share: number }
   ttfEnd: TtfEnd
@@ -91,6 +96,7 @@ export function recruitingSettings(m: MetricsApi): RecruitingSettings {
       offerOverdueDays: lack('offerOverdueDays'),
     },
     norms: { fallbackDays: lack('fallbackNormDays'), minSteps: lack('minNormSteps') },
+    staleDays: lack('staleDays'),
     lackingCritical: { count: lack('criticalCount'), share: lack('criticalShare') },
     ttfEnd: m.choice(RM.timeToFill, 'endEvent') === 'start' ? 'start' : 'accepted',
     acceptanceColor: {

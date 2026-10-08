@@ -1,7 +1,7 @@
 /**
- * My team (docs/ROLES.md 2.2, docs/DESIGN-REFRESH.md 4.2): one manager's org on one page. Key
- * figures, what needs attention beside headcount over time, then People, Hiring, Talent and the
- * open items the org owns. Every figure is the producing view's number for the scope on screen
+ * My team (docs/ROLES.md 2.2, docs/DESIGN-REFRESH.md 4.2, docs/ROLES-V2.md 5.12): one manager's org
+ * on one page. Key figures, the manager's own open items (Needs attention), what the data says
+ * beside headcount over time, People, My list (the team), then Hiring and Talent. Every figure is the producing view's number for the scope on screen
  * (in Manager mode, the manager's org), read from that view's model, with its metric and fields.
  * Nothing here shows pay, survey results, HR ops cases, compliance details, exit reasons or
  * flight-risk scores.
@@ -37,6 +37,7 @@ import {
   waitingKpi,
 } from '../engine'
 import { HiringSection } from './Hiring'
+import { MyListSection } from './MyList'
 import { PeopleSection } from './People'
 import { TalentSection } from './TalentFigures'
 import { useTeamItems } from './useTeamItems'
@@ -47,7 +48,7 @@ import { WaitingSection } from './Waiting'
 const waitingPending: Kpi = {
   id: 'waiting',
   metricId: ACTIONS.open,
-  label: 'Owned by people in this org',
+  label: 'Needs attention',
   value: null,
   format: 'int',
   note: 'Counting open items',
@@ -143,7 +144,7 @@ export function TeamPage() {
   const items = useTeamItems()
   const min = minGroupOf(ctx.metrics)
   const small = orgUnderMinimum(ctx, s)
-  const waiting = items ? waitingKpi(ctx, items.items) : null
+  const waiting = items ? waitingKpi(ctx, items.needs) : null
   const kpis = [...teamKpis(s, labelOf, ctx, small), waiting ?? waitingPending]
   const findings = teamFindings(ctx, practiceFindings(s, PRACTICES))
   return (
@@ -156,9 +157,13 @@ export function TeamPage() {
       )}
       <Grid>
         <KpiStrip id="team-kpis" title="My team key figures" kpis={kpis} />
+      </Grid>
+      {/* The manager's own items sit under the top row (docs/ROLES-V2.md 5.12). */}
+      <WaitingSection items={items} />
+      <Grid className="mt-10">
         <Readout
           id="team-readout"
-          title="What needs attention"
+          title="What the data shows"
           findings={findings.map((f) => f.finding)}
           sourceOf={sourcesOf(ctx.access.mode, findings)}
           span={12}
@@ -178,9 +183,9 @@ export function TeamPage() {
           <PeopleSection s={s} className="max-md:order-2" />
         </div>
       </Grid>
+      <MyListSection s={s} />
       <HiringSection s={s} />
       <TalentSection s={s} small={small} />
-      <WaitingSection items={items} />
     </>
   )
 }

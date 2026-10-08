@@ -5,6 +5,7 @@
  * grouped count of distinct respondents and shows only at the survey's minimum (`linkedMinimum`);
  * it opens grouped results (`surveyGroups`), never an answer or a person. Pure.
  */
+import { S } from '@/access/surfaces'
 import type { AnalyticsContext } from '@/data/context'
 import { readDeclineReason } from '@/data/lists'
 import type { FieldRef } from '@/data/quality/fieldRef'
@@ -12,12 +13,26 @@ import type { SurveyResponse } from '@/data/schema'
 import { windowLine } from '@/drill/subtitle'
 import type { DrillSpec } from '@/drill/types'
 import { aggregate } from '@/lib/surveys'
+import { surveyShown } from '@/views/listening/api'
 import { declineCut } from '@/views/listening/engine/cuts'
 import { groupsDrill, rowsBy } from '@/views/listening/engine/drills'
 import { linkedMinimum } from '@/views/listening/linked'
+import { DECLINES_FIGURES } from './ids'
 import type { Offer } from './offers'
 
 export const CANDIDATE_SURVEY = 'Candidate experience' as const
+
+/**
+ * Whether the mode shows the survey figure: its Listening tab (Candidates & hiring) and the figure
+ * itself are shown (docs/ROLES-V2.md 4.2: Compensation sees the analysis without it). The section
+ * around it is titled for what it holds, so a hidden figure never leaves its title behind.
+ */
+export function candidateSurveyShown(ctx: Pick<AnalyticsContext, 'access'>): boolean {
+  return (
+    surveyShown(ctx, CANDIDATE_SURVEY) &&
+    ctx.access.can(S.figure(DECLINES_FIGURES.survey), { view: 'hrbp', tab: 'analyses' })
+  )
+}
 
 export const SURVEY_USES: readonly FieldRef[] = [
   'surveyResponses.survey',

@@ -310,4 +310,51 @@ describe('every way into the filters keeps to the scope', () => {
     m.modes.useMode.getState().setMode('hr')
     m.store.useCensus.getState().resetFilters()
   })
+
+  it('says what the last scope left when moving straight to another scoped mode', () => {
+    const choose = (p: Parameters<ReturnType<typeof m.modes.useMode.getState>['choose']>[0]) =>
+      m.modes.useMode.getState().choose(p)
+    const act = () => (notices.at(-1)?.action as { onClick: () => void } | undefined)?.onClick()
+    choose({ kind: 'unit', unit: SE })
+    choose({ kind: 'region', region: 'APAC' })
+    expect(notices.at(-1)).toMatchObject({
+      title: 'HRBP: APAC',
+      description: 'The filters still show Silicon Engineering.',
+      action: { label: 'Whole region' },
+    })
+    expect(filters().businessUnit).toEqual([SE])
+    // The action clears what the business unit left; the region stays pinned.
+    act()
+    expect(filters().businessUnit).toEqual([])
+    expect(filters().location.length).toBeGreaterThan(0)
+    expect(filters().location.every((l) => APAC.includes(l))).toBe(true)
+
+    // Region to business unit: the region's sites stay, as ordinary filters.
+    choose({ kind: 'unit', unit: SE })
+    expect(notices.at(-1)).toMatchObject({
+      title: 'HRBP: Silicon Engineering',
+      description: 'The filters still show APAC.',
+      action: { label: 'Whole business unit' },
+    })
+    act()
+    expect(filters().location).toEqual([])
+    expect(filters().businessUnit).toEqual([SE])
+
+    // Another business unit replaces the pin: nothing of the last one is left, so no such note.
+    choose({ kind: 'unit', unit: 'Go-to-Market' })
+    expect(notices.at(-1)).toMatchObject({
+      title: 'HRBP: Go-to-Market',
+      description: 'Modes change what Census shows, not who can see the data.',
+    })
+    expect(notices.at(-1)?.action).toBeUndefined()
+
+    // Into Recruiter mode: the business unit narrows the reqs until it is cleared.
+    choose({ kind: 'recruiter', name: RECRUITER, id: null })
+    expect(notices.at(-1)).toMatchObject({
+      description: 'The filters still show Go-to-Market.',
+      action: { label: 'All their reqs' },
+    })
+    m.modes.useMode.getState().setMode('hr')
+    m.store.useCensus.getState().resetFilters()
+  })
 })

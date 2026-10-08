@@ -103,6 +103,7 @@ describe('folder-tab headlines on the messy sample', () => {
 
   it('under Production shows only the gold headlines, as the tiles on each page do', () => {
     expect(shown(ctx('gold'))).toEqual({
+      home: true, // HR's context: People stats' headline, Employees is gold
       team: true, // People stats' headline: Employees is gold
       scorecard: true, // Employees is gold
       recruiting: false, // Requisitions is silver

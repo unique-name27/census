@@ -20,7 +20,7 @@
 import type { ISODate, Requisition } from '@/data/schema'
 import { addBusinessDays, addDays, dateWords, daysBetween, formatDate, formatMonth } from '@/lib/dates'
 import { fmt, plural } from '@/lib/format'
-import { TEAM_OWNER } from '../../hrbp/engine/places'
+import { fingerprintOf, TEAM_OWNER } from '../../hrbp/engine/places'
 import type { ActionItem, ActionOwnerRole } from '../../types'
 import type { OnboardingBase } from './base'
 import { groupScope, planDrill, reqsDrill, tasksDrill, withScope } from './drills'
@@ -332,45 +332,59 @@ export function lineKey(v: PlanLineView): string {
     .join('|')
 }
 
-/** Future planned roles with no open req, or whose req is on hold or cancelled: one item per line. */
+/**
+ * Future planned roles with no open req, or whose req is on hold or cancelled: one roll-up per
+ * business unit (docs/ACTION-CENTER-AUDIT.md 4.3: roll-ups and lists, not one item a line), the
+ * lines in its drill and on the Hiring plan tab. Due the earliest planned start; Watch when that is
+ * within the look-ahead. The fingerprint is the lines behind it, so a handled roll-up reopens when
+ * they change.
+ */
 function noReqItems(b: OnboardingBase, p: PlanModel): ActionItem[] {
   const uses = union(PLAN, PLAN_REQ)
   const soon = addDays(b.asOf, b.settings.noReqSoonDays)
   const seen = new Set<string>()
-  const out: ActionItem[] = []
+  const byUnit = new Map<string, PlanLineView[]>()
   for (const v of p.noReq) {
     const key = lineKey(v)
     if (seen.has(key)) continue
     seen.add(key)
-    const l = v.line
-    const role = l.jobTitle || (l.level ? `${l.level} role` : 'Planned role')
-    const req = v.req?.reqId ? `its req ${v.req.reqId}` : 'its req'
-    const why =
-      v.coverage === 'on-hold'
-        ? `${req} is on hold`
-        : v.coverage === 'cancelled'
-          ? `${req} was cancelled`
-          : 'no req is open'
-    out.push({
-      id: `onboarding:plan-no-req:${key}`,
-      kind: 'Planned role with no open req',
-      ownerRole: 'finance',
-      ownerId: null,
-      ownerName: FINANCE,
-      due: l.period,
-      severity: l.period <= soon ? 'warning' : 'info',
-      what: `${role} in ${l.department}, ${l.businessUnit} is planned to start in ${monthWords(l.period, b.asOf)}; ${why}`,
-      subject: { kind: 'none', label: `${role}, ${l.department}` },
-      view: 'onboarding',
-      tab: 'plan',
-      drill: () => planDrill(b, [v], `Planned role: ${role}, ${l.department}`, { uses }),
-      note: 'Could you confirm whether this role is still planned, and when its req will open?',
-      uses,
-      closesWhen: 'An open req or accepted offer behind the plan line',
-      place: placeOfStart(b, { businessUnit: l.businessUnit, location: l.location ?? null }),
-    })
+    const bu = v.line.businessUnit?.trim() || 'No business unit'
+    const list = byUnit.get(bu)
+    if (list) list.push(v)
+    else byUnit.set(bu, [v])
   }
-  return out
+  return [...byUnit]
+    .sort((a, x) => x[1].length - a[1].length || a[0].localeCompare(x[0]))
+    .map(([bu, list]) => {
+      const sorted = [...list].sort((a, x) => a.line.period.localeCompare(x.line.period))
+      const first = sorted[0].line.period
+      const onHold = list.filter((v) => v.coverage === 'on-hold' || v.coverage === 'cancelled').length
+      const one = list.length === 1
+      const why = onHold ? `; ${plural(onHold, 'has its req', 'have their req')} on hold or cancelled` : ''
+      return {
+        id: `onboarding:plan-no-req:${bu}`,
+        kind: 'Planned role with no open req',
+        ownerRole: 'finance' as const,
+        ownerId: null,
+        ownerName: FINANCE,
+        due: first,
+        severity: first <= soon ? ('warning' as const) : ('info' as const),
+        what: `${plural(list.length, 'planned role')} in ${bu} ${one ? 'has' : 'have'} no open req, the first planned to start in ${monthWords(first, b.asOf)}${why}`,
+        subject: { kind: 'none' as const, label: `${plural(list.length, 'planned role')}, ${bu}` },
+        view: 'onboarding' as const,
+        tab: 'plan',
+        drill: () =>
+          withScope(
+            planDrill(b, sorted, `Planned roles with no open req, ${bu}`, { uses }),
+            groupScope('businessUnit', bu),
+          ),
+        note: 'Could you confirm which of these roles are still planned, and when their reqs will open?',
+        uses,
+        fingerprint: fingerprintOf(sorted.map(lineKey)),
+        closesWhen: 'An open req or accepted offer behind each plan line',
+        place: { businessUnit: bu, region: null, location: null },
+      }
+    })
 }
 
 /** The hiring plan's items (none without a plan). */

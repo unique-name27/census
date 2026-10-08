@@ -226,6 +226,7 @@ describe('settings', () => {
         offerOverdueDays: 10,
       },
       norms: { fallbackDays: 14, minSteps: 5 },
+      staleDays: 90,
       lackingCritical: { count: 8, share: 0.25 },
       ttfEnd: 'accepted',
       acceptanceColor: { pts: 0.05, minOffers: 10 },

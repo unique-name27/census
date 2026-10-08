@@ -11,7 +11,9 @@
  */
 import type { BetaTool } from '@anthropic-ai/sdk/resources/beta/messages/messages'
 import type { AccessContext } from '@/access/context'
-import { routeShown } from '@/access/policy'
+import { modeName, toolNotInMode } from '@/access/copy'
+import { policyVersion, routeShown } from '@/access/policy'
+import { scopeOfAccess } from '@/access/scopes/records'
 import { errorMessage, logDevError } from '@/app/devlog'
 import type { DataStandard } from '@/data/quality/tier'
 import { DATASET_KEYS } from '@/data/schema'
@@ -42,6 +44,7 @@ import {
 } from './chart'
 import type { TokenMap } from './privacy'
 import type { RefRegistry } from './refs'
+import { excludeArgsIn, filterArgsIn, toolsKey } from './roles'
 import { askOffReason, chatContext, PERIODS, scopeWords, withScope } from './scope'
 import { getScreen, periodWords, placeOf, placeWords } from './screen'
 import { figureHelpers, figureRefusal } from './screenPrivacy'
@@ -51,7 +54,6 @@ import {
   ACTIONS_OFF,
   type ActionOutput,
   applySavedView,
-  excludeArgsFor,
   isActionTool,
   OPEN_PAGES,
   openRecords,
@@ -73,7 +75,40 @@ export const isScreenTool = (n: string): boolean => SCREEN_TOOL_NAMES.includes(n
 
 /* ───────────── schemas ───────────── */
 
-type ModeAccess = Pick<AccessContext, 'mode' | 'can'>
+type ModeAccess = Pick<AccessContext, 'mode' | 'can'> &
+  Partial<Pick<AccessContext, 'scope' | 'lock' | 'unset'>>
+
+/** What set_filters and apply_saved_view keep to in a mode, in a sentence for Claude ('' without a scope). */
+function scopeKeeps(access: ModeAccess | null | undefined): string {
+  switch (scopeOfAccess(access)?.kind) {
+    case 'org':
+      return " In Manager mode the scope stays inside the manager's org: a leader outside it is refused, and a leader cannot be left out."
+    case 'unit':
+      return " In HRBP mode the scope stays inside the mode's business unit: a business unit, department or leader outside it is refused, and the business unit cannot be left out."
+    case 'region':
+      return " In HRBP mode the scope stays inside the mode's region: a location outside it is refused."
+    case 'reqs':
+      return " In Recruiter mode the filters narrow the recruiter's reqs, their candidates and their starts."
+  }
+  return access?.mode === 'finance'
+    ? ' Finance mode filters by business unit and period only: leader, department, location, level and exclude are refused.'
+    : ''
+}
+
+/** Where reset_filters goes back to in a mode. */
+function resetTo(access: ModeAccess | null | undefined): string {
+  switch (scopeOfAccess(access)?.kind) {
+    case 'org':
+      return "the manager's whole org"
+    case 'unit':
+      return "the mode's whole business unit"
+    case 'region':
+      return "the mode's whole region"
+    case 'reqs':
+      return "all of the recruiter's reqs"
+  }
+  return 'the whole company'
+}
 
 const LIST = (description?: string) => ({
   type: 'array',
@@ -128,8 +163,10 @@ function buildScreenTools(
   actions: boolean,
 ): BetaTool[] {
   const mode = access?.mode ?? 'developer'
-  const manager = mode === 'manager'
   const routes = routesFor(mode, views)
+  const args = new Set<string>(filterArgsIn(access))
+  const excl = excludeArgsIn(access)
+  const keeps = scopeKeeps(access)
   const out: BetaTool[] = [
     {
       name: 'get_screen',
@@ -142,19 +179,23 @@ function buildScreenTools(
     out.push(
       {
         name: 'set_filters',
-        description: `Change the filter row: the scope and period every view shows. mode merge (the default) changes only the filters you name and keeps the rest; an empty list or "" clears one. mode replace sets exactly what you name, starting from the whole company. The period stays unless given. Values as get_context lists them; a leader as a person token. exclude names the filters whose values are left out instead of kept. One history entry, with Undo. Returns the new scope; tool calls after it in this answer use it.${manager ? " In Manager mode the scope stays inside the manager's org: a leader outside it is refused, and a leader cannot be left out." : ''}`,
+        description: `Change the filter row: the scope and period every view shows. mode merge (the default) changes only the filters you name and keeps the rest; an empty list or "" clears one. mode replace sets exactly what you name, starting from ${resetTo(access)}. The period stays unless given. Values as get_context lists them; a leader as a person token.${excl.length ? ' exclude names the filters whose values are left out instead of kept.' : ''} One history entry, with Undo. Returns the new scope; tool calls after it in this answer use it.${keeps}`,
         input_schema: {
           type: 'object',
           properties: {
             mode: { type: 'string', enum: ['merge', 'replace'] },
-            leader: {
-              type: 'string',
-              description: 'A leader’s person token from get_context, or "" to clear.',
-            },
+            ...(args.has('leader')
+              ? {
+                  leader: {
+                    type: 'string',
+                    description: 'A leader’s person token from get_context, or "" to clear.',
+                  },
+                }
+              : {}),
             business_unit: LIST(),
-            department: LIST(),
-            location: LIST(),
-            level: LIST('Level codes such as L4 or M1.'),
+            ...(args.has('department') ? { department: LIST() } : {}),
+            ...(args.has('location') ? { location: LIST() } : {}),
+            ...(args.has('level') ? { level: LIST('Level codes such as L4 or M1.') } : {}),
             period: {
               type: 'string',
               enum: PERIODS,
@@ -165,16 +206,16 @@ function buildScreenTools(
               type: 'string',
               description: 'YYYY-MM-DD, for a custom period; on or before the as-of date.',
             },
-            exclude: { type: 'array', items: { type: 'string', enum: excludeArgsFor(manager) } },
+            ...(excl.length
+              ? { exclude: { type: 'array', items: { type: 'string', enum: [...excl] } } }
+              : {}),
           },
           additionalProperties: false,
         },
       },
       {
         name: 'reset_filters',
-        description: manager
-          ? "Reset the filter row to the manager's whole org over the last 12 months. One history entry, with Undo."
-          : 'Reset the filter row to the whole company over the last 12 months. One history entry, with Undo.',
+        description: `Reset the filter row to ${resetTo(access)} over the last 12 months. One history entry, with Undo.`,
         input_schema: { type: 'object', properties: {}, additionalProperties: false },
       },
       {
@@ -236,7 +277,7 @@ function buildScreenTools(
       },
       {
         name: 'apply_saved_view',
-        description: `Apply one of the person’s saved views by name (get_screen lists them): its scope and, when it has one, its page, as one history entry with Undo.${manager ? " In Manager mode it applies inside the manager's org." : ''}`,
+        description: `Apply one of the person’s saved views by name (get_screen lists them): its scope and, when it has one, its page, as one history entry with Undo. It goes through the same clamp and route guard as the Views menu: what this mode does not show is left out, and the result says what.${keeps}`,
         input_schema: {
           type: 'object',
           properties: { name: { type: 'string' } },
@@ -301,7 +342,7 @@ export function screenToolDefinitions(
     byKey = new Map()
     cache.set(views, byKey)
   }
-  const key = `${access?.mode ?? 'developer'}|${actions}`
+  const key = `${toolsKey(access)}|${actions}|${policyVersion()}`
   let out = byKey.get(key)
   if (!out) {
     out = buildScreenTools(access, views, actions).filter((t) => !access || access.can(`ask:${t.name}`))
@@ -421,8 +462,7 @@ async function makeChart(
           : `A ${tool} result cannot be drawn. Draw from query_records, compare_groups or view_summary.`
   const s = spec.source
   if (s.kind === 'tool') {
-    if (access && !access.can(`ask:${s.tool}`))
-      return fail(`${s.tool} is not available in ${access.mode === 'manager' ? 'Manager' : 'this'} mode.`)
+    if (access && !access.can(`ask:${s.tool}`)) return fail(toolNotInMode(s.tool, access.mode))
     const out =
       s.tool === 'query_records'
         ? queryRecords(rt, s.input)
@@ -448,7 +488,7 @@ async function makeChart(
     src = fromOutput(prior.name, value)
   } else {
     if (access && access.mode !== 'developer' && !access.can(`figure:${s.figure}`))
-      return fail(`That figure is not shown in ${access.mode === 'manager' ? 'Manager' : 'HR'} mode.`)
+      return fail(`That figure is not shown in ${modeName(access.mode)}.`)
     if (figureHiddenFromAsk(s.figure)) return fail(FIGURE_HIDDEN_FROM_ASK)
     await app.settle()
     const fig = await app.figure(s.figure)
@@ -464,7 +504,7 @@ async function makeChart(
     const state = app.screen()
     src = figureSource(fig, figureHelpers(rt), {
       // The scope as tool results word it, so every chart's caption reads the same way.
-      scope: scopeWords(state.filters, rt.tokens),
+      scope: scopeWords(state.filters, rt.tokens, scopeOfAccess(rt.base.access)),
       period: periodWords(state.filters),
       metricName: (fig.metric && metrics.def(fig.metric)?.name) || null,
     })
@@ -514,10 +554,9 @@ export async function runScreenTool(
   const access = env.ctx.access
   // An answer that outlived a change of mode: its context is the old mode's.
   if (modeMoved(env.app, access)) return done(fail(MODE_CHANGED))
-  const off = access?.lock ? askOffReason(env.ctx) : null
+  const off = askOffReason(env.ctx)
   if (off) return done(fail(off))
-  if (access && !access.can(`ask:${name}`))
-    return done(fail(`${name} is not available in ${access.mode === 'manager' ? 'Manager' : 'this'} mode.`))
+  if (access && !access.can(`ask:${name}`)) return done(fail(toolNotInMode(name, access.mode)))
   const app = env.app
   if (!app) return done(fail(`${name} needs the Census screen, and Ask is not connected to it here.`))
   if (isActionTool(name) && !app.actionsOn()) return done(fail(ACTIONS_OFF))

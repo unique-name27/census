@@ -8,6 +8,8 @@
  * Nothing here holds a name: figure titles, record titles and saved view names are passed through
  * the privacy pass before anything goes to Claude.
  */
+import { EVERY_RECRUITER, type Mode, type ModePicks, PICK_OF } from '@/access/modes'
+import type { ScopeLock } from '@/access/scopes/types'
 import type { Column } from '@/charts/types'
 import type { DataStandard, Tier } from '@/data/quality/tier'
 import {
@@ -143,10 +145,11 @@ export interface AskApp {
   /** A figure's data: on the tab on screen, or laid out off screen from its view; null when there is none. */
   figure(id: string): Promise<FigureData | null>
   /**
-   * The mode in force now (and Manager mode's manager), when the app knows it. A tool call from an
-   * answer started in another mode is refused: the answer's context is the old mode's.
+   * The mode in force now (and Manager mode's manager, and the mode's pick: the manager, business
+   * unit, region or recruiter), when the app knows it. A tool call from an answer started in
+   * another mode, or for another pick, is refused: the answer's context is the old one's.
    */
-  mode?(): { mode: string; managerId: string | null }
+  mode?(): { mode: string; managerId: string | null; pick?: string | null }
 }
 
 /**
@@ -193,17 +196,59 @@ export interface AskAction {
 export const MODE_CHANGED =
   'The mode changed while this answer was being written, so nothing was done and nothing was calculated. Stop here.'
 
+/** The pick a mode holds, from the remembered picks: its manager, business unit, region or recruiter. */
+export function pickOfMode(mode: Mode, picks: Partial<ModePicks>): string | null {
+  switch (PICK_OF[mode]) {
+    case 'manager':
+      return picks.managerId ?? null
+    case 'unit':
+      return picks.unit ?? null
+    case 'region':
+      return picks.region ?? null
+    case 'recruiter':
+      return picks.recruiter?.name ?? null
+    default:
+      return null
+  }
+}
+
+/** The pick an access answer was built for (`EVERY_RECRUITER` for Recruiter mode without a scope). */
+export function pickOfAccess(access: {
+  mode: string
+  scope?: ScopeLock | null
+  lock?: { managerId: string } | null
+}): string | null {
+  const s = access.scope
+  if (!s) return access.lock?.managerId ?? (access.mode === 'recruiter' ? EVERY_RECRUITER : null)
+  switch (s.kind) {
+    case 'org':
+      return s.managerId
+    case 'unit':
+      return s.unit
+    case 'region':
+      return s.region
+    case 'reqs':
+      return s.recruiter
+  }
+}
+
+/** A pick as compared: no pick, or a scope that holds nobody, is ''. */
+const pickKey = (v: string | null | undefined): string =>
+  !v || v === 'none' ? '' : v.trim().replace(/\s+/g, ' ').toLowerCase()
+
 /**
  * Whether the mode in force (`app.mode()`) is no longer the one the answer's context was built
- * for: another mode, or another manager in Manager mode. False when the app does not say.
+ * for: another mode, or another pick (manager, business unit, region, recruiter). False when the
+ * app does not say.
  */
 export function modeMoved(
   app: Pick<AskApp, 'mode'> | null | undefined,
-  access: { mode: string; lock: { managerId: string } | null } | null | undefined,
+  access: { mode: string; lock: { managerId: string } | null; scope?: ScopeLock | null } | null | undefined,
 ): boolean {
   const now = app?.mode?.()
   if (!now || !access) return false
   if (now.mode !== access.mode) return true
+  if (now.pick !== undefined) return pickKey(now.pick) !== pickKey(pickOfAccess(access))
   return !!access.lock && access.lock.managerId !== now.managerId
 }
 

@@ -178,6 +178,11 @@ export interface ViewDef {
   key: ViewKey
   /** Tab label, e.g. "Recruiting". */
   label: string
+  /**
+   * The page title (h1) when it is not the label: the Home view names the role's home ("Executive
+   * home", "Silicon Engineering", "Maya Chen's reqs"; docs/ROLES-V2.md 5.1). Default: `label`.
+   */
+  title?: (ctx: AnalyticsContext) => string
   /** Sub-tabs; the first one is the default. */
   tabs: ViewTab[]
   View: ComponentType<{ tab: string }>

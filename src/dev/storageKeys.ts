@@ -39,21 +39,41 @@ export const STORAGE_KEYS: readonly StorageKeyDef[] = [
   {
     key: 'census:metrics',
     where: ['localStorage'],
-    holds: 'Your metric definition changes and their change log',
+    holds:
+      'Your metric definition changes and their change log: wording, targets, thresholds such as the escalation days, and the compensation cycle dates',
     inSettingsFile: true,
   },
-  { key: 'census:lists', where: ['localStorage'], holds: 'Official lists', inSettingsFile: true },
+  {
+    key: 'census:lists',
+    where: ['localStorage'],
+    holds: 'Official lists, including each location’s region and each region’s HR business partner',
+    inSettingsFile: true,
+  },
   {
     key: 'census:mode',
     where: ['localStorage'],
-    holds: 'The mode and its picks: manager, business unit, region, recruiter',
+    holds:
+      'The mode (one of eleven) and the pick each scoped mode remembers: manager, business unit, region, recruiter',
   },
   { key: 'census:dev', where: ['localStorage'], holds: 'The debug overlay switches' },
   { key: 'census:help', where: ['localStorage'], holds: 'Help: welcome card dismissed, tours finished' },
   {
     key: 'census:actions',
     where: ['localStorage'],
-    holds: 'Action center items marked handled or snoozed, and the name marks are kept under',
+    holds:
+      'Action center marks (handled or snoozed, with each item’s fingerprint; HR case IDs hashed) and the name they are kept under',
+  },
+  {
+    key: 'census:access-draft',
+    where: ['localStorage'],
+    holds: 'Security center: draft changes to what each role sees, kept until published as a policy file',
+    inSettingsFile: true,
+  },
+  {
+    key: 'census:access-preview',
+    where: ['sessionStorage'],
+    holds:
+      'Security center: the role a "Preview as role" lays out in this tab, with the draft lines, kept across a reload',
   },
   { key: 'census:ai-agents', where: ['localStorage'], holds: 'The AI in HR agent catalog' },
   { key: 'census:quality-lens', where: ['localStorage'], holds: 'The quality lens switch' },
@@ -157,6 +177,7 @@ export const NOT_STORAGE_NAMES: readonly { name: string; what: string }[] = [
   { name: 'census:quality', what: 'User Timing: the quality index' },
   { name: 'census:headline', what: 'User Timing: folder-tab headlines' },
   { name: 'census:analysis', what: 'User Timing: People stats special analyses' },
+  { name: 'census:home', what: 'User Timing: each role home (census:home:<home>)' },
   { name: 'census:actions', what: 'User Timing: Action center items (also a storage key)' },
   { name: 'census:drill', what: 'User Timing: records panel tables' },
   { name: 'census:ask', what: 'User Timing: Ask tools' },

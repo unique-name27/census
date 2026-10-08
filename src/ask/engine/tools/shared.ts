@@ -66,9 +66,6 @@ export function liveViews(rt: ToolRuntime): ViewDef[] {
   })
 }
 
-/** Manager mode's lock, when Ask runs in Manager mode. */
-export const lockOf = (rt: ToolRuntime) => rt.base.access?.lock ?? null
-
 /** Views that read data and can be summarized (the scorecard included). */
 export function dataViews(rt: ToolRuntime): ViewDef[] {
   return liveViews(rt).filter((v) => v.datasets.length > 0)

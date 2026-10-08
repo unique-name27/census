@@ -67,7 +67,16 @@ const defined = <T,>(list: readonly (T | null | undefined)[]): T[] => list.filte
 
 /* ───────── targets met ───────── */
 
-export function Standing({ model, className }: { model: ScorecardModel; className?: string }) {
+export function Standing({
+  id,
+  model,
+  className,
+}: {
+  /** `scorecard-standing` on the Scorecard; a role home gives its own (`home-chro-standing`). */
+  id: string
+  model: ScorecardModel
+  className?: string
+}) {
   const ctx = useAnalytics()
   const [open, setOpen] = useState<SplitKey | null>(null)
   const c = model.counts
@@ -87,7 +96,7 @@ export function Standing({ model, className }: { model: ScorecardModel; classNam
     .join(' · ')
   return (
     <Figure
-      id="scorecard-standing"
+      id={id}
       metric={M.targetsMet}
       uses={model.headline.uses.length ? model.headline.uses : model.uses}
       title="Targets met"
@@ -220,7 +229,16 @@ type GapBar = MeasureRow & { name: string }
 /** Measures a phone shows before "Show all". */
 const PHONE_ROWS = 8
 
-export function Measures({ model, className }: { model: ScorecardModel; className?: string }) {
+export function Measures({
+  id,
+  model,
+  className,
+}: {
+  /** `scorecard-measures` on the Scorecard; a role home gives its own (`home-chro-measures`). */
+  id: string
+  model: ScorecardModel
+  className?: string
+}) {
   const ctx = useAnalytics()
   const narrow = useNarrow()
   const [order, setOrder] = useState<MeasureOrder>('practice')
@@ -263,7 +281,7 @@ export function Measures({ model, className }: { model: ScorecardModel; classNam
   const judged = model.counts.judged
   return (
     <Figure
-      id="scorecard-measures"
+      id={id}
       metric={M.status}
       uses={model.uses.length ? model.uses : undefined}
       title="Measures against target"

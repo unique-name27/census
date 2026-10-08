@@ -1,10 +1,13 @@
 /**
- * The first-visit welcome on each mode's home (docs/ROLES.md 3.1): one quiet line under the view
- * header, with the mode's first tour and "Not now" as ghost buttons (no card, no ink button).
+ * The first-visit welcome on each mode's home (docs/ROLES.md 3.1; docs/ROLES-V2.md 4.3): one quiet
+ * line under the view header, with the mode's first tour and "Not now" as ghost buttons (no card, no
+ * ink button).
  *
  *  - HR mode, on the Scorecard: "New to Census?" and the 2-minute tour (`getting-started`).
  *  - Manager mode, on My team (`variant="manager"`): "New to My team?" and "Getting started as a
  *    manager" (`manager-start`).
+ *  - CHRO and every practice and partner mode, on Home (`variant="home"`): "New to Compensation
+ *    mode?" and "Getting started with your home" (`home-start`).
  *  - Developer mode: none.
  *
  * Dismissing it (or finishing its tour) is remembered in this browser, each mode's line on its
@@ -13,38 +16,26 @@
  */
 import { Button, cx } from '@/components/ui'
 import { useAnalyticsIfAny } from '@/data/context'
-import { startTour, useHelp } from '../store'
+import { startTour, useHelp, welcomeDismissed } from '../store'
+import { type WelcomeVariant, welcomeCopy } from '../welcome'
 import { IconHelp } from './IconHelp'
 import { helpTrigger } from './refs'
-
-export const GETTING_STARTED = 'getting-started'
-export const MANAGER_START = 'manager-start'
-
-const COPY = {
-  hr: { title: 'New to Census?', take: 'Take the 2-minute tour', tour: GETTING_STARTED },
-  manager: { title: 'New to My team?', take: 'Take the 1-minute tour', tour: MANAGER_START },
-} as const
 
 export function WelcomeCard({
   className,
   variant = 'hr',
 }: {
   className?: string
-  /** Whose home it sits on: HR mode's Scorecard (default) or Manager mode's My team. */
-  variant?: 'hr' | 'manager'
+  /** Whose home it sits on: HR mode's Scorecard (default), Manager mode's My team, or a role's Home. */
+  variant?: WelcomeVariant
 }) {
-  const role = variant
-  const copy = COPY[role]
-  const dismissed = useHelp((s) =>
-    role === 'manager'
-      ? s.prefs.managerWelcomeDismissed === true || s.prefs.completed.includes(MANAGER_START)
-      : s.prefs.welcomeDismissed || s.prefs.completed.includes(GETTING_STARTED),
-  )
-  const dismiss = useHelp((s) => s.dismissWelcome)
   // Each line shows in its own mode only (Developer mode has none).
   const mode = useAnalyticsIfAny()?.access.mode
-  if (dismissed || (mode && mode !== role)) return null
-  const titleId = `census-welcome-title-${role}`
+  const copy = welcomeCopy(variant, mode)
+  const dismissed = useHelp((s) => (copy ? welcomeDismissed(s.prefs, copy.line) : true))
+  const dismiss = useHelp((s) => s.dismissWelcome)
+  if (!copy || dismissed) return null
+  const titleId = `census-welcome-title-${variant}`
   return (
     // One quiet line under the view header, not a card: the page's numbers stay first.
     <section
@@ -63,7 +54,7 @@ export function WelcomeCard({
         size="sm"
         variant="ghost"
         onClick={() => {
-          dismiss(role)
+          dismiss(copy.line)
           startTour(copy.tour)
         }}
       >
@@ -73,7 +64,7 @@ export function WelcomeCard({
         size="sm"
         variant="ghost"
         onClick={() => {
-          dismiss(role)
+          dismiss(copy.line)
           // The line goes away; Help is where the tour lives from now on.
           helpTrigger.current?.focus()
         }}

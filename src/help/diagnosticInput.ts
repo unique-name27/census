@@ -63,6 +63,21 @@ export function pageLabels(view: string, tab: string): { view: string; tab: stri
   return { view: v.label, tab: v.tabs.length > 1 ? (t?.label ?? null) : null }
 }
 
+/**
+ * "Mode: HRBP for a region (APAC)" (docs/ROLES-V2.md 4.8). A business unit or a region is not about
+ * a person and is named; a manager or a recruiter is, and is left out ("recruiter set, name left
+ * out"). "Every recruiter" names nobody, so it says so.
+ */
+export function modeLine(access: NonNullable<AnalyticsContext['access']>): string {
+  const { mode, scope, unset } = access
+  if (mode === 'hrbp-unit' || mode === 'hrbp-region') {
+    const name = scope?.kind === 'unit' ? scope.unit : scope?.kind === 'region' ? scope.region : null
+    return reportModeLine(mode, unset ? null : name)
+  }
+  if (mode === 'recruiter' && !scope && !unset) return 'Mode: Recruiter (every recruiter)'
+  return reportModeLine(mode, !!scope && !unset)
+}
+
 export function diagnosticInput(
   ctx: AnalyticsContext,
   s: DiagnosticState,
@@ -77,10 +92,7 @@ export function diagnosticInput(
     inScope = null
   }
   return {
-    // The mode, never the manager: a name would put a person in the report.
-    ...(ctx.access
-      ? { modeLine: reportModeLine(ctx.access.mode, !!ctx.access.lock && !ctx.access.unset) }
-      : {}),
+    ...(ctx.access ? { modeLine: modeLine(ctx.access) } : {}),
     viewLabel: page.view,
     tabLabel: page.tab,
     address: safeAddress(env.hash),

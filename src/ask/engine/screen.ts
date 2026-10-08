@@ -5,6 +5,8 @@
  * each question carries, built here: "On screen: People stats, Attrition; Bengaluru; last 12
  * months." Both go through the privacy pass like every result.
  */
+import { scopeOfAccess } from '@/access/scopes/records'
+import type { ScopeLock } from '@/access/scopes/types'
 import { customPeriodText } from '@/components/filterLabels'
 import type { AnalyticsContext } from '@/data/context'
 import { STANDARD_DESCRIPTION } from '@/data/quality/tier'
@@ -29,9 +31,12 @@ export function periodWords(f: Filters): string {
   return label.charAt(0).toLowerCase() + label.slice(1)
 }
 
-/** The scope inside a sentence, with the leader as a token: "Bengaluru, not L1", "the whole company". */
-export function scopeInWords(f: Filters, tokens: TokenMap): string {
-  return scopeWords(f, tokens)
+/**
+ * The scope inside a sentence, with the leader as a token: "Bengaluru, not L1", "the whole
+ * company"; with the mode's scope, "APAC" or "{{P7}}'s reqs, Bengaluru".
+ */
+export function scopeInWords(f: Filters, tokens: TokenMap, scope?: ScopeLock | null): string {
+  return scopeWords(f, tokens, scope)
     .replace(/^Whole company/, 'the whole company')
     .replaceAll(' · ', ', ')
 }
@@ -136,7 +141,7 @@ export function screenLine(
   const place = placeOf(state.route, ctx, views)
   const parts = [placeWords(place)]
   if (place.scoped) {
-    const scope = tokens.scan(scopeInWords(state.filters, tokens))
+    const scope = tokens.scan(scopeInWords(state.filters, tokens, scopeOfAccess(ctx.access)))
     parts.push(scope === 'the whole company' ? scope : JSON.stringify(scope), periodWords(state.filters))
   }
   let line = `On screen: ${parts.join('; ')}.`

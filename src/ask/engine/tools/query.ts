@@ -29,6 +29,7 @@
  *  - in a scope that leaves values out, a group that differs from the same group without one of
  *    those values by fewer people than the minimum is left out, name and all.
  */
+import { modeName } from '@/access/copy'
 import { gateFor } from '@/components/tier/tierModel'
 import type { AnalyticsContext } from '@/data/context'
 import { withoutValue } from '@/data/exclusion'
@@ -61,7 +62,7 @@ import {
   readableDataset,
 } from '../allowlist'
 import { DIFFERENCING, type RowSet, unionOf } from '../audit'
-import { contextFor, scopeOut, scopeWords } from '../scope'
+import { contextFor, scopeOut, scopeWordsOf } from '../scope'
 import { valueMapFor } from '../values'
 import { fail, inputOf, num, ok, scopedCtx, type ToolOutput, type ToolRuntime, unknownKeys } from './shared'
 
@@ -650,13 +651,14 @@ export function queryRecords(rt: ToolRuntime, raw: unknown): ToolOutput {
   const bad = unknownKeys(input, ['dataset', 'where', 'group_by', 'measures', 'filters', 'sort', 'limit'])
   if (bad) return fail(bad)
   const found = queryDataset(String(input.dataset ?? ''))
-  // Manager mode reads eight datasets (docs/ROLES.md, 3.3); the others are refused in plain words.
+  // Each mode reads its own datasets (`decide('dataset:…')`, docs/ROLES-V2.md 4.12 and 7); the
+  // others are refused in plain words, worded for the mode.
   const access = rt.base.access
   const readable = QUERY_DATASETS.filter((x) => !access || access.can(`dataset:${x.key}`))
   if (!found) return fail(`dataset must be one of ${readable.map((x) => x.key).join(', ')}.`)
   if (!readable.includes(found))
     return fail(
-      `${found.label} is not available in Manager mode. Datasets: ${readable.map((x) => x.key).join(', ')}.`,
+      `${found.label} is not available in ${access ? modeName(access.mode) : 'this mode'}. Datasets: ${readable.map((x) => x.key).join(', ')}.`,
     )
   // Fields that feed an analysis the mode hides (education, offer details) are refused too.
   const d = readableDataset(found, access)
@@ -668,7 +670,7 @@ export function queryRecords(rt: ToolRuntime, raw: unknown): ToolOutput {
   const scopeMin = minGroupOf(ctx.metrics)
   if (d.person && d.key !== 'candidates' && !ctx.isCompany && ctx.data.employees.length < scopeMin)
     return fail(
-      `The scope (${scopeWords(ctx.filters, rt.tokens)}) has fewer than ${scopeMin} people, the anonymity minimum, so Ask does not break down its records. Use a wider scope.`,
+      `The scope (${scopeWordsOf(ctx, rt.tokens)}) has fewer than ${scopeMin} people, the anonymity minimum, so Ask does not break down its records. Use a wider scope.`,
     )
 
   // Parse every argument before computing anything.
@@ -785,7 +787,7 @@ export function queryRecords(rt: ToolRuntime, raw: unknown): ToolOutput {
     rows = rows.filter((r) => r.status !== 'Declined')
     if (rows.length < before)
       notes.push(
-        'Declined offers are left out of cuts by rejection reason: why offers are declined is not shown in Manager mode.',
+        `Declined offers are left out of cuts by rejection reason: why offers are declined is not shown in ${modeName(access.mode)}.`,
       )
   }
   for (const w of where) rows = rows.filter((r) => w.test(w.field.get(r, j)))

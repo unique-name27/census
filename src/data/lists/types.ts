@@ -4,6 +4,7 @@
  * the store.
  */
 import type { FieldRef } from '../quality/fieldRef'
+import type { DatasetKey } from '../schema'
 
 export type ListId =
   | 'businessUnit'
@@ -12,6 +13,7 @@ export type ListId =
   | 'jobFunction'
   | 'level'
   | 'location'
+  | 'region'
   | 'costCenter'
   | 'caseCategory'
   | 'source'
@@ -71,6 +73,11 @@ export interface ListDef {
   name: string
   /** One plain sentence on what the list holds. */
   about: string
+  /**
+   * For a list no field is checked against (`refs` empty): the datasets its values describe, so it
+   * is the sample company's list while they are the sample (the Regions list's HR business partners).
+   */
+  reads?: readonly DatasetKey[]
 }
 
 export interface ListValue {

@@ -477,6 +477,7 @@ export function ListPanel({
   const [error, setError] = useState<string | null>(null)
   const ids = useId()
   const listed = valueRows(list, analysis, lists)
+  const checksFields = def.refs.length > 0
   const rows = def.id === 'jobFunction' ? withProposedStages(listed, (fn) => ctx.jobs.stageFor(fn)) : listed
   const value = selected ? list.values.find((v) => v.value === selected) : undefined
   const parentDef = def.parent ? listDef(def.parent) : null
@@ -511,7 +512,10 @@ export function ListPanel({
       }),
     ),
     ...(def.id === 'department' ? [{ key: 'costCenters', label: 'Cost centers' } as Column<ValueRow>] : []),
-    { key: 'rows', label: 'Rows', format: 'int', drill: drillValue },
+    // A list no field is checked against (Regions) has no rows to count.
+    ...(checksFields
+      ? [{ key: 'rows', label: 'Rows', format: 'int', drill: drillValue } as Column<ValueRow>]
+      : []),
     { key: 'status', label: 'Status' },
   ]
 
@@ -579,13 +583,13 @@ export function ListPanel({
         <div className="flex flex-col gap-2 rounded-control bg-warning-wash px-3.5 py-3">
           <p className="text-small text-ink">{pauseText(list)}</p>
           <div className="flex flex-wrap gap-2">
-            {list.paused === 'sample' && (
+            {list.paused === 'sample' && def.kind === 'org' && (
               <Button size="sm" variant="primary" onClick={() => setPanel('rebuild')}>
                 Rebuild from data
               </Button>
             )}
             <Button size="sm" onClick={makeOfficial}>
-              Keep checking against this list
+              {def.refs.length ? 'Keep checking against this list' : 'Keep using this list'}
             </Button>
           </div>
         </div>
@@ -649,7 +653,7 @@ export function ListPanel({
 
       <div className="flex flex-col gap-1.5">
         <h4 className={H3}>Values</h4>
-        <p className="text-meta text-ink-2">{valuesNote(list.values.length)}</p>
+        <p className="text-meta text-ink-2">{valuesNote(list.values.length, checksFields)}</p>
         <DataTable
           columns={columns}
           rows={rows}
@@ -657,7 +661,7 @@ export function ListPanel({
           maxRows={12}
           search={rows.length > 12 ? `Find a ${def.singular.toLowerCase()}` : undefined}
           onRowClick={(r) => setSelected(r.value === selected ? null : r.value)}
-          caption={`${def.label}: values, ${parentDef ? `${parentDef.singular.toLowerCase()}, ` : ''}rows in data and status`}
+          caption={`${def.label}: values, ${parentDef ? `${parentDef.singular.toLowerCase()}, ` : ''}${checksFields ? 'rows in data and ' : ''}status`}
           emptyText={`No ${def.label.toLowerCase()} yet.`}
         />
       </div>
@@ -673,7 +677,7 @@ export function ListPanel({
         />
       )}
 
-      {notInData.length > 0 && list.values.length > 0 && (
+      {checksFields && notInData.length > 0 && list.values.length > 0 && (
         <p className="text-meta leading-snug text-ink-2">
           <span className="font-semibold text-ink">On the list, not in the data:</span>{' '}
           {notInData

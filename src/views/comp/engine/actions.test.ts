@@ -121,27 +121,25 @@ describe('action items on hand-built data', () => {
     }
   })
 
-  it('lists guideline exceptions per person with the manager to confirm with', () => {
+  it('rolls guideline exceptions up per business unit, the people in its drill', () => {
     const items = compActions(context(data, { metrics: closeOn('2026-10-30') }))
-    const t = byId(items, 'comp:guideline-exception:TOP')
+    const t = byId(items, 'comp:guideline-exception:Silicon Engineering')
     expect(t).toMatchObject({
       ownerRole: 'total-rewards',
       tab: 'cycle',
       kind: COMP_KIND.exception,
-      subject: { kind: 'comp', id: 'TOP' },
-      place: { businessUnit: 'Silicon Engineering', location: 'San Jose' },
+      subject: { kind: 'none' },
+      place: { businessUnit: 'Silicon Engineering' },
     })
-    expect(t.what).toBe(
-      'Rated 5 with a 1.0% merit proposal, below the 2.0% floor for a 5; the guideline is 6.0%',
-    )
-    expect(t.note).toBe(
-      'Could we confirm the merit proposal for Tia Top with Bea Boss before the cycle closes?',
-    )
-    const w = byId(items, 'comp:guideline-exception:WEAK')
-    expect(w.what).toBe(
-      'Rated 2 with a 5.0% merit proposal, above the 3.0% cap for a 1 or 2; the guideline is 1.0%',
-    )
-    expect(items.some((i) => i.subject.id === 'FINE')).toBe(false)
+    expect(t.what).toMatch(/^\d+ merit proposals? in Silicon Engineering (is|are) outside the guideline: /)
+    expect(t.what).toContain('rated 5 below the 2.0% floor')
+    expect(t.what).toContain('rated 1 or 2 above the 3.0% cap')
+    expect(t.note).toBe('Could we confirm these merit proposals with their managers before the cycle closes?')
+    expect(t.fingerprint).toBeTruthy()
+    const people = resolveDrill(t.drill)?.rows.map((r) => (r as { employeeId: string }).employeeId) ?? []
+    expect(people).toEqual(expect.arrayContaining(['TOP', 'WEAK']))
+    expect(people).not.toContain('FINE')
+    expect(items.some((i) => i.id.endsWith(':TOP') || i.id.endsWith(':WEAK'))).toBe(false)
   })
 
   it('is empty without comp data', () => {
@@ -320,9 +318,15 @@ describe('on the sample company', () => {
     )
     // Every proposal is in on the sample (everyone hired by 30 Mar 2026 has one).
     expect(items.some((i) => i.id.startsWith('comp:no-proposal:'))).toBe(false)
+    // One roll-up per business unit with a rule-breaking proposal, holding every one of them.
     const exceptions = items.filter((i) => i.id.startsWith('comp:guideline-exception:'))
-    expect(exceptions).toHaveLength(ruleExceptions(compModel(ctx).cycle.exceptions).length)
-    expect(exceptions).toHaveLength(11)
+    const rows = ruleExceptions(compModel(ctx).cycle.exceptions)
+    expect(rows).toHaveLength(11)
+    expect(exceptions.map((i) => i.place?.businessUnit).sort()).toEqual(
+      [...new Set(rows.map((r) => r.person.businessUnit))].sort(),
+    )
+    const counted = exceptions.reduce((n, i) => n + Number(/^(\d+) merit/.exec(i.what)?.[1] ?? 0), 0)
+    expect(counted).toBe(rows.length)
   })
 
   it('never writes a money amount into an item, in any mode, switch on or off', () => {

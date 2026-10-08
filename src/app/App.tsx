@@ -24,6 +24,9 @@ import { SAMPLE_COMPANY } from '@/data/sample'
 import { DATASET_KEYS, type ViewKey } from '@/data/schema'
 import { PAGE_VIEWS, useCensus } from '@/data/store'
 import { DevLayer } from '@/dev/DevLayer'
+import { startAccessPolicy } from '@/dev/security/boot'
+import { PreviewBar } from '@/dev/security/PreviewBar'
+import { usePolicy } from '@/dev/security/store'
 import { DrillPanel } from '@/drill'
 import { ActionCenter } from '@/views/actions'
 import { DataRoom } from '@/views/data'
@@ -40,6 +43,10 @@ import { useDisplaySettings, useHashRouting } from './useShell'
 import { VIEW_BODY_ID, ViewHeader } from './ViewHeader'
 
 const PAGE = 'mx-auto w-full max-w-[1440px] px-(--gutter)'
+
+// The policy file in force (docs/SECURITY-CENTER.md) loads while the data does; the analytics
+// context is built once it has (or once it is late), so the first screen already follows it.
+startAccessPolicy()
 
 /** The Developer page loads with its own code, so HR and Manager mode load none of it. */
 const DevPage = lazy(() => import('@/dev/DevPage'))
@@ -227,6 +234,8 @@ function Shell() {
         >
           Skip to content
         </a>
+        {/* Preview as role, from the Security center: "Previewing Finance." and the way back. */}
+        <PreviewBar />
         <header className="band">
           <div className={PAGE}>
             <Masthead />
@@ -262,6 +271,10 @@ export function App() {
   const ready = useCensus((s) => s.ready)
   const init = useCensus((s) => s.init)
   const motion = useCensus((s) => s.motion)
+  // The policy in force, and a new key whenever what is laid over Census changes (a preview
+  // starts or ends): the provider is built again, so every screen reads the new decisions.
+  const policyReady = usePolicy((s) => s.settled)
+  const policyKey = usePolicy((s) => s.key)
   useDisplaySettings()
   // The modes' guards go in before the data loads and the address connects, so the first scope and
   // route Census shows are already the mode's.
@@ -279,8 +292,8 @@ export function App() {
   return (
     <MotionConfig reducedMotion={motion === 'reduce' ? 'always' : 'user'}>
       <TooltipProvider>
-        {ready ? (
-          <AnalyticsProvider>
+        {ready && policyReady ? (
+          <AnalyticsProvider key={policyKey}>
             <Shell />
             {/* Ask Census beside the page: docked on wide screens, a bottom sheet on phones. */}
             <AskPanel />

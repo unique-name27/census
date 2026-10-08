@@ -11,14 +11,26 @@
 import { IMMIGRATION_OF, type Mode, PAY_OF, type PayView } from './modes'
 import { type Decision, hidden, limited, SHOWN } from './policy/types'
 
-export const payView = (mode: Mode): PayView => PAY_OF[mode]
+let payOverrides: ReadonlyMap<Mode, PayView> | null = null
+
+/**
+ * The pay views a policy file sets (docs/SECURITY-CENTER.md), from its `pay:*` decisions; called by
+ * `setPolicyOverrides`. Amounts still show only while the session switch is on.
+ */
+export function setPayOverrides(next: ReadonlyMap<Mode, PayView> | null): void {
+  payOverrides = next?.size ? next : null
+}
+
+/** A mode's pay view: the policy file's, else `PAY_OF`. Developer always has the switch. */
+export const payView = (mode: Mode): PayView =>
+  (mode === 'developer' ? undefined : payOverrides?.get(mode)) ?? PAY_OF[mode]
 
 /** Individual pay amounts may show: a switch mode with "Show pay amounts" on. */
-export const showPayIn = (mode: Mode, switchOn: boolean): boolean => PAY_OF[mode] === 'switch' && switchOn
+export const showPayIn = (mode: Mode, switchOn: boolean): boolean => payView(mode) === 'switch' && switchOn
 
 /** Cost totals may show: individual amounts may (the switch modes, switch on), or Finance always. */
 export const showCostIn = (mode: Mode, switchOn: boolean): boolean =>
-  showPayIn(mode, switchOn) || PAY_OF[mode] === 'totals'
+  showPayIn(mode, switchOn) || payView(mode) === 'totals'
 
 /** Work authorization types per person may show: a mode with the switch, switch on. */
 export const showImmigrationIn = (mode: Mode, switchOn: boolean): boolean => IMMIGRATION_OF[mode] && switchOn

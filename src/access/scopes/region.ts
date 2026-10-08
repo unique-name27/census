@@ -6,17 +6,41 @@
 import type { Employee, ISODate } from '@/data/schema'
 import { isActiveAt, isEmployee } from '@/data/scope'
 import type { RegionIndex } from './regions'
-import type { RegionScope } from './types'
+import type { RegionOwner, RegionScope } from './types'
 import { NOBODY } from './unit'
+
+const nameKey = (s: string) => s.replace(/\s+/g, ' ').trim().toLowerCase()
+
+/**
+ * The regional HR business partner as the Regions list names them (a name or an employee ID),
+ * matched on the roster: by employee ID, else the one person of that name (an active one first).
+ * Unmatched, the name stands alone (`id` null); a blank names nobody.
+ */
+export function regionOwnerOf(
+  named: string | null | undefined,
+  employees: readonly Employee[],
+  asOf: ISODate,
+): RegionOwner | null {
+  const text = named?.trim()
+  if (!text) return null
+  const byId = employees.find((e) => e.employeeId === text)
+  if (byId) return { name: byId.name, id: byId.employeeId }
+  const key = nameKey(text)
+  const same = employees.filter((e) => nameKey(e.name) === key)
+  const active = same.filter((e) => isActiveAt(e, asOf))
+  const one = active.length === 1 ? active[0] : same.length === 1 ? same[0] : null
+  return one ? { name: one.name, id: one.employeeId } : { name: text, id: null }
+}
 
 const memo = new WeakMap<RegionIndex, WeakMap<readonly Employee[], Map<string, RegionScope>>>()
 
-/** The scope for one region, memoized per region index, roster, as-of date and region. */
+/** The scope for one region, memoized per region index, roster, as-of date, region and owner. */
 export function regionScope(
   employees: readonly Employee[],
   asOf: ISODate,
   region: string,
   regions: RegionIndex,
+  owner: RegionOwner | null = null,
 ): RegionScope {
   let byRoster = memo.get(regions)
   if (!byRoster) {
@@ -28,7 +52,7 @@ export function regionScope(
     byKey = new Map()
     byRoster.set(employees, byKey)
   }
-  const key = `${asOf}|${region}`
+  const key = `${asOf}|${region}|${owner?.id ?? ''}|${owner?.name ?? ''}`
   const hit = byKey.get(key)
   if (hit) return hit
   const sites = regions.sitesOf(region)
@@ -40,7 +64,7 @@ export function regionScope(
     memberIds.add(e.employeeId)
     if (isEmployee(e) && isActiveAt(e, asOf)) size++
   }
-  const scope: RegionScope = { kind: 'region', label: region, region, sites, size, memberIds }
+  const scope: RegionScope = { kind: 'region', label: region, region, sites, size, memberIds, owner }
   byKey.set(key, scope)
   return scope
 }

@@ -3,10 +3,12 @@
  * compression. Levels, cells and counts open the people behind them; a person's mark or row opens
  * their card.
  */
+import { S } from '@/access'
 import { Figure, HBars, RangeBars } from '@/charts'
 import type { Severity } from '@/components'
 import { Section } from '@/components'
 import { useMinWidth } from '@/components/useNarrow'
+import { useAnalytics } from '@/data/context'
 import { drill, openPerson } from '@/drill'
 import { formatDate } from '@/lib/dates'
 import { fmt } from '@/lib/format'
@@ -18,6 +20,7 @@ import { type BelowCauseRow, belowCauseDrill } from '../engine/charts'
 import { FIGURE_METRIC } from '../engine/definitions'
 import { compressionDrill, lazyDrill, penetrationDrill } from '../engine/drill'
 import type { CompModel } from '../engine/model'
+import { outsideRangeDek } from '../engine/notes'
 import { type OutsideRangeRow, TENURE_ORDER } from '../engine/ranges'
 import { asOfNote, emptyIf, MISSING, note } from '../shared'
 
@@ -51,6 +54,8 @@ export function Ranges({ m }: { m: CompModel }) {
   const locationDrill = (d: { location: string }) =>
     lazyDrill(bc.totals.get(d.location)?.length, () => belowCauseDrill(m, bc, d.location, null))
   const largest = bc.locations[0]
+  // Only the modes with the "Show pay amounts" switch are told about it (HRBP modes have none).
+  const paySwitch = useAnalytics().access.can(S.pay('switch'))
 
   return (
     <div>
@@ -110,10 +115,7 @@ export function Ranges({ m }: { m: CompModel }) {
         </Figure>
       </Section>
 
-      <Section
-        title="Outside the range"
-        dek="People paid below the minimum or above the maximum of their salary range. Amounts appear only with Show pay amounts on."
-      >
+      <Section title="Outside the range" dek={outsideRangeDek(paySwitch)}>
         <Figure
           id="comp-below-min-cause"
           uses={m.uses['comp-below-min-cause']}

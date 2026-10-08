@@ -9,6 +9,7 @@
  */
 import { batchAddress, setLensGuard, setLensOn } from '@/data/address'
 import { effectiveLists } from '@/data/lists/effective'
+import { regionOwners } from '@/data/lists/regions'
 import { useLists } from '@/data/lists/store'
 import type { ListsState } from '@/data/lists/types'
 import { applyReferenceMappings } from '@/data/reference/apply'
@@ -43,11 +44,15 @@ import {
   PICKER_COPY,
   toManagerTitle,
   WHOLE_COMPANY,
+  WHOLE_ORG,
+  WHOLE_REGION,
+  WHOLE_REQS,
+  WHOLE_UNIT,
 } from './copy'
 import {
   EVERY_RECRUITER,
-  HOME_OF,
   homeOf,
+  homeViewOf,
   type Mode,
   type ModePicks,
   modeButtonLabel,
@@ -123,8 +128,10 @@ function liveEnv(mode: Mode): ScopeEnv {
   const kind = SCOPE_OF[mode]
   const lists: ListsState = useLists.getState().state
   const env: ScopeEnv = { org: orgOf(st.data.employees), asOf: contextAsOf(st), all }
-  if (kind === 'region')
+  if (kind === 'region') {
     env.regions = regionIndex(effectiveLists(lists, all, st.sources).location?.values, all)
+    env.regionOwners = regionOwners(lists, st.sources)
+  }
   if (kind === 'unit') {
     const values = effectiveLists(lists, all, st.sources).department?.values ?? []
     let parents = parentsMemo.get(values)
@@ -273,6 +280,41 @@ function unpin(scope: ScopeLock): Partial<Filters> {
   return {}
 }
 
+/**
+ * Whether the filters still hold what a scope pinned once the mode moved on (to another scope or
+ * none): Manager's leader, the HRBP's business unit, sites of the region. A scope of the same kind
+ * with another pick replaces the pin, so nothing is left of it.
+ */
+export function scopeStillShows(prev: ScopeLock, f: Filters): boolean {
+  switch (prev.kind) {
+    case 'org':
+      return !!prev.managerId && f.leaderId === prev.managerId && !isExcluded(f, 'leaderId')
+    case 'unit':
+      return f.businessUnit.includes(prev.unit) && !isExcluded(f, 'businessUnit')
+    case 'region':
+      return f.location.some((l) => prev.sites.includes(l)) && !isExcluded(f, 'location')
+    case 'reqs':
+      // Its scope was never a filter (docs/ROLES-V2.md 1.5).
+      return false
+  }
+}
+
+/** The action that clears what a scope left, worded for where the new mode is: "Whole region". */
+export function wholeLabel(next: ScopeLock | null): string {
+  switch (next?.kind) {
+    case 'org':
+      return WHOLE_ORG
+    case 'unit':
+      return WHOLE_UNIT
+    case 'region':
+      return WHOLE_REGION
+    case 'reqs':
+      return WHOLE_REQS
+    default:
+      return WHOLE_COMPANY
+  }
+}
+
 interface Was {
   mode: Mode
   picks: ModePicks
@@ -305,7 +347,27 @@ function switched(prev: Was, next: Was) {
   })
   deps.onModeChange?.()
   const prevScope = before.unset ? null : before.scope
-  const name = pickName(next.mode, after.unset ? null : after.scope, next.picks)
+  const nextScope = after.unset ? null : after.scope
+  const name = pickName(next.mode, nextScope, next.picks)
+  // Leaving a scope (for none, or for another scope) keeps its values as ordinary filters: the
+  // toast says so, with the action that clears them (docs/ROLES-V2.md 1.5).
+  const left =
+    prevScope?.label &&
+    !(PICK_OF[next.mode] && after.unset) &&
+    scopeStillShows(prevScope, useCensus.getState().filters)
+      ? prevScope
+      : null
+  const leftNotice = (title: string, scope: ScopeLock): AccessNotice => {
+    const pinned = unpin(scope)
+    return {
+      title,
+      description: leftScopeDescription(scope.label),
+      action: {
+        label: wholeLabel(nextScope),
+        onClick: () => useCensus.getState().setFilters(pinned, { history: 'push' }),
+      },
+    }
+  }
   if (PICK_OF[next.mode]) {
     const title =
       next.mode === 'manager' && name
@@ -313,21 +375,12 @@ function switched(prev: Was, next: Was) {
         : name
           ? modeButtonLabel(next.mode, name)
           : modeToastTitle(next.mode)
-    deps.notify({ title, description: NOT_SECURITY_SHORT })
+    deps.notify(left ? leftNotice(title, left) : { title, description: NOT_SECURITY_SHORT })
     checkScope()
   } else if (next.mode === 'finance')
     deps.notify({ title: modeToastTitle('finance'), description: FINANCE_FILTERS_NOTE })
-  else if (prevScope && prevScope.kind !== 'reqs' && prevScope.label) {
-    const pinned = unpin(prevScope)
-    deps.notify({
-      title: modeToastTitle(next.mode),
-      description: leftScopeDescription(prevScope.label),
-      action: {
-        label: WHOLE_COMPANY,
-        onClick: () => useCensus.getState().setFilters(pinned, { history: 'push' }),
-      },
-    })
-  } else deps.notify({ title: modeToastTitle(next.mode), description: NOT_SECURITY_SHORT })
+  else if (left) deps.notify(leftNotice(modeToastTitle(next.mode), left))
+  else deps.notify({ title: modeToastTitle(next.mode), description: NOT_SECURITY_SHORT })
 }
 
 /** The page this load opened on: an unnamed one goes to the mode's home; a hidden one is redirected with a notice. */
@@ -380,7 +433,7 @@ export function connectAccess(d: ConnectDeps): () => void {
     check(route) {
       const mode = useMode.getState().mode
       // No pick yet: the home's empty state is the only page (the pick dialog is open).
-      if (waitingForPick() && route.view !== HOME_OF[mode]) return { route: homeOf(mode) }
+      if (waitingForPick() && route.view !== homeViewOf(mode)) return { route: homeOf(mode) }
       const r = routeDecision(mode, route)
       if (!r.redirected || !r.reason) return null
       const reason = r.reason
@@ -390,7 +443,7 @@ export function connectAccess(d: ConnectDeps): () => void {
           deps.notify({ title: reason.title, description: reason.description, action: changeMode }),
       }
     },
-    home: () => HOME_OF[useMode.getState().mode],
+    home: () => homeViewOf(useMode.getState().mode),
   })
   setStandardGuard((asked) => {
     const mode = useMode.getState().mode

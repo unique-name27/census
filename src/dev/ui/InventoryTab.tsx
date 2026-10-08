@@ -1,10 +1,13 @@
 /**
- * Developer > Inventory (docs/ROLES.md, 5.3): pick a list, search it, export it. Every list is one
- * table-only Figure with the decision in each mode beside every row. Figures come from a scan
- * ("Scan figures", "Scan as Manager"); engine functions can be run on the live context; storage
+ * Developer > Inventory (docs/ROLES.md, 5.3; docs/ROLES-V2.md 5.13): pick a list, search it, export
+ * it. Every list is one table-only Figure with the decision in each of the eleven modes beside
+ * every row. Figures come from a scan ("Scan figures", or "Scan as role" with another mode and its
+ * pick); Role homes lists each mode's home and previews a role's Home on this page ("Preview a
+ * role", `#dev.inventory:homes/finance`); engine functions can be run on the live context; storage
  * keys can be copied (never the Ask key) or removed after an in-page confirm.
  */
 import { useEffect, useId, useMemo, useState } from 'react'
+import { HOME_OF, MODE_LABEL, MODES, type Mode } from '@/access/modes'
 import { openDatasetQuality } from '@/app/datasetFocus'
 import { formulaRows } from '@/app/settings/formulaIndex'
 import { QUERY_DATASETS } from '@/ask/engine/allowlist'
@@ -16,7 +19,7 @@ import { goTo } from '@/components/navigation'
 import { Grid } from '@/components/Section'
 import { toast } from '@/components/toast'
 import type { Kpi } from '@/components/types'
-import { Button, Segmented } from '@/components/ui'
+import { Button } from '@/components/ui'
 import { useAnalytics } from '@/data/context'
 import { DATASET_KEYS, type DatasetKey } from '@/data/schema'
 import { openSettings, type RouteView } from '@/data/store'
@@ -38,11 +41,13 @@ import {
   engineRows,
   figureRows,
   helpRows,
+  homeRoleRows,
   INVENTORY_LISTS,
   type InventoryList,
   type InventoryTable,
-  isInventoryList,
+  inventorySub,
   metricRows,
+  parseInventorySub,
   type Row,
   routeRows,
   searchRows,
@@ -54,6 +59,7 @@ import {
 } from '../inventory'
 import { freshContext, localValue, removeLocalKey, settingsSnapshot } from '../live'
 import { bytesText } from '../overview'
+import { canLayOut, HOME_ROLES, isHomeRole, SCAN_MODES } from '../roles'
 import { scanLine } from '../scan'
 import { settingFacts } from '../settingsFacts'
 import { SHORTCUTS } from '../shortcuts'
@@ -61,7 +67,9 @@ import { canCopyValue, describeKey } from '../storageKeys'
 import { useDev } from '../store'
 import { devTab } from '../tabs'
 import { useRunScan } from '../useScan'
+import { HomePreview } from './HomePreview'
 import { useStorageRows } from './OverviewTab'
+import { PickSelect, RoleSelect, usePagePicks } from './RoleControls'
 import { ABOUT_APP, copyText, JsonSheet, ListPicker } from './shared'
 
 const ROUTE_INPUT = {
@@ -74,6 +82,9 @@ const ROUTE_INPUT = {
 const askFields = (key: DatasetKey) =>
   QUERY_DATASETS.find((d) => d.key === key)?.fields.map((f) => f.name) ?? []
 
+/** The address of a role home preview on the Role homes list (no role: the list alone). */
+const homesTab = (mode?: Mode | null): string => devTab('inventory', inventorySub('homes', mode))
+
 /** "#hrbp.attrition" → the route it names, when it is one Census can open. */
 function routeOf(address: string): { view: RouteView; tab: string } | null {
   if (!address.startsWith('#') || address.includes('<')) return null
@@ -81,9 +92,26 @@ function routeOf(address: string): { view: RouteView; tab: string } | null {
   return { view: view as RouteView, tab: rest.join('.') }
 }
 
+/** "Scan as role": the mode to lay out, its pick, and the button; the table shows that mode's last scan. */
+function ScanControls({ mode, onMode }: { mode: Mode; onMode: (m: Mode) => void }) {
+  const picks = usePagePicks()
+  const scanning = useDev((s) => s.scanning)
+  const { run } = useRunScan()
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <RoleSelect label="Mode" value={mode} modes={SCAN_MODES} onChange={onMode} />
+      <PickSelect mode={mode} picks={picks} />
+      <Button size="sm" disabled={!!scanning || !canLayOut(mode, picks)} onClick={() => void run(mode)}>
+        {mode === 'developer' ? 'Scan figures' : 'Scan as role'}
+      </Button>
+    </div>
+  )
+}
+
 export function InventoryTab({ sub }: { sub: string }) {
   const ctx = useAnalytics()
-  const list: InventoryList = isInventoryList(sub) ? sub : 'views'
+  const { list, arg } = parseInventorySub(sub)
+  const preview = list === 'homes' && isHomeRole(arg) ? arg : null
   const focus = useDev((s) => s.inventoryFocus)
   const scans = useDev((s) => s.scans)
   const scanning = useDev((s) => s.scanning)
@@ -91,7 +119,8 @@ export function InventoryTab({ sub }: { sub: string }) {
   const setEngineRuns = useDev((s) => s.setEngineRuns)
   const { run: runScan } = useRunScan()
   const storage = useStorageRows()
-  const [scanMode, setScanMode] = useState<'developer' | 'manager'>('developer')
+  const picks = usePagePicks()
+  const [scanMode, setScanMode] = useState<Mode>('developer')
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState<Row | null>(null)
   const [sheet, setSheet] = useState<{ title: string; text: string } | null>(null)
@@ -118,6 +147,7 @@ export function InventoryTab({ sub }: { sub: string }) {
   const tables: Record<InventoryList, () => InventoryTable> = {
     views: () => viewRows(VIEWS),
     tabs: () => tabRows(VIEWS),
+    homes: () => homeRoleRows({ picks, managerName: (id) => ctx.org.byId.get(id)?.name ?? null }),
     figures: () => figureRows(scan),
     metrics: () => metricRows(formulas, ctx.metrics),
     engines: () => engineRows(VIEWS, engineRuns),
@@ -137,6 +167,7 @@ export function InventoryTab({ sub }: { sub: string }) {
   const counts: Partial<Record<InventoryList, number | null>> = {
     views: VIEWS.length,
     tabs: VIEWS.reduce((n, v) => n + v.tabs.length, 0),
+    homes: MODES.length,
     figures: scan ? figureRows(scan).rows.length : null,
     metrics: ctx.metrics.list.length,
     ask: TOOL_DEFINITIONS.length,
@@ -164,9 +195,7 @@ export function InventoryTab({ sub }: { sub: string }) {
       label: 'Figures',
       value: counts.figures ?? null,
       format: 'int',
-      note: scan
-        ? `From the last ${scanMode === 'manager' ? 'Manager' : 'Developer'} scan`
-        : 'Scan figures to count',
+      note: scan ? `From the last ${MODE_LABEL[scanMode]} scan` : 'Scan figures to count',
       link: { view: 'dev', tab: devTab('inventory', 'figures'), label: 'Figures' },
     },
     {
@@ -219,13 +248,25 @@ export function InventoryTab({ sub }: { sub: string }) {
   const onRowClick = (r: Row) => {
     switch (list) {
       case 'views':
-        goTo(r.key as RouteView)
+        // Home shows the home of the mode on screen: here, a role's home is previewed instead.
+        if (r.key === 'home') goTo('dev', homesTab())
+        else goTo(r.key as RouteView)
         return
       case 'tabs':
-        goTo(r.viewKey as RouteView, String(r.tab))
+        if (r.viewKey === 'home') goTo('dev', homesTab())
+        else goTo(r.viewKey as RouteView, String(r.tab))
         return
+      case 'homes': {
+        const m = MODES.find((x) => x === r.key)
+        if (!m) return
+        if (isHomeRole(m)) goTo('dev', homesTab(m))
+        else goTo(HOME_OF[m])
+        return
+      }
       case 'figures':
-        goTo(r.viewKey as RouteView, String(r.tabKey))
+        if (isHomeRole(String(r.as ?? ''))) goTo('dev', homesTab(r.as as Mode))
+        else if (r.viewKey === 'home') goTo('dev', homesTab(scanMode))
+        else goTo(r.viewKey as RouteView, String(r.tabKey))
         return
       case 'metrics':
         openMetricDefinition(String(r.id))
@@ -238,7 +279,8 @@ export function InventoryTab({ sub }: { sub: string }) {
         return
       case 'routes': {
         const route = routeOf(String(r.address))
-        if (route) goTo(route.view, route.tab)
+        if (route?.view === 'home') goTo('dev', homesTab())
+        else if (route) goTo(route.view, route.tab)
         return
       }
       case 'settings':
@@ -282,34 +324,16 @@ export function InventoryTab({ sub }: { sub: string }) {
     }
   }
 
-  const managerName = ctx.access.lock?.managerName ?? null
   const actions =
     list === 'figures' ? (
-      <div className="flex flex-wrap items-center gap-2">
-        <Segmented<'developer' | 'manager'>
-          label="Scan to show"
-          value={scanMode}
-          onChange={setScanMode}
-          options={[
-            { value: 'developer', label: 'Developer' },
-            { value: 'manager', label: 'Manager' },
-          ]}
-        />
-        <Button size="sm" disabled={!!scanning} onClick={() => void runScan('developer')}>
-          Scan figures
-        </Button>
-        <Button
-          size="sm"
-          variant="ghost"
-          disabled={!!scanning}
-          onClick={() => {
-            setScanMode('manager')
-            void runScan('manager')
-          }}
-        >
-          Scan as Manager
-        </Button>
-      </div>
+      <ScanControls mode={scanMode} onMode={setScanMode} />
+    ) : list === 'homes' ? (
+      <RoleSelect
+        label="Preview a role"
+        value={preview}
+        modes={HOME_ROLES}
+        onChange={(m) => goTo('dev', homesTab(m))}
+      />
     ) : list === 'engines' ? (
       <Button size="sm" disabled={!!running} onClick={() => void runAll()}>
         {running ? 'Running…' : 'Run all engines'}
@@ -323,9 +347,11 @@ export function InventoryTab({ sub }: { sub: string }) {
   const subtitle: Record<InventoryList, string> = {
     views: 'Every view in the registry with its tabs, datasets and engine functions',
     tabs: 'Every tab of every view and its address',
+    homes:
+      'The page each mode opens on, with its figures, pick, scope and pay. Pick a role to preview its home on this page',
     figures: scan
-      ? scanLine(scan, scanMode === 'manager' ? managerName : null)
-      : 'Lays out every view’s tabs off screen and lists the figures each one registers',
+      ? scanLine(scan)
+      : 'Lays out every view’s tabs off screen in the mode picked and lists the figures each one registers',
     metrics: 'Every entry of the metric dictionary with the settings and fields in force',
     engines: 'Each view’s headline, summary and actions, with the last run',
     ask: 'The tools Ask Census can call, with their input schemas',
@@ -379,14 +405,14 @@ export function InventoryTab({ sub }: { sub: string }) {
           <Figure
             id="dev-figures-per-view"
             title="Figures per view"
-            subtitle={`Figures each view registers in ${scanMode === 'manager' ? 'Manager' : 'Developer'} mode, from the last scan`}
+            subtitle={`Figures each view registers in ${MODE_LABEL[scanMode]} mode, from the last scan`}
             data={perView}
             columns={[
               { key: 'view', label: 'View' },
               { key: 'figures', label: 'Figures', format: 'int' },
             ]}
             definitions={[ABOUT_APP]}
-            note={scanLine(scan, scanMode === 'manager' ? managerName : null)}
+            note={scanLine(scan)}
             gate={false}
             span={12}
           >
@@ -411,8 +437,8 @@ export function InventoryTab({ sub }: { sub: string }) {
           definitions={[
             ABOUT_APP,
             {
-              term: 'Developer, HR, Manager',
-              text: 'The decision in each mode, from the same policy the Access tab and the access matrix test read: shown, limited (shown with limits) or hidden.',
+              term: 'Developer, HR, CHRO … Manager',
+              text: 'The decision in each of the eleven modes, from the same policy the Access tab and the access matrix test read: shown, limited (shown with limits) or hidden.',
             },
           ]}
           note={`${plural(rows.length, meta.noun)}${query ? ` match "${query}"` : ''}${rows.length !== table.rows.length ? ` of ${table.rows.length}` : ''}`}
@@ -425,7 +451,9 @@ export function InventoryTab({ sub }: { sub: string }) {
             list === 'figures' && !scan
               ? scanning
                 ? scanning.text
-                : 'Scan figures to list every figure each view registers.'
+                : scanMode === 'developer'
+                  ? 'Scan figures to list every figure each view registers.'
+                  : `Scan as role to list what ${MODE_LABEL[scanMode]} mode registers.`
               : list === 'storage' && !storage.rows
                 ? 'Reading the browser’s stores.'
                 : rows.length
@@ -435,14 +463,21 @@ export function InventoryTab({ sub }: { sub: string }) {
                     : 'Nothing to list.'
           }
           emptyAction={
-            list === 'figures' && !scan && !scanning ? (
+            list === 'figures' && !scan && !scanning && canLayOut(scanMode, picks) ? (
               <Button size="sm" onClick={() => void runScan(scanMode)}>
-                {scanMode === 'manager' ? 'Scan as Manager' : 'Scan figures'}
+                {scanMode === 'developer' ? 'Scan figures' : 'Scan as role'}
               </Button>
             ) : undefined
           }
         />
       </Grid>
+      {preview && (
+        <HomePreview
+          mode={preview}
+          onRole={(m) => goTo('dev', homesTab(m))}
+          onClose={() => goTo('dev', homesTab())}
+        />
+      )}
       {selectedKey && (
         <section
           className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-sheet bg-sheet px-4 py-3"

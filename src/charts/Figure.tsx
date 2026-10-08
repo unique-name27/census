@@ -184,6 +184,8 @@ export function Figure<T extends object>({
   const modeHides =
     !access.can(`figure:${id}`, here ? { view: here.key, tab: here.tab } : undefined) ||
     (!!metricId && !access.can(`metric:${metricId}`))
+  // A policy file can hide a figure's own exports for the mode (docs/SECURITY-CENTER.md).
+  const canExport = access.can('export:figure', here ? { view: here.key, tab: here.tab } : undefined)
   const pending = useAnalyticsPending()
   const compact = variant === 'compact'
   const viewMeta = useExportMeta()
@@ -490,7 +492,7 @@ export function Figure<T extends object>({
               )}
             </Popover>
           )}
-          {(!noRows || detail) && (
+          {canExport && (!noRows || detail) && (
             <Menu
               width={288}
               trigger={

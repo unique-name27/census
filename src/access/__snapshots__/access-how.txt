@@ -495,7 +495,10 @@ masthead:help                                  Ops   Limited   Lists only the ar
 masthead:help                                  Rec   Limited   Lists only the articles and tours shown in this mode.
 masthead:help                                  Fin   Limited   Lists only the articles and tours shown in this mode.
 masthead:help                                  Mgr   Limited   Lists only the articles and tours shown in this mode.
+header:home                                    HR    Hidden    HR mode opens on the Scorecard. Home is the first page of the other HR roles.
 header:home                                    Mgr   Hidden    Its view is not shown in Manager mode.
+header:team                                    HR    Hidden    HR mode leaves out the developer surfaces and My team.
+header:team                                    CHRO  Hidden    CHRO mode leaves out the developer surfaces and My team.
 header:team                                    BU    Hidden    Its view is not shown in HRBP mode.
 header:team                                    Rgn   Hidden    Its view is not shown in HRBP mode.
 header:team                                    Comp  Hidden    Its view is not shown in Compensation mode.
@@ -643,6 +646,8 @@ tools:edit                                     Ops   Hidden    Links are edited 
 tools:edit                                     Rec   Hidden    Links are edited in Settings, Related tools, which this mode hides.
 tools:edit                                     Fin   Hidden    Links are edited in Settings, Related tools, which this mode hides.
 tools:edit                                     Mgr   Hidden    Links are edited in Settings, Related tools, which this mode hides.
+help:article:view-home                         HR    Hidden    HR mode opens on the Scorecard. Home is the first page of the other HR roles.
+help:article:view-home                         Mgr   Hidden    Not shown in Manager mode.
 help:article:view-team                         HR    Hidden    HR mode leaves out the developer surfaces and My team.
 help:article:view-team                         CHRO  Hidden    CHRO mode leaves out the developer surfaces and My team.
 help:article:view-team                         BU    Hidden    My team is the Manager mode home.
@@ -797,6 +802,10 @@ help:tour:manager-start                        Tal   Hidden    The tour for Mana
 help:tour:manager-start                        Ops   Hidden    The tour for Manager mode.
 help:tour:manager-start                        Rec   Hidden    The tour for Manager mode.
 help:tour:manager-start                        Fin   Hidden    The tour for Manager mode.
+help:tour:home-start                           HR    Hidden    HR mode opens on the Scorecard. Home is the first page of the other HR roles.
+help:tour:home-start                           Mgr   Hidden    Not shown in Manager mode.
+help:tour:view-home                            HR    Hidden    HR mode opens on the Scorecard. Home is the first page of the other HR roles.
+help:tour:view-home                            Mgr   Hidden    Not shown in Manager mode.
 help:tour:view-team                            HR    Hidden    HR mode leaves out the developer surfaces and My team.
 help:tour:view-team                            CHRO  Hidden    CHRO mode leaves out the developer surfaces and My team.
 help:tour:view-team                            BU    Hidden    My team is the Manager mode home.
@@ -1560,6 +1569,418 @@ figure:hrbp-stages-*                           Ops   Hidden    Its analysis is n
 figure:hrbp-stages-*                           Rec   Hidden    Its view is not shown in Recruiter mode.
 figure:hrbp-pyramid-*                          Ops   Hidden    Its analysis is not shown in HR ops mode.
 figure:hrbp-pyramid-*                          Rec   Hidden    Its view is not shown in Recruiter mode.
+figure:home-chro-standing                      HR    Hidden    HR mode opens on the Scorecard. Home is the first page of the other HR roles.
+figure:home-chro-standing                      BU    Hidden    Another role's home.
+figure:home-chro-standing                      Rgn   Hidden    Another role's home.
+figure:home-chro-standing                      Comp  Hidden    Another role's home.
+figure:home-chro-standing                      Tal   Hidden    Another role's home.
+figure:home-chro-standing                      Ops   Hidden    Another role's home.
+figure:home-chro-standing                      Rec   Hidden    Another role's home.
+figure:home-chro-standing                      Fin   Hidden    Another role's home.
+figure:home-chro-standing                      Mgr   Hidden    Its view is not shown in Manager mode.
+figure:home-chro-kpis                          HR    Hidden    HR mode opens on the Scorecard. Home is the first page of the other HR roles.
+figure:home-chro-kpis                          BU    Hidden    Another role's home.
+figure:home-chro-kpis                          Rgn   Hidden    Another role's home.
+figure:home-chro-kpis                          Comp  Hidden    Another role's home.
+figure:home-chro-kpis                          Tal   Hidden    Another role's home.
+figure:home-chro-kpis                          Ops   Hidden    Another role's home.
+figure:home-chro-kpis                          Rec   Hidden    Another role's home.
+figure:home-chro-kpis                          Fin   Hidden    Another role's home.
+figure:home-chro-kpis                          Mgr   Hidden    Its view is not shown in Manager mode.
+figure:home-chro-measures                      HR    Hidden    HR mode opens on the Scorecard. Home is the first page of the other HR roles.
+figure:home-chro-measures                      BU    Hidden    Another role's home.
+figure:home-chro-measures                      Rgn   Hidden    Another role's home.
+figure:home-chro-measures                      Comp  Hidden    Another role's home.
+figure:home-chro-measures                      Tal   Hidden    Another role's home.
+figure:home-chro-measures                      Ops   Hidden    Another role's home.
+figure:home-chro-measures                      Rec   Hidden    Another role's home.
+figure:home-chro-measures                      Fin   Hidden    Another role's home.
+figure:home-chro-measures                      Mgr   Hidden    Its view is not shown in Manager mode.
+figure:home-chro-practices                     HR    Hidden    HR mode opens on the Scorecard. Home is the first page of the other HR roles.
+figure:home-chro-practices                     BU    Hidden    Another role's home.
+figure:home-chro-practices                     Rgn   Hidden    Another role's home.
+figure:home-chro-practices                     Comp  Hidden    Another role's home.
+figure:home-chro-practices                     Tal   Hidden    Another role's home.
+figure:home-chro-practices                     Ops   Hidden    Another role's home.
+figure:home-chro-practices                     Rec   Hidden    Another role's home.
+figure:home-chro-practices                     Fin   Hidden    Another role's home.
+figure:home-chro-practices                     Mgr   Hidden    Its view is not shown in Manager mode.
+figure:home-attention-wait                     HR    Hidden    HR mode opens on the Scorecard. Home is the first page of the other HR roles.
+figure:home-attention-wait                     Mgr   Hidden    Its view is not shown in Manager mode.
+figure:home-attention                          HR    Hidden    HR mode opens on the Scorecard. Home is the first page of the other HR roles.
+figure:home-attention                          Mgr   Hidden    Its view is not shown in Manager mode.
+figure:home-chro-risks                         HR    Hidden    HR mode opens on the Scorecard. Home is the first page of the other HR roles.
+figure:home-chro-risks                         BU    Hidden    Another role's home.
+figure:home-chro-risks                         Rgn   Hidden    Another role's home.
+figure:home-chro-risks                         Comp  Hidden    Another role's home.
+figure:home-chro-risks                         Tal   Hidden    Another role's home.
+figure:home-chro-risks                         Ops   Hidden    Another role's home.
+figure:home-chro-risks                         Rec   Hidden    Another role's home.
+figure:home-chro-risks                         Fin   Hidden    Another role's home.
+figure:home-chro-risks                         Mgr   Hidden    Its view is not shown in Manager mode.
+figure:home-list                               HR    Hidden    HR mode opens on the Scorecard. Home is the first page of the other HR roles.
+figure:home-list                               Mgr   Hidden    Its view is not shown in Manager mode.
+figure:home-chro-hc-trend                      HR    Hidden    HR mode opens on the Scorecard. Home is the first page of the other HR roles.
+figure:home-chro-hc-trend                      BU    Hidden    Another role's home.
+figure:home-chro-hc-trend                      Rgn   Hidden    Another role's home.
+figure:home-chro-hc-trend                      Comp  Hidden    Another role's home.
+figure:home-chro-hc-trend                      Tal   Hidden    Another role's home.
+figure:home-chro-hc-trend                      Ops   Hidden    Another role's home.
+figure:home-chro-hc-trend                      Rec   Hidden    Another role's home.
+figure:home-chro-hc-trend                      Fin   Hidden    Another role's home.
+figure:home-chro-hc-trend                      Mgr   Hidden    Its view is not shown in Manager mode.
+figure:home-chro-attrition-bu                  HR    Hidden    HR mode opens on the Scorecard. Home is the first page of the other HR roles.
+figure:home-chro-attrition-bu                  BU    Hidden    Another role's home.
+figure:home-chro-attrition-bu                  Rgn   Hidden    Another role's home.
+figure:home-chro-attrition-bu                  Comp  Hidden    Another role's home.
+figure:home-chro-attrition-bu                  Tal   Hidden    Another role's home.
+figure:home-chro-attrition-bu                  Ops   Hidden    Another role's home.
+figure:home-chro-attrition-bu                  Rec   Hidden    Another role's home.
+figure:home-chro-attrition-bu                  Fin   Hidden    Another role's home.
+figure:home-chro-attrition-bu                  Mgr   Hidden    Its view is not shown in Manager mode.
+figure:home-hrbp-standing                      HR    Hidden    HR mode opens on the Scorecard. Home is the first page of the other HR roles.
+figure:home-hrbp-standing                      CHRO  Hidden    Another role's home.
+figure:home-hrbp-standing                      Comp  Hidden    Another role's home.
+figure:home-hrbp-standing                      Tal   Hidden    Another role's home.
+figure:home-hrbp-standing                      Ops   Hidden    Another role's home.
+figure:home-hrbp-standing                      Rec   Hidden    Another role's home.
+figure:home-hrbp-standing                      Fin   Hidden    Another role's home.
+figure:home-hrbp-standing                      Mgr   Hidden    Its view is not shown in Manager mode.
+figure:home-hrbp-kpis                          HR    Hidden    HR mode opens on the Scorecard. Home is the first page of the other HR roles.
+figure:home-hrbp-kpis                          CHRO  Hidden    Another role's home.
+figure:home-hrbp-kpis                          Comp  Hidden    Another role's home.
+figure:home-hrbp-kpis                          Tal   Hidden    Another role's home.
+figure:home-hrbp-kpis                          Ops   Hidden    Another role's home.
+figure:home-hrbp-kpis                          Rec   Hidden    Another role's home.
+figure:home-hrbp-kpis                          Fin   Hidden    Another role's home.
+figure:home-hrbp-kpis                          Mgr   Hidden    Its view is not shown in Manager mode.
+figure:home-hrbp-measures                      HR    Hidden    HR mode opens on the Scorecard. Home is the first page of the other HR roles.
+figure:home-hrbp-measures                      CHRO  Hidden    Another role's home.
+figure:home-hrbp-measures                      Comp  Hidden    Another role's home.
+figure:home-hrbp-measures                      Tal   Hidden    Another role's home.
+figure:home-hrbp-measures                      Ops   Hidden    Another role's home.
+figure:home-hrbp-measures                      Rec   Hidden    Another role's home.
+figure:home-hrbp-measures                      Fin   Hidden    Another role's home.
+figure:home-hrbp-measures                      Mgr   Hidden    Its view is not shown in Manager mode.
+figure:home-hrbp-findings                      HR    Hidden    HR mode opens on the Scorecard. Home is the first page of the other HR roles.
+figure:home-hrbp-findings                      CHRO  Hidden    Another role's home.
+figure:home-hrbp-findings                      Comp  Hidden    Another role's home.
+figure:home-hrbp-findings                      Tal   Hidden    Another role's home.
+figure:home-hrbp-findings                      Ops   Hidden    Another role's home.
+figure:home-hrbp-findings                      Rec   Hidden    Another role's home.
+figure:home-hrbp-findings                      Fin   Hidden    Another role's home.
+figure:home-hrbp-findings                      Mgr   Hidden    Its view is not shown in Manager mode.
+figure:home-hrbp-attrition-by-group            HR    Hidden    HR mode opens on the Scorecard. Home is the first page of the other HR roles.
+figure:home-hrbp-attrition-by-group            CHRO  Hidden    Another role's home.
+figure:home-hrbp-attrition-by-group            Comp  Hidden    Another role's home.
+figure:home-hrbp-attrition-by-group            Tal   Hidden    Another role's home.
+figure:home-hrbp-attrition-by-group            Ops   Hidden    Another role's home.
+figure:home-hrbp-attrition-by-group            Rec   Hidden    Another role's home.
+figure:home-hrbp-attrition-by-group            Fin   Hidden    Another role's home.
+figure:home-hrbp-attrition-by-group            Mgr   Hidden    Its view is not shown in Manager mode.
+figure:home-hrbp-attrition-trend               HR    Hidden    HR mode opens on the Scorecard. Home is the first page of the other HR roles.
+figure:home-hrbp-attrition-trend               CHRO  Hidden    Another role's home.
+figure:home-hrbp-attrition-trend               Comp  Hidden    Another role's home.
+figure:home-hrbp-attrition-trend               Tal   Hidden    Another role's home.
+figure:home-hrbp-attrition-trend               Ops   Hidden    Another role's home.
+figure:home-hrbp-attrition-trend               Rec   Hidden    Another role's home.
+figure:home-hrbp-attrition-trend               Fin   Hidden    Another role's home.
+figure:home-hrbp-attrition-trend               Mgr   Hidden    Its view is not shown in Manager mode.
+figure:home-hrbp-req-risk                      HR    Hidden    HR mode opens on the Scorecard. Home is the first page of the other HR roles.
+figure:home-hrbp-req-risk                      CHRO  Hidden    Another role's home.
+figure:home-hrbp-req-risk                      Comp  Hidden    Another role's home.
+figure:home-hrbp-req-risk                      Tal   Hidden    Another role's home.
+figure:home-hrbp-req-risk                      Ops   Hidden    Another role's home.
+figure:home-hrbp-req-risk                      Rec   Hidden    Another role's home.
+figure:home-hrbp-req-risk                      Fin   Hidden    Another role's home.
+figure:home-hrbp-req-risk                      Mgr   Hidden    Its view is not shown in Manager mode.
+figure:home-hrbp-pipeline                      HR    Hidden    HR mode opens on the Scorecard. Home is the first page of the other HR roles.
+figure:home-hrbp-pipeline                      CHRO  Hidden    Another role's home.
+figure:home-hrbp-pipeline                      Comp  Hidden    Another role's home.
+figure:home-hrbp-pipeline                      Tal   Hidden    Another role's home.
+figure:home-hrbp-pipeline                      Ops   Hidden    Another role's home.
+figure:home-hrbp-pipeline                      Rec   Hidden    Another role's home.
+figure:home-hrbp-pipeline                      Fin   Hidden    Another role's home.
+figure:home-hrbp-pipeline                      Mgr   Hidden    Its view is not shown in Manager mode.
+figure:home-comp-in-band                       HR    Hidden    HR mode opens on the Scorecard. Home is the first page of the other HR roles.
+figure:home-comp-in-band                       CHRO  Hidden    Another role's home.
+figure:home-comp-in-band                       BU    Hidden    Another role's home.
+figure:home-comp-in-band                       Rgn   Hidden    Another role's home.
+figure:home-comp-in-band                       Tal   Hidden    Another role's home.
+figure:home-comp-in-band                       Ops   Hidden    Another role's home.
+figure:home-comp-in-band                       Rec   Hidden    Another role's home.
+figure:home-comp-in-band                       Fin   Hidden    Another role's home.
+figure:home-comp-in-band                       Mgr   Hidden    Its view is not shown in Manager mode.
+figure:home-comp-kpis                          HR    Hidden    HR mode opens on the Scorecard. Home is the first page of the other HR roles.
+figure:home-comp-kpis                          CHRO  Hidden    Another role's home.
+figure:home-comp-kpis                          BU    Hidden    Another role's home.
+figure:home-comp-kpis                          Rgn   Hidden    Another role's home.
+figure:home-comp-kpis                          Tal   Hidden    Another role's home.
+figure:home-comp-kpis                          Ops   Hidden    Another role's home.
+figure:home-comp-kpis                          Rec   Hidden    Another role's home.
+figure:home-comp-kpis                          Fin   Hidden    Another role's home.
+figure:home-comp-kpis                          Mgr   Hidden    Its view is not shown in Manager mode.
+figure:home-comp-distribution                  HR    Hidden    HR mode opens on the Scorecard. Home is the first page of the other HR roles.
+figure:home-comp-distribution                  CHRO  Hidden    Another role's home.
+figure:home-comp-distribution                  BU    Hidden    Another role's home.
+figure:home-comp-distribution                  Rgn   Hidden    Another role's home.
+figure:home-comp-distribution                  Tal   Hidden    Another role's home.
+figure:home-comp-distribution                  Ops   Hidden    Another role's home.
+figure:home-comp-distribution                  Rec   Hidden    Another role's home.
+figure:home-comp-distribution                  Fin   Hidden    Another role's home.
+figure:home-comp-distribution                  Mgr   Hidden    Its view is not shown in Manager mode.
+figure:home-comp-cycle                         HR    Hidden    HR mode opens on the Scorecard. Home is the first page of the other HR roles.
+figure:home-comp-cycle                         CHRO  Hidden    Another role's home.
+figure:home-comp-cycle                         BU    Hidden    Another role's home.
+figure:home-comp-cycle                         Rgn   Hidden    Another role's home.
+figure:home-comp-cycle                         Tal   Hidden    Another role's home.
+figure:home-comp-cycle                         Ops   Hidden    Another role's home.
+figure:home-comp-cycle                         Rec   Hidden    Another role's home.
+figure:home-comp-cycle                         Fin   Hidden    Another role's home.
+figure:home-comp-cycle                         Mgr   Hidden    Its view is not shown in Manager mode.
+figure:home-comp-outliers                      HR    Hidden    HR mode opens on the Scorecard. Home is the first page of the other HR roles.
+figure:home-comp-outliers                      CHRO  Hidden    Another role's home.
+figure:home-comp-outliers                      BU    Hidden    Another role's home.
+figure:home-comp-outliers                      Rgn   Hidden    Another role's home.
+figure:home-comp-outliers                      Tal   Hidden    Another role's home.
+figure:home-comp-outliers                      Ops   Hidden    Another role's home.
+figure:home-comp-outliers                      Rec   Hidden    Another role's home.
+figure:home-comp-outliers                      Fin   Hidden    Another role's home.
+figure:home-comp-outliers                      Mgr   Hidden    Its view is not shown in Manager mode.
+figure:home-comp-below-cause                   HR    Hidden    HR mode opens on the Scorecard. Home is the first page of the other HR roles.
+figure:home-comp-below-cause                   CHRO  Hidden    Another role's home.
+figure:home-comp-below-cause                   BU    Hidden    Another role's home.
+figure:home-comp-below-cause                   Rgn   Hidden    Another role's home.
+figure:home-comp-below-cause                   Tal   Hidden    Another role's home.
+figure:home-comp-below-cause                   Ops   Hidden    Another role's home.
+figure:home-comp-below-cause                   Rec   Hidden    Another role's home.
+figure:home-comp-below-cause                   Fin   Hidden    Another role's home.
+figure:home-comp-below-cause                   Mgr   Hidden    Its view is not shown in Manager mode.
+figure:home-talent-coverage                    HR    Hidden    HR mode opens on the Scorecard. Home is the first page of the other HR roles.
+figure:home-talent-coverage                    CHRO  Hidden    Another role's home.
+figure:home-talent-coverage                    BU    Hidden    Another role's home.
+figure:home-talent-coverage                    Rgn   Hidden    Another role's home.
+figure:home-talent-coverage                    Comp  Hidden    Another role's home.
+figure:home-talent-coverage                    Ops   Hidden    Another role's home.
+figure:home-talent-coverage                    Rec   Hidden    Another role's home.
+figure:home-talent-coverage                    Fin   Hidden    Another role's home.
+figure:home-talent-coverage                    Mgr   Hidden    Its view is not shown in Manager mode.
+figure:home-talent-kpis                        HR    Hidden    HR mode opens on the Scorecard. Home is the first page of the other HR roles.
+figure:home-talent-kpis                        CHRO  Hidden    Another role's home.
+figure:home-talent-kpis                        BU    Hidden    Another role's home.
+figure:home-talent-kpis                        Rgn   Hidden    Another role's home.
+figure:home-talent-kpis                        Comp  Hidden    Another role's home.
+figure:home-talent-kpis                        Ops   Hidden    Another role's home.
+figure:home-talent-kpis                        Rec   Hidden    Another role's home.
+figure:home-talent-kpis                        Fin   Hidden    Another role's home.
+figure:home-talent-kpis                        Mgr   Hidden    Its view is not shown in Manager mode.
+figure:home-talent-exposure                    HR    Hidden    HR mode opens on the Scorecard. Home is the first page of the other HR roles.
+figure:home-talent-exposure                    CHRO  Hidden    Another role's home.
+figure:home-talent-exposure                    BU    Hidden    Another role's home.
+figure:home-talent-exposure                    Rgn   Hidden    Another role's home.
+figure:home-talent-exposure                    Comp  Hidden    Another role's home.
+figure:home-talent-exposure                    Ops   Hidden    Another role's home.
+figure:home-talent-exposure                    Rec   Hidden    Another role's home.
+figure:home-talent-exposure                    Fin   Hidden    Another role's home.
+figure:home-talent-exposure                    Mgr   Hidden    Its view is not shown in Manager mode.
+figure:home-talent-overdue-trend               HR    Hidden    HR mode opens on the Scorecard. Home is the first page of the other HR roles.
+figure:home-talent-overdue-trend               CHRO  Hidden    Another role's home.
+figure:home-talent-overdue-trend               BU    Hidden    Another role's home.
+figure:home-talent-overdue-trend               Rgn   Hidden    Another role's home.
+figure:home-talent-overdue-trend               Comp  Hidden    Another role's home.
+figure:home-talent-overdue-trend               Ops   Hidden    Another role's home.
+figure:home-talent-overdue-trend               Rec   Hidden    Another role's home.
+figure:home-talent-overdue-trend               Fin   Hidden    Another role's home.
+figure:home-talent-overdue-trend               Mgr   Hidden    Its view is not shown in Manager mode.
+figure:home-talent-review-coverage             HR    Hidden    HR mode opens on the Scorecard. Home is the first page of the other HR roles.
+figure:home-talent-review-coverage             CHRO  Hidden    Another role's home.
+figure:home-talent-review-coverage             BU    Hidden    Another role's home.
+figure:home-talent-review-coverage             Rgn   Hidden    Another role's home.
+figure:home-talent-review-coverage             Comp  Hidden    Another role's home.
+figure:home-talent-review-coverage             Ops   Hidden    Another role's home.
+figure:home-talent-review-coverage             Rec   Hidden    Another role's home.
+figure:home-talent-review-coverage             Fin   Hidden    Another role's home.
+figure:home-talent-review-coverage             Mgr   Hidden    Its view is not shown in Manager mode.
+figure:home-talent-rating-mix                  HR    Hidden    HR mode opens on the Scorecard. Home is the first page of the other HR roles.
+figure:home-talent-rating-mix                  CHRO  Hidden    Another role's home.
+figure:home-talent-rating-mix                  BU    Hidden    Another role's home.
+figure:home-talent-rating-mix                  Rgn   Hidden    Another role's home.
+figure:home-talent-rating-mix                  Comp  Hidden    Another role's home.
+figure:home-talent-rating-mix                  Ops   Hidden    Another role's home.
+figure:home-talent-rating-mix                  Rec   Hidden    Another role's home.
+figure:home-talent-rating-mix                  Fin   Hidden    Another role's home.
+figure:home-talent-rating-mix                  Mgr   Hidden    Its view is not shown in Manager mode.
+figure:home-ops-sla                            HR    Hidden    HR mode opens on the Scorecard. Home is the first page of the other HR roles.
+figure:home-ops-sla                            CHRO  Hidden    Another role's home.
+figure:home-ops-sla                            BU    Hidden    Another role's home.
+figure:home-ops-sla                            Rgn   Hidden    Another role's home.
+figure:home-ops-sla                            Comp  Hidden    Another role's home.
+figure:home-ops-sla                            Tal   Hidden    Another role's home.
+figure:home-ops-sla                            Rec   Hidden    Another role's home.
+figure:home-ops-sla                            Fin   Hidden    Another role's home.
+figure:home-ops-sla                            Mgr   Hidden    Its view is not shown in Manager mode.
+figure:home-ops-kpis                           HR    Hidden    HR mode opens on the Scorecard. Home is the first page of the other HR roles.
+figure:home-ops-kpis                           CHRO  Hidden    Another role's home.
+figure:home-ops-kpis                           BU    Hidden    Another role's home.
+figure:home-ops-kpis                           Rgn   Hidden    Another role's home.
+figure:home-ops-kpis                           Comp  Hidden    Another role's home.
+figure:home-ops-kpis                           Tal   Hidden    Another role's home.
+figure:home-ops-kpis                           Rec   Hidden    Another role's home.
+figure:home-ops-kpis                           Fin   Hidden    Another role's home.
+figure:home-ops-kpis                           Mgr   Hidden    Its view is not shown in Manager mode.
+figure:home-ops-backlog                        HR    Hidden    HR mode opens on the Scorecard. Home is the first page of the other HR roles.
+figure:home-ops-backlog                        CHRO  Hidden    Another role's home.
+figure:home-ops-backlog                        BU    Hidden    Another role's home.
+figure:home-ops-backlog                        Rgn   Hidden    Another role's home.
+figure:home-ops-backlog                        Comp  Hidden    Another role's home.
+figure:home-ops-backlog                        Tal   Hidden    Another role's home.
+figure:home-ops-backlog                        Rec   Hidden    Another role's home.
+figure:home-ops-backlog                        Fin   Hidden    Another role's home.
+figure:home-ops-backlog                        Mgr   Hidden    Its view is not shown in Manager mode.
+figure:home-ops-sla-trend                      HR    Hidden    HR mode opens on the Scorecard. Home is the first page of the other HR roles.
+figure:home-ops-sla-trend                      CHRO  Hidden    Another role's home.
+figure:home-ops-sla-trend                      BU    Hidden    Another role's home.
+figure:home-ops-sla-trend                      Rgn   Hidden    Another role's home.
+figure:home-ops-sla-trend                      Comp  Hidden    Another role's home.
+figure:home-ops-sla-trend                      Tal   Hidden    Another role's home.
+figure:home-ops-sla-trend                      Rec   Hidden    Another role's home.
+figure:home-ops-sla-trend                      Fin   Hidden    Another role's home.
+figure:home-ops-sla-trend                      Mgr   Hidden    Its view is not shown in Manager mode.
+figure:home-ops-tx                             HR    Hidden    HR mode opens on the Scorecard. Home is the first page of the other HR roles.
+figure:home-ops-tx                             CHRO  Hidden    Another role's home.
+figure:home-ops-tx                             BU    Hidden    Another role's home.
+figure:home-ops-tx                             Rgn   Hidden    Another role's home.
+figure:home-ops-tx                             Comp  Hidden    Another role's home.
+figure:home-ops-tx                             Tal   Hidden    Another role's home.
+figure:home-ops-tx                             Rec   Hidden    Another role's home.
+figure:home-ops-tx                             Fin   Hidden    Another role's home.
+figure:home-ops-tx                             Mgr   Hidden    Its view is not shown in Manager mode.
+figure:home-ops-day-one                        HR    Hidden    HR mode opens on the Scorecard. Home is the first page of the other HR roles.
+figure:home-ops-day-one                        CHRO  Hidden    Another role's home.
+figure:home-ops-day-one                        BU    Hidden    Another role's home.
+figure:home-ops-day-one                        Rgn   Hidden    Another role's home.
+figure:home-ops-day-one                        Comp  Hidden    Another role's home.
+figure:home-ops-day-one                        Tal   Hidden    Another role's home.
+figure:home-ops-day-one                        Rec   Hidden    Another role's home.
+figure:home-ops-day-one                        Fin   Hidden    Another role's home.
+figure:home-ops-day-one                        Mgr   Hidden    Its view is not shown in Manager mode.
+figure:home-rec-next-step                      HR    Hidden    HR mode opens on the Scorecard. Home is the first page of the other HR roles.
+figure:home-rec-next-step                      CHRO  Hidden    Another role's home.
+figure:home-rec-next-step                      BU    Hidden    Another role's home.
+figure:home-rec-next-step                      Rgn   Hidden    Another role's home.
+figure:home-rec-next-step                      Comp  Hidden    Another role's home.
+figure:home-rec-next-step                      Tal   Hidden    Another role's home.
+figure:home-rec-next-step                      Ops   Hidden    Another role's home.
+figure:home-rec-next-step                      Fin   Hidden    Another role's home.
+figure:home-rec-next-step                      Mgr   Hidden    Its view is not shown in Manager mode.
+figure:home-rec-kpis                           HR    Hidden    HR mode opens on the Scorecard. Home is the first page of the other HR roles.
+figure:home-rec-kpis                           CHRO  Hidden    Another role's home.
+figure:home-rec-kpis                           BU    Hidden    Another role's home.
+figure:home-rec-kpis                           Rgn   Hidden    Another role's home.
+figure:home-rec-kpis                           Comp  Hidden    Another role's home.
+figure:home-rec-kpis                           Tal   Hidden    Another role's home.
+figure:home-rec-kpis                           Ops   Hidden    Another role's home.
+figure:home-rec-kpis                           Fin   Hidden    Another role's home.
+figure:home-rec-kpis                           Mgr   Hidden    Its view is not shown in Manager mode.
+figure:home-rec-pipeline                       HR    Hidden    HR mode opens on the Scorecard. Home is the first page of the other HR roles.
+figure:home-rec-pipeline                       CHRO  Hidden    Another role's home.
+figure:home-rec-pipeline                       BU    Hidden    Another role's home.
+figure:home-rec-pipeline                       Rgn   Hidden    Another role's home.
+figure:home-rec-pipeline                       Comp  Hidden    Another role's home.
+figure:home-rec-pipeline                       Tal   Hidden    Another role's home.
+figure:home-rec-pipeline                       Ops   Hidden    Another role's home.
+figure:home-rec-pipeline                       Fin   Hidden    Another role's home.
+figure:home-rec-pipeline                       Mgr   Hidden    Its view is not shown in Manager mode.
+figure:home-rec-waiting                        HR    Hidden    HR mode opens on the Scorecard. Home is the first page of the other HR roles.
+figure:home-rec-waiting                        CHRO  Hidden    Another role's home.
+figure:home-rec-waiting                        BU    Hidden    Another role's home.
+figure:home-rec-waiting                        Rgn   Hidden    Another role's home.
+figure:home-rec-waiting                        Comp  Hidden    Another role's home.
+figure:home-rec-waiting                        Tal   Hidden    Another role's home.
+figure:home-rec-waiting                        Ops   Hidden    Another role's home.
+figure:home-rec-waiting                        Fin   Hidden    Another role's home.
+figure:home-rec-waiting                        Mgr   Hidden    Its view is not shown in Manager mode.
+figure:home-rec-req-age                        HR    Hidden    HR mode opens on the Scorecard. Home is the first page of the other HR roles.
+figure:home-rec-req-age                        CHRO  Hidden    Another role's home.
+figure:home-rec-req-age                        BU    Hidden    Another role's home.
+figure:home-rec-req-age                        Rgn   Hidden    Another role's home.
+figure:home-rec-req-age                        Comp  Hidden    Another role's home.
+figure:home-rec-req-age                        Tal   Hidden    Another role's home.
+figure:home-rec-req-age                        Ops   Hidden    Another role's home.
+figure:home-rec-req-age                        Fin   Hidden    Another role's home.
+figure:home-rec-req-age                        Mgr   Hidden    Its view is not shown in Manager mode.
+figure:home-rec-starts                         HR    Hidden    HR mode opens on the Scorecard. Home is the first page of the other HR roles.
+figure:home-rec-starts                         CHRO  Hidden    Another role's home.
+figure:home-rec-starts                         BU    Hidden    Another role's home.
+figure:home-rec-starts                         Rgn   Hidden    Another role's home.
+figure:home-rec-starts                         Comp  Hidden    Another role's home.
+figure:home-rec-starts                         Tal   Hidden    Another role's home.
+figure:home-rec-starts                         Ops   Hidden    Another role's home.
+figure:home-rec-starts                         Fin   Hidden    Another role's home.
+figure:home-rec-starts                         Mgr   Hidden    Its view is not shown in Manager mode.
+figure:home-fin-vs-plan                        HR    Hidden    HR mode opens on the Scorecard. Home is the first page of the other HR roles.
+figure:home-fin-vs-plan                        CHRO  Hidden    Another role's home.
+figure:home-fin-vs-plan                        BU    Hidden    Another role's home.
+figure:home-fin-vs-plan                        Rgn   Hidden    Another role's home.
+figure:home-fin-vs-plan                        Comp  Hidden    Another role's home.
+figure:home-fin-vs-plan                        Tal   Hidden    Another role's home.
+figure:home-fin-vs-plan                        Ops   Hidden    Another role's home.
+figure:home-fin-vs-plan                        Rec   Hidden    Another role's home.
+figure:home-fin-vs-plan                        Mgr   Hidden    Its view is not shown in Manager mode.
+figure:home-fin-kpis                           HR    Hidden    HR mode opens on the Scorecard. Home is the first page of the other HR roles.
+figure:home-fin-kpis                           CHRO  Hidden    Another role's home.
+figure:home-fin-kpis                           BU    Hidden    Another role's home.
+figure:home-fin-kpis                           Rgn   Hidden    Another role's home.
+figure:home-fin-kpis                           Comp  Hidden    Another role's home.
+figure:home-fin-kpis                           Tal   Hidden    Another role's home.
+figure:home-fin-kpis                           Ops   Hidden    Another role's home.
+figure:home-fin-kpis                           Rec   Hidden    Another role's home.
+figure:home-fin-kpis                           Mgr   Hidden    Its view is not shown in Manager mode.
+figure:home-fin-plan                           HR    Hidden    HR mode opens on the Scorecard. Home is the first page of the other HR roles.
+figure:home-fin-plan                           CHRO  Hidden    Another role's home.
+figure:home-fin-plan                           BU    Hidden    Another role's home.
+figure:home-fin-plan                           Rgn   Hidden    Another role's home.
+figure:home-fin-plan                           Comp  Hidden    Another role's home.
+figure:home-fin-plan                           Tal   Hidden    Another role's home.
+figure:home-fin-plan                           Ops   Hidden    Another role's home.
+figure:home-fin-plan                           Rec   Hidden    Another role's home.
+figure:home-fin-plan                           Mgr   Hidden    Its view is not shown in Manager mode.
+figure:home-fin-cost-unit                      HR    Hidden    HR mode opens on the Scorecard. Home is the first page of the other HR roles.
+figure:home-fin-cost-unit                      CHRO  Hidden    Another role's home.
+figure:home-fin-cost-unit                      BU    Hidden    Another role's home.
+figure:home-fin-cost-unit                      Rgn   Hidden    Another role's home.
+figure:home-fin-cost-unit                      Comp  Hidden    Another role's home.
+figure:home-fin-cost-unit                      Tal   Hidden    Another role's home.
+figure:home-fin-cost-unit                      Ops   Hidden    Another role's home.
+figure:home-fin-cost-unit                      Rec   Hidden    Another role's home.
+figure:home-fin-cost-unit                      Mgr   Hidden    Its view is not shown in Manager mode.
+figure:home-fin-reqs-plan                      HR    Hidden    HR mode opens on the Scorecard. Home is the first page of the other HR roles.
+figure:home-fin-reqs-plan                      CHRO  Hidden    Another role's home.
+figure:home-fin-reqs-plan                      BU    Hidden    Another role's home.
+figure:home-fin-reqs-plan                      Rgn   Hidden    Another role's home.
+figure:home-fin-reqs-plan                      Comp  Hidden    Another role's home.
+figure:home-fin-reqs-plan                      Tal   Hidden    Another role's home.
+figure:home-fin-reqs-plan                      Ops   Hidden    Another role's home.
+figure:home-fin-reqs-plan                      Rec   Hidden    Another role's home.
+figure:home-fin-reqs-plan                      Mgr   Hidden    Its view is not shown in Manager mode.
+figure:home-fin-worker-mix                     HR    Hidden    HR mode opens on the Scorecard. Home is the first page of the other HR roles.
+figure:home-fin-worker-mix                     CHRO  Hidden    Another role's home.
+figure:home-fin-worker-mix                     BU    Hidden    Another role's home.
+figure:home-fin-worker-mix                     Rgn   Hidden    Another role's home.
+figure:home-fin-worker-mix                     Comp  Hidden    Another role's home.
+figure:home-fin-worker-mix                     Tal   Hidden    Another role's home.
+figure:home-fin-worker-mix                     Ops   Hidden    Another role's home.
+figure:home-fin-worker-mix                     Rec   Hidden    Another role's home.
+figure:home-fin-worker-mix                     Mgr   Hidden    Its view is not shown in Manager mode.
+figure:home-fin-cost-center                    HR    Hidden    HR mode opens on the Scorecard. Home is the first page of the other HR roles.
+figure:home-fin-cost-center                    CHRO  Hidden    Another role's home.
+figure:home-fin-cost-center                    BU    Hidden    Another role's home.
+figure:home-fin-cost-center                    Rgn   Hidden    Another role's home.
+figure:home-fin-cost-center                    Comp  Hidden    Another role's home.
+figure:home-fin-cost-center                    Tal   Hidden    Another role's home.
+figure:home-fin-cost-center                    Ops   Hidden    Another role's home.
+figure:home-fin-cost-center                    Rec   Hidden    Another role's home.
+figure:home-fin-cost-center                    Mgr   Hidden    Its view is not shown in Manager mode.
 figure:team-kpis                               HR    Hidden    HR mode leaves out the developer surfaces and My team.
 figure:team-kpis                               CHRO  Hidden    CHRO mode leaves out the developer surfaces and My team.
 figure:team-kpis                               BU    Hidden    Its view is not shown in HRBP mode.
@@ -1569,6 +1990,15 @@ figure:team-kpis                               Tal   Hidden    Its view is not s
 figure:team-kpis                               Ops   Hidden    Its view is not shown in HR ops mode.
 figure:team-kpis                               Rec   Hidden    Its view is not shown in Recruiter mode.
 figure:team-kpis                               Fin   Hidden    Its view is not shown in Finance mode.
+figure:team-waiting                            HR    Hidden    HR mode leaves out the developer surfaces and My team.
+figure:team-waiting                            CHRO  Hidden    CHRO mode leaves out the developer surfaces and My team.
+figure:team-waiting                            BU    Hidden    Its view is not shown in HRBP mode.
+figure:team-waiting                            Rgn   Hidden    Its view is not shown in HRBP mode.
+figure:team-waiting                            Comp  Hidden    Its view is not shown in Compensation mode.
+figure:team-waiting                            Tal   Hidden    Its view is not shown in Talent management mode.
+figure:team-waiting                            Ops   Hidden    Its view is not shown in HR ops mode.
+figure:team-waiting                            Rec   Hidden    Its view is not shown in Recruiter mode.
+figure:team-waiting                            Fin   Hidden    Its view is not shown in Finance mode.
 figure:team-readout                            HR    Hidden    HR mode leaves out the developer surfaces and My team.
 figure:team-readout                            CHRO  Hidden    CHRO mode leaves out the developer surfaces and My team.
 figure:team-readout                            BU    Hidden    Its view is not shown in HRBP mode.
@@ -1632,6 +2062,15 @@ figure:team-span                               Tal   Hidden    Its view is not s
 figure:team-span                               Ops   Hidden    Its view is not shown in HR ops mode.
 figure:team-span                               Rec   Hidden    Its view is not shown in Recruiter mode.
 figure:team-span                               Fin   Hidden    Its view is not shown in Finance mode.
+figure:team-people                             HR    Hidden    HR mode leaves out the developer surfaces and My team.
+figure:team-people                             CHRO  Hidden    CHRO mode leaves out the developer surfaces and My team.
+figure:team-people                             BU    Hidden    Its view is not shown in HRBP mode.
+figure:team-people                             Rgn   Hidden    Its view is not shown in HRBP mode.
+figure:team-people                             Comp  Hidden    Its view is not shown in Compensation mode.
+figure:team-people                             Tal   Hidden    Its view is not shown in Talent management mode.
+figure:team-people                             Ops   Hidden    Its view is not shown in HR ops mode.
+figure:team-people                             Rec   Hidden    Its view is not shown in Recruiter mode.
+figure:team-people                             Fin   Hidden    Its view is not shown in Finance mode.
 figure:team-pipeline                           HR    Hidden    HR mode leaves out the developer surfaces and My team.
 figure:team-pipeline                           CHRO  Hidden    CHRO mode leaves out the developer surfaces and My team.
 figure:team-pipeline                           BU    Hidden    Its view is not shown in HRBP mode.
@@ -1713,15 +2152,6 @@ figure:team-critical-roles                     Tal   Hidden    Its view is not s
 figure:team-critical-roles                     Ops   Hidden    Its view is not shown in HR ops mode.
 figure:team-critical-roles                     Rec   Hidden    Its view is not shown in Recruiter mode.
 figure:team-critical-roles                     Fin   Hidden    Its view is not shown in Finance mode.
-figure:team-waiting                            HR    Hidden    HR mode leaves out the developer surfaces and My team.
-figure:team-waiting                            CHRO  Hidden    CHRO mode leaves out the developer surfaces and My team.
-figure:team-waiting                            BU    Hidden    Its view is not shown in HRBP mode.
-figure:team-waiting                            Rgn   Hidden    Its view is not shown in HRBP mode.
-figure:team-waiting                            Comp  Hidden    Its view is not shown in Compensation mode.
-figure:team-waiting                            Tal   Hidden    Its view is not shown in Talent management mode.
-figure:team-waiting                            Ops   Hidden    Its view is not shown in HR ops mode.
-figure:team-waiting                            Rec   Hidden    Its view is not shown in Recruiter mode.
-figure:team-waiting                            Fin   Hidden    Its view is not shown in Finance mode.
 figure:scorecard-standing                      Rec   Hidden    Its view is not shown in Recruiter mode.
 figure:scorecard-standing                      Fin   Hidden    Its view is not shown in Finance mode.
 figure:scorecard-standing                      Mgr   Hidden    Its view is not shown in Manager mode.
@@ -1731,6 +2161,12 @@ figure:scorecard-measures                      Mgr   Hidden    Its view is not s
 figure:scorecard-findings                      Rec   Hidden    Its view is not shown in Recruiter mode.
 figure:scorecard-findings                      Fin   Hidden    Its view is not shown in Finance mode.
 figure:scorecard-findings                      Mgr   Hidden    Its view is not shown in Manager mode.
+figure:scorecard-items                         Rec   Hidden    Its view is not shown in Recruiter mode.
+figure:scorecard-items                         Fin   Hidden    Its view is not shown in Finance mode.
+figure:scorecard-items                         Mgr   Hidden    Its view is not shown in Manager mode.
+figure:scorecard-attention                     Rec   Hidden    Its view is not shown in Recruiter mode.
+figure:scorecard-attention                     Fin   Hidden    Its view is not shown in Finance mode.
+figure:scorecard-attention                     Mgr   Hidden    Its view is not shown in Manager mode.
 figure:scorecard-headcount                     Rec   Hidden    Its view is not shown in Recruiter mode.
 figure:scorecard-headcount                     Fin   Hidden    Its view is not shown in Finance mode.
 figure:scorecard-headcount                     Mgr   Hidden    Its view is not shown in Manager mode.
@@ -1746,9 +2182,6 @@ figure:scorecard-attrition-bu                  Mgr   Hidden    Its view is not s
 figure:scorecard-pipeline                      Rec   Hidden    Its view is not shown in Recruiter mode.
 figure:scorecard-pipeline                      Fin   Hidden    Its view is not shown in Finance mode.
 figure:scorecard-pipeline                      Mgr   Hidden    Its view is not shown in Manager mode.
-figure:scorecard-items                         Rec   Hidden    Its view is not shown in Recruiter mode.
-figure:scorecard-items                         Fin   Hidden    Its view is not shown in Finance mode.
-figure:scorecard-items                         Mgr   Hidden    Its view is not shown in Manager mode.
 figure:scorecard-people                        Rec   Hidden    Its view is not shown in Recruiter mode.
 figure:scorecard-people                        Fin   Hidden    Its view is not shown in Finance mode.
 figure:scorecard-people                        Mgr   Hidden    Its view is not shown in Manager mode.

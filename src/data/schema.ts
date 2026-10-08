@@ -1379,6 +1379,7 @@ export const DATASETS: DatasetDef[] = [
     description:
       'Roster of current and former workers. One row per person; leavers keep their termination fields.',
     usedBy: [
+      'home',
       'team',
       'scorecard',
       'onboarding',
@@ -1593,7 +1594,7 @@ export const DATASETS: DatasetDef[] = [
     label: 'Job changes',
     sheet: 'Job changes',
     description: 'Job history events: promotions, transfers, lateral moves, demotions and manager changes.',
-    usedBy: ['team', 'scorecard', 'onboarding', 'hrbp', 'org', 'talent', 'comp'],
+    usedBy: ['home', 'team', 'scorecard', 'onboarding', 'hrbp', 'org', 'talent', 'comp'],
     rowKey: ['employeeId', 'effectiveDate', 'changeType'],
     fields: [
       f(
@@ -1663,7 +1664,7 @@ export const DATASETS: DatasetDef[] = [
     label: 'Requisitions',
     sheet: 'Requisitions',
     description: 'Job requisitions from the ATS. Time to fill runs from opened date to filled date.',
-    usedBy: ['team', 'scorecard', 'recruiting', 'onboarding', 'org', 'comp', 'listening'],
+    usedBy: ['home', 'team', 'scorecard', 'recruiting', 'onboarding', 'org', 'comp', 'listening'],
     rowKey: ['reqId'],
     fields: [
       f(
@@ -1782,7 +1783,7 @@ export const DATASETS: DatasetDef[] = [
     label: 'Candidates',
     sheet: 'Candidates',
     description: 'One row per application, with the date each stage was reached.',
-    usedBy: ['team', 'scorecard', 'recruiting', 'onboarding', 'listening'],
+    usedBy: ['home', 'team', 'scorecard', 'recruiting', 'onboarding', 'listening'],
     rowKey: ['applicationId'],
     fields: [
       f(
@@ -1974,7 +1975,7 @@ export const DATASETS: DatasetDef[] = [
     label: 'HR cases',
     sheet: 'HR cases',
     description: 'Employee service cases from the HR help desk.',
-    usedBy: ['scorecard', 'services', 'listening'],
+    usedBy: ['home', 'scorecard', 'services', 'listening'],
     rowKey: ['caseId'],
     fields: [
       f(
@@ -2125,7 +2126,7 @@ export const DATASETS: DatasetDef[] = [
     label: 'HR transactions',
     sheet: 'HR transactions',
     description: 'HR system transactions with the deadline the governing process sets.',
-    usedBy: ['scorecard', 'onboarding', 'services', 'listening'],
+    usedBy: ['home', 'scorecard', 'onboarding', 'services', 'listening'],
     rowKey: ['transactionId'],
     fields: [
       f(
@@ -2225,7 +2226,7 @@ export const DATASETS: DatasetDef[] = [
     label: 'Performance reviews',
     sheet: 'Reviews',
     description: 'Calibrated performance ratings and potential, one row per person per cycle.',
-    usedBy: ['team', 'scorecard', 'hrbp', 'org', 'talent', 'comp'],
+    usedBy: ['home', 'team', 'scorecard', 'hrbp', 'org', 'talent', 'comp'],
     rowKey: ['employeeId', 'cycle'],
     fields: [
       f('employeeId', 'Employee ID', 'id', ['employee id', 'emp id', 'worker id', 'id'], 'Reviewed worker.', {
@@ -2284,7 +2285,7 @@ export const DATASETS: DatasetDef[] = [
     label: 'Succession plans',
     sheet: 'Succession',
     description: 'Critical and key roles with named successors, one row per successor.',
-    usedBy: ['team', 'scorecard', 'talent'],
+    usedBy: ['home', 'team', 'scorecard', 'talent'],
     rowKey: ['roleId', 'successorId'],
     fields: [
       f(
@@ -2355,7 +2356,7 @@ export const DATASETS: DatasetDef[] = [
     label: 'Learning',
     sheet: 'Learning',
     description: 'Training assignments and completions.',
-    usedBy: ['team', 'scorecard', 'onboarding', 'talent', 'compliance'],
+    usedBy: ['home', 'team', 'scorecard', 'onboarding', 'talent', 'compliance'],
     rowKey: ['employeeId', 'course', 'assignedDate'],
     fields: [
       f(
@@ -2418,7 +2419,7 @@ export const DATASETS: DatasetDef[] = [
     label: 'Compensation',
     sheet: 'Compensation',
     description: 'Current pay, salary range and cycle proposals for active employees.',
-    usedBy: ['scorecard', 'talent', 'comp'],
+    usedBy: ['home', 'scorecard', 'talent', 'comp'],
     rowKey: ['employeeId'],
     fields: [
       f('employeeId', 'Employee ID', 'id', ['employee id', 'emp id', 'worker id', 'id'], 'Paid worker.', {
@@ -2536,7 +2537,7 @@ export const DATASETS: DatasetDef[] = [
     sheet: 'Hiring plan',
     description:
       'Planned starts by month and org: one row per planned role, or one row per month and department with a count.',
-    usedBy: ['scorecard', 'recruiting', 'onboarding'],
+    usedBy: ['home', 'scorecard', 'recruiting', 'onboarding'],
     rowKey: [
       'planVersion',
       'period',
@@ -2656,7 +2657,7 @@ export const DATASETS: DatasetDef[] = [
     sheet: 'Onboarding tasks',
     description:
       'One row per person per onboarding task (Atlas ON-01 to ON-04), for pre-hires, accepted candidates and new starters.',
-    usedBy: ['team', 'scorecard', 'onboarding', 'compliance', 'listening'],
+    usedBy: ['home', 'team', 'scorecard', 'onboarding', 'compliance', 'listening'],
     rowKey: ['employeeId', 'applicationId', 'task'],
     requireOneOf: ['employeeId', 'applicationId'],
     fields: [
@@ -2726,7 +2727,7 @@ export const DATASETS: DatasetDef[] = [
     sheet: 'Right to work',
     description:
       'Work authorization expiry, Form I-9 dates and export-control license status, one row per employee. Never nationality or citizenship.',
-    usedBy: ['scorecard', 'compliance'],
+    usedBy: ['home', 'scorecard', 'compliance'],
     rowKey: ['employeeId'],
     fields: [
       f('employeeId', 'Employee ID', 'id', ['employee id', 'emp id', 'worker id', 'id'], 'The employee.', {
@@ -2832,7 +2833,7 @@ export const DATASETS: DatasetDef[] = [
     sheet: 'Survey responses',
     description:
       'One row per answer from any survey tool (long format). Respondent keys only join org, stage or req attributes; no one’s answers are ever shown.',
-    usedBy: ['scorecard', 'onboarding', 'listening'],
+    usedBy: ['home', 'scorecard', 'onboarding', 'listening'],
     rowKey: ['survey', 'wave', 'respondentKey', 'item', 'subjectKey'],
     fields: [
       f(
@@ -2927,7 +2928,7 @@ export const DATASETS: DatasetDef[] = [
     label: 'Survey items',
     sheet: 'Survey items',
     description: 'Optional reference: the driver each survey item measures and its target.',
-    usedBy: ['scorecard', 'onboarding', 'listening'],
+    usedBy: ['home', 'scorecard', 'onboarding', 'listening'],
     rowKey: ['survey', 'item'],
     fields: [
       f(
@@ -2977,7 +2978,7 @@ export const DATASETS: DatasetDef[] = [
     sheet: 'Budget',
     description:
       'Optional: budgeted headcount and cost by month, for each business unit, department or cost center. Finance sees the cost as totals only.',
-    usedBy: ['scorecard', 'comp'],
+    usedBy: ['home', 'scorecard', 'comp'],
     rowKey: ['planVersion', 'period', 'businessUnit', 'department', 'costCenter'],
     fields: [
       f(

@@ -1,5 +1,6 @@
 /** Help articles, Definitions: how metrics are defined and changed, and the generated glossary. */
 import type { HelpArticle } from '../types'
+import { DATA_ROOM, NO_DATA_ROOM } from './when'
 
 export const DEFINITION_ARTICLES: readonly HelpArticle[] = [
   {
@@ -8,6 +9,13 @@ export const DEFINITION_ARTICLES: readonly HelpArticle[] = [
     title: 'How metrics are defined and changed',
     summary:
       'One definition per metric, kept in Metric definitions, where wording, targets and settings can change.',
+    without: [
+      {
+        surface: 'page:data',
+        summary:
+          'One definition per metric, the same in every view, and an index of every formula in Settings.',
+      },
+    ],
     keywords: [
       'metric',
       'definition',
@@ -28,8 +36,13 @@ export const DEFINITION_ARTICLES: readonly HelpArticle[] = [
     body: [
       {
         p: 'Every metric Census shows has one entry in [Metric definitions](route:data.metrics), a tab of the Data room. That entry is the single source of truth for what the info buttons and figure definitions say, the target it is judged against and the settings its calculation reads.',
+        ...DATA_ROOM,
       },
-      { h: 'What an entry holds' },
+      {
+        p: 'Every metric Census shows has one definition, the same in every view and every mode: what the info buttons and figure definitions say, the target it is judged against and the settings its calculation reads. HR keeps the definitions, and a change reaches every view at once.',
+        ...NO_DATA_ROOM,
+      },
+      { h: 'What a definition holds' },
       {
         ul: [
           'The definition, formula, population (who counts) and window.',
@@ -40,7 +53,7 @@ export const DEFINITION_ARTICLES: readonly HelpArticle[] = [
           'The owner, the change log, and where the metric appears.',
         ],
       },
-      { h: 'Changing a metric' },
+      { h: 'Changing a metric', surface: 'ui:edit-definition' },
       {
         ol: [
           'Open the metric: use "Edit definition" in any info button, or pick it from the list. Filter by view, tier, "changed from default" or "has a target", or search.',
@@ -56,20 +69,34 @@ export const DEFINITION_ARTICLES: readonly HelpArticle[] = [
         ul: [
           'A "Definition changed" mark on every number calculated differently from the default, whether or not the quality lens is on.',
           'A "Definitions changed" stamp on every export.',
+        ],
+      },
+      {
+        ul: [
           'Changes are kept in this browser and travel with the settings file. "Download metric dictionary" exports every entry to Excel; an edited workbook can be imported back, checked field by field.',
         ],
+        ...DATA_ROOM,
       },
       { h: 'Every formula in one place' },
       {
         p: '[Settings, Formulas](settings:formulas) is an index of how every number is calculated, by view: the formula, who counts and the window, with the unit, the target, the settings it reads and their values, the fields it reads with their tier, and whether anything differs from the default. It follows the definitions in force, so your changes show there too.',
+        ...DATA_ROOM,
+      },
+      {
+        p: '[Settings, Formulas](settings:formulas) is an index of how every number this mode shows is calculated, by view: the formula, who counts and the window, with the unit, the target, the settings it reads and their values, the fields it reads with their tier, and whether anything differs from the default. It follows the definitions in force.',
+        ...NO_DATA_ROOM,
       },
       {
         ul: [
           'Search by name, formula, field or setting, such as "headcount", "terminationDate" or "SLA". Filter by view, "changed only" or "has a target".',
           'Copy one formula as text, or export the whole index as an Excel workbook or a CSV.',
-          'The index is read-only. "Open in Metric definitions" opens the entry to change it.',
         ],
       },
+      {
+        ul: ['The index is read-only. "Open in Metric definitions" opens the entry to change it.'],
+        ...DATA_ROOM,
+      },
+      { ul: ['The index is read-only.'], ...NO_DATA_ROOM },
       {
         note: 'Privacy rules are locked. The anonymity minimum can be raised, never lowered, and pay amounts stay opt-in.',
       },
@@ -80,11 +107,17 @@ export const DEFINITION_ARTICLES: readonly HelpArticle[] = [
     group: 'definitions',
     title: 'Glossary',
     summary: 'Every metric Census shows, with its definition, generated from Metric definitions.',
+    without: [{ surface: 'page:data', summary: 'Every metric this mode shows, with its definition.' }],
     keywords: ['terms', 'dictionary', 'definitions', 'what does it mean', 'meaning'],
     generated: 'glossary',
     body: [
       {
         p: 'This list is built from [Metric definitions](route:data.metrics), so it always matches what the app calculates, including any wording you changed. Search the Help sheet for a term, or open a metric to see its formula, settings and data.',
+        ...DATA_ROOM,
+      },
+      {
+        p: 'This list is built from the metric definitions in force, so it always matches what the app calculates. It lists the metrics this mode shows. Search the Help sheet for a term; [Settings, Formulas](settings:formulas) has each formula.',
+        ...NO_DATA_ROOM,
       },
     ],
   },

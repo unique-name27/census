@@ -29,8 +29,9 @@ describe('DATASETS[].usedBy', () => {
 })
 
 describe('folder tabs', () => {
-  it('open on My team and the scorecard and follow the employee lifecycle, every view key once', () => {
+  it('open on Home, My team and the scorecard and follow the employee lifecycle, every view key once', () => {
     expect(VIEWS.map((v) => v.key)).toEqual([
+      'home',
       'team',
       'scorecard',
       'recruiting',
@@ -44,9 +45,7 @@ describe('folder tabs', () => {
       'listening',
       'ai',
     ])
-    // The Home view (docs/ROLES-V2.md part 5) is a view key before it is built (8.9, stage 4).
-    const built = VIEW_KEYS.filter((k) => k !== 'home' || VIEWS.some((v) => v.key === 'home'))
-    expect(VIEWS.map((v) => v.key)).toEqual(built)
+    expect(VIEWS.map((v) => v.key)).toEqual([...VIEW_KEYS])
     for (const v of VIEWS) expect(v.label, v.key).toBe(VIEW_LABEL[v.key])
   })
 

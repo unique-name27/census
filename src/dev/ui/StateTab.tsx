@@ -6,6 +6,7 @@
  */
 import { useMemo } from 'react'
 import { matrixCounts } from '@/access/matrix'
+import { picksOfState, useMode } from '@/access/store'
 import { readWorkspaceId } from '@/ask/engine/keys'
 import { readModelChoice } from '@/ask/engine/models'
 import { useAsk } from '@/ask/ui/store'
@@ -50,6 +51,7 @@ export function StateTab() {
   const storage = useStorageRows()
   const focusInventory = useDev((s) => s.focusInventory)
   const counts = useMemo(() => matrixCounts(accessRows(VIEWS)), [])
+  const picks = picksOfState({ picks: useMode((s) => s.picks), managerId: useMode((s) => s.managerId) })
   const hash = typeof location === 'undefined' ? '' : location.hash
   const top = stack[stack.length - 1]
   const name = (id: string | null) => (id ? (views.find((v) => v.id === id)?.name ?? id) : null)
@@ -64,6 +66,7 @@ export function StateTab() {
     lens,
     versions,
     counts,
+    picks,
     savedViews: { count: views.length, applied: name(appliedId), startup: name(startupId) },
     panels: {
       drillDepth: stack.length,

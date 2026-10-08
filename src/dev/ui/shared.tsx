@@ -28,6 +28,10 @@ export async function copyText(text: string, what: string): Promise<void> {
   }
 }
 
+/** A native select or text field on the page, at the control height. */
+export const SELECT =
+  'h-8 rounded-control bg-sheet px-2 text-small text-ink shadow-[inset_0_0_0_1px_var(--rule-strong)] outline-none focus-visible:shadow-[inset_0_0_0_2px_var(--focus)]'
+
 export const PRE =
   'max-h-[60vh] overflow-auto rounded-control bg-sheet-2 p-3 font-mono text-label leading-relaxed whitespace-pre-wrap break-words text-ink'
 

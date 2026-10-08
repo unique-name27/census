@@ -13,8 +13,8 @@
  *      or more in a business unit (`comp:high-rated-low-compa:<unit>`);
  *    - eligible people with no merit proposal while the cycle is open, 5 or more in a business
  *      unit (`comp:no-proposal:<unit>`);
- *    - merit proposals that break the guideline rules, one per person
- *      (`comp:guideline-exception:<id>`).
+ *    - merit proposals that break the guideline rules, one roll-up per business unit
+ *      (`comp:guideline-exception:<unit>`), the people in its drill (audit 4.3).
  *
  * Every item is due on the cycle's close date (Settings > Compensation cycle); without one it has
  * no due date and says so. No item's `what` or `note` holds a money amount, in any mode: amounts
@@ -296,48 +296,65 @@ function noProposalItems(m: CompModel): ActionItem[] {
     }))
 }
 
-/* ───────── guideline exceptions, one per person ───────── */
+/* ───────── guideline exceptions, by business unit ───────── */
 
-function exceptionItem(m: CompModel, r: ExceptionRow, manager: string | null): ActionItem {
+/**
+ * Merit proposals that break the guideline rules (a 5 under the floor, a 1 or 2 over the cap), one
+ * roll-up per business unit (docs/ACTION-CENTER-AUDIT.md 4.3: roll-ups and lists, not one item a
+ * person), with the people in the drill and on the Merit cycle tab. The fingerprint is the people
+ * behind it, so a handled roll-up reopens when they change.
+ */
+function exceptionItems(m: CompModel, rows: readonly ExceptionRow[]): ActionItem[] {
   const x = m.rules.exceptions
-  const side =
-    r.kind === 'top-low'
-      ? `below the ${pct(x.topRatingFloor)} floor for a 5`
-      : `above the ${pct(x.lowRatingCap)} cap for a 1 or 2`
-  return {
-    ...base(m),
-    id: `comp:guideline-exception:${r.id}`,
-    kind: COMP_KIND.exception,
-    severity: 'warning',
-    what: whatOf(
-      m,
-      `Rated ${r.rating} with a ${pct(r.merit)} merit proposal, ${side}; the guideline is ${pct(r.guideline)}`,
-    ),
-    subject: { kind: 'comp', id: r.id, label: r.name },
-    tab: 'cycle',
-    drill: () => exceptionsDrill(m, [r], `${r.name}: guideline exception`),
-    note: manager
-      ? `Could we confirm the merit proposal for ${r.name} with ${manager} before the cycle closes?`
-      : `Could we confirm the merit proposal for ${r.name} before the cycle closes?`,
-    uses: refs(MERIT, RATING),
-    place: { businessUnit: r.person.businessUnit, location: r.person.location },
+  const by = new Map<string, ExceptionRow[]>()
+  for (const r of rows) {
+    const bu = r.person.businessUnit || 'No business unit'
+    const list = by.get(bu)
+    if (list) list.push(r)
+    else by.set(bu, [r])
   }
+  return [...by]
+    .sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0]))
+    .map(([bu, list]) => {
+      const low = list.filter((r) => r.kind === 'top-low').length
+      const high = list.length - low
+      const parts = [
+        low ? `${int(low)} rated 5 below the ${pct(x.topRatingFloor)} floor` : '',
+        high ? `${int(high)} rated 1 or 2 above the ${pct(x.lowRatingCap)} cap` : '',
+      ]
+        .filter(Boolean)
+        .join(', ')
+      const one = list.length === 1
+      return {
+        ...base(m),
+        id: `comp:guideline-exception:${bu}`,
+        kind: COMP_KIND.exception,
+        severity: 'warning' as const,
+        what: whatOf(
+          m,
+          `${int(list.length)} merit ${one ? 'proposal' : 'proposals'} in ${bu} ${one ? 'is' : 'are'} outside the guideline: ${parts}`,
+        ),
+        subject: { kind: 'none' as const, label: `${int(list.length)} outside the guideline, ${bu}` },
+        tab: 'cycle',
+        drill: () => exceptionsDrill(m, list, `Merit outside the guideline, ${bu}`),
+        note: 'Could we confirm these merit proposals with their managers before the cycle closes?',
+        uses: refs(MERIT, RATING, BY.businessUnit),
+        fingerprint: fingerprintOf(list.map((r) => r.id)),
+        place: { businessUnit: bu },
+      }
+    })
 }
 
 /**
  * Open items for Total rewards: the below-minimum roll-up, merit over budget, high performers paid
- * low, proposals missing, then guideline exceptions by person.
+ * low, proposals missing, then guideline exceptions by business unit.
  */
 export function compActions(ctx: AnalyticsContext): ActionItem[] {
   const m = compModel(ctx)
   if (!m.pop.people.length) return []
   // Finance lists no item about one person's pay or rating.
   if (m.cost.totals) return [...belowItems(ctx, m), ...overBudgetItems(m)]
-  const managerOf = (id: string): string | null => {
-    const mid = ctx.org.byId.get(id)?.managerId
-    return mid ? (ctx.org.byId.get(mid)?.name ?? null) : null
-  }
-  const exceptions = ruleExceptions(m.cycle.exceptions).map((r) => exceptionItem(m, r, managerOf(r.id)))
+  const exceptions = exceptionItems(m, ruleExceptions(m.cycle.exceptions))
   return [
     ...belowItems(ctx, m),
     ...overBudgetItems(m),

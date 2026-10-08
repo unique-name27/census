@@ -31,7 +31,8 @@ function scan(): FigureScan {
   const b = { key: 'data', label: 'Data room' }
   return {
     mode: 'developer',
-    managerId: null,
+    picks: {},
+    scope: null,
     at: '2026-10-01T10:00:00Z',
     ms: 500,
     views: [

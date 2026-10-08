@@ -9,6 +9,7 @@
  */
 
 import {
+  cachedCollect,
   collectActions,
   countActions,
   dueBucket,
@@ -38,7 +39,10 @@ export function openItems(rt: ToolRuntime, raw: unknown): ToolOutput {
   if (input.overdue_only != null && typeof input.overdue_only !== 'boolean')
     return fail('overdue_only must be true or false.')
   const ctx = rt.base
-  const collected = collectActions(ctx, rt.env.views)
+  // The page's own collection for the live context when it is ready (the masthead, the Action
+  // center and the homes share it), so the counts are the page's; else collected here, with pay
+  // amounts and cost totals off. Item text never holds an amount, and nothing here sends one.
+  const collected = cachedCollect(rt.env.ctx, rt.env.views) ?? collectActions(ctx, rt.env.views)
   const now = rt.env.now ?? Date.now()
   const marks = rt.env.marks ?? {}
   const { dueSoonDays } = settingsOf(ctx.metrics)

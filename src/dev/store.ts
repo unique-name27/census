@@ -8,7 +8,9 @@
  * the page.
  */
 import { create } from 'zustand'
-import type { Mode } from '@/access/modes'
+import type { Mode, ModePicks } from '@/access/modes'
+import type { ModePick } from '@/access/store'
+import { picksOfPick } from './roles'
 import type { FigureScan } from './scanModel'
 
 export const DEV_KEY = 'census:dev'
@@ -82,6 +84,13 @@ export interface DevState {
   setOverlay: (key: OverlayKey | 'all', on: boolean) => void
   /** Alt+Shift+D: every overlay off when any is on, else every one on. */
   toggleOverlays: () => void
+  /**
+   * Picks made on this page for a role preview or a scan (a business unit, a region, a recruiter,
+   * a manager). They win over the ones `census:mode` remembers, last until reload, and never
+   * change the mode.
+   */
+  pagePicks: Partial<ModePicks>
+  setPagePick: (pick: ModePick) => void
   /** The last figure scan in each mode, in memory only. */
   scans: Partial<Record<Mode, FigureScan>>
   addScan: (scan: FigureScan) => void
@@ -111,6 +120,8 @@ export const useDev = create<DevState>((set, get) => ({
     set({ overlays })
   },
   toggleOverlays: () => get().setOverlay('all', !anyOverlay(get().overlays)),
+  pagePicks: {},
+  setPagePick: (pick) => set((s) => ({ pagePicks: { ...s.pagePicks, ...picksOfPick(pick) } })),
   scans: {},
   addScan: (scan) => set((s) => ({ scans: { ...s.scans, [scan.mode]: scan } })),
   scanning: null,

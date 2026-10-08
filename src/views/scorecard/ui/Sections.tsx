@@ -12,6 +12,7 @@ import {
   type Column,
   Columns,
   Figure,
+  type FigureSpan,
   HBars,
   Lines,
   useChartTheme,
@@ -31,6 +32,7 @@ import {
   dueBucketLabel,
   groupByOwner,
   itemsDrill,
+  nothingWaiting,
   type OpenAction,
   type OwnerDueRow,
   ownerDueRows,
@@ -39,6 +41,8 @@ import {
   usesOf,
 } from '@/views/actions/engine'
 import { M as ACTIONS } from '@/views/actions/metrics'
+import { ESCALATIONS_ON_HOME, HOME_SHOWN } from '@/views/home/engine/attention'
+import { AttentionList } from '@/views/home/ui/Attention'
 import { hrbpModel } from '@/views/hrbp/engine'
 import { NO_HISTORY } from '@/views/hrbp/engine/base'
 import { flowMonthSpec, flowSpec } from '@/views/hrbp/engine/buckets'
@@ -76,15 +80,17 @@ const signed = (v: number) => (v > 0 ? `+${fmt(v, 'int')}` : fmt(v, 'int'))
 
 /* ───────── how the workforce is moving ───────── */
 
-export function MovingSection() {
+/**
+ * Headcount at each month end, the year before as a dashed gray line: the Scorecard's and the
+ * CHRO home's (each with its own id), People stats' workforce model for the context on screen.
+ */
+export function HeadcountTrend({ id, span }: { id: string; span: FigureSpan }) {
   const ctx = useAnalytics()
   const m = hrbpModel(ctx)
   const p = m.prep
   const wf = m.workforce
   const asOf = formatDate(ctx.asOf)
   const yearAgo = formatDate(addDays(p.t12.start, -1))
-
-  /* Headcount. */
   const thisYear = wf.overlay.filter((o) => o.period === LAST_YEAR)
   const first = thisYear[0]
   const end = thisYear.at(-1)
@@ -99,6 +105,58 @@ export function MovingSection() {
           },
         ]
       : []
+
+  return (
+    <Figure
+      id={id}
+      metric={ID.headcount}
+      uses={p.uses(FIGURE.headcountTrend)}
+      title="Headcount over time"
+      subtitle={`Employees at each month end, ${yearAgo} to ${asOf}, the year before as a dashed gray line`}
+      data={wf.overlay}
+      columns={[
+        { key: 'date', label: 'Month end', format: 'date' },
+        {
+          key: 'headcount',
+          label: 'Headcount',
+          format: 'int',
+          drill: (r) => drillWhen(r.headcount > 0, () => employeesOnSpec(p, r.date)),
+        },
+        { key: 'period', label: 'Period', format: 'text' },
+      ]}
+      definitions={p.defs(ID.headcount)}
+      note={`${fmt(wf.series.at(-1)?.headcount ?? 0, 'int')} employees on ${asOf}`}
+      span={span}
+      empty={
+        !p.has.terminationDate
+          ? `${NO_HISTORY}.`
+          : wf.series.some((r) => r.headcount > 0)
+            ? null
+            : 'No employees in this scope over the last 24 months.'
+      }
+    >
+      <Lines
+        data={wf.overlay}
+        x="x"
+        y="headcount"
+        series="period"
+        seriesOrder={[YEAR_BEFORE, LAST_YEAR]}
+        emphasize={LAST_YEAR}
+        format="int"
+        notes={notes}
+        onSelect={(d) => drill(() => employeesOnSpec(p, d.date))}
+        ariaLabel="Headcount at each month end, this year and the year before"
+      />
+    </Figure>
+  )
+}
+
+export function MovingSection() {
+  const ctx = useAnalytics()
+  const m = hrbpModel(ctx)
+  const p = m.prep
+  const wf = m.workforce
+  const asOf = formatDate(ctx.asOf)
 
   /* Hires and exits. */
   const hires = wf.flows.filter((r) => r.series === 'Hires').reduce((n, r) => n + r.people, 0)
@@ -138,47 +196,7 @@ export function MovingSection() {
       title="How the workforce is moving"
       dek="Headcount at each month end, who joined and left, and the attrition rates the scorecard judges People stats on."
     >
-      <Figure
-        id="scorecard-headcount"
-        metric={ID.headcount}
-        uses={p.uses(FIGURE.headcountTrend)}
-        title="Headcount over time"
-        subtitle={`Employees at each month end, ${yearAgo} to ${asOf}, the year before as a dashed gray line`}
-        data={wf.overlay}
-        columns={[
-          { key: 'date', label: 'Month end', format: 'date' },
-          {
-            key: 'headcount',
-            label: 'Headcount',
-            format: 'int',
-            drill: (r) => drillWhen(r.headcount > 0, () => employeesOnSpec(p, r.date)),
-          },
-          { key: 'period', label: 'Period', format: 'text' },
-        ]}
-        definitions={p.defs(ID.headcount)}
-        note={`${fmt(wf.series.at(-1)?.headcount ?? 0, 'int')} employees on ${asOf}`}
-        span={4}
-        empty={
-          !p.has.terminationDate
-            ? `${NO_HISTORY}.`
-            : wf.series.some((r) => r.headcount > 0)
-              ? null
-              : 'No employees in this scope over the last 24 months.'
-        }
-      >
-        <Lines
-          data={wf.overlay}
-          x="x"
-          y="headcount"
-          series="period"
-          seriesOrder={[YEAR_BEFORE, LAST_YEAR]}
-          emphasize={LAST_YEAR}
-          format="int"
-          notes={notes}
-          onSelect={(d) => drill(() => employeesOnSpec(p, d.date))}
-          ariaLabel="Headcount at each month end, this year and the year before"
-        />
-      </Figure>
+      <HeadcountTrend id="scorecard-headcount" span={4} />
       <Figure
         id="scorecard-flow"
         metric={ID.hires}
@@ -264,6 +282,85 @@ export function MovingSection() {
 
 /* ───────── where the pressure is ───────── */
 
+/**
+ * Voluntary attrition by business unit against the company, a glyph on units well above it: the
+ * Scorecard's and the CHRO home's (each with its own id). A unit's leavers carry "Filter to".
+ */
+export function UnitAttrition({ id, span }: { id: string; span: FigureSpan }) {
+  const ctx = useAnalytics()
+  const m = hrbpModel(ctx)
+  const p = m.prep
+  const units = voluntaryByUnit(m)
+  const unitSpec = (u: UnitRateRow): DrillSpec | null =>
+    u.rate == null || !u.leavers.length
+      ? null
+      : leaversSpec(p, `Voluntary leavers, ${u.group}`, u.leavers, {
+          note: rateNote(
+            u.voluntary,
+            ['voluntary exit', 'voluntary exits'],
+            u.avgHeadcount,
+            p.window.months,
+            p.set.annualize,
+          ),
+        })
+  // A unit is a filterable group: its leavers carry "Filter to" and "Leave out".
+  const unitDrill = byGroup(
+    'businessUnit',
+    (u: UnitRateRow) => (u.group === 'Not recorded' ? null : u.group),
+    (u) => (u.rate == null ? null : () => unitSpec(u)),
+  )
+  const above = units.rows.filter((u) => u.above)
+  const gapPts = fmt(p.set.voluntaryAbove.gap * 100, 'num1')
+
+  return (
+    <Figure
+      id={id}
+      metric={ID.voluntary}
+      uses={p.uses(all(VOLUNTARY_LINEAGE, BUSINESS_UNIT))}
+      title="Voluntary attrition by business unit"
+      subtitle={`Annualized voluntary attrition, ${ctx.window.label}, against the company`}
+      data={units.rows}
+      columns={[
+        { key: 'group', label: 'Business unit', format: 'text' },
+        { key: 'avgHeadcount', label: 'Average headcount', format: 'num1' },
+        { key: 'voluntary', label: 'Voluntary exits', format: 'int', drill: unitDrill },
+        { key: 'rate', label: 'Voluntary attrition', format: 'pct', drill: unitDrill },
+      ]}
+      definitions={p.defs(ID.voluntary, ID.voluntaryAbove)}
+      note={[
+        // The company rate the bars are read against travels with the exports too.
+        units.company != null ? `Company ${fmt(units.company, 'pct')}` : '',
+        above.length ? `${plural(above.length, 'unit')} at least ${gapPts} pts above the company` : '',
+        `units under ${p.set.minGroup} people are hidden`,
+      ]
+        .filter(Boolean)
+        .join(' · ')}
+      span={span}
+      empty={
+        units.rows.some((u) => u.rate != null) ? null : 'No voluntary attrition to compare in this scope.'
+      }
+    >
+      <BarList<UnitRateRow>
+        data={units.rows}
+        label="group"
+        value="rate"
+        format="pct"
+        sort="none"
+        ref={
+          units.company != null
+            ? { value: units.company, label: `Company ${fmt(units.company, 'pct')}` }
+            : undefined
+        }
+        glyphTone={(u) => (u.above ? 'warning' : 'default')}
+        secondary={(u) => (u.rate == null ? '' : `${fmt(u.voluntary, 'int')} exits`)}
+        selectable={(u) => u.rate != null && u.leavers.length > 0}
+        onSelect={(u) => drill(unitDrill(u))}
+        ariaLabel="Voluntary attrition by business unit, against the company"
+      />
+    </Figure>
+  )
+}
+
 type Bucket = DueBucket | 'all' | 'critical'
 
 function ItemsFigure({ items }: { items: ScorecardItems }) {
@@ -348,37 +445,14 @@ function ItemsFigure({ items }: { items: ScorecardItems }) {
   )
 }
 
-export function PressureSection({ items }: { items: ScorecardItems | null }) {
+/**
+ * Recruiting's pipeline today: active candidates by stage and next step state, each segment
+ * opening its candidates. The Scorecard's and the HRBP and Recruiter homes' (each with its own id).
+ */
+export function PipelineToday({ id, span, link = true }: { id: string; span: FigureSpan; link?: boolean }) {
   const ctx = useAnalytics()
-  const m = hrbpModel(ctx)
-  const p = m.prep
   const r = computeRecruiting(ctx)
   const b = r.base
-
-  /* Voluntary attrition by business unit. */
-  const units = voluntaryByUnit(m)
-  const unitSpec = (u: UnitRateRow): DrillSpec | null =>
-    u.rate == null || !u.leavers.length
-      ? null
-      : leaversSpec(p, `Voluntary leavers, ${u.group}`, u.leavers, {
-          note: rateNote(
-            u.voluntary,
-            ['voluntary exit', 'voluntary exits'],
-            u.avgHeadcount,
-            p.window.months,
-            p.set.annualize,
-          ),
-        })
-  // A unit is a filterable group: its leavers carry "Filter to" and "Leave out".
-  const unitDrill = byGroup(
-    'businessUnit',
-    (u: UnitRateRow) => (u.group === 'Not recorded' ? null : u.group),
-    (u) => (u.rate == null ? null : () => unitSpec(u)),
-  )
-  const above = units.rows.filter((u) => u.above)
-  const gapPts = fmt(p.set.voluntaryAbove.gap * 100, 'num1')
-
-  /* Pipeline today. */
   const pipelineRows = r.pipeline.flatMap((stage) =>
     NEXT_STATES.flatMap((state) => {
       const c = stage.cells.find((x) => x.state === state)
@@ -388,109 +462,110 @@ export function PressureSection({ items }: { items: ScorecardItems | null }) {
     }),
   )
   const cellDrill = (c: PipelineCell) => () => pipelineCellDrill(b, c)
+  return (
+    <Figure
+      id={id}
+      metric={FIGURE_METRICS['recruiting-pipeline-today']}
+      uses={FIGURE_USES['recruiting-pipeline-today']}
+      title="Pipeline today"
+      subtitle={`Active candidates by stage and next step on ${formatDate(b.asOf)}`}
+      data={pipelineRows}
+      columns={[
+        { key: 'stage', label: 'Stage' },
+        { key: 'state', label: 'Next step state' },
+        { key: 'candidates', label: 'Candidates', format: 'int', drill: (x) => cellDrill(x.cell) },
+        {
+          key: 'lacking',
+          label: 'Lacking a next step',
+          format: 'int',
+          drill: (x) =>
+            x.lacking
+              ? () =>
+                  pipelineCellDrill(b, {
+                    ...x.cell,
+                    label: `${x.cell.label}, lacking a next step`,
+                    items: x.cell.items.filter((i) => i.tier),
+                  })
+              : null,
+        },
+      ]}
+      note={`${plural(b.actives.length, 'active candidate')} · as of ${formatDate(b.asOf)}`}
+      span={span}
+      actions={
+        link ? (
+          <RouteLink view="recruiting" tab="pipeline" className={LINK}>
+            Pipeline
+          </RouteLink>
+        ) : undefined
+      }
+      empty={b.actives.length ? null : 'No active candidates on the as-of date.'}
+    >
+      <PipelineBars
+        stages={r.pipeline}
+        cellDrill={cellDrill}
+        stageDrill={(stage, lackingOnly) => () => pipelineStageDrill(b, stage, lackingOnly)}
+        stateDrill={(state) => () => nextStateDrill(b, state, STATE_NAME[state])}
+        lackingDrill={() => lackingKpiDrill(b)}
+      />
+    </Figure>
+  )
+}
 
+export function PressureSection() {
   return (
     <Section
       title="Where the pressure is"
       align="start"
-      dek="Business units losing people faster than the company, candidates waiting on a step, and the open items each owner group holds."
+      dek="Business units losing people faster than the company, and candidates waiting on a step."
     >
-      <Figure
-        id="scorecard-attrition-bu"
-        metric={ID.voluntary}
-        uses={p.uses(all(VOLUNTARY_LINEAGE, BUSINESS_UNIT))}
-        title="Voluntary attrition by business unit"
-        subtitle={`Annualized voluntary attrition, ${ctx.window.label}, against the company`}
-        data={units.rows}
-        columns={[
-          { key: 'group', label: 'Business unit', format: 'text' },
-          { key: 'avgHeadcount', label: 'Average headcount', format: 'num1' },
-          { key: 'voluntary', label: 'Voluntary exits', format: 'int', drill: unitDrill },
-          { key: 'rate', label: 'Voluntary attrition', format: 'pct', drill: unitDrill },
-        ]}
-        definitions={p.defs(ID.voluntary, ID.voluntaryAbove)}
-        note={[
-          // The company rate the bars are read against travels with the exports too.
-          units.company != null ? `Company ${fmt(units.company, 'pct')}` : '',
-          above.length ? `${plural(above.length, 'unit')} at least ${gapPts} pts above the company` : '',
-          `units under ${p.set.minGroup} people are hidden`,
-        ]
-          .filter(Boolean)
-          .join(' · ')}
-        span={4}
-        empty={
-          units.rows.some((u) => u.rate != null) ? null : 'No voluntary attrition to compare in this scope.'
-        }
-      >
-        <BarList<UnitRateRow>
-          data={units.rows}
-          label="group"
-          value="rate"
-          format="pct"
-          sort="none"
-          ref={
-            units.company != null
-              ? { value: units.company, label: `Company ${fmt(units.company, 'pct')}` }
-              : undefined
-          }
-          glyphTone={(u) => (u.above ? 'warning' : 'default')}
-          secondary={(u) => (u.rate == null ? '' : `${fmt(u.voluntary, 'int')} exits`)}
-          selectable={(u) => u.rate != null && u.leavers.length > 0}
-          onSelect={(u) => drill(unitDrill(u))}
-          ariaLabel="Voluntary attrition by business unit, against the company"
-        />
-      </Figure>
-      <Figure
-        id="scorecard-pipeline"
-        metric={FIGURE_METRICS['recruiting-pipeline-today']}
-        uses={FIGURE_USES['recruiting-pipeline-today']}
-        title="Pipeline today"
-        subtitle={`Active candidates by stage and next step on ${formatDate(b.asOf)}`}
-        data={pipelineRows}
-        columns={[
-          { key: 'stage', label: 'Stage' },
-          { key: 'state', label: 'Next step state' },
-          { key: 'candidates', label: 'Candidates', format: 'int', drill: (x) => cellDrill(x.cell) },
-          {
-            key: 'lacking',
-            label: 'Lacking a next step',
-            format: 'int',
-            drill: (x) =>
-              x.lacking
-                ? () =>
-                    pipelineCellDrill(b, {
-                      ...x.cell,
-                      label: `${x.cell.label}, lacking a next step`,
-                      items: x.cell.items.filter((i) => i.tier),
-                    })
-                : null,
-          },
-        ]}
-        note={`${plural(b.actives.length, 'active candidate')} · as of ${formatDate(b.asOf)}`}
-        span={4}
-        actions={
-          <RouteLink view="recruiting" tab="pipeline" className={LINK}>
-            Pipeline
-          </RouteLink>
-        }
-        empty={b.actives.length ? null : 'No active candidates on the as-of date.'}
-      >
-        <PipelineBars
-          stages={r.pipeline}
-          cellDrill={cellDrill}
-          stageDrill={(stage, lackingOnly) => () => pipelineStageDrill(b, stage, lackingOnly)}
-          stateDrill={(state) => () => nextStateDrill(b, state, STATE_NAME[state])}
-          lackingDrill={() => lackingKpiDrill(b)}
-        />
-      </Figure>
+      <UnitAttrition id="scorecard-attrition-bu" span={6} />
+      <PipelineToday id="scorecard-pipeline" span={6} />
+    </Section>
+  )
+}
+
+/**
+ * HR's Needs attention (docs/ROLES-V2.md 5.11): where every open item waits, by owner group (span
+ * 4), beside the escalations across every practice by the CHRO's rule (span 8, at most 10), with
+ * the Action center one link away. The items are the Action center's split for this context.
+ */
+export function AttentionSection({ items }: { items: ScorecardItems | null }) {
+  const ctx = useAnalytics()
+  const actions = ctx.access.can('page:actions') ? (
+    <RouteLink view="actions" className={LINK}>
+      Open the Action center
+    </RouteLink>
+  ) : undefined
+  return (
+    <Section
+      title="Needs attention"
+      dek="The open items each owner group holds, and the escalations across every practice: legal exposure, critical roles at high risk of loss, exit clusters and critical items long overdue."
+      actions={actions}
+    >
       {items ? (
-        <ItemsFigure items={items} />
+        <>
+          <ItemsFigure items={items} />
+          {/* HR and the CHRO read the escalations; a role mode visiting the Scorecard, its own items. */}
+          <AttentionList
+            id="scorecard-attention"
+            items={items.needs}
+            escalations={!items.lists}
+            shown={items.lists ? HOME_SHOWN : ESCALATIONS_ON_HOME}
+            stale={items.stale}
+            empty={
+              items.lists
+                ? nothingWaiting(items.ctx)
+                : `No escalations ${ctx.isCompany ? 'across the company' : `in ${ctx.scopeLabel}`}.`
+            }
+          />
+        </>
       ) : (
         <Pending
-          title="Where open items wait"
-          span={4}
-          height={240}
           message="Collecting open items from each view."
+          frames={[
+            { title: 'Where open items wait', span: 4, height: 240 },
+            { title: 'Escalations', span: 8, height: 240 },
+          ]}
         />
       )}
     </Section>

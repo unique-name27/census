@@ -4,13 +4,16 @@
  * targets in force and gated on the data standard exactly as the scorecard does it.
  */
 
+import { modeName } from '@/access/copy'
 import { findingsInMode, kpisInMode } from '@/access/numbers'
+import { clampFilters } from '@/access/scopes/clamp'
+import { scopeOfAccess } from '@/access/scopes/records'
 import { kpiDeltaText, unitOf } from '@/components/kpiModel'
 import { gateFor, hiddenFindingsText } from '@/components/tier/tierModel'
 import type { Finding, Kpi } from '@/components/types'
 import type { AnalyticsContext } from '@/data/context'
 import type { DatasetKey } from '@/data/schema'
-import { type Filters, focusLeader, isActiveAt, isEmployee, withMode } from '@/data/scope'
+import { type Filters, focusLeader, isActiveAt, isEmployee, isExcluded, withMode } from '@/data/scope'
 import { kpiTarget } from '@/metrics/api'
 import { minGroupOf } from '@/metrics/privacy'
 import { analysisDef, analysisSummary } from '@/views/hrbp/analyses/registry'
@@ -83,9 +86,9 @@ export function kpiOut(rt: ToolRuntime, ctx: AnalyticsContext, view: ViewDef, k:
     // A hidden number's note can carry the number itself, so it goes only with a shown value.
     note: noNote ? null : (k.note ?? null),
     ref: shown ? rt.refs.add(k.drill, label) : null,
-    // A company comparison opens no records in Manager mode (the company's are not listed).
+    // A company comparison opens no records in a scoped mode (the company's are not listed there).
     change_ref:
-      shown && k.deltaDrill && !(ctx.access?.lock && /company/i.test(k.deltaLabel ?? ''))
+      shown && k.deltaDrill && !(scopeOfAccess(ctx.access) && /company|all reqs/i.test(k.deltaLabel ?? ''))
         ? rt.refs.add(k.deltaDrill, `${label}, comparison`)
         : null,
     note_ref: !noNote && k.noteDrill ? rt.refs.add(k.noteDrill, `${label}, note`) : null,
@@ -211,13 +214,14 @@ function findView(rt: ToolRuntime, key: unknown): ViewDef | string {
   if (typeof key !== 'string' || !key) return `view is required. Views: ${viewKeysText(rt)}.`
   const v = dataViews(rt).find((x) => x.key === key)
   if (v) return v
-  // A view the mode hides is refused in plain words (Manager mode: docs/ROLES.md, 3.9).
-  const hidden = rt.env.views.find((x) => x.key === key)
-  if (hidden && rt.base.access?.mode === 'manager')
-    return key === 'scorecard'
-      ? 'The scorecard is not shown in Manager mode.'
-      : `${hidden.label} is not shown in Manager mode, so Ask does not answer about it. Say so, and do not estimate it.`
   if (key === 'ai') return 'AI in HR reads no data, so it has no key figures.'
+  // A view the mode hides is refused in plain words, worded for the mode (docs/ROLES-V2.md 7).
+  const hidden = rt.env.views.find((x) => x.key === key)
+  const access = rt.base.access
+  if (hidden && access && access.mode !== 'developer' && !access.can(`view:${key}`))
+    return key === 'scorecard'
+      ? `The scorecard is not shown in ${modeName(access.mode)}.`
+      : `${hidden.label} is not shown in ${modeName(access.mode)}, so Ask does not answer about it. Say so, and do not estimate it.`
   return `Unknown view "${key}". Views: ${viewKeysText(rt)}.`
 }
 
@@ -235,7 +239,7 @@ function analysisOut(rt: ToolRuntime, ctx: AnalyticsContext, view: ViewDef, tab:
     return `tab is for People stats special analyses only: ${SUMMARY_TABS.join(', ')}.`
   const def = analysisDef(key)
   if (!ctx.access.can(analysisSurface(key)))
-    return `${def.label} is not shown in ${ctx.access.mode === 'manager' ? 'Manager' : 'this'} mode, so Ask does not answer about it. Say so, and do not estimate it.`
+    return `${def.label} is not shown in ${modeName(ctx.access.mode)}, so Ask does not answer about it. Say so, and do not estimate it.`
   const opens = viewLink('hrbp', analysesTab(key))
   // The window the analysis's numbers cover: three of the four keep their own, whatever the period.
   const w = def.window(ctx)
@@ -336,6 +340,13 @@ export function viewSummary(rt: ToolRuntime, raw: unknown): ToolOutput {
 
 export const COMPARE_BY = ['business_unit', 'department', 'location', 'level', 'leader'] as const
 export type CompareBy = (typeof COMPARE_BY)[number]
+
+/** The dimensions a mode compares by: Finance compares business units only (docs/ROLES-V2.md 2.3). */
+export function compareByIn(
+  access: { mode: string; scope?: unknown; lock?: unknown } | null | undefined,
+): readonly CompareBy[] {
+  return access?.mode === 'finance' && !access.scope && !access.lock ? ['business_unit'] : COMPARE_BY
+}
 /** Groups compared when none are named: the largest. */
 export const DEFAULT_GROUPS = 12
 const MAX_GROUPS = 25
@@ -357,6 +368,16 @@ export const GROUP_EXCLUSION = (min: number): string =>
 /** Active employees in a context's scope (the group size shown beside each value). */
 const headcount = (ctx: AnalyticsContext): number =>
   ctx.data.employees.filter((e) => isEmployee(e) && isActiveAt(e, ctx.asOf)).length
+
+/**
+ * A group's size: active employees, or in Recruiter mode the recruiter's reqs in the group (the
+ * roster there is kept only for names, so its headcount says nothing about the reqs).
+ */
+const sizeOf = (ctx: AnalyticsContext): number =>
+  scopeOfAccess(ctx.access)?.kind === 'reqs' ? ctx.data.requisitions.length : headcount(ctx)
+
+const sameList = (a: readonly string[], b: readonly string[]): boolean =>
+  a.length === b.length && a.every((v, i) => v === b[i])
 
 /** The leaders one level down from the scope's leader (or from the top of the org), largest org first. */
 function leaderGroups(ctx: AnalyticsContext): string[] {
@@ -385,6 +406,14 @@ export function compareGroups(rt: ToolRuntime, raw: unknown): ToolOutput {
     return fail(`${view.label} has no key figures to compare. Use view_summary or query_records.`)
   const by = input.by as CompareBy
   if (!COMPARE_BY.includes(by)) return fail(`by must be one of ${COMPARE_BY.join(', ')}.`)
+  const access = rt.base.access
+  const allowed = compareByIn(access)
+  if (!allowed.includes(by))
+    return fail(
+      `${modeName(access.mode)} filters by business unit and period only, so compare_groups compares by ${allowed.join(' or ')}.`,
+    )
+  const scope = scopeOfAccess(access)
+  const reqs = scope?.kind === 'reqs'
   const s = scopedCtx(rt, input.filters)
   if (!s.ok) return fail(s.error)
   const baseCtx = s.ctx
@@ -415,6 +444,11 @@ export function compareGroups(rt: ToolRuntime, raw: unknown): ToolOutput {
           return fail(
             `In Manager mode a leader filter must be someone in ${rt.tokens.forEmployee(lock.managerId)}'s org.`,
           )
+        // HRBP for a business unit: leaders of people in the unit only.
+        if (scope?.kind === 'unit' && !scope.leaderIds.has(id))
+          return fail(
+            `${t} leads nobody in ${scope.unit}. In HRBP mode a leader filter must lead people in it.`,
+          )
         const problem = leaderProblem(rt.base, id, t)
         if (problem) return fail(problem)
         ids.push(id)
@@ -438,9 +472,18 @@ export function compareGroups(rt: ToolRuntime, raw: unknown): ToolOutput {
       filters: { ...s.filters, [dim]: [v], modes: withMode(s.filters.modes, dim, 'include') },
     }))
   }
-  const sized = groups.map((g) => {
+  // Inside a scope, a group the scope's clamp would change (another business unit, a department of
+  // another unit, a site outside the region) is not a group of the scope: it is left out.
+  const inScope = (g: { filters: Filters }): boolean => {
+    if (!scope && access.mode !== 'finance') return true
+    const kept = clampFilters(g.filters, scope, access.mode)
+    if (by === 'leader') return kept.leaderId === g.filters.leaderId
+    const dim = DIM[by]
+    return sameList(kept[dim], g.filters[dim]) && !isExcluded(kept, dim)
+  }
+  const sized = groups.filter(inScope).map((g) => {
     const ctx = contextFor(rt.base, g.filters)
-    return { ...g, ctx, size: headcount(ctx) }
+    return { ...g, ctx, size: sizeOf(ctx) }
   })
   const chosen = named?.length
     ? sized
@@ -450,25 +493,39 @@ export function compareGroups(rt: ToolRuntime, raw: unknown): ToolOutput {
         .slice(0, DEFAULT_GROUPS)
 
   // Grouping by a list dimension the scope filters on compares every value of it: each group's
-  // scope leaves that filter out, which the result says. (Leaders' orgs sit inside the scope.)
+  // scope leaves that filter out, which the result says. (Leaders' orgs sit inside the scope.) The
+  // mode's own pin stays: a business unit's groups are its own, a region's are its sites.
   const byDim = by === 'leader' ? null : DIM[by]
-  const groupsScope =
+  const pinned =
+    (scope?.kind === 'unit' && byDim === 'businessUnit') || (scope?.kind === 'region' && byDim === 'location')
+  const unfiltered =
     byDim && s.filters[byDim].length
-      ? scopeWords(
+      ? clampFilters(
           { ...s.filters, [byDim]: [], modes: withMode(s.filters.modes, byDim, 'include') },
-          rt.tokens,
+          scope,
+          access.mode,
         )
+      : null
+  const groupsScope =
+    byDim && unfiltered && !(pinned && sameList(unfiltered[byDim], s.filters[byDim]))
+      ? scopeWords(unfiltered, rt.tokens, scope)
       : null
   const min = minGroupOf(rt.base.metrics)
   const rows = chosen.map((g) => {
     // The exclusion rule holds for each group too: a group the scope's exclusions cut by a few
     // people would single them out next to the same group without the exclusion.
     if (exclusionProblem(rt.base, g.filters, rt.tokens))
-      return { group: g.label, headcount: null, value: null, value_text: '—', hidden: GROUP_EXCLUSION(min) }
+      return {
+        group: g.label,
+        ...(reqs ? { reqs: null } : { headcount: null }),
+        value: null,
+        value_text: '—',
+        hidden: GROUP_EXCLUSION(min),
+      }
     const k = view.summary?.(g.ctx).kpis.find((x) => x.id === kpi.id)
     return {
       group: g.label,
-      headcount: g.size,
+      ...(reqs ? { reqs: g.size } : { headcount: g.size }),
       ...(k
         ? kpiOut(rt, g.ctx, view, k)
         : { value: null, value_text: '—', hidden: 'This figure is not computed for this group.' }),
@@ -486,7 +543,11 @@ export function compareGroups(rt: ToolRuntime, raw: unknown): ToolOutput {
     groups_total: named?.length ? rows.length : sized.filter((g) => g.size > 0).length,
     ...(groupsScope ? { groups_scope: groupsScope } : {}),
     notes: [
-      'headcount is active employees in the group on the as-of date.',
+      reqs
+        ? by === 'leader'
+          ? "reqs is the recruiter's reqs whose hiring manager is in the leader's org: the groups are the hiring managers' orgs inside the reqs."
+          : "reqs is the recruiter's reqs in the group."
+        : 'headcount is active employees in the group on the as-of date.',
       'Small groups follow the figure’s own suppression.',
       ...(groupsScope
         ? [

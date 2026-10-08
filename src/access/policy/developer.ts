@@ -15,6 +15,7 @@ export const DEVELOPER_ONLY: readonly string[] = [
   'export:drill-spec',
   'ui:error-details',
   'view:team',
+  'header:team',
   'help:article:view-team',
   'help:article:developer-tools',
   'help:tour:view-team',
