@@ -362,6 +362,12 @@ export const VIEW_ARTICLES: readonly HelpArticle[] = [
       '1:1',
       'workforce',
     ],
+    keywordsWhere: [
+      {
+        surface: 'tab:hrbp.analyses:quality',
+        words: ['quality of hire', 'university', 'degree', 'field of study'],
+      },
+    ],
     route: { view: 'hrbp' },
     tour: 'view-hrbp',
     metrics: [
@@ -389,6 +395,28 @@ export const VIEW_ARTICLES: readonly HelpArticle[] = [
           'Movement: promotions by quarter and level, transfers and lateral moves, time since last promotion and internal moves.',
           'Org design: span of control, layers, the manager table with its flags, single-report chains and what teams say about their managers.',
         ],
+      },
+      { h: 'Special analyses', surface: 'tab:hrbp.analyses' },
+      {
+        p: 'Four analyses for a readout, picked at the top of the tab: Quality of hire (how hires from each university, degree and field of study do), Offer declines (why candidates say no), Engineering by stage (engineering people across the stages of chip development) and Level pyramid (the shape of the workforce by level). They are not measures the practice is judged on, so they feed no scorecard and no talking points.',
+        surface: 'tab:hrbp.analyses',
+      },
+      { h: 'Quality of hire', surface: 'tab:hrbp.analyses:quality' },
+      {
+        p: "Quality of hire compares groups of hires from the 24 months that ended a year ago, so every hire's first year is known. The first full review after hire becomes a score from 0 to 100 (Meets is 50), staying a year scores 100 and leaving before then scores 0, and quality of hire weighs the two half each. A hire who left before a first review scores 0; one still employed without a first review is not scored. The weights and windows are settings in Metric definitions.",
+        surface: 'tab:hrbp.analyses:quality',
+      },
+      {
+        ul: [
+          'The bar is the interval: how sure the comparison is. Few hires make a wide bar, and a bar that crosses the company line is not clearly different from the company.',
+          "The tick is the expected score: what the group would score if its hires did like the company's hires at the same site and level. A dot on its own tick tells you about the site and level, not the school.",
+          'Universities with fewer than 10 scored hires fold into Other universities; hires with no university recorded show as Not recorded.',
+        ],
+        surface: 'tab:hrbp.analyses:quality',
+      },
+      {
+        note: 'Census compares groups, never people: nobody has a quality of hire score of their own on screen, in the records or in an export, and universities sort by number of hires, not by score. Graduation year is never read. Education stays out of Recruiting, the filters and the person card, and the analysis is hidden in Manager mode. Where someone studied can stand in for where they grew up or their family income, so the readout is about programs, onboarding and retention, never about choosing or avoiding a school.',
+        surface: 'tab:hrbp.analyses:quality',
       },
       { h: 'Copy talking points', surface: 'header:hrbp' },
       {
@@ -660,7 +688,7 @@ export const VIEW_ARTICLES: readonly HelpArticle[] = [
       { h: 'Market and Merit cycle' },
       {
         ul: [
-          'Market: gap to the market median by job family, location and level, and the jobs furthest below market.',
+          'Market: gap to the market median by job function, location and level, and the jobs furthest below market.',
           'Merit cycle: merit spend by business unit against the budget, the merit distribution, guideline exceptions, promotions in this cycle and the total rewards mix by level.',
         ],
       },

@@ -3,6 +3,8 @@
  * behind each one and, where one change fixes it, the mapping that would. People are active
  * employees on the as-of date, as in every diagram and table on the tab. Pure.
  */
+
+import { swappedText } from '@/data/import/swap'
 import type { FieldRef } from '@/data/quality/fieldRef'
 import type { StructureReport } from '@/data/reference'
 import type { Employee } from '@/data/schema'
@@ -12,17 +14,18 @@ export type ConflictKind =
   | 'department-several-units'
   | 'department-no-unit'
   | 'req-department-missing'
-  | 'family-several-functions'
-  | 'family-no-function'
+  | 'function-several-families'
+  | 'function-no-family'
   | 'title-level-outlier'
-  | 'people-no-family'
+  | 'people-no-function'
+  | 'job-levels-swapped'
   | 'department-official-unit'
-  | 'family-official-function'
+  | 'function-official-family'
 
 /** A change that would resolve the conflict, ready for the edit form. `to` may be '' (you choose). */
 export type Fix =
   | { kind: 'move-department'; department: string; from: string | null; to: string }
-  | { kind: 'move-family'; jobFamily: string; from: string | null; to: string }
+  | { kind: 'move-function'; jobFunction: string; from: string | null; to: string }
   | { kind: 'merge'; ref: FieldRef; from: string[]; to: string }
 
 export interface Conflict {
@@ -202,29 +205,43 @@ export function orgConflicts(r: StructureReport): Conflict[] {
 
 export function jobConflicts(r: StructureReport, employees: readonly Employee[]): Conflict[] {
   const out: Conflict[] = []
-  for (const f of r.familiesUnderSeveralFunctions) {
-    const rows = f.functions.flatMap((s) => s.rows)
-    const named = f.functions.filter((s) => s.value != null)
+  if (r.swapped)
+    out.push({
+      id: 'job-levels-swapped',
+      kind: 'job-levels-swapped',
+      section: 'job',
+      severity: 'info',
+      pill: 'Columns swapped',
+      text: `${swappedText(r.swapped)} Upload Employees again and swap the two columns in the mapping step.`,
+      count: 0,
+      dataset: 'employees',
+      rows: [],
+      fix: null,
+      fixLabel: null,
+    })
+  for (const f of r.functionsUnderSeveralFamilies) {
+    const rows = f.families.flatMap((s) => s.rows)
+    const named = f.families.filter((s) => s.value != null)
     const main = named[0]?.value ?? null
     out.push({
-      id: `family-fns:${f.jobFamily}`,
-      kind: 'family-several-functions',
+      id: `function-fams:${f.jobFunction}`,
+      kind: 'function-several-families',
       section: 'job',
       severity: 'warning',
-      pill: 'Several functions',
-      text: `${f.jobFamily} appears under ${f.functions.length} job functions: ${listText(
-        f.functions.map((s) => `${s.value ?? 'no function'} (${people(s.rows.length)})`),
+      pill: 'Several families',
+      text: `${f.jobFunction} appears under ${f.families.length} job families: ${listText(
+        f.families.map((s) => `${s.value ?? 'no family'} (${people(s.rows.length)})`),
       )}.`,
       count: rows.length,
       dataset: 'employees',
       rows,
-      fix: main ? { kind: 'move-family', jobFamily: f.jobFamily, from: null, to: main } : null,
+      fix: main ? { kind: 'move-function', jobFunction: f.jobFunction, from: null, to: main } : null,
       fixLabel: main ? `Put it all under ${main}` : null,
     })
   }
-  const several = new Set(r.familiesUnderSeveralFunctions.map((f) => f.jobFamily))
-  const unassigned = r.functions.filter(
-    (e) => e.jobFunction == null && e.jobFamily != null && e.headcount > 0 && !several.has(e.jobFamily),
+  const several = new Set(r.functionsUnderSeveralFamilies.map((f) => f.jobFunction))
+  const unassigned = r.jobs.filter(
+    (e) => e.jobFamily == null && e.jobFunction != null && e.headcount > 0 && !several.has(e.jobFunction),
   )
   if (unassigned.length) {
     const rows = employeesOnly(
@@ -234,43 +251,43 @@ export function jobConflicts(r: StructureReport, employees: readonly Employee[])
     const first = [...unassigned].sort((a, b) => b.headcount - a.headcount)[0]
     const n = unassigned.length
     out.push({
-      id: 'family-no-function',
-      kind: 'family-no-function',
+      id: 'function-no-family',
+      kind: 'function-no-family',
       section: 'job',
       severity: 'info',
-      pill: 'No function',
-      text: `${intText(n)} ${n === 1 ? 'job family has' : 'job families have'} no job function (${people(rows.length)}).`,
+      pill: 'No family',
+      text: `${intText(n)} ${n === 1 ? 'job function has' : 'job functions have'} no job family (${people(rows.length)}).`,
       count: rows.length,
       dataset: 'employees',
       rows,
-      fix: { kind: 'move-family', jobFamily: first.jobFamily!, from: null, to: '' },
-      fixLabel: 'Assign a function',
+      fix: { kind: 'move-function', jobFunction: first.jobFunction!, from: null, to: '' },
+      fixLabel: 'Assign a family',
     })
   }
-  if (r.peopleWithoutFamily.rows.length) {
-    const n = r.peopleWithoutFamily.rows.length
+  if (r.peopleWithoutFunction.rows.length) {
+    const n = r.peopleWithoutFunction.rows.length
     out.push({
-      id: 'people-no-family',
-      kind: 'people-no-family',
+      id: 'people-no-function',
+      kind: 'people-no-function',
       section: 'job',
       severity: 'warning',
-      pill: 'No family',
-      text: `${people(n)} ${n === 1 ? 'has' : 'have'} no job family. Fix it in the source system and upload again.`,
+      pill: 'No function',
+      text: `${people(n)} ${n === 1 ? 'has' : 'have'} no job function. Fix it in the source system and upload again.`,
       count: n,
       dataset: 'employees',
-      rows: r.peopleWithoutFamily.rows,
+      rows: r.peopleWithoutFunction.rows,
       fix: null,
       fixLabel: null,
     })
   }
   for (const o of r.levelOutliers) {
     out.push({
-      id: `level:${o.jobFamily}:${o.jobTitle}`,
+      id: `level:${o.jobFunction}:${o.jobTitle}`,
       kind: 'title-level-outlier',
       section: 'job',
       severity: 'info',
       pill: 'Level outside range',
-      text: `${o.jobTitle} (${o.jobFamily}) sits at ${o.level}, outside the family’s usual ${o.usual[0]} to ${o.usual[1]}.`,
+      text: `${o.jobTitle} (${o.jobFunction}) sits at ${o.level}, outside the function’s usual ${o.usual[0]} to ${o.usual[1]}.`,
       count: o.rows.length,
       dataset: 'employees',
       rows: o.rows,
@@ -290,15 +307,15 @@ export function countByKind(conflicts: readonly Conflict[]): Partial<Record<Conf
 
 /* ───────────── official parents (Settings > Official lists) ───────────── */
 
-/** The official parent of each department and job family, from lists that are official. */
+/** The official parent of each department and job function, from lists that are official. */
 export interface OfficialParents {
   department: ReadonlyMap<string, string>
-  jobFamily: ReadonlyMap<string, string>
+  jobFunction: ReadonlyMap<string, string>
 }
 
 /**
  * Rows under a parent other than their official one: a department whose people sit under another
- * business unit, a job family under another function. One conflict per place the rows sit, each
+ * business unit, a job function under another family. One conflict per place the rows sit, each
  * fixed by moving them under the official parent. Active employees, as everywhere on the tab.
  */
 export function officialConflicts(
@@ -327,22 +344,22 @@ export function officialConflicts(
       direct: true,
     })
   }
-  for (const f of r.functions) {
+  for (const f of r.jobs) {
     if (!f.jobFamily || !f.jobFunction || !f.headcount) continue
-    const official = parents.jobFamily.get(f.jobFamily)
-    if (!official || official === f.jobFunction) continue
+    const official = parents.jobFunction.get(f.jobFunction)
+    if (!official || official === f.jobFamily) continue
     const rows = employeesOnly(f.rows, employees)
     out.push({
-      id: `family-official:${f.jobFamily}:${f.jobFunction}`,
-      kind: 'family-official-function',
+      id: `function-official:${f.jobFunction}:${f.jobFamily}`,
+      kind: 'function-official-family',
       section: 'job',
       severity: 'warning',
-      pill: 'Not its official function',
-      text: `${f.jobFamily} sits under ${f.jobFunction} for ${people(rows.length)}; its official job function is ${official}.`,
+      pill: 'Not its official family',
+      text: `${f.jobFunction} sits under ${f.jobFamily} for ${people(rows.length)}; its official job family is ${official}.`,
       count: rows.length,
       dataset: 'employees',
       rows,
-      fix: { kind: 'move-family', jobFamily: f.jobFamily, from: f.jobFunction, to: official },
+      fix: { kind: 'move-function', jobFunction: f.jobFunction, from: f.jobFamily, to: official },
       fixLabel: `Move to ${official}`,
       direct: true,
     })
@@ -352,7 +369,7 @@ export function officialConflicts(
 
 /**
  * A section's conflicts with the official lists taken into account: where a department or job
- * family has an official parent, "under several units" gives way to the precise conflicts above,
+ * function has an official parent, "under several units" gives way to the precise conflicts above,
  * which come first.
  */
 export function withOfficialParents(
@@ -364,7 +381,8 @@ export function withOfficialParents(
   const rest = conflicts.filter((c) => {
     if (c.kind === 'department-several-units')
       return !parents.department.has(c.id.slice('dept-units:'.length))
-    if (c.kind === 'family-several-functions') return !parents.jobFamily.has(c.id.slice('family-fns:'.length))
+    if (c.kind === 'function-several-families')
+      return !parents.jobFunction.has(c.id.slice('function-fams:'.length))
     return true
   })
   return [...official.filter((c) => c.section === section), ...rest]

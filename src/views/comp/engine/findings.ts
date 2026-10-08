@@ -38,7 +38,7 @@ import {
   COMPA,
   dimUses,
   FX,
-  familyUses,
+  jobUses,
   MARKET,
   MARKET_VS_MID,
   MERIT,
@@ -600,15 +600,15 @@ function belowMarket(m: FindingsInput): Ranked[] {
   const flag = marketFlag(r)
   const trail = 1 + r.belowMarket.rangeGap
   // Ranges vs positioning is decided by market ÷ midpoint; a single department becomes the filter.
-  const uses = refs(MARKET, MARKET_VS_MID, familyUses(m.pop), BY.department)
-  for (const g of m.market.byFamily) {
+  const uses = refs(MARKET, MARKET_VS_MID, jobUses(m.pop), BY.department)
+  for (const g of m.market.byJob) {
     if (g.median == null || g.median > flag + 1e-9 || g.group.startsWith('Other (')) continue
-    // Families too small to rank on the chart are too noisy to raise.
-    if (g.n < r.marketGap.minFamily) continue
-    const members = m.pop.people.filter((p) => p.jobFamily === g.group)
+    // Job functions too small to rank on the chart are too noisy to raise.
+    if (g.n < r.marketGap.minFunction) continue
+    const members = m.pop.people.filter((p) => p.job === g.group)
     const rest = safeMedian(
       values(
-        m.company.people.filter((p) => p.jobFamily !== g.group),
+        m.company.people.filter((p) => p.job !== g.group),
         (p) => p.marketRatio,
       ),
       min,
@@ -629,7 +629,7 @@ function belowMarket(m: FindingsInput): Ranked[] {
         severity: 'warning',
         title,
         detail:
-          `${restText} Market medians for this family sit ${fmt(g.marketVsMid - 1, 'pct0')} above the range midpoints, so the ranges trail the market.`.trim(),
+          `${restText} Market medians for this function sit ${fmt(g.marketVsMid - 1, 'pct0')} above the range midpoints, so the ranges trail the market.`.trim(),
         action: `Review the ${g.group} salary ranges against current survey data.`,
         filter,
         tab: 'market',

@@ -1,8 +1,9 @@
 import { beforeAll, describe, expect, it } from 'vitest'
 import { computeQuality, fieldRef } from '../../quality'
 import { buildSampleState } from '../../quality/seed'
-import { DATASET_KEYS, type DatasetKey, type Datasets, JOB_FUNCTIONS } from '../../schema'
+import { DATASET_KEYS, type DatasetKey, type Datasets } from '../../schema'
 import { generateSample, SAMPLE_AS_OF } from '..'
+import { FAMILY_OF_FUNCTION } from '../jobs'
 import {
   buildMessySample,
   completeMessySample,
@@ -21,8 +22,7 @@ import { NO_MANAGER_SHARE } from './extracts/requisitions'
 import { PENDING_RENEWAL } from './extracts/rightToWork'
 import { TITLE_ROW, UNMATCHED_SUCCESSOR_SHARE } from './extracts/succession'
 import { UNTAGGED_PROGRAM } from './extracts/surveys'
-import { lostReasonRows, PICKLIST_CHANGE } from './gold'
-import { FUNCTION_BY_UNIT } from './jobFunction'
+import { lostReasonRows, PICKLIST_CHANGE, variantUniversityRows } from './gold'
 
 let base: Datasets
 let messy: MessySample
@@ -126,7 +126,12 @@ describe('messy sample', () => {
       surveyItems: {},
     }
     for (const k of RAW_DATASETS) expect(diffs(k, messy.data[k]), k).toEqual(expected[k])
-    expect(diffs('employees', messy.data.employees)).toEqual({ terminationReason: 139 })
+    // Exit reasons lost in the migration, and a few school names typed the short way.
+    expect(diffs('employees', messy.data.employees)).toEqual({
+      terminationReason: 139,
+      university: variantUniversityRows(base.employees).size,
+    })
+    expect(variantUniversityRows(base.employees).size).toBeGreaterThan(20)
     expect(diffs('comp', messy.data.comp)).toEqual({ marketP50: 580 })
     expect(diffs('reviews', messy.data.reviews)).toEqual({})
   })
@@ -187,12 +192,13 @@ describe('magnitudes from the data tiers table', () => {
     for (const i of lost) expect(base.employees[i].terminationDate! < PICKLIST_CHANGE).toBe(true)
   })
 
-  it('employees: job function comes from the business unit for everyone', () => {
+  it("employees: every person's job function sits in their job family", () => {
     for (const e of messy.data.employees) {
-      expect(e.jobFunction).toBe(FUNCTION_BY_UNIT[e.businessUnit])
-      expect(JOB_FUNCTIONS).toContain(e.jobFunction)
+      expect(e.jobFunction, e.employeeId).toBeTruthy()
+      expect(FAMILY_OF_FUNCTION.get(e.jobFunction ?? ''), e.employeeId).toBe(e.jobFamily)
     }
     const { q } = qualityOf(messy)
+    expect(q.fieldTier(fieldRef('employees', 'jobFamily'))).toBe('gold')
     expect(q.fieldTier(fieldRef('employees', 'jobFunction'))).toBe('gold')
   })
 

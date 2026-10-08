@@ -1,9 +1,9 @@
 /**
- * The thirteen official lists: what each holds, the fields it checks, its parent list and the
+ * The eighteen official lists: what each holds, the fields it checks, its parent list and the
  * attributes its values carry (docs/SETTINGS-LISTS.md, the list table).
  */
 import type { FieldRef } from '../quality/fieldRef'
-import { REGIONS } from '../schema'
+import { CHIP_STAGES, OFFER_DECLINE_THEMES, REGIONS } from '../schema'
 import type { ListDef, ListId } from './types'
 
 /** How a candidate source reaches you. */
@@ -21,6 +21,14 @@ export const SOURCE_TYPE_OF: Readonly<Record<string, string>> = {
 }
 
 export const TERMINATION_KINDS = ['Voluntary', 'Involuntary'] as const
+
+/** A job family's engineering attribute: whether Engineering by stage counts its people. */
+export const YES_NO = ['Yes', 'No'] as const
+
+/** The Job functions list's stage choices: the chip development stages, in lifecycle order. */
+export const STAGE_OPTIONS: readonly string[] = CHIP_STAGES.map((s) => s.label)
+
+const STAGES_READ = 'Engineering by stage, in People stats special analyses, reads it.'
 
 export const LIST_DEFS: readonly ListDef[] = [
   {
@@ -56,27 +64,29 @@ export const LIST_DEFS: readonly ListDef[] = [
     about: 'Each department sits under one business unit and owns its cost centers.',
   },
   {
-    id: 'jobFunction',
-    label: 'Job functions',
-    singular: 'Job function',
-    kind: 'org',
-    refs: ['employees.jobFunction'],
-    attrs: [],
-    sheet: 'Job functions',
-    name: 'JobFunctions',
-    about: 'The broad functions above job families, such as Engineering or G&A.',
-  },
-  {
     id: 'jobFamily',
     label: 'Job families',
     singular: 'Job family',
     kind: 'org',
     refs: ['employees.jobFamily'],
-    parent: 'jobFunction',
-    attrs: [],
+    attrs: [{ key: 'engineering', label: 'Engineering', options: YES_NO, readBy: STAGES_READ }],
     sheet: 'Job families',
     name: 'JobFamilies',
-    about: 'Each job family sits under one job function.',
+    about:
+      'The broad groups of related jobs, such as Silicon Engineering. Each contains job functions. Engineering Yes counts every function in the family in Engineering by stage; a function in another family counts when it has a saved stage.',
+  },
+  {
+    id: 'jobFunction',
+    label: 'Job functions',
+    singular: 'Job function',
+    kind: 'org',
+    refs: ['employees.jobFunction'],
+    parent: 'jobFamily',
+    attrs: [{ key: 'stage', label: 'Chip development stage', options: STAGE_OPTIONS, readBy: STAGES_READ }],
+    sheet: 'Job functions',
+    name: 'JobFunctions',
+    about:
+      'Each job function sits under one job family. Its chip development stage places it in the flow from architecture to production test.',
   },
   {
     id: 'level',
@@ -96,7 +106,7 @@ export const LIST_DEFS: readonly ListDef[] = [
     ],
     sheet: 'Levels',
     name: 'Levels',
-    about: 'The level ladder, L1 to E3. The codes are fixed; you can change the labels.',
+    about: 'The level ladder, L1 to E3. Census reads these exact codes.',
   },
   {
     id: 'location',
@@ -196,6 +206,75 @@ export const LIST_DEFS: readonly ListDef[] = [
     sheet: 'Survey programs',
     name: 'SurveyPrograms',
     about: 'The survey programs Listening reads. Census reads these exact values.',
+  },
+  {
+    id: 'university',
+    label: 'Universities',
+    singular: 'University',
+    kind: 'org',
+    refs: ['employees.university'],
+    attrs: [],
+    sheet: 'Universities',
+    name: 'Universities',
+    about:
+      'The schools of the highest degrees in Employees. Map other spellings of a school to its name here.',
+  },
+  {
+    id: 'degreeLevel',
+    label: 'Degree levels',
+    singular: 'Degree level',
+    kind: 'fixed',
+    refs: ['employees.degreeLevel'],
+    attrs: [{ key: 'label', label: 'Label' }],
+    sheet: 'Degree levels',
+    name: 'DegreeLevels',
+    about: 'The five degree levels Census reads, in this order.',
+  },
+  {
+    id: 'fieldOfStudy',
+    label: 'Fields of study',
+    singular: 'Field of study',
+    kind: 'vocab',
+    refs: ['employees.fieldOfStudy'],
+    attrs: [],
+    sheet: 'Fields of study',
+    name: 'FieldsOfStudy',
+    about: 'The subjects of the highest degrees. Add the ones your people studied.',
+  },
+  {
+    id: 'offerDeclineReason',
+    label: 'Offer decline reasons',
+    singular: 'Offer decline reason',
+    kind: 'vocab',
+    // Not a check on Rejection reason: that field also holds why candidates were turned down.
+    refs: [],
+    attrs: [
+      {
+        key: 'theme',
+        label: 'Theme',
+        options: OFFER_DECLINE_THEMES,
+        builtInFixed: true,
+        readBy: 'Offer declines, in People stats special analyses, groups declines by it.',
+      },
+    ],
+    sheet: 'Offer decline reasons',
+    name: 'OfferDeclineReasons',
+    about: 'Why candidates decline offers, each in a theme such as Competition or Pay.',
+  },
+  {
+    id: 'chipStage',
+    label: 'Chip development stages',
+    singular: 'Chip development stage',
+    kind: 'fixed',
+    refs: [],
+    attrs: [
+      { key: 'label', label: 'Label' },
+      { key: 'phase', label: 'Phase', derived: true },
+    ],
+    sheet: 'Chip development stages',
+    name: 'ChipStages',
+    about:
+      'The stages of chip development in lifecycle order, with the two that run across it. Census reads these stages in this order.',
   },
 ]
 

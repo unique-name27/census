@@ -170,15 +170,15 @@ Proposed by three planners from the data Census actually has (see docs/DESIGN-RE
 - **Privacy:** Cells under 5 people render '—' with 'Hidden to protect anonymity (n < 5)' as the locked note; no amounts.
 - **Effort:** small
 
-### Is it pay or the range? Job families against the market (comp-market-vs-range)
+### Is it pay or the range? Job functions against the market (comp-market-vs-range)
 
 - **Tab:** market
-- **Question:** When a job family is paid below market, is it because people sit low in their range, or because the range itself trails the market?
-- **Form:** Scatter, one dot per job family with 5 or more people, x = market median ÷ range midpoint, y = median compa-ratio, r = people, refX and refY at 1.00, extremes labeled clear of the other dots and the rules (the refX label moves inside the plot when it would meet the y axis title). Kit form exists. Right of 1.00 means the range trails the market; below 1.00 means pay sits low in the range. Sample: Analog & Mixed-Signal sits at about 1.10 across and 1.00 up, so the fix is the range, not the people.
+- **Question:** When a job function is paid below market, is it because people sit low in their range, or because the range itself trails the market?
+- **Form:** Scatter, one dot per job function (department where the roster has none) with 5 or more people, x = market median ÷ range midpoint, y = median compa-ratio, r = people, refX and refY at 1.00, extremes labeled clear of the other dots and the rules (the refX label moves inside the plot when it would meet the y axis title). Kit form exists. Right of 1.00 means the range trails the market; below 1.00 means pay sits low in the range. Sample: Analog & Mixed-Signal sits at about 1.10 across and 1.00 up, so the fix is the range, not the people.
 - **Data:** comp (marketP50, rangeMid, baseSalary) via MarketRow in src/views/comp/engine/market.ts (marketVsMid and members already computed; add the members' median compa-ratio). Metric comp.market.vsMidpoint (existing, today only a table column), with comp.market.gap in the definitions.
-- **Drill:** A dot opens the family's people with compa-ratio and market ratio (comp kind); job family is not a filter dimension, so no Filter to.
+- **Drill:** A dot opens the function's people with compa-ratio and market ratio (comp kind); job function is not a filter dimension, so no Filter to.
 - **Roles:** Developer, HR
-- **Privacy:** Families under 5 people are left out and counted in the note; market medians are ratios here, so the Show pay amounts switch does not apply. Note states that 40% of the sample has no market median.
+- **Privacy:** Functions under 5 people are left out and counted in the note; market medians are ratios here, so the Show pay amounts switch does not apply. Note states that 40% of the sample has no market median.
 - **Effort:** small
 
 ### Below range minimum by location and cause (comp-below-min-cause)
@@ -608,3 +608,146 @@ A new src/views/scorecard/engine/trends.ts judges each point with judge() agains
 - **Effort:** medium
 
 **Layout polish:** On phones the 'Waiting on' list starts about 2,160 px down the page, under the filter row, the header, five KPI tiles and two charts. On narrow screens, put the list first and fold the charts into a 'Show charts' disclosure. Show the KPI strip three across on phones and drop the per-tile Bronze badge. The severity counts in the header (Critical 129, Watch 382, Note 63) repeat the Critical tile: keep the header line and drop the tile, or the reverse. New order: KPIs, then the due timeline (span 7) with Who has the most waiting (span 5), then What is waiting by kind (span 7) with Where items come from (span 5), then Where items wait (span 12). Kit-wide bug: BarList's value and secondary text run together for screen readers and copied text ('197164 overdue' in Where items come from). Add a visually hidden separator. In Manager mode, open with My team set to the manager and hide the picker.
+
+## People stats, Special analyses: Quality of hire (hrbp.analyses:quality)
+
+docs/ANALYSES.md part 2 is the contract; this lists what was built. The engine is `src/views/hrbp/analyses/quality/engine/` (cohort, groups with their interval and expected score, findings, drills); the figures are in its `ui/figures.tsx`. Every hire list is an employee drill with University, Degree level, Field of study, Level at hire, Site, First full review, Stayed a year and Regretted, by hire date. No figure, table, drill or export holds a quality of hire score per person. The whole analysis is hidden in Manager mode.
+
+### Quality of hire by university (hrbp-quality-university)
+
+- **Tab:** analyses:quality (the lead, span 8)
+- **Form:** RangeBars in range mode: the interval track (90% by default), the mean dot in s1 and the expected score from site and level as an ink tick, a reference rule "Company 66.9". Kit additions on RangeBars: `ref`, a row tail with a status glyph and its word (`glyphTone`, `glyphLabel`: Above, Below), a muted `secondary` ("38 hires · expected 65.8", tooltip only under 560px), `deemph` for Not recorded, and two-line category labels in rows of 26px or more. Sort: Hires (default) or Quality of hire; Other universities (k) and Not recorded always last. Metric hrbp.quality.score; the note carries "Compare groups, not people."
+- **Drill:** a row opens its scored hires (Other opens the folded schools' hires). No Filter to.
+
+### Performance and retention by university (hrbp-quality-university-parts)
+
+- **Form:** Scatter, one dot per shown university, x stayed a year, y first review score, size scored hires, company rules on both axes, labels on the five most extreme. Metric hrbp.quality.score.
+- **Drill:** a dot opens the school's scored hires; table cells open the rated hires and the hires with a retention score.
+
+### Performance and retention by group (hrbp-quality-parts)
+
+- **Form:** HBars grouped, First review score (s1) and Stayed a year, % (s2) on one 0 to 100 axis, the company first. Group by: Degree level, Field of study, Source, Business unit, Site (a segmented control from 1200px, a menu below); the table and exports hold every grouping. Metric hrbp.quality.score.
+- **Drill:** a bar opens the group's rated hires or hires with a retention score; Filter to on business unit and site rows only.
+
+### Quality of hire by degree level, by field of study and by source of hire (hrbp-quality-degree, hrbp-quality-field, hrbp-quality-source)
+
+- **Form:** RangeBars as the lead. Degree levels in their order then Not recorded; the six largest fields, then Other fields (a field recorded as "Other" folds there), then Not recorded; sources in their order, then any other source, Other sources (k) and Not in the candidate data. The source note gives the link coverage ("218 of 488 hires link to an application; the candidate data starts 30 Apr 2024") and its detail export is the linked applications. Metric hrbp.quality.score.
+- **Drill:** a row opens its scored hires. No Filter to.
+
+### Degree level by field of study (hrbp-quality-degree-field)
+
+- **Form:** Heatmap, diverging around the company mean, values printed, n in the tooltip; cells under the smallest cell (10 scored hires) show the dash. Metric hrbp.quality.score.
+- **Drill:** a cell opens its scored hires.
+
+## People stats, Special analyses: Level pyramid (hrbp.analyses:pyramid)
+
+docs/ANALYSES.md part 5 is the contract; this lists what was built. The pyramid is a kit form: `Pyramid` in `src/charts/kit/Pyramid.tsx` (layout, hit-testing and keyboard points in `pyramidModel.ts`, tested), with an `outline` legend swatch in `core/legend.ts`.
+
+### Workforce pyramid (hrbp-pyramid)
+
+- **Tab:** analyses:pyramid (the lead, span 8)
+- **Question:** What shape is the workforce across levels, and what changed in a year? In the sample, a diamond: L3 314 (+31% in a year) over a thin L1 of 65.
+- **Form:** Pyramid. One centered 16px bar per level, L1 at the bottom, 6px apart, 4px rounded ends; a 1.5px ink-2 outline on a 2px sheet halo for a year ago (or, under an org filter or in Manager mode, the company's shape scaled to the scope). Track brackets (Individual contributor, Manager, Executive) with a hairline between them; right gutter: headcount, change and "span 6" in tabular figures, and up to two notes from the bulge and thin level findings. Split: None, Business unit (company slots s1 to s7 in company size order, Other and Not recorded in deemph), Tenure (five-step ordinal ramp), Worker type (Contractors s1 and Interns s2 as on Workforce, Employees s3; adds contractors and interns). Below 160px of bars it drops notes, then bracket labels and the span column, and uses the level codes.
+- **Data:** `pyramidData` in `src/views/hrbp/analyses/pyramid/engine/model.ts`. Metric hrbp.headcount.employees. The table and exports are long form with a Split column holding every split.
+- **Drill:** A row opens its employees (Level a year ago, Tenure band, Direct reports) with Filter to the level; a business unit segment opens the level in that unit with Filter to both; tenure and worker type segments open without a filter. From the table, a year ago opens the people at the level then and the change opens who joined and left the level. The company outline opens nothing.
+- **Keyboard:** one tab stop; Up and Down between levels, Left and Right through a split level's segments, Enter drills.
+- **Roles:** Developer, HR, Manager (inside the org; the company outline is an aggregate).
+
+### Size against the level below (hrbp-pyramid-ratio-below)
+
+- **Form:** BarList, sort none, E1-E3/M2 at the top down to L2/L1, reference at 1×, a warning glyph on the individual track above 1 + tolerance. Metric hrbp.pyramid.ratioBelow (setting: tolerance, 25%).
+- **Drill:** both levels' employees with Filter to the two levels ("L2 and L1"). The ratio is hidden over a level below under the anonymity minimum.
+
+### Spans at each management level (hrbp-pyramid-spans)
+
+- **Form:** RangeBars in quartile mode for M1, M2 and E1 to E3 (combined only when each is under 5 managers), secondary "200 managers", a warning glyph and "Wide" or "Narrow" at the Org chart's span thresholds. Metric hrbp.org.medianSpan.
+- **Drill:** the managers at the level with their direct reports and total org. No Filter to: filtering to the level would leave their reports out.
+
+### How each level changed in 12 months (hrbp-pyramid-flow)
+
+- **Form:** table only. A year ago, hired, promoted in, promoted out, left, other changes, today, change, growth; every row reconciles. Metric hrbp.pyramid.levelFlow.
+- **Drill:** hired, left, today and other changes open employees; promotions open job changes.
+
+### Level mix by business unit (hrbp-pyramid-mix)
+
+- **Form:** HBars, 100% stacked, a Company row first, then the company's seven largest units and Other; bands Entry, Career, Senior, Management, Executive on the ordinal ramp. Metric hrbp.pyramid.levelMix.
+- **Drill:** a segment opens its employees with Filter to the unit and the band's levels ("Senior levels in Silicon Engineering"); the Company row opens nothing in Manager mode.
+
+## People stats, Special analyses: Engineering by stage (hrbp.analyses:stages)
+
+docs/ANALYSES.md part 4 is the contract; this lists what was built. The engine is `src/views/hrbp/analyses/stages/engine/` (who counts and in which stage in `placer.ts` and `base.ts`, the counts in `capacity.ts`, hiring in flight in `hiring.ts` through Onboarding's upcoming starts and plan coverage, the KPI strip, readout and Ask tables, and every figure's drill in `figureDrills.ts`); the figures are in its `ui/figures.tsx`, the stacked stage bars in `ui/StageBars.tsx`. A person counts in the stage of their job function (`ctx.jobs.engineeringPlace`); a req or plan line takes the most common job function of its department's active employees ("Inferred from department"). Every people list is an employee drill with Stage, Stage source (Saved, Proposed, Not mapped) and FTE. The section's "Job family: All engineering" menu scopes every number on the tab (session state; exports say what is on screen; off screen it reads All engineering). Stage, job family and job function are not filter dimensions: only the heatmap's site and business unit cells set Filter to.
+
+### Engineering capacity by chip development stage (hrbp-stages-capacity)
+
+- **Tab:** analyses:stages (the lead, span 8)
+- **Form:** `StageBars` (a Plot visual through `PlotChart`): stacked horizontal bars, the nine lifecycle stages in order, a hairline, then Software and firmware, Shared engineering and Not mapped (only with people); Employees s1 and Contractors s2 with a legend; the bar ends in its total and "12% contractors". Header Headcount | FTE. Up to two notes from the readout ("43% in Bengaluru"; the ratio below its reference when it fires). Metric hrbp.stages.capacity.
+- **Drill:** a segment opens that stage's employees or contractors, elsewhere in the row both; table cells open employees, contractors, interns and the people 12 months ago. No Filter to.
+
+### Hiring in flight by stage (hrbp-stages-hiring)
+
+- **Form:** `StageBars`, the same rows; Accepted, not started (seq-600), Open reqs (seq-400), Planned, no req yet (seq-250, left out in Manager mode); the bar ends in "+27" and "18% of today". Note on the stage with the most planned starts with no req. Metric hrbp.stages.hiring.
+- **Drill:** accepted opens the upcoming starts (Onboarding's list, noun "starts"), open reqs the requisitions (Openings, Job function, Stage, Stage source), planned the plan lines (hidden in Manager mode).
+
+### Stage ratios against reference (hrbp-stages-ratios)
+
+- **Form:** BulletList, five ratios each on its own scale, the reference as the tick (0 is none: no tick, "No reference"); Below reference (warning) at or under the reference less the readout's below-by share, Near reference (good) within it either side, Above reference beyond it. The measure name opens Metric definitions at hrbp.stages.ratios (plain text where the Data room is hidden). Metric hrbp.stages.ratios.
+- **Drill:** a row opens the people in both stages.
+
+### Where each stage is staffed (hrbp-stages-where)
+
+- **Form:** Heatmap, rows the stages with people, columns the eight largest sites by engineering headcount then Other (or business units), value the row share (sequential 0 to 100%), n people, values printed. Site | Business unit; the table and exports hold both groupings (Grouped by). A row under the anonymity minimum shows counts and no shares. Metric hrbp.stages.capacity.
+- **Drill:** a cell opens its people with Filter to the site or business unit (none on Other).
+
+### Stage headcount over time (hrbp-stages-trend)
+
+- **Form:** TrendGrid, one cell per stage with people, the last 8 quarter ends, each cell on its own scale, no target. Each person counts in their current job function's stage. Metric hrbp.stages.capacity.
+- **Drill:** a point opens the people in the stage at that quarter end.
+
+### Job functions behind the stages (hrbp-stages-functions)
+
+- **Form:** table only: job family, job function, stage, stage source, employees, contractors, their FTE, open openings and planned with no req (left out in Manager mode). A link under it opens Settings, Official lists (plain text where Settings hides the lists). Metric hrbp.stages.mapped.
+- **Drill:** each count opens its people, reqs or plan lines.
+
+## People stats, Special analyses: Offer declines (hrbp.analyses:declines)
+
+docs/ANALYSES.md part 3 is the contract; this lists what was built. The engine is `src/views/hrbp/analyses/declines/engine/` (offers read with Recruiting's `prepareApps`, `resolvedOffers` and `acceptance`); every mark opens its offers through Recruiting's candidate drill, declined first, with the offer's own columns (offer and decision dates, days to offer and to decide, outcome, reason and theme, competing offer, offer revised, position in range). The whole analysis is hidden in Manager mode.
+
+### Why offers were declined (hrbp-declines-reasons)
+
+- **Tab:** analyses:declines (the lead, span 8)
+- **Form:** Pareto (`ParetoChart.tsx` in the analysis's ui folder): a column per reason on the Offer decline reasons list (largest first, "Other reasons (k)" after the named ones, "Not recorded" last in deemph), a 2px ink-2 line with dots for the running share and a rule at 80%, one axis from 0 to 100%. A bracket names the reasons that reach 80% ("3 reasons, 86% of declines"). Short reason names under the columns; the tooltip and table keep the full ones. Metric recruiting.offers.declineReasons.
+- **Drill:** a column opens its declined offers. No Filter to.
+
+### Decline rate by quarter (hrbp-declines-trend)
+
+- **Form:** Lines, 8 quarters to the as-of date; under an org filter the company line is added and the scope emphasized. A quarter under the anonymity minimum breaks the line. Note from the rise finding ("Rose to 32% in Q3 2026, mostly in Bengaluru"). Metric hrbp.declines.rate.
+- **Drill:** a point opens the quarter's offers with Filter to the quarter (the scope's line only).
+
+### Decline rate by group (hrbp-declines-by-group)
+
+- **Form:** BarList, domain 0 to 100%, company rule, secondary "46 of 70 · expected 23%", a warning glyph where the gap to expected is at least the gap to flag with enough offers. The "By level" menu picks Level band, Location, Business unit, Source, Recruiter or Hiring manager; the table and exports hold every cut (Grouped by, expected, gap, 90% Wilson interval). Metric hrbp.declines.rate, with hrbp.declines.expected.
+- **Drill:** a bar opens its offers; Filter to on level bands ("L5-L6"), locations and business units.
+
+### Decline rate by days from final interview to offer, and from offer to decision (hrbp-declines-interview-to-offer, hrbp-declines-offer-to-decision)
+
+- **Form:** Columns, one series, rule at the rate over the measured offers, "n offers" in the tooltip (a new optional `secondary` on Columns). "No clear link in this period" when no bucket is the gap to flag away from it. Metric hrbp.declines.timing.
+- **Drill:** a column opens its offers. No Filter to.
+
+### Competing offers and revised offers (hrbp-declines-competing)
+
+- **Form:** BarList of acceptance, four fixed rows, company acceptance rule, secondary "11 of 17". Metric hrbp.declines.competing.
+
+### Where offers sat in the range (hrbp-declines-range-position)
+
+- **Form:** dumbbell (`RangeDumbbell.tsx`), the company first, then locations by gap; declined median in s1, accepted in s2, scale 0 to 1.2 with a midpoint rule. A row short of one outcome shows the other dot. Metric hrbp.declines.rangePosition (a ratio, never an amount).
+- **Drill:** a dot opens that row's offers of that outcome, with Filter to the location.
+
+### What candidates who declined told us (hrbp-declines-candidate-survey)
+
+- **Form:** candidate NPS of survey respondents who declined against those who accepted (BarList), beside the survey's decline reasons and the ATS reasons (a table). Shown only when candidate experience answers are loaded and Listening is shown; on Manager mode's hide list. Grouped results only, at the survey minimum.
+- **Drill:** survey numbers open grouped results (surveyGroups); ATS counts open the declined offers.
+
+### What to do next (hrbp-declines-next-steps)
+
+- **Form:** table only, span 12: theme, declined offers, share, where it concentrates (`decomposeRate` on location, level band and business unit), owner, and the fixed next step per theme. Personal and Other have none. Metric recruiting.offers.declineReasons.
+- **Drill:** a theme's count opens its declined offers.

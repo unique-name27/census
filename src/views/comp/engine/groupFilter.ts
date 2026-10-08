@@ -2,14 +2,14 @@
  * "Filter to this" for Compensation (docs/FILTERS.md, part 4): a breakdown row by business unit,
  * department, location or level carries its dimension, so the records it opens carry the filter
  * that reproduces it. Pay rows take their org fields from the person's roster record, as the
- * filters do. Job families, ratings, positions and bins are not filters and carry none. Pure.
+ * filters do. Job families, job functions, ratings, positions and bins are not filters and carry none. Pure.
  */
 import type { ListDimension } from '@/data/scope'
 import { groupFilter } from '@/drill/filter'
 import type { DrillFilter, DrillSpec } from '@/drill/types'
 
 export interface GroupDim {
-  /** The org filter whose value `group` is, when the breakdown is by one (none for job family). */
+  /** The org filter whose value `group` is, when the breakdown is by one (none for job function). */
   dim?: ListDimension
 }
 

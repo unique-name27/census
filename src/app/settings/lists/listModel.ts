@@ -3,7 +3,7 @@
  * of a list's table, the values in the data that are not on it (with the value each most likely
  * means), the additions the data proposes, and the sentences around them.
  */
-import { type ListAnalysis, listFromData, type ValueUse } from '@/data/lists'
+import { type ListAnalysis, listFromData, listKey, type ValueUse } from '@/data/lists'
 import type {
   EffectiveList,
   EffectiveLists,
@@ -15,7 +15,7 @@ import type {
 } from '@/data/lists/types'
 import { type FieldRef, parseFieldRef } from '@/data/quality/fieldRef'
 import { categoryOf } from '@/data/reference'
-import { type Datasets, datasetDef } from '@/data/schema'
+import { CHIP_STAGES, type ChipStageKey, type Datasets, datasetDef } from '@/data/schema'
 import { closestValue } from '@/views/data/mapping/engine/conflicts'
 import { whenText } from '@/views/data/mapping/engine/edit'
 import { fieldLabel } from '@/views/data/mapping/engine/lists'
@@ -116,6 +116,26 @@ export function valueRows(list: EffectiveList, analysis: ListAnalysis, lists: Ef
   })
 }
 
+/** "Proposed: Signoff and tape-out", the Job functions table's stage cell before anyone saves one. */
+export const proposedStageText = (stage: ChipStageKey): string =>
+  `Proposed: ${CHIP_STAGES.find((s) => s.key === stage)?.label ?? stage}`
+
+/**
+ * Job functions with no saved stage show the stage Census proposes from their name, marked
+ * Proposed until someone saves it (docs/ANALYSES.md, 4.2), so the readout's "confirm the stage
+ * in Settings" lands on a cell that says what is proposed.
+ */
+export function withProposedStages(
+  rows: readonly ValueRow[],
+  stageFor: (jobFunction: string) => { stage: ChipStageKey; source: string } | null,
+): ValueRow[] {
+  return rows.map((r) => {
+    if (r['attr:stage'] != null || r.item.retired) return r
+    const s = stageFor(r.value)
+    return s?.source === 'proposed' ? { ...r, 'attr:stage': proposedStageText(s.stage) } : r
+  })
+}
+
 /* ───────────── in the data, not on the list ───────────── */
 
 export interface OffListItem {
@@ -150,6 +170,23 @@ export function offListItems(list: EffectiveList, analysis: ListAnalysis): OffLi
 export function proposals(list: EffectiveList, data: Datasets): ListValue[] {
   const known = new Set(list.values.map((v) => v.value.toLowerCase()))
   return listFromData(list.def, data).filter((v) => !known.has(v.value.toLowerCase()))
+}
+
+/**
+ * For each value on a list with parents that has none, the parent most of its rows name (over
+ * half of the rows that name one, as when a list is proposed from data). Values whose rows don't
+ * agree are left out, for you to set. Needed after job functions gained a family as their parent.
+ */
+export function parentFills(list: EffectiveList, data: Datasets): { value: string; parent: string }[] {
+  if (!list.def.parent) return []
+  const fromData = new Map(listFromData(list.def, data).map((v) => [listKey(v.value), v.parent ?? null]))
+  const out: { value: string; parent: string }[] = []
+  for (const v of list.values) {
+    if (v.parent || v.retired) continue
+    const parent = fromData.get(listKey(v.value))
+    if (parent) out.push({ value: v.value, parent })
+  }
+  return out
 }
 
 /* ───────────── sentences ───────────── */

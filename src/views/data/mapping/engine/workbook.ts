@@ -18,10 +18,14 @@ import { fieldLabel } from './lists'
 
 export const CHANGE_LABEL: Record<ReferenceMapping['kind'], string> = {
   'move-department': 'Move department',
-  'move-family': 'Move job family',
+  'move-function': 'Move job function',
+  'move-family': 'Set job function (before job families held functions)',
   merge: 'Merge values',
   rename: 'Rename value',
 }
+
+/** Why a legacy row (a job family moved under a function) is not read back. */
+export const LEGACY_REFUSED = 'Made before job families held job functions; not imported.'
 
 export const SCOPE_LABEL = { category: 'Every field of the category', field: 'This field only' } as const
 
@@ -51,7 +55,7 @@ export const MAPPING_COLUMNS: Column<MappingRow>[] = [
   { key: 'field', label: 'Field' },
   { key: 'fieldRef', label: 'Field reference' },
   { key: 'scope', label: 'Applies to' },
-  { key: 'subject', label: 'Department or job family' },
+  { key: 'subject', label: 'Department or job function' },
   { key: 'from', label: 'From' },
   { key: 'to', label: 'To' },
   { key: 'rows', label: 'Rows changed', format: 'int' },
@@ -62,11 +66,17 @@ export const MAPPING_COLUMNS: Column<MappingRow>[] = [
   { key: 'json', label: 'Mapping for import' },
 ]
 
+type Essence =
+  | NewReferenceMapping
+  | Omit<Extract<ReferenceMapping, { kind: 'move-family' }>, 'id' | 'at' | 'by'>
+
 /** The parts of a mapping that decide what it does (no id, author or time). */
-function essence(m: ReferenceMapping | NewReferenceMapping): NewReferenceMapping {
+function essence(m: ReferenceMapping | NewReferenceMapping): Essence {
   switch (m.kind) {
     case 'move-department':
       return { kind: m.kind, department: m.department, from: m.from ?? null, to: m.to }
+    case 'move-function':
+      return { kind: m.kind, jobFunction: m.jobFunction, from: m.from ?? null, to: m.to }
     case 'move-family':
       return { kind: m.kind, jobFamily: m.jobFamily, from: m.from ?? null, to: m.to }
     default:
@@ -107,6 +117,16 @@ export function mappingRows(
           fieldRef: 'employees.businessUnit',
           scope: SCOPE_LABEL.field,
           subject: m.department,
+          from: m.from ?? '',
+          to: m.to,
+        }
+      case 'move-function':
+        return {
+          ...base,
+          field: 'Employees: Job family',
+          fieldRef: 'employees.jobFamily',
+          scope: SCOPE_LABEL.field,
+          subject: m.jobFunction,
           from: m.from ?? '',
           to: m.to,
         }
@@ -177,8 +197,10 @@ const HEADER: Record<string, keyof MappingRow> = {
   field: 'field',
   appliesto: 'scope',
   scope: 'scope',
+  departmentorjobfunction: 'subject',
   departmentorjobfamily: 'subject',
   department: 'subject',
+  jobfunction: 'subject',
   jobfamily: 'subject',
   from: 'from',
   to: 'to',
@@ -196,6 +218,7 @@ function kindOf(change: string): ReferenceMapping['kind'] | null {
   if (k === 'merge') return 'merge'
   if (k === 'rename') return 'rename'
   if (k === 'movedepartment' || k === 'department') return 'move-department'
+  if (k === 'movefunction' || k === 'movejobfunction' || k === 'assignjobfunction') return 'move-function'
   if (k === 'movefamily' || k === 'movejobfamily' || k === 'assignjobfamily') return 'move-family'
   return null
 }
@@ -214,8 +237,16 @@ function fromJson(raw: string): ParsedMapping | string {
   switch (o.kind) {
     case 'move-department':
       return { kind: o.kind, department: str(o.department) ?? '', from: str(o.from), to: str(o.to) ?? '', by }
+    case 'move-function':
+      return {
+        kind: o.kind,
+        jobFunction: str(o.jobFunction) ?? '',
+        from: str(o.from),
+        to: str(o.to) ?? '',
+        by,
+      }
     case 'move-family':
-      return { kind: o.kind, jobFamily: str(o.jobFamily) ?? '', from: str(o.from), to: str(o.to) ?? '', by }
+      return LEGACY_REFUSED
     case 'merge':
     case 'rename': {
       const ref = str(o.ref) ?? ''
@@ -238,12 +269,16 @@ function fromJson(raw: string): ParsedMapping | string {
 function fromColumns(r: Partial<Record<keyof MappingRow, string>>): ParsedMapping | string {
   const kind = kindOf(r.change ?? '')
   if (!kind)
-    return `"${r.change ?? ''}" is not a change Census knows. Use ${Object.values(CHANGE_LABEL).join(', ')}.`
+    return `"${r.change ?? ''}" is not a change Census knows. Use ${Object.entries(CHANGE_LABEL)
+      .filter(([k]) => k !== 'move-family')
+      .map(([, l]) => l)
+      .join(', ')}.`
   const by = r.by || null
   if (kind === 'move-department')
     return { kind, department: r.subject ?? '', from: r.from || null, to: r.to ?? '', by }
-  if (kind === 'move-family')
-    return { kind, jobFamily: r.subject ?? '', from: r.from || null, to: r.to ?? '', by }
+  if (kind === 'move-function')
+    return { kind, jobFunction: r.subject ?? '', from: r.from || null, to: r.to ?? '', by }
+  if (kind === 'move-family') return LEGACY_REFUSED
   const ref = r.fieldRef || (isFieldRef(r.field ?? '') ? (r.field ?? '') : '')
   if (!isFieldRef(ref) || !categoryOf(ref))
     return `${ref ? `"${ref}"` : 'The field reference'} is not a categorical field (for example employees.department).`

@@ -18,7 +18,7 @@ const parents: OfficialParents = {
     ['Design Verification', 'Silicon'],
     ['Firmware', 'Silicon'],
   ]),
-  jobFamily: new Map([['Firmware', 'Engineering']]),
+  jobFunction: new Map([['Firmware', 'Silicon Engineering']]),
 }
 
 describe('official parents in Categories & mapping', () => {
@@ -27,7 +27,7 @@ describe('official parents in Categories & mapping', () => {
     expect(found.map((c) => c.text)).toEqual([
       'Firmware sits under Systems for 2 people; its official business unit is Silicon.',
       'Design Verification sits under Systems for 1 person; its official business unit is Silicon.',
-      'Firmware sits under Operations for 1 person; its official job function is Engineering.',
+      'Firmware sits under Operations for 1 person; its official job family is Silicon Engineering.',
     ])
     const dv = found[1]
     expect(dv).toMatchObject({
@@ -75,8 +75,11 @@ describe('official parents in Categories & mapping', () => {
       parents,
       'job',
     )
-    expect(jobs.some((c) => c.kind === 'family-several-functions')).toBe(false)
-    expect(jobs[0].kind).toBe('family-official-function')
+    expect(jobs.some((c) => c.kind === 'function-several-families')).toBe(false)
+    expect(jobs[0]).toMatchObject({
+      kind: 'function-official-family',
+      fix: { kind: 'move-function', jobFunction: 'Firmware', from: 'Operations', to: 'Silicon Engineering' },
+    })
   })
 
   it('find nothing on the sample company with its shipped lists', () => {
@@ -84,7 +87,9 @@ describe('official parents in Categories & mapping', () => {
     const r = inferStructure(sample, { asOf: SAMPLE_AS_OF })
     const dept = new Map<string, string>()
     for (const e of r.org) if (e.department && e.businessUnit) dept.set(e.department, e.businessUnit)
-    expect(officialConflicts(r, { department: dept, jobFamily: new Map() }, sample.employees)).toEqual([])
+    const fns = new Map<string, string>()
+    for (const e of r.jobs) if (e.jobFunction && e.jobFamily) fns.set(e.jobFunction, e.jobFamily)
+    expect(officialConflicts(r, { department: dept, jobFunction: fns }, sample.employees)).toEqual([])
   })
 
   it('check category values against an official list when one is given', () => {

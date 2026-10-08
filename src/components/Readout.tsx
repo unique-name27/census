@@ -248,6 +248,7 @@ export function Readout({
   findings: listed,
   span = 4,
   title = 'Readout',
+  exportTitle,
   id = 'readout',
   emptyText = 'Nothing unusual in this period.',
   className,
@@ -258,6 +259,8 @@ export function Readout({
   findings: Finding[]
   span?: Span
   title?: string
+  /** The title its export sheet and slide carry, when the page around it names it ("Quality of hire readout"). */
+  exportTitle?: string
   /** Registry id; give a second readout on the same tab its own id. */
   id?: string
   emptyText?: string
@@ -284,7 +287,7 @@ export function Readout({
   // Exports carry exactly what the standard shows, and say how many were held back.
   useTableFigure({
     id,
-    title,
+    title: exportTitle ?? title,
     note: hiddenText,
     columns: withPractice(tiered ? READOUT_COLUMNS_WITH_TIER : READOUT_COLUMNS, !!sourceOf),
     rows: readoutRows(sorted, tiered ? gateOfFinding : undefined).map((row, i) =>

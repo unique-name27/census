@@ -20,8 +20,8 @@ import {
   type CompaCell,
   compaCellDrill,
   compaGrid,
-  familyMarketPosition,
-  familyPositionDrill,
+  jobMarketPosition,
+  jobPositionDrill,
   type PayAttritionRow,
   payGroupDrill,
   payLeaversDrill,
@@ -169,17 +169,20 @@ describe('median compa-ratio by location and level group', () => {
   })
 })
 
-describe('pay or the range by job family', () => {
-  const trails = team(6, { jobFamily: 'Analog', department: 'Analog' }, () => ({
+describe('pay or the range by job function', () => {
+  const trails = team(6, { jobFunction: 'Analog', department: 'Analog' }, () => ({
     compa: 1,
     marketP50: 110_000,
   }))
-  const low = team(5, { jobFamily: 'Firmware', department: 'Firmware' }, () => ({
+  const low = team(5, { jobFunction: 'Firmware', department: 'Firmware' }, () => ({
     compa: 0.88,
     marketP50: 100_000,
   }))
-  const small = team(4, { jobFamily: 'Legal', department: 'Legal' }, () => ({ compa: 1, marketP50: 100_000 }))
-  const unpriced = team(3, { jobFamily: 'Analog', department: 'Analog' }, () => ({
+  const small = team(4, { jobFunction: 'Legal', department: 'Legal' }, () => ({
+    compa: 1,
+    marketP50: 100_000,
+  }))
+  const unpriced = team(3, { jobFunction: 'Analog', department: 'Analog' }, () => ({
     compa: 1,
     marketP50: null,
   }))
@@ -190,29 +193,29 @@ describe('pay or the range by job family', () => {
     }),
     AS_OF,
   )
-  const fp = familyMarketPosition(pop.people, 5)
+  const fp = jobMarketPosition(pop.people, 5)
 
-  it('places each family by its range against the market and its pay in the range', () => {
-    const a = fp.rows.find((r) => r.family === 'Analog')!
+  it('places each job function by its range against the market and its pay in the range', () => {
+    const a = fp.rows.find((r) => r.job === 'Analog')!
     expect(a.n).toBe(6)
     expect(a.marketVsMid).toBeCloseTo(1.1, 6)
     expect(a.compa).toBeCloseTo(1, 6)
-    const f = fp.rows.find((r) => r.family === 'Firmware')!
+    const f = fp.rows.find((r) => r.job === 'Firmware')!
     expect(f.marketVsMid).toBeCloseTo(1, 6)
     expect(f.compa).toBeCloseTo(0.88, 6)
-    expect(fp.rows[0].family).toBe('Analog')
+    expect(fp.rows[0].job).toBe('Analog')
   })
 
-  it('leaves out small families and counts the people without a market median', () => {
-    expect(fp.rows.map((r) => r.family)).not.toContain('Legal')
+  it('leaves out small functions and counts the people without a market median', () => {
+    expect(fp.rows.map((r) => r.job)).not.toContain('Legal')
     expect(fp.hidden).toBe(1)
     expect(fp.unpriced).toBe(3)
     expect(fp.total).toBe(18)
   })
 
-  it('opens the family people with a market median, with no filter (job family is not one)', () => {
-    const a = fp.rows.find((r) => r.family === 'Analog')!
-    const d = familyPositionDrill({ scopeLabel: 'Whole company', asOf: AS_OF }, a)!
+  it('opens the function people with a market median, with no filter (job function is not one)', () => {
+    const a = fp.rows.find((r) => r.job === 'Analog')!
+    const d = jobPositionDrill({ scopeLabel: 'Whole company', asOf: AS_OF }, a)!
     expect(d.rows).toHaveLength(6)
     expect(d.filter).toBeUndefined()
   })
@@ -337,7 +340,7 @@ describe('on the sample company', () => {
 
   it('names the sample stories: Analog & Mixed-Signal trails the market, Bengaluru is long below minimum', () => {
     const m = computeComp(ctx)
-    const fam = m.market.familyPosition.rows.find((r) => r.family.startsWith('Analog'))
+    const fam = m.market.jobPosition.rows.find((r) => r.job.startsWith('Analog'))
     expect(fam).toBeDefined()
     expect(fam!.marketVsMid).toBeGreaterThan(1.05)
     expect(fam!.compa).toBeGreaterThan(0.95)
@@ -398,10 +401,10 @@ describe('on the sample company', () => {
     })
   })
 
-  it('opens nothing from a job family dot but its own people', () => {
+  it('opens nothing from a job function dot but its own people', () => {
     const m = computeComp(ctx)
-    for (const r of m.market.familyPosition.rows) {
-      const d = resolveDrill(() => familyPositionDrill(m, r))
+    for (const r of m.market.jobPosition.rows) {
+      const d = resolveDrill(() => jobPositionDrill(m, r))
       expect(d?.rows.length).toBe(r.n)
       expect(d?.filter).toBeUndefined()
     }

@@ -13,6 +13,8 @@ import type { DatasetKey } from '@/data/schema'
 import { type Filters, focusLeader, isActiveAt, isEmployee, withMode } from '@/data/scope'
 import { kpiTarget } from '@/metrics/api'
 import { minGroupOf } from '@/metrics/privacy'
+import { analysisDef, analysisSummary } from '@/views/hrbp/analyses/registry'
+import { ANALYSIS_KEYS, analysesTab, analysisSurface, parseAnalysesTab } from '@/views/hrbp/analyses/tab'
 import { scoreRow } from '@/views/scorecard/engine/model'
 import { scorecardNow } from '@/views/scorecard/engine/schedule'
 import type { ViewDef } from '@/views/types'
@@ -219,9 +221,77 @@ function findView(rt: ToolRuntime, key: unknown): ViewDef | string {
   return `Unknown view "${key}". Views: ${viewKeysText(rt)}.`
 }
 
+/** The tabs `view_summary` takes: People stats' special analyses (docs/ANALYSES.md, 1.8). */
+export const SUMMARY_TABS: readonly string[] = ANALYSIS_KEYS.map((k) => analysesTab(k))
+
+/**
+ * One special analysis of People stats (`tab: 'analyses:declines'`): its key figures and findings
+ * from `analysisSummary`, the same objects the tab renders, with what the mode hides dropped. An
+ * analysis the mode hides is refused like any hidden number; one without its data says what to add.
+ */
+function analysisOut(rt: ToolRuntime, ctx: AnalyticsContext, view: ViewDef, tab: unknown) {
+  const key = typeof tab === 'string' ? parseAnalysesTab(tab).key : null
+  if (view.key !== 'hrbp' || !key)
+    return `tab is for People stats special analyses only: ${SUMMARY_TABS.join(', ')}.`
+  const def = analysisDef(key)
+  if (!ctx.access.can(analysisSurface(key)))
+    return `${def.label} is not shown in ${ctx.access.mode === 'manager' ? 'Manager' : 'this'} mode, so Ask does not answer about it. Say so, and do not estimate it.`
+  const opens = viewLink('hrbp', analysesTab(key))
+  // The window the analysis's numbers cover: three of the four keep their own, whatever the period.
+  const w = def.window(ctx)
+  const analysis_window = {
+    start: w.start,
+    end: w.end,
+    label: w.label,
+    ignores_period: w.ignoresPeriod,
+    ...(w.ignoresPeriod
+      ? { note: 'The period picked does not change this analysis: state this window, not the period.' }
+      : {}),
+  }
+  const readiness = def.ready(ctx)
+  if (!readiness.ready)
+    return {
+      tab: analysesTab(key),
+      analysis: def.title,
+      analysis_window,
+      key_figures: [],
+      findings: [],
+      note: readiness.message,
+      opens,
+    }
+  const summary = analysisSummary(ctx, key)
+  const found = findingsOut(rt, ctx, view, findingsInMode(ctx.access, summary.findings))
+  return {
+    tab: analysesTab(key),
+    analysis: def.title,
+    analysis_window,
+    key_figures: kpisInMode(ctx.access, summary.kpis).map((k) => ({ ...kpiOut(rt, ctx, view, k), opens })),
+    ...found,
+    findings: found.findings.map((f) => ({ ...f, opens })),
+    // Aggregate tables the analysis offers beyond its tiles (the pyramid's flow by level), held
+    // back like a figure when their fields fall below the data standard.
+    ...(summary.tables?.length
+      ? {
+          tables: summary.tables.map((t) => {
+            const g = gateFor(ctx.quality, ctx.standard, t.uses, view.datasets as readonly DatasetKey[])
+            return g && !g.shown
+              ? {
+                  id: t.id,
+                  title: t.title,
+                  rows: [],
+                  hidden: 'Held back: its data does not meet the data standard in force.',
+                }
+              : { id: t.id, title: t.title, columns: t.columns, rows: t.rows }
+          }),
+        }
+      : {}),
+    opens,
+  }
+}
+
 export function viewSummary(rt: ToolRuntime, raw: unknown): ToolOutput {
   const input = inputOf(raw)
-  const bad = unknownKeys(input, ['view', 'filters'])
+  const bad = unknownKeys(input, ['view', 'filters', 'tab'])
   if (bad) return fail(bad)
   const view = findView(rt, input.view)
   if (typeof view === 'string') return fail(view)
@@ -233,6 +303,13 @@ export function viewSummary(rt: ToolRuntime, raw: unknown): ToolOutput {
     label: view.label,
     ...scopeOut(ctx, rt.tokens),
     data_standard: ctx.standard,
+  }
+  if (input.tab !== undefined) {
+    const out = analysisOut(rt, ctx, view, input.tab)
+    if (typeof out === 'string') return fail(out)
+    // An analysis with its own window has no prior window to compare with, so none is quoted.
+    const { comparison: _comparison, ...fixed } = head
+    return ok({ ...(out.analysis_window.ignores_period ? fixed : head), ...out })
   }
   if (view.key === 'scorecard') return ok({ ...head, ...scorecardOut(rt, ctx) })
   if (!view.summary) {

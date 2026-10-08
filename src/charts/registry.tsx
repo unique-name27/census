@@ -4,7 +4,7 @@
  * (slide per figure) from exactly what is on screen.
  */
 import { createContext, type ReactNode, use, useCallback, useMemo, useRef } from 'react'
-import type { FigureFacts, RegisteredFigure } from './types'
+import type { FigureFacts, RegisteredFigure, ExportSection as Section } from './types'
 
 interface Registry {
   register: (fig: RegisteredFigure) => () => void
@@ -43,6 +43,26 @@ export function FigureRegistryProvider({ children }: { children: ReactNode }) {
 /** Registry of the current view; null outside a provider (figures then simply don't register). */
 export function useFigureRegistry(): Registry | null {
   return use(Ctx)
+}
+
+/**
+ * Marks every figure, KPI strip and readout inside it as part of one section of the tab (People
+ * stats > Special analyses: one per analysis), so exports can name the section on its sheets and
+ * state its own window. Figures register with the view's registry as usual.
+ *
+ *   <FigureSection section={{ key: 'quality', label: 'Quality of hire', short: 'Quality', window }}>
+ *     …figures…
+ *   </FigureSection>
+ */
+export function FigureSection({ section, children }: { section: Section; children: ReactNode }) {
+  const parent = use(Ctx)
+  const { key, label, short, window } = section
+  const value = useMemo<Registry | null>(() => {
+    if (!parent) return null
+    const tag: Section = { key, label, short, ...(window ? { window } : {}) }
+    return { ...parent, register: (fig) => parent.register({ ...fig, section: tag }) }
+  }, [parent, key, label, short, window])
+  return <Ctx value={value}>{children}</Ctx>
 }
 
 let orderSeq = 0

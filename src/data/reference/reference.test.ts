@@ -16,21 +16,31 @@ const AT = '2026-10-01T00:00:00.000Z'
 function company(): Datasets {
   const d = emptyDatasets()
   d.employees = [
-    emp(1, { businessUnit: 'Silicon', department: 'DV', jobFamily: 'Verification', jobFunction: null }),
+    emp(1, { businessUnit: 'Silicon', department: 'DV', jobFunction: 'Verification', jobFamily: null }),
     emp(2, {
       businessUnit: 'Silicon',
       department: 'DV',
-      jobFamily: 'Verification',
-      jobFunction: 'Engineering',
+      jobFunction: 'Verification',
+      jobFamily: 'Engineering',
     }),
     emp(3, {
       businessUnit: 'Systems',
       department: 'DV',
-      jobFamily: 'Verification',
-      jobFunction: 'Operations',
+      jobFunction: 'Verification',
+      jobFamily: 'Operations',
     }),
-    emp(4, { businessUnit: 'Silicon', department: 'Design Verification', jobFamily: 'Software' }),
-    emp(5, { businessUnit: 'Systems', department: 'Firmware', jobFamily: 'Software' }),
+    emp(4, {
+      businessUnit: 'Silicon',
+      department: 'Design Verification',
+      jobFunction: 'Software',
+      jobFamily: 'Engineering',
+    }),
+    emp(5, {
+      businessUnit: 'Systems',
+      department: 'Firmware',
+      jobFunction: 'Software',
+      jobFamily: 'Engineering',
+    }),
   ]
   d.requisitions = [req(1, { businessUnit: 'Systems', department: 'DV' }), req(2, { department: 'Firmware' })]
   d.jobChanges = [
@@ -95,18 +105,44 @@ describe('applyReferenceMappings', () => {
     expect(d.hiringPlan[0].businessUnit).toBe('Systems')
   })
 
-  it('assigns a job family to a function', () => {
+  it('puts a job function under a job family, writing the family', () => {
     const r = applyReferenceMappings(company(), [
-      m({ kind: 'move-family', jobFamily: 'Verification', to: 'Engineering' }),
+      m({ kind: 'move-function', jobFunction: 'Verification', to: 'Engineering' }),
     ])
-    expect(r.datasets.employees.map((e) => e.jobFunction)).toEqual([
+    expect(r.datasets.employees.map((e) => e.jobFamily)).toEqual([
       'Engineering',
       'Engineering',
       'Engineering',
       'Engineering',
       'Engineering',
     ])
-    expect(r.changes['employees.jobFunction']).toBe(2)
+    expect(r.changes['employees.jobFamily']).toBe(2)
+    expect(r.changes['employees.jobFunction']).toBeUndefined()
+    // Only the rows under one family.
+    const part = applyReferenceMappings(company(), [
+      m({ kind: 'move-function', jobFunction: 'Verification', from: 'Operations', to: 'Engineering' }),
+    ])
+    expect(part.datasets.employees.map((e) => e.jobFamily)).toEqual([
+      null,
+      'Engineering',
+      'Engineering',
+      'Engineering',
+      'Engineering',
+    ])
+  })
+
+  it('keeps applying a legacy move-family mapping exactly as saved', () => {
+    const d = company()
+    d.employees.push(emp(6, { jobFamily: 'Digital Design', jobFunction: 'Engineering' }))
+    const legacy = m({ kind: 'move-family', jobFamily: 'Digital Design', to: 'Silicon' })
+    const r = applyReferenceMappings(d, [legacy])
+    expect(r.datasets.employees[5].jobFunction).toBe('Silicon')
+    expect(r.changes['employees.jobFunction']).toBe(1)
+    expect(r.perMapping[legacy.id]).toBe(1)
+    expect(r.skipped).toEqual([])
+    // On the sample it matches no rows: no sample family is called Digital Design any more.
+    const sample = applyReferenceMappings(generateSample(), [legacy])
+    expect(sample.perMapping[legacy.id]).toBe(0)
   })
 
   it('merges spellings across every field of the category, or one field only', () => {
@@ -247,15 +283,38 @@ describe('change list', () => {
 
   it('refuses an invalid mapping', () => {
     const r = addMapping(EMPTY_REFERENCE, {
-      kind: 'move-family',
-      jobFamily: ' ',
+      kind: 'move-function',
+      jobFunction: ' ',
       from: null,
       to: 'Engineering',
     })
-    expect(r).toEqual({ ok: false, error: 'Choose a job family.' })
+    expect(r).toEqual({ ok: false, error: 'Choose a job function.' })
+    expect(validateMapping({ kind: 'move-function', jobFunction: 'DFT', from: null, to: ' ' })).toBe(
+      'Choose a job family.',
+    )
+    expect(
+      validateMapping({ kind: 'move-function', jobFunction: 'DFT', from: 'Silicon', to: 'Silicon' }),
+    ).toBe('The job function is already under that family.')
   })
 
-  it('describes renames and family moves', () => {
+  it('makes move-function mappings and refuses new legacy ones', () => {
+    const a = addMapping(EMPTY_REFERENCE, {
+      kind: 'move-function',
+      jobFunction: ' Design RTL ',
+      from: null,
+      to: 'Silicon Engineering ',
+    })
+    if (!a.ok) throw new Error(a.error)
+    expect(a.mapping).toMatchObject({ jobFunction: 'Design RTL', to: 'Silicon Engineering', from: null })
+    expect(a.state.audit[0].what).toBe('Put job function Design RTL under Silicon Engineering.')
+    const legacy = { kind: 'move-family', jobFamily: 'DFT', from: null, to: 'Engineering' }
+    const r = addMapping(EMPTY_REFERENCE, legacy as never)
+    expect(r.ok).toBe(false)
+    // A saved legacy mapping is valid as saved.
+    expect(validateMapping(m({ kind: 'move-family', jobFamily: 'DFT', to: 'Engineering' }))).toBe(null)
+  })
+
+  it('describes renames and function moves', () => {
     expect(
       describeMapping({
         kind: 'rename',
@@ -266,8 +325,11 @@ describe('change list', () => {
       }),
     ).toBe('Renamed case category "Pay" to "Payroll".')
     expect(
-      describeMapping({ kind: 'move-family', jobFamily: 'DFT', from: 'Operations', to: 'Engineering' }),
-    ).toBe('Moved job family DFT from Operations to Engineering.')
+      describeMapping({ kind: 'move-function', jobFunction: 'DFT', from: 'Corporate', to: 'Silicon' }),
+    ).toBe('Moved job function DFT from Corporate to Silicon.')
+    expect(describeMapping(m({ kind: 'move-family', jobFamily: 'DFT', to: 'Engineering' }))).toBe(
+      'Set the job function of job family DFT rows to Engineering.',
+    )
   })
 })
 
@@ -302,12 +364,20 @@ describe('inferStructure', () => {
     expect(dv.leader?.employeeId).toBe('E001')
   })
 
-  it('maps function to family to title and flags families under several functions', () => {
+  it('maps family to function to title and flags functions under several families', () => {
     const s = inferStructure(company(), { asOf: SAMPLE_AS_OF })
     expect(
-      s.familiesUnderSeveralFunctions.map((f) => [f.jobFamily, f.functions.map((x) => x.value)]),
+      s.functionsUnderSeveralFamilies.map((f) => [f.jobFunction, f.families.map((x) => x.value)]),
     ).toEqual([['Verification', ['Engineering', 'Operations', null]]])
-    expect(s.peopleWithoutFamily.headcount).toBe(0)
+    expect(s.peopleWithoutFunction.headcount).toBe(0)
+    expect(s.hasJobFunction).toBe(true)
+    expect(s.swapped).toBe(null)
+    expect(s.jobs.map((j) => [j.jobFamily, j.jobFunction, j.headcount])).toEqual([
+      ['Engineering', 'Software', 2],
+      ['Engineering', 'Verification', 1],
+      ['Operations', 'Verification', 1],
+      [null, 'Verification', 1],
+    ])
     expect(s.locations).toEqual([
       {
         location: 'San Jose',
@@ -317,21 +387,48 @@ describe('inferStructure', () => {
         rows: [0, 1, 2, 3, 4],
       },
     ])
-    expect(s.familyLevels).toEqual([
-      { jobFamily: 'Software', level: 'L3', headcount: 2, rows: [3, 4] },
-      { jobFamily: 'Verification', level: 'L3', headcount: 3, rows: [0, 1, 2] },
+    expect(s.functionLevels).toEqual([
+      { jobFamily: 'Engineering', jobFunction: 'Software', level: 'L3', headcount: 2, rows: [3, 4] },
+      { jobFamily: 'Engineering', jobFunction: 'Verification', level: 'L3', headcount: 1, rows: [1] },
+      { jobFamily: 'Operations', jobFunction: 'Verification', level: 'L3', headcount: 1, rows: [2] },
+      { jobFamily: null, jobFunction: 'Verification', level: 'L3', headcount: 1, rows: [0] },
     ])
   })
 
-  it('flags titles whose level does not fit their family', () => {
+  it('counts people without a job function only when some row has one, and reports swapped columns', () => {
+    const d = emptyDatasets()
+    d.employees = [emp(1, { jobFunction: null }), emp(2, { jobFunction: null })]
+    const none = inferStructure(d, { asOf: SAMPLE_AS_OF })
+    expect(none.hasJobFunction).toBe(false)
+    expect(none.peopleWithoutFunction).toEqual({ headcount: 0, rows: [] })
+    d.employees.push(emp(3))
+    expect(inferStructure(d, { asOf: SAMPLE_AS_OF }).peopleWithoutFunction).toEqual({
+      headcount: 2,
+      rows: [0, 1],
+    })
+    const sample = generateSample()
+    expect(inferStructure(sample, { asOf: SAMPLE_AS_OF }).swapped).toBe(null)
+    const flipped = {
+      ...sample,
+      employees: sample.employees.map((e) => ({ ...e, jobFamily: e.jobFunction, jobFunction: e.jobFamily })),
+    }
+    const sw = inferStructure(flipped, { asOf: SAMPLE_AS_OF }).swapped
+    expect(sw?.families).toBe(38)
+    expect(sw?.functions).toBe(6)
+  })
+
+  it('flags titles whose level does not fit their job function', () => {
     const d = emptyDatasets()
     for (let i = 1; i <= 12; i++)
-      d.employees.push(emp(i, { jobFamily: 'Software', jobTitle: 'Engineer', level: 'L3' }))
-    d.employees.push(emp(13, { jobFamily: 'Software', jobTitle: 'Chief engineer', level: 'L6' }))
+      d.employees.push(emp(i, { jobFunction: 'Software', jobTitle: 'Engineer', level: 'L3' }))
+    d.employees.push(emp(13, { jobFunction: 'Software', jobTitle: 'Chief engineer', level: 'L6' }))
+    // The same title in another function of the same family is compared within that function.
+    for (let i = 14; i <= 25; i++)
+      d.employees.push(emp(i, { jobFunction: 'Firmware', jobTitle: 'Engineer', level: 'L6' }))
     const s = inferStructure(d, { asOf: SAMPLE_AS_OF })
     expect(s.levelOutliers).toEqual([
       {
-        jobFamily: 'Software',
+        jobFunction: 'Software',
         jobTitle: 'Chief engineer',
         level: 'L6',
         usual: ['L3', 'L3'],
@@ -346,7 +443,7 @@ describe('inferStructure', () => {
     let n = 0
     const add = (title: string, level: Level | null, k: number, patch: Partial<Employee> = {}) => {
       for (let i = 0; i < k; i++)
-        d.employees.push(emp(++n, { jobFamily: 'Software', jobTitle: title, level, ...patch }))
+        d.employees.push(emp(++n, { jobFunction: 'Software', jobTitle: title, level, ...patch }))
     }
     add('Associate engineer', 'L1', 2)
     add('Engineer', 'L2', 4)
@@ -358,8 +455,8 @@ describe('inferStructure', () => {
     add('Director', 'M2', 1)
     expect(inferStructure(d, { asOf: SAMPLE_AS_OF }).levelOutliers).toEqual([])
 
-    // In a family that sits at L2 and L3, a title at L5 leaves L4 empty between them.
-    const hw = { jobFamily: 'Hardware' }
+    // In a function that sits at L2 and L3, a title at L5 leaves L4 empty between them.
+    const hw = { jobFunction: 'Hardware' }
     add('Hardware engineer', 'L2', 6, hw)
     add('Hardware engineer II', 'L3', 6, hw)
     add('Senior hardware engineer', 'L5', 2, hw)
@@ -369,7 +466,7 @@ describe('inferStructure', () => {
     const s = inferStructure(d, { asOf: SAMPLE_AS_OF })
     expect(s.levelOutliers).toEqual([
       {
-        jobFamily: 'Hardware',
+        jobFunction: 'Hardware',
         jobTitle: 'Senior hardware engineer',
         level: 'L5',
         usual: ['L2', 'L3'],
@@ -383,7 +480,7 @@ describe('inferStructure', () => {
     const d = company()
     d.employees.push(emp(6, { businessUnit: '', department: 'Lab', employmentType: 'Contractor' }))
     d.employees.push(emp(7, { businessUnit: 'Systems', department: 'DV', employmentType: 'Intern' }))
-    d.employees.push(emp(8, { jobFamily: null, employmentType: 'Contractor' }))
+    d.employees.push(emp(8, { jobFunction: null, employmentType: 'Contractor' }))
     const s = inferStructure(d, { asOf: SAMPLE_AS_OF })
     // A department held only by a contractor under no unit is not a conflict.
     expect(s.departmentsWithoutUnit).toEqual([])
@@ -391,9 +488,9 @@ describe('inferStructure', () => {
       { value: 'Silicon', headcount: 2, rows: [0, 1] },
       { value: 'Systems', headcount: 1, rows: [2] },
     ])
-    expect(s.peopleWithoutFamily).toEqual({ headcount: 0, rows: [] })
-    for (const f of s.familiesUnderSeveralFunctions)
-      for (const x of f.functions) expect(x.rows).toHaveLength(x.headcount)
+    expect(s.peopleWithoutFunction).toEqual({ headcount: 0, rows: [] })
+    for (const f of s.functionsUnderSeveralFamilies)
+      for (const x of f.families) expect(x.rows).toHaveLength(x.headcount)
   })
 
   it('inventories category values with known lists, raw spellings and unrecognized values', () => {
@@ -438,6 +535,9 @@ describe('inferStructure', () => {
     expect(hc).toBe(1450)
     expect(s.departmentsUnderSeveralUnits).toEqual([])
     expect(s.org.find((e) => e.department === 'Design Verification')?.headcount).toBe(150)
+    expect(s.functionsUnderSeveralFamilies).toEqual([])
+    expect(s.peopleWithoutFunction.headcount).toBe(0)
+    expect(s.jobs.filter((j) => j.headcount).map((j) => j.jobFamily)).not.toContain(null)
     expect(s.categories.length).toBeGreaterThan(30)
     for (const inv of s.categories) for (const v of inv.values) expect(Number.isFinite(v.share)).toBe(true)
   })

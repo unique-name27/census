@@ -25,4 +25,11 @@ describe('legend swatches for image exports', () => {
         ?.map(Number) ?? []
     expect(nums.length).toBeGreaterThan(10)
   })
+
+  it('draws an outline as a 1.5px ring that the export fills', () => {
+    const o = swatchSvg('outline', 10, 20)
+    expect(o.tag).toBe('path')
+    expect(o.attrs['fill-rule']).toBe('evenodd')
+    expect(String(o.attrs.d)).toBe('M10,15h10v10h-10Z M11.5,16.5v7h7v-7Z')
+  })
 })

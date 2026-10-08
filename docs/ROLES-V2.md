@@ -1874,3 +1874,7 @@ Calls made here that a reviewer is most likely to revisit:
   HRBP owners from a Settings list by region; managers see "exits", not "regretted exits"; comp
   cycle dates in Settings > Compensation cycle; the budget dataset (above); the CHRO escalation
   threshold as the default, kept in the metric dictionary.
+- **Security center (added 7 Oct 2026):** the roles build also delivers docs/SECURITY-CENTER.md: a
+  Developer-page tab that edits overrides on this contract's policy tables, with guard rails, a
+  preview-as-role, and a published `access-policy.json` that every user loads (the user chose a
+  policy file for everyone). Design the policy tables so overrides can be applied on top of them.

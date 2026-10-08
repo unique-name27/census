@@ -26,6 +26,7 @@ import {
   isNotReady,
   MANAGER_DATASETS,
   MANAGER_DRILL_KINDS,
+  MANAGER_HIDDEN_FIGURE_PREFIXES,
   MANAGER_HIDDEN_FIGURES,
   MANAGER_HIDDEN_METRIC_PREFIXES,
   MANAGER_HIDDEN_METRICS,
@@ -136,6 +137,12 @@ describe('access matrix', () => {
       .join('\n')
     for (const id of MANAGER_HIDDEN_FIGURES)
       expect(all.includes(`'${id}'`) || all.includes(`"${id}"`), id).toBe(true)
+    // Each hidden prefix names figures that exist, and decide hides every one of them.
+    for (const p of MANAGER_HIDDEN_FIGURE_PREFIXES) {
+      const ids = [...all.matchAll(new RegExp(`'(${p}[a-z0-9-]+)'`, 'g'))].map((x) => x[1])
+      expect(ids.length, p).toBeGreaterThan(0)
+      for (const id of ids) expect(decide('manager', `figure:${id}`).access, id).toBe('hidden')
+    }
   })
 
   it('hides only metric ids and prefixes the catalog has, and keeps dev. out of it', () => {

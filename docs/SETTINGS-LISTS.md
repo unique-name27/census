@@ -30,8 +30,8 @@ The approved values Census validates data against, one list per category, with t
 |---|---|---|
 | Business units | name, code, owner (optional) | none |
 | Departments | name, code, cost center(s) | business unit |
-| Job functions | name | none |
-| Job families | name | job function |
+| Job families | name, engineering (Yes or No; blank: proposed from the name) | none |
+| Job functions | name, chip development stage (a choice from Chip development stages; blank: proposed from keywords) | job family |
 | Levels | code (L1-L6, M1-M2, E1-E3), label, track | none (fixed codes, labels editable) |
 | Locations | site, country, region, jurisdiction, currency | none |
 | Cost centers | code, name | department |
@@ -39,6 +39,17 @@ The approved values Census validates data against, one list per category, with t
 | Candidate sources | name, source type | none |
 | Termination reasons | the 12-reason voluntary taxonomy and the involuntary reasons | type |
 | Leave reasons, learning categories, survey programs | name | none |
+| Universities | name (proposed from your data; other spellings are mapped to the name, or kept as retired values pointing at it) | none |
+| Degree levels | the five levels (Associate, Bachelor's, Master's, PhD, Other), label | none (fixed, labels editable) |
+| Fields of study | name; Census starts with ten (Electrical Engineering to Business, and Other) | none |
+| Offer decline reasons | name, theme (Competition, Pay, Role, Logistics, Process, Personal, Other) | none; checks nothing, because Rejection reason also holds why candidates were turned down |
+| Chip development stages | the eleven stages in lifecycle order, label, phase | none (fixed order, labels editable) |
+
+The engineering attribute and the stage are read by Engineering by stage (People stats, Special
+analyses): a person counts when their job function has a saved stage, or their job family is
+engineering (then a blank stage is proposed from keywords on the function's name and commonest
+title, and shows as Proposed until someone saves it). The theme is read by Offer declines. A stage
+order number saved before the stage became a choice reads as the stage in that position.
 
 **Starting point:**
 - The lists start from the schema vocabularies and, for orgs and jobs, from the current data (the sample company's structure).

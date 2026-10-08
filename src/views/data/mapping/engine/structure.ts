@@ -4,7 +4,7 @@
  * Counts are active employees on the as-of date (headcount); every part keeps the row indexes of
  * those people so a click can list them. Pure.
  */
-import type { FunctionEdge, OrgEdge, StructureReport, TitleEdge } from '@/data/reference'
+import type { JobEdge, OrgEdge, StructureReport, TitleEdge } from '@/data/reference'
 import { type Employee, LEVELS, type Level, levelIndex, REGIONS } from '@/data/schema'
 import type { DiagramLinkInput, DiagramNodeInput, DiagramSpec } from './diagram'
 
@@ -14,14 +14,14 @@ export const BLANK = {
   location: '(No location)',
   country: '(No country)',
   region: '(Region not known)',
-  jobFunction: '(No job function)',
   jobFamily: '(No job family)',
+  jobFunction: '(No job function)',
   level: '(No level)',
 } as const
 
 export const OTHER_TITLES = 'Other titles'
 
-/** Titles shown in a job family's diagram before the rest fold into "Other titles". */
+/** Titles shown in a job function's diagram before the rest fold into "Other titles". */
 export const MAX_TITLES = 24
 
 /** What a node or ribbon stands for: the people behind it and the lines of its tooltip. */
@@ -399,20 +399,20 @@ export function locationRows(r: StructureReport, employees: readonly Employee[])
   }))
 }
 
-/* ───────────── job architecture: function → job family → job title ───────────── */
+/* ───────────── job architecture: job family → job function → job title ───────────── */
 
-/** Job families ordered under their main function, largest first: the order of the diagram and heatmap. */
-export function familyOrder(r: StructureReport): (string | null)[] {
-  const fns = [...groupBy(r.functions, (e) => e.jobFunction).values()].sort(bySize)
-  const fnRank = new Map(fns.map((f, i) => [f.key, i]))
-  const fams = [...groupBy(r.functions, (e) => e.jobFamily).values()]
-  const primary = new Map(fams.map((f) => [f.key, primaryOf(f.items, (e) => e.jobFunction)]))
-  fams.sort(
+/** Job functions ordered under their main family, families largest first: the order of the diagram and heatmap. */
+export function functionOrder(r: StructureReport): (string | null)[] {
+  const fams = [...groupBy(r.jobs, (e) => e.jobFamily).values()].sort(bySize)
+  const famRank = new Map(fams.map((f, i) => [f.key, i]))
+  const fns = [...groupBy(r.jobs, (e) => e.jobFunction).values()]
+  const primary = new Map(fns.map((f) => [f.key, primaryOf(f.items, (e) => e.jobFamily)]))
+  fns.sort(
     (a, b) =>
-      (fnRank.get(primary.get(a.key) ?? null) ?? 99) - (fnRank.get(primary.get(b.key) ?? null) ?? 99) ||
+      (famRank.get(primary.get(a.key) ?? null) ?? 99) - (famRank.get(primary.get(b.key) ?? null) ?? 99) ||
       bySize(a, b),
   )
-  return fams.map((f) => f.key)
+  return fns.map((f) => f.key)
 }
 
 function topTitles(titles: readonly TitleEdge[], n = 4): string {
@@ -425,62 +425,60 @@ function topTitles(titles: readonly TitleEdge[], n = 4): string {
     .join(', ')
 }
 
-/** Function → job family; with `family`, that family's functions → the family → its titles. */
+/** Job family → job function; with `fn`, the families that function sits under → the function → its titles. */
 export function jobDiagram(
   r: StructureReport,
   employees: readonly Employee[],
-  family?: { value: string | null } | null,
+  fn?: { value: string | null } | null,
 ): MappedDiagram {
   const parts = new Map<string, DiagramPart>()
-  const severalFns = new Set(r.familiesUnderSeveralFunctions.map((f) => f.jobFamily))
-  const edges: FunctionEdge[] = (
-    family ? r.functions.filter((e) => e.jobFamily === family.value) : r.functions
-  ).map((e) => ({
+  const severalFams = new Set(r.functionsUnderSeveralFamilies.map((f) => f.jobFunction))
+  const edges: JobEdge[] = (fn ? r.jobs.filter((e) => e.jobFunction === fn.value) : r.jobs).map((e) => ({
     ...e,
     rows: employeesOnly(e.rows, employees),
   }))
-  const fns = [...groupBy(edges, (e) => e.jobFunction).values()].sort(bySize)
-  const order = familyOrder(r)
-  const fams = [...groupBy(edges, (e) => e.jobFamily).values()].sort(
+  const fams = [...groupBy(edges, (e) => e.jobFamily).values()].sort(bySize)
+  const order = functionOrder(r)
+  const fns = [...groupBy(edges, (e) => e.jobFunction).values()].sort(
     (a, b) => order.indexOf(a.key) - order.indexOf(b.key),
   )
-  const primary = new Map(fams.map((f) => [f.key, primaryOf(f.items, (e) => e.jobFunction)]))
-  const titlesOf = (fam: string | null) => r.titles.filter((t) => t.jobFamily === fam)
+  const primary = new Map(fns.map((f) => [f.key, primaryOf(f.items, (e) => e.jobFamily)]))
+  const titlesOf = (f: string | null) => r.titles.filter((t) => t.jobFunction === f)
   const nodes: DiagramNodeInput[] = []
   const links: DiagramLinkInput[] = []
-  for (const f of fns) {
+  for (const f of fams) {
     const id = `f:${f.key ?? ''}`
     nodes.push({
       id,
       column: 0,
-      label: name(f.key, BLANK.jobFunction),
+      label: name(f.key, BLANK.jobFamily),
       value: f.headcount,
       flag: f.key == null ? 'warning' : null,
     })
     parts.set(id, {
-      title: name(f.key, BLANK.jobFunction),
+      title: name(f.key, BLANK.jobFamily),
       headcount: f.headcount,
       rows: f.rows,
       lines: [
         { value: intText(f.headcount), label: 'headcount' },
-        { value: intText(f.items.filter((e) => e.jobFamily != null).length), label: 'job families' },
+        { value: intText(f.items.filter((e) => e.jobFunction != null).length), label: 'job functions' },
       ],
-      flag: f.key == null ? 'These people have no job function.' : undefined,
+      flag: f.key == null ? 'These people have no job family.' : undefined,
     })
   }
-  for (const g of fams) {
+  for (const g of fns) {
     const id = `j:${g.key ?? ''}`
-    const flagged = g.key == null || severalFns.has(g.key)
+    const flagged = g.key == null || severalFams.has(g.key)
     nodes.push({
       id,
       column: 1,
-      label: name(g.key, BLANK.jobFamily),
+      label: name(g.key, BLANK.jobFunction),
       value: g.headcount,
       flag: flagged ? 'warning' : null,
     })
     const titles = titlesOf(g.key)
     parts.set(id, {
-      title: name(g.key, BLANK.jobFamily),
+      title: name(g.key, BLANK.jobFunction),
       headcount: g.headcount,
       rows: g.rows,
       lines: [
@@ -490,39 +488,39 @@ export function jobDiagram(
       ],
       flag:
         g.key == null
-          ? 'These people have no job family.'
-          : severalFns.has(g.key)
-            ? `Appears under ${new Set(r.functions.filter((e) => e.jobFamily === g.key).map((e) => e.jobFunction)).size} job functions.`
+          ? 'These people have no job function.'
+          : severalFams.has(g.key)
+            ? `Appears under ${new Set(r.jobs.filter((e) => e.jobFunction === g.key).map((e) => e.jobFamily)).size} job families.`
             : undefined,
     })
     for (const e of g.items) {
-      const lid = `f:${e.jobFunction ?? ''}>${id}`
-      const minor = g.key != null && severalFns.has(g.key) && e.jobFunction !== primary.get(g.key)
+      const lid = `f:${e.jobFamily ?? ''}>${id}`
+      const minor = g.key != null && severalFams.has(g.key) && e.jobFamily !== primary.get(g.key)
       links.push({
         id: lid,
-        source: `f:${e.jobFunction ?? ''}`,
+        source: `f:${e.jobFamily ?? ''}`,
         target: id,
         value: e.headcount,
-        flag: minor || e.jobFunction == null ? 'warning' : null,
+        flag: minor || e.jobFamily == null ? 'warning' : null,
       })
       parts.set(lid, {
-        title: `${name(e.jobFunction, BLANK.jobFunction)} to ${name(e.jobFamily, BLANK.jobFamily)}`,
+        title: `${name(e.jobFamily, BLANK.jobFamily)} to ${name(e.jobFunction, BLANK.jobFunction)}`,
         headcount: e.headcount,
         rows: e.rows,
         lines: [{ value: intText(e.headcount), label: 'headcount' }],
-        flag: minor ? 'The job family sits mostly under another function.' : undefined,
+        flag: minor ? 'The job function sits mostly under another family.' : undefined,
       })
     }
   }
-  if (!family) return { spec: { columns: ['Job function', 'Job family'], nodes, links }, parts }
+  if (!fn) return { spec: { columns: ['Job family', 'Job function'], nodes, links }, parts }
 
-  // The family's titles, largest first; the rest fold into one node.
-  const famId = `j:${family.value ?? ''}`
+  // The function's titles, largest first; the rest fold into one node.
+  const fnId = `j:${fn.value ?? ''}`
   const byTitle = new Map<
     string,
     { headcount: number; rows: number[]; levels: Partial<Record<Level, number>> }
   >()
-  for (const t of titlesOf(family.value)) {
+  for (const t of titlesOf(fn.value)) {
     const g = byTitle.get(t.jobTitle) ?? { headcount: 0, rows: [], levels: {} }
     g.headcount += t.headcount
     g.rows.push(...employeesOnly(t.rows, employees))
@@ -552,9 +550,9 @@ export function jobDiagram(
         ...(extra ? [{ value: '', label: extra }] : []),
       ],
     })
-    const lid = `${famId}>${id}`
-    links.push({ id: lid, source: famId, target: id, value: g.headcount })
-    parts.set(lid, { ...parts.get(id)!, title: `${name(family.value, BLANK.jobFamily)}: ${label}` })
+    const lid = `${fnId}>${id}`
+    links.push({ id: lid, source: fnId, target: id, value: g.headcount })
+    parts.set(lid, { ...parts.get(id)!, title: `${name(fn.value, BLANK.jobFunction)}: ${label}` })
   }
   for (const [t, g] of shown) titleNode(t, t, g)
   if (rest.length) {
@@ -566,7 +564,7 @@ export function jobDiagram(
     }
     titleNode('\u0000other', `${OTHER_TITLES} (${rest.length})`, g, `${rest.length} smaller titles`)
   }
-  return { spec: { columns: ['Job function', 'Job family', 'Job title'], nodes, links }, parts }
+  return { spec: { columns: ['Job family', 'Job function', 'Job title'], nodes, links }, parts }
 }
 
 /** "L3 12 · L4 8" in level order. */
@@ -576,9 +574,9 @@ export function levelText(levels: Partial<Record<Level, number>>): string {
     .join(' · ')
 }
 
-export interface FamilyRow {
-  jobFunction: string
+export interface JobRow {
   jobFamily: string
+  jobFunction: string
   headcount: number
   titles: number
   levels: string
@@ -587,30 +585,31 @@ export interface FamilyRow {
   rows: number[]
 }
 
-export function familyRows(r: StructureReport, employees: readonly Employee[]): FamilyRow[] {
-  const several = new Set(r.familiesUnderSeveralFunctions.map((f) => f.jobFamily))
-  const order = familyOrder(r)
+/** One row per job family and job function placement, in the diagram order. */
+export function jobRows(r: StructureReport, employees: readonly Employee[]): JobRow[] {
+  const several = new Set(r.functionsUnderSeveralFamilies.map((f) => f.jobFunction))
+  const order = functionOrder(r)
   const rank = (f: string | null) => order.indexOf(f)
-  return [...r.functions]
-    .sort((a, b) => rank(a.jobFamily) - rank(b.jobFamily) || b.headcount - a.headcount)
+  return [...r.jobs]
+    .sort((a, b) => rank(a.jobFunction) - rank(b.jobFunction) || b.headcount - a.headcount)
     .map((e) => {
       const titles = r.titles.filter((t) => t.jobFamily === e.jobFamily && t.jobFunction === e.jobFunction)
       const span = levelSpan(titles)
       return {
-        jobFunction: name(e.jobFunction, BLANK.jobFunction),
         jobFamily: name(e.jobFamily, BLANK.jobFamily),
+        jobFunction: name(e.jobFunction, BLANK.jobFunction),
         headcount: e.headcount,
         titles: new Set(titles.map((t) => t.jobTitle)).size,
         levels: span,
         status:
-          e.jobFamily == null
-            ? 'No job family'
-            : several.has(e.jobFamily)
-              ? 'Under several functions'
-              : e.jobFunction == null
-                ? 'No job function'
+          e.jobFunction == null
+            ? 'No job function'
+            : several.has(e.jobFunction)
+              ? 'Under several families'
+              : e.jobFamily == null
+                ? 'No job family'
                 : '',
-        flagged: e.jobFamily == null || e.jobFunction == null || several.has(e.jobFamily),
+        flagged: e.jobFamily == null || e.jobFunction == null || several.has(e.jobFunction),
         rows: employeesOnly(e.rows, employees),
       }
     })
@@ -626,8 +625,8 @@ function levelSpan(titles: readonly TitleEdge[]): string {
 }
 
 export interface TitleRow {
-  jobFunction: string
   jobFamily: string
+  jobFunction: string
   jobTitle: string
   headcount: number
   levels: string
@@ -636,8 +635,8 @@ export interface TitleRow {
 
 export function titleRows(r: StructureReport, employees: readonly Employee[]): TitleRow[] {
   return r.titles.map((t) => ({
-    jobFunction: name(t.jobFunction, BLANK.jobFunction),
     jobFamily: name(t.jobFamily, BLANK.jobFamily),
+    jobFunction: name(t.jobFunction, BLANK.jobFunction),
     jobTitle: t.jobTitle,
     headcount: t.headcount,
     levels: levelText(t.levels),
@@ -646,32 +645,43 @@ export function titleRows(r: StructureReport, employees: readonly Employee[]): T
 }
 
 export interface HeatCell {
-  jobFamily: string
+  jobFunction: string
   level: string
   headcount: number
   rows: number[]
 }
 
-/** Job family × level headcount, families in diagram order, levels in ladder order. */
-export function familyLevelCells(
+/** Job function × level headcount, functions in diagram order, levels in ladder order. */
+export function functionLevelCells(
   r: StructureReport,
   employees: readonly Employee[],
-): { cells: HeatCell[]; families: string[]; levels: string[] } {
-  const order = familyOrder(r)
-  const cells: HeatCell[] = r.familyLevels
-    .map((c) => ({
-      jobFamily: name(c.jobFamily, BLANK.jobFamily),
-      level: c.level ?? BLANK.level,
-      headcount: c.headcount,
-      rows: employeesOnly(c.rows, employees),
-    }))
-    .filter((c) => c.headcount > 0)
+): { cells: HeatCell[]; functions: string[]; levels: string[] } {
+  const order = functionOrder(r)
+  // A function under several families is one row: its cells add up across them.
+  const byKey = new Map<string, HeatCell>()
+  for (const c of r.functionLevels) {
+    const fn = name(c.jobFunction, BLANK.jobFunction)
+    const level = c.level ?? BLANK.level
+    const key = `${fn}\u0001${level}`
+    const cell = byKey.get(key) ?? { jobFunction: fn, level, headcount: 0, rows: [] }
+    cell.headcount += c.headcount
+    cell.rows.push(...employeesOnly(c.rows, employees))
+    byKey.set(key, cell)
+  }
+  const cells = [...byKey.values()].filter((c) => c.headcount > 0)
   const present = new Set(cells.map((c) => c.level))
   const levels: string[] = [
     ...LEVELS.filter((l) => present.has(l)),
     ...(present.has(BLANK.level) ? [BLANK.level] : []),
   ]
-  const famSet = new Set(cells.map((c) => c.jobFamily))
-  const families = order.map((f) => name(f, BLANK.jobFamily)).filter((f) => famSet.has(f))
-  return { cells, families, levels }
+  const fnSet = new Set(cells.map((c) => c.jobFunction))
+  const functions = order.map((f) => name(f, BLANK.jobFunction)).filter((f) => fnSet.has(f))
+  const rank = new Map(functions.map((f, i) => [f, i]))
+  const lrank = new Map(levels.map((l, i) => [l, i]))
+  cells.sort(
+    (a, b) =>
+      (rank.get(a.jobFunction) ?? 0) - (rank.get(b.jobFunction) ?? 0) ||
+      (lrank.get(a.level) ?? 0) - (lrank.get(b.level) ?? 0),
+  )
+  return { cells, functions, levels }
 }

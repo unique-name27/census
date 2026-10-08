@@ -584,10 +584,13 @@ export function replaceLists(
 
 /* ───────────── undo ───────────── */
 
-/** A change can be undone while no later change touched any of its lists. */
+/**
+ * A change can be undone while no later change touched any of its lists. An entry with no steps
+ * (the move to job families containing job functions) has nothing to undo.
+ */
 export function canUndo(state: ListsState, changeId: string): boolean {
   const i = state.log.findIndex((c) => c.id === changeId)
-  if (i < 0) return false
+  if (i < 0 || !state.log[i].ops.length) return false
   const lists = new Set(state.log[i].lists)
   // The log is newest first.
   return !state.log.slice(0, i).some((c) => c.lists.some((l) => lists.has(l)))

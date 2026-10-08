@@ -14,6 +14,7 @@ import type { EffectiveList, EffectiveLists, ListEdit, ListValue } from '@/data/
 import { linkReference } from '@/data/lists/undo'
 import { parseFieldRef } from '@/data/quality/fieldRef'
 import { categoryOf, type NewReferenceMapping } from '@/data/reference'
+import { CHIP_STAGES } from '@/data/schema'
 import { useCensus } from '@/data/store'
 import { Drill } from '@/drill'
 import { rowsSpec } from '@/views/data/mapping/engine/drills'
@@ -68,9 +69,23 @@ export function ValueEditor({
   const [renameData, setRenameData] = useState(true)
   const [parent, setParent] = useState(value.parent ?? '')
   const [moveData, setMoveData] = useState(true)
+  // A job function with no saved stage opens with the stage Census proposes, so one Save confirms it.
+  const proposal =
+    def.id === 'jobFunction' && value.attrs?.stage == null ? ctx.jobs.stageFor(value.value) : null
+  const proposedStage =
+    proposal?.source === 'proposed'
+      ? (CHIP_STAGES.find((s) => s.key === proposal.stage)?.label ?? null)
+      : null
   const [attrs, setAttrs] = useState<Record<string, string>>(() =>
     Object.fromEntries(
-      editable.map((a) => [a.key, value.attrs?.[a.key] == null ? '' : String(value.attrs[a.key])]),
+      editable.map((a) => [
+        a.key,
+        value.attrs?.[a.key] == null
+          ? a.key === 'stage' && proposedStage
+            ? proposedStage
+            : ''
+          : String(value.attrs[a.key]),
+      ]),
     ),
   )
   const [replacedBy, setReplacedBy] = useState('')
@@ -138,11 +153,11 @@ export function ValueEditor({
   const move = () => {
     const to = parent || null
     run('move', { kind: 'move', list: def.id, value: value.value, parent: to }, () => {
-      if (!moveData || !rows || !to || (def.id !== 'department' && def.id !== 'jobFamily')) return {}
+      if (!moveData || !rows || !to || (def.id !== 'department' && def.id !== 'jobFunction')) return {}
       const audit = mapData(
         def.id === 'department'
           ? { kind: 'move-department', department: value.value, from: null, to }
-          : { kind: 'move-family', jobFamily: value.value, from: null, to },
+          : { kind: 'move-function', jobFunction: value.value, from: null, to },
       )
       return audit
         ? {
@@ -292,7 +307,7 @@ export function ValueEditor({
           {rows > 0 &&
             parent &&
             parent !== (value.parent ?? '') &&
-            (def.id === 'department' || def.id === 'jobFamily') && (
+            (def.id === 'department' || def.id === 'jobFunction') && (
               <label className="flex items-start gap-2 text-meta text-ink-2">
                 <input
                   type="checkbox"
@@ -314,8 +329,19 @@ export function ValueEditor({
         <div className={BLOCK}>
           <span className={LABEL}>Details</span>
           <p className="text-meta text-ink-2">
-            For reference: details travel with the list and its workbook, and no number in Census reads them.
+            {editable.some((a) => a.readBy)
+              ? editable
+                  .filter((a) => a.readBy)
+                  .map((a) => `${a.label}: ${a.readBy}`)
+                  .join(' ')
+              : 'For reference: details travel with the list and its workbook, and no number in Census reads them.'}
           </p>
+          {proposedStage && (
+            <p className="text-meta text-muted">
+              Proposed from its name: {proposedStage}. Save details to confirm it, or pick another stage
+              first.
+            </p>
+          )}
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             {editable.map((a) => (
               <AttrField

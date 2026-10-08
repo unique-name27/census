@@ -39,7 +39,12 @@ rather than hard-code IDs.
 | `services.ts` | HR cases and HR transactions (final pay deadlines by jurisdiction) |
 | `talent.ts` | ratings, reviews, succession, learning |
 | `comp.ts` | compensation |
-| `raw/` | the messy sample: raw extracts, the gaps in the certified datasets, starter tiers, and `jobFunction` from the business unit (see "The messy sample") |
+| `jobs.ts` | the job architecture: six job families, 38 job functions, each engineering function's chip development stage, and the rule that gives every person a family and a function (see "Job architecture") |
+| `offerDetails.ts` | competing offer, offer revised and offer position in range on offers resolved since 1 Oct 2025, and the slow decisions (stream `recruiting-offer-detail`, right after recruiting) |
+| `outcomes.ts` | how each hire turned out, read as Quality of hire reads it at its defaults (first full review, stayed a year), for the education plant and its tests |
+| `education.ts` | university, degree level and field of study, all fictional schools (stream `education`, after every other module) |
+| `fte.ts` | FTE: 1 for everyone but 20 part-time employees and 6 contractors at half time (stream `fte`) |
+| `raw/` | the messy sample: raw extracts, the gaps in the certified datasets and starter tiers (see "The messy sample") |
 
 People added after a module's stories were calibrated get that module's rows from a separate stream:
 the first-year leavers of the earlier hire cohorts (tag `prior-first-year-leaver`) draw their cases from
@@ -257,6 +262,63 @@ count respondents, not rows.
 6. **Low upward feedback for the Austin Physical Design manager.** Manager feedback over the last four quarters, by manager: Heather Hayes (E10599) has exactly **10** distinct respondents (both waves, every report answered, leavers included), the minimum for a manager cut, and the lowest mean of every manager shown, **2.1** vs about 4.0. Six managers reach 10 respondents. It ties to People stats story 1.
 7. **Return to work and training.** People whose return from leave was processed late rate "systems ready" about 2.4; the export-control course scores about 2.7 for relevance outside engineering and operations.
 
+### Special analyses (People stats)
+
+Measured as docs/ANALYSES.md defines them, at the default settings; `analyses.test.ts` checks every
+number below. Every school is fictional; names that came close to a real institution were replaced
+(the spec's "Nandi Hills Institute of Technology", "Kaveri College of Engineering" and "Puget Sound
+Institute" are Vrishabha Hills Institute of Technology, Kanva Lake College of Engineering and Cedar
+Sound Institute of Technology here).
+
+1. **Quality of hire cohort.** Employees hired 1 Oct 2023 to 30 Sep 2025: **488** hires, all scored
+   (448 rated, 40 left before a first review); quality of hire **66.9**, first review score **54.2**,
+   stayed a year **84.2%**. Education is recorded for **88.3%** of them: Go-to-Market **70.3%**,
+   Corporate **69.8%**, every other business unit 94.8% or more; 86.8% of all Employees rows.
+2. **Coyote Valley University** (San Jose): **38** hires, quality of hire **80.3** (interval 76.9 to
+   83.6 at 90%), first reviews 63.2, **97.4%** stayed a year; hires at the same sites and levels
+   score **65.8**, so it is 14.5 points above its expected score. The one school clearly above the
+   company.
+3. **Vrishabha Hills Institute of Technology** (Bengaluru): **31** hires with the strongest first
+   reviews of any school shown (**75.0**), but only **67.7%** stayed a year; quality of hire 67.7
+   against an expected 66.6. The site explains it.
+4. **Barton Creek Polytechnic** (Austin): **10** hires, quality of hire **53.8**, 13 points below the
+   company, but its interval (38.4 to 69.1) crosses the company line: not clearly different.
+5. **Other universities.** 22 schools have 1 to 9 scored hires (the 14 small schools and the
+   smaller sites' own) and fold into "Other universities"; 63 hires have no university on record.
+6. **Degree levels.** Master's **72.0** (199 hires) against Bachelor's **61.4** (182); PhD **24**
+   hires with the strongest first reviews (**75.0**) and 87.5% stayed a year; Associate **10**, 7 of
+   them test and lab technicians.
+7. **Computer science bachelor's in design and verification.** 15 hires in Silicon Engineering's
+   Design RTL and Design Verification: **53.3%** stayed a year, quality of hire 38.3. Bachelor's in
+   computer science against electrical engineering: **51.2 vs 58.1** company-wide, **41.9 vs 55.5**
+   in Silicon Engineering (17 and 50 hires).
+8. **Offer details** (offers resolved since 1 Oct 2025, 401 of them, 88 declined): a competing offer
+   on **85%** of "Accepted competing offer" declines, **30%** of "Compensation below expectations"
+   ones and none of the counteroffers; **66** offers with a competing offer, **21** accepted
+   (**31.8%**). **17** of them revised (**11** accepted, 65%), against 10 of 49 not revised (20%).
+   Position in range: Bengaluru declined offers sit lowest, accepted ones around 0.39, other sites
+   0.42 to 0.56, senior (L5 and L6) declines 0.30 to 0.38. Decided more than 7 days after the offer:
+   **30 of 51** declined (58.8%); within 7 days, **58 of 350** (16.6%).
+9. **Engineering by stage** (active employees and contractors): design verification **149** employees
+   and **21** contractors against **128** in RTL design (1.16 per RTL designer, 1.33 with
+   contractors, below the 1.5 reference); Bengaluru holds **64** of verification (43%) and **23** of
+   DFT (46%). Packaging's 11 engineers are the one function whose stage is only proposed (Signoff
+   and tape-out), so 98.9% of engineering employees have a saved stage. Product engineering, test and
+   quality (124 employees) and EDA & CAD (8) count through their saved stages; supply chain, sales
+   and the rest of Corporate are outside engineering.
+10. **FTE.** Everyone is 1 except 20 part-time employees (0.5, 0.6 or 0.8): 8 in Munich, 5 in Haifa,
+    4 in Toronto and 3 in San Jose; 9 of them in engineering stages (design verification 3, RTL
+    design 2, software and firmware 4); and 6 contractors at 0.5.
+
+The offer details stream is the one change to existing rows: declines with a competing offer
+moved their decline date later inside its quarter (never past 26 Sep 2026), and the 21 accepted
+offers with a competing offer (outside Design Verification and Q3 2026) moved their screen,
+interview and offer dates earlier together, so they took 8 to 14 days to accept. Acceptance by
+quarter and by location, time to hire, time to fill and every Recruiting, Onboarding and
+Listening story hold as before. Competing offers on accepted offers are 6.7% of them, not the
+spec's 10 to 14%: with 88 declines, that share and an acceptance of 25 to 35% with a competing
+offer cannot both hold, and the acceptance is the story.
+
 ### What the new data moved
 
 Everything above was added after the earlier stories were calibrated, from separate streams. A few
@@ -306,7 +368,80 @@ below differ from the clean sample, so every planted story still shows (`raw.tes
 | Survey items | Silver | the same workbook, sheet Questions; mapping confirmed by people analytics | None |
 
 Every choice is drawn from a named stream (`raw-<dataset>`), so the messy sample is as
-deterministic as the clean one. Employees get `jobFunction` from the business unit in
-`generateSample()` itself: Silicon Engineering and Systems & Software are Engineering, Operations
-is Operations, Go-to-Market is Sales & marketing, Corporate is G&A and the Executive Office is
-Executive.
+deterministic as the clean one.
+
+## Job architecture
+
+A job family is the broad group of related jobs and contains job functions (docs/TAXONOMY.md).
+`jobs.ts` holds the sample's six families and 38 functions; `withJobs` sets `jobFamily` and
+`jobFunction` on every Employees row (employees, contractors, interns, leavers and pre-hires), right
+after the job title. Active employees on 30 Sep 2026:
+
+| Job family (active) | Job function | Chip development stage | Active |
+|---|---|---|---|
+| Silicon Engineering (585) | Architecture | Architecture and spec | 44 |
+| | Design RTL | RTL design | 128 |
+| | Analog & Mixed-Signal | Analog and mixed-signal design | 70 |
+| | Design Verification | Design verification | 149 |
+| | DFT | DFT | 50 |
+| | Physical Design | Physical design | 111 |
+| | Packaging | (proposed: Signoff and tape-out) | 11 |
+| | Post-Silicon Validation | Post-silicon validation and bring-up | 22 |
+| Systems & Software Engineering (301) | Hardware Engineering | Post-silicon validation and bring-up | 44 |
+| | Firmware | Software and firmware | 90 |
+| | Software | Software and firmware | 120 |
+| | Systems Validation | Post-silicon validation and bring-up | 47 |
+| Product & Test Operations (167) | Product Engineering | Product and test engineering | 53 |
+| | Test Engineering | Product and test engineering | 37 |
+| | Quality & Reliability | Product and test engineering | 34 |
+| | Supply Chain | | 22 |
+| | Procurement | | 11 |
+| | Foundry Operations | | 10 |
+| Go-to-Market (180) | Sales | | 71 |
+| | Sales Operations | | 13 |
+| | Field Applications | | 63 |
+| | Product Marketing | | 33 |
+| Corporate (197) | Accounting | | 21 |
+| | FP&A | | 19 |
+| | Tax & Treasury | | 8 |
+| | Talent Acquisition | | 16 |
+| | HR Business Partnering | | 8 |
+| | People Operations | | 15 |
+| | Total Rewards | | 4 |
+| | Learning & Development | | 2 |
+| | Legal | | 19 |
+| | Information Technology | | 34 |
+| | Information Security | | 7 |
+| | EDA & CAD Infrastructure | Shared engineering | 8 |
+| | Facilities | | 30 |
+| | Strategy & Communications | | 4 |
+| | Executive Administration | | 2 |
+| Executive (20) | Executive Leadership | | 20 |
+
+The rule: every E1 to E3 person is Executive Leadership, whatever the department. Everyone else
+takes the first title rule of their department that matches (a substring, so "Senior" and
+"(Contract)" titles follow their track), else the department's own function: Package Design
+Engineers are Packaging, Post-Silicon Validation Engineers are Post-Silicon Validation, Test
+Engineers and Test Technicians are Test Engineering, Procurement Specialists and Foundry
+Operations Engineers have their own functions in Supply Chain, Sales Operations Analysts are Sales
+Operations, Finance splits into FP&A, Tax & Treasury and Accounting, People into Talent
+Acquisition, HR Business Partnering, Total Rewards, Learning & Development and People Operations,
+IT into Information Security, EDA & CAD Infrastructure and Information Technology, the Executive
+Office into Executive Administration and Strategy & Communications, and Digital Design is Design
+RTL. Pre-hires take the same rule from their req's department, title and level.
+
+Business units and departments are org structure, not job taxonomy: Packaging and Post-Silicon
+Validation (33 people) sit in the Systems & Software business unit and in the Silicon Engineering
+family, which leaves out the four Silicon Engineering executives. The official Job functions list
+carries each engineering function's chip development stage (a choice from the eleven in
+`CHIP_STAGES`), and Job families say whether a family is engineering (Silicon Engineering and
+Systems & Software Engineering; Product & Test Operations is not, so its engineering functions
+count through their saved stage). Packaging's stage is left blank on purpose, so Census proposes
+it from the name. Engineering by stage on People stats reads both. Total Rewards, Learning &
+Development, Strategy & Communications and Executive Administration are under the anonymity
+minimum on purpose, as small real teams are.
+
+The comp market seed is not the job family: `Person.marketKey` keeps the strings the sample's job
+families had before families held job functions, so every market median stays where it was.
+Onboarding export screening keys on the business unit (Silicon Engineering, Systems & Software,
+Operations), the same people as before.

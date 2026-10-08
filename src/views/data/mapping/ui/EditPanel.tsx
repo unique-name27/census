@@ -1,5 +1,5 @@
 /**
- * Make a change: move a department to another business unit, put a job family under a function,
+ * Make a change: move a department to another business unit, put a job function under a family,
  * merge spellings into one value, or rename a value. The panel says what the change would do
  * before it is made; every change goes to the change list and can be undone.
  */
@@ -27,11 +27,11 @@ import { scrollBehavior } from './hooks'
 import type { MappingModel } from './model'
 
 const NEW = '\u0000new'
-const KINDS: EditKind[] = ['move-department', 'move-family', 'merge', 'rename']
+const KINDS: EditKind[] = ['move-department', 'move-function', 'merge', 'rename']
 const HINT: Record<EditKind, string> = {
   'move-department':
     'Put a department under another business unit, in Employees, Requisitions and the Hiring plan.',
-  'move-family': 'Put a job family under a job function, in Employees.',
+  'move-function': 'Put a job function under a job family, in Employees.',
   merge: 'Read several spellings as one value, for example "DV" and "Design Verification".',
   rename: 'Change what a value is called everywhere it appears.',
 }
@@ -132,11 +132,11 @@ export function EditPanel({
     : values
 
   const dept = options.departments.find((d) => d.value === draft.department)
-  const fam = options.families.find((f) => f.value === draft.jobFamily)
+  const fn = options.functions.find((f) => f.value === draft.jobFunction)
   const unitCustom = draft.kind === 'move-department' && draft.to !== '' && !options.units.includes(draft.to)
-  const fnCustom = draft.kind === 'move-family' && draft.to !== '' && !options.functions.includes(draft.to)
+  const famCustom = draft.kind === 'move-function' && draft.to !== '' && !options.families.includes(draft.to)
   const [typingUnit, setTypingUnit] = useState(false)
-  const [typingFn, setTypingFn] = useState(false)
+  const [typingFam, setTypingFam] = useState(false)
 
   const kindSelect = (
     <Field label="What to change" hint={HINT[draft.kind]}>
@@ -147,7 +147,7 @@ export function EditPanel({
           setError(null)
           setFilter('')
           setTypingUnit(false)
-          setTypingFn(false)
+          setTypingFam(false)
           start({ kind: k as EditKind })
         }}
       >
@@ -324,30 +324,30 @@ export function EditPanel({
           </>
         )}
 
-        {draft.kind === 'move-family' && (
+        {draft.kind === 'move-function' && (
           <>
             <Field
-              label="Job family"
-              hint={fam ? `Now under ${placementText(fam.under, BLANK.jobFunction)}` : undefined}
+              label="Job function"
+              hint={fn ? `Now under ${placementText(fn.under, BLANK.jobFamily)}` : undefined}
             >
               <Select
-                label="Job family"
-                value={draft.jobFamily}
-                onChange={(v) => set({ jobFamily: v, from: '' })}
+                label="Job function"
+                value={draft.jobFunction}
+                onChange={(v) => set({ jobFunction: v, from: '' })}
               >
-                <option value="">Choose a job family</option>
-                {options.families.map((f) => (
+                <option value="">Choose a job function</option>
+                {options.functions.map((f) => (
                   <option key={f.value} value={f.value}>
                     {f.value}
                   </option>
                 ))}
               </Select>
             </Field>
-            {fam && fam.under.filter((u) => u.under).length > 1 && (
+            {fn && fn.under.filter((u) => u.under).length > 1 && (
               <Field label="Rows to move">
                 <Select label="Rows to move" value={draft.from} onChange={(v) => set({ from: v })}>
-                  <option value="">Every row of the family</option>
-                  {fam.under
+                  <option value="">Every row of the function</option>
+                  {fn.under
                     .filter((u) => u.under)
                     .map((u) => (
                       <option key={u.under} value={u.under ?? ''}>
@@ -357,21 +357,21 @@ export function EditPanel({
                 </Select>
               </Field>
             )}
-            <Field label="Job function">
-              {typingFn || fnCustom ? (
+            <Field label="Job family">
+              {typingFam || famCustom ? (
                 <div className="flex gap-2">
                   <input
                     className={INPUT}
                     value={draft.to}
-                    placeholder="Function name"
-                    aria-label="Job function name"
+                    placeholder="Family name"
+                    aria-label="Job family name"
                     onChange={(e) => set({ to: e.target.value })}
                   />
                   <Button
                     size="sm"
                     variant="ghost"
                     onClick={() => {
-                      setTypingFn(false)
+                      setTypingFam(false)
                       set({ to: '' })
                     }}
                   >
@@ -380,22 +380,22 @@ export function EditPanel({
                 </div>
               ) : (
                 <Select
-                  label="Job function"
+                  label="Job family"
                   value={draft.to}
                   onChange={(v) => {
                     if (v === NEW) {
-                      setTypingFn(true)
+                      setTypingFam(true)
                       set({ to: '' })
                     } else set({ to: v })
                   }}
                 >
-                  <option value="">Choose a function</option>
-                  {options.functions.map((f) => (
+                  <option value="">Choose a family</option>
+                  {options.families.map((f) => (
                     <option key={f} value={f}>
                       {f}
                     </option>
                   ))}
-                  <option value={NEW}>Another function…</option>
+                  <option value={NEW}>Another family…</option>
                 </Select>
               )}
             </Field>
@@ -492,7 +492,7 @@ export function EditPanel({
               setError(null)
               setFilter('')
               setTypingUnit(false)
-              setTypingFn(false)
+              setTypingFam(false)
               reset()
             }}
           >
@@ -522,8 +522,8 @@ function hasInput(d: ReturnType<typeof useDraft.getState>['draft']): boolean {
   switch (d.kind) {
     case 'move-department':
       return !!d.department
-    case 'move-family':
-      return !!d.jobFamily
+    case 'move-function':
+      return !!d.jobFunction
     default:
       return d.values.length > 0
   }

@@ -202,18 +202,20 @@ function Tile({ kpi, gate, className }: { kpi: Kpi; gate: TierGate | null; class
     <div
       data-metric={kpi.metricId}
       className={cx(
-        'group/tile relative row-span-5 grid min-w-0 grid-rows-subgrid content-start px-4 pt-3 pb-4 shadow-[-1px_0_0_var(--rule),0_-1px_0_var(--rule)]',
+        'group/tile @container/tile relative row-span-5 grid min-w-0 grid-rows-subgrid content-start px-4 pt-3 pb-4 shadow-[-1px_0_0_var(--rule),0_-1px_0_var(--rule)]',
         // Phones show two tiles a row; a lone last tile takes the whole row, so no cell sits empty.
         'max-sm:odd:last:col-span-2',
         target && 'hover:bg-hover',
         className,
       )}
     >
-      {/* 1. Label (up to two lines, never cut) on the left; tier medal and info on the right. */}
+      {/* 1. Label (wraps at spaces only, never mid-word) on the left; tier medal and info on the
+          right. In a narrow tile the label keeps its longest word whole and the medal and info wrap
+          under it, at the right. */}
       <div
         className={cx(
           ROW.label,
-          'flex min-w-0 items-start gap-1 supports-[not(grid-template-rows:subgrid)]:min-h-[2lh]',
+          'flex min-w-0 flex-wrap items-start gap-x-1 supports-[not(grid-template-rows:subgrid)]:min-h-[2lh]',
         )}
       >
         {target ? (
@@ -221,53 +223,56 @@ function Tile({ kpi, gate, className }: { kpi: Kpi; gate: TierGate | null; class
             type="button"
             onClick={() => goTo(target.view, target.tab)}
             aria-label={`${kpi.label}. Open ${target.label}`}
-            className="min-w-0 flex-1 text-left text-meta break-words text-ink-2 after:absolute after:inset-0 after:content-[''] focus-visible:outline-none focus-visible:after:outline-2 focus-visible:after:-outline-offset-2 focus-visible:after:outline-focus"
+            className="min-w-min flex-1 text-left text-meta break-normal text-ink-2 after:absolute after:inset-0 after:content-[''] focus-visible:outline-none focus-visible:after:outline-2 focus-visible:after:-outline-offset-2 focus-visible:after:outline-focus"
           >
             {kpi.label}
           </button>
         ) : (
-          <span className="min-w-0 flex-1 text-meta break-words text-ink-2">{kpi.label}</span>
+          <span className="min-w-min flex-1 text-meta break-normal text-ink-2">{kpi.label}</span>
         )}
-        {(gate || changed) && (
-          <span data-tour="kpi-tier" className="-my-0.5 flex shrink-0 items-center">
-            {gate && (
-              <TierBadge compact tier={gate.tier} explain={gate.explain} dataset={gate.limiting.dataset} />
-            )}
-            {changed && metric && <DefinitionChangedMark metricId={metric} />}
-          </span>
-        )}
-        {(definition || kpi.formula || metric) && (
-          <Popover
-            title={kpi.label}
-            width={300}
-            trigger={
-              <button
-                type="button"
-                data-tour="kpi-info"
-                aria-label={`About ${kpi.label}`}
-                className="relative z-10 -my-0.5 -mr-1 inline-flex size-5 shrink-0 items-center justify-center rounded-control text-muted hover:bg-hover hover:text-ink"
-              >
-                <IconInfo className="size-3.5" />
-              </button>
-            }
-          >
-            {definition && <p className="text-ink-2">{definition}</p>}
-            {kpi.formula && !hidden && !kpi.suppressed && (
-              <p className={cx('text-ink-2', definition && 'mt-1.5')}>{kpi.formula}</p>
-            )}
-            {metric && (
-              <div
-                className={cx(
-                  'flex flex-wrap items-center gap-x-4 gap-y-1',
-                  (definition || kpi.formula) && 'mt-2 border-t border-rule pt-2',
-                )}
-              >
-                <EditDefinitionLink metricId={metric} />
-                <LearnMoreLink metricId={metric} />
-              </div>
-            )}
-          </Popover>
-        )}
+        {/* Under 200px a tile always puts them on a line of their own, so the label keeps the full width. */}
+        <span className="ml-auto flex shrink-0 items-start gap-1 @max-[12.5rem]/tile:basis-full @max-[12.5rem]/tile:justify-end">
+          {(gate || changed) && (
+            <span data-tour="kpi-tier" className="-my-0.5 flex shrink-0 items-center">
+              {gate && (
+                <TierBadge compact tier={gate.tier} explain={gate.explain} dataset={gate.limiting.dataset} />
+              )}
+              {changed && metric && <DefinitionChangedMark metricId={metric} />}
+            </span>
+          )}
+          {(definition || kpi.formula || metric) && (
+            <Popover
+              title={kpi.label}
+              width={300}
+              trigger={
+                <button
+                  type="button"
+                  data-tour="kpi-info"
+                  aria-label={`About ${kpi.label}`}
+                  className="relative z-10 -my-0.5 -mr-1 inline-flex size-5 shrink-0 items-center justify-center rounded-control text-muted hover:bg-hover hover:text-ink"
+                >
+                  <IconInfo className="size-3.5" />
+                </button>
+              }
+            >
+              {definition && <p className="text-ink-2">{definition}</p>}
+              {kpi.formula && !hidden && !kpi.suppressed && (
+                <p className={cx('text-ink-2', definition && 'mt-1.5')}>{kpi.formula}</p>
+              )}
+              {metric && (
+                <div
+                  className={cx(
+                    'flex flex-wrap items-center gap-x-4 gap-y-1',
+                    (definition || kpi.formula) && 'mt-2 border-t border-rule pt-2',
+                  )}
+                >
+                  <EditDefinitionLink metricId={metric} />
+                  <LearnMoreLink metricId={metric} />
+                </div>
+              )}
+            </Popover>
+          )}
+        </span>
       </div>
       {/* 2. Value (28px at every width, proportional figures) with the trend at its baseline. Lines
           pack to the top of the shared row, so a neighbour whose trend wraps never pushes this

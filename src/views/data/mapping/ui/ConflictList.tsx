@@ -98,7 +98,7 @@ export function ConflictList({
       const mapping: NewReferenceMapping =
         f.kind === 'move-department'
           ? { kind: f.kind, department: f.department, from: f.from, to: f.to }
-          : { kind: f.kind, jobFamily: f.jobFamily, from: f.from, to: f.to }
+          : { kind: f.kind, jobFunction: f.jobFunction, from: f.from, to: f.to }
       const r = add(mapping, name)
       if (!r.ok) {
         toast(r.error, { tone: 'critical' })
@@ -107,15 +107,15 @@ export function ConflictList({
       const auditId = r.state.audit[0]?.id
       toast(describeMapping(r.mapping), {
         tone: 'good',
-        description: `${countText(c)} now ${c.count === 1 ? 'sits' : 'sit'} under the official ${c.section === 'org' ? 'business unit' : 'job function'}.`,
+        description: `${countText(c)} now ${c.count === 1 ? 'sits' : 'sit'} under the official ${c.section === 'org' ? 'business unit' : 'job family'}.`,
         action: auditId ? { label: 'Undo', onClick: () => undo(auditId, name) } : undefined,
       })
       return
     }
     if (f.kind === 'move-department')
       start({ kind: f.kind, department: f.department, from: f.from ?? '', to: f.to }, true)
-    else if (f.kind === 'move-family')
-      start({ kind: f.kind, jobFamily: f.jobFamily, from: f.from ?? '', to: f.to }, true)
+    else if (f.kind === 'move-function')
+      start({ kind: f.kind, jobFunction: f.jobFunction, from: f.from ?? '', to: f.to }, true)
     else start({ kind: 'merge', ref: f.ref, values: [...f.from], to: f.to, scope: 'category' }, true)
   }
 

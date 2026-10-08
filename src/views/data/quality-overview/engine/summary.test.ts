@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { computeQuality } from '@/data/quality/compute'
 import { DEFAULT_QUALITY_RULES } from '@/data/quality/rules'
+import { datasetDef } from '@/data/schema'
 import { roomMeta } from '../../ui/meta'
 import { metricImpact } from './impact'
 import { checkExportRows, qualityReportSheets, REPORT_SHEETS } from './report'
@@ -114,7 +115,7 @@ describe('dataset summary', () => {
 describe('field matrix', () => {
   it('lists every field with its fill rate and problem rows, required fields first', () => {
     const cells = fieldCells('employees', quality)
-    expect(cells).toHaveLength(19)
+    expect(cells).toHaveLength(datasetDef('employees').fields.length)
     expect(cells.map((c) => c.position)).toEqual(cells.map((_, i) => i))
     expect(cells[0].requirement).toBe('required')
     const reason = cells.find((c) => c.ref === 'employees.terminationReason')!
@@ -224,7 +225,7 @@ describe('the Data quality report', () => {
       trend: [],
     })
     expect(sheets.map((s) => s.name)).toEqual([...REPORT_SHEETS])
-    expect(sheets[1].rows).toHaveLength(19)
+    expect(sheets[1].rows).toHaveLength(datasetDef('employees').fields.length)
     expect(sheets[2].rows[0]).toMatchObject({
       rank: 1,
       fix: 'Filling termination reason for 3 leavers would lift 2 metrics to Gold.',

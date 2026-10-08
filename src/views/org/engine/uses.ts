@@ -46,6 +46,7 @@ export const REQ_CARD_USES = [
 export const COLOR_USES: Record<ColorBy, readonly KnownFieldRef[]> = {
   department: ['employees.department'],
   businessUnit: ['employees.businessUnit'],
+  jobFamily: ['employees.jobFamily'],
   jobFunction: ['employees.jobFunction'],
   location: ['employees.location'],
   level: ['employees.level'],

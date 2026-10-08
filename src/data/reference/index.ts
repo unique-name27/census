@@ -1,6 +1,6 @@
 /**
  * Reference mappings and the structure of the categories in the data: which departments sit
- * under which business units, which job families under which functions, and the values of every
+ * under which business units, which job functions under which families, and the values of every
  * categorical field. `applyReferenceMappings` runs before every metric.
  */
 export { applyReferenceMappings, targetRefs, validateMapping } from './apply'
@@ -16,13 +16,13 @@ export { describeMapping } from './describe'
 export {
   type CategoryValue,
   type DepartmentConflict,
-  type FamilyConflict,
-  type FamilyLevelCell,
   type FieldInventory,
-  type FunctionEdge,
+  type FunctionConflict,
+  type FunctionLevelCell,
   type InferOptions,
   inferStructure,
   inventory,
+  type JobEdge,
   type LevelOutlier,
   type LocationEdge,
   type OrgEdge,

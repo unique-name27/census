@@ -52,6 +52,12 @@ const reached = (stage: Stage): Applicability => ({
 /** A leaver: someone with a termination date. */
 const isLeaver = (r: Row) => has(r.terminationDate)
 
+/** An employee row (not a contractor or intern); a blank type counts, so its gaps still show. */
+const isEmployeeRow = (r: Row) => r.employmentType !== 'Contractor' && r.employmentType !== 'Intern'
+
+/** A candidate who was made an offer: an offer date, or a stage at Offer or beyond. */
+const hadOffer = (r: Row) => has(r.offerDate) || stageIndex(String(r.currentStage)) >= stageIndex('Offer')
+
 /**
  * Everyone but the top of the organization: the person with no manager who heads the largest
  * reporting tree. Only one person is left out, so managers cleared on import still count as gaps.
@@ -113,6 +119,25 @@ export const APPLICABILITY: Partial<Record<DatasetKey, Record<string, Applicabil
       applies: each((r) => isLeaver(r) && r.terminationType === 'Voluntary'),
       scope: 'Voluntary leavers',
     },
+    // Education is optional (docs/ANALYSES.md, 2.3): its gaps never lower the tier, and Quality of
+    // hire reports how much of the cohort has it. Contractors and interns are not hires there.
+    university: {
+      applies: each(isEmployeeRow),
+      scope: 'Employees (not contractors or interns)',
+      blankOk: true,
+    },
+    degreeLevel: {
+      applies: each(isEmployeeRow),
+      scope: 'Employees (not contractors or interns)',
+      blankOk: true,
+    },
+    fieldOfStudy: {
+      applies: each(isEmployeeRow),
+      scope: 'Employees (not contractors or interns)',
+      blankOk: true,
+    },
+    // Blank counts as full time.
+    fte: { applies: each(() => true), scope: 'All workers', blankOk: true },
   },
   jobChanges: {
     fromLevel: {
@@ -165,6 +190,10 @@ export const APPLICABILITY: Partial<Record<DatasetKey, Record<string, Applicabil
       scope: 'Active candidates in interview stages',
       blankOk: true,
     },
+    // Offer details many ATS exports leave out; Offer declines says which figure needs which.
+    competingOffer: { applies: each(hadOffer), scope: 'Candidates with an offer', blankOk: true },
+    offerRevised: { applies: each(hadOffer), scope: 'Candidates with an offer', blankOk: true },
+    offerPositionInRange: { applies: each(hadOffer), scope: 'Candidates with an offer', blankOk: true },
   },
   cases: {
     // Self-service (Tier 0) cases are closed without a person working them.

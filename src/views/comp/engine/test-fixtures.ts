@@ -24,6 +24,7 @@ export function emp(over: Partial<Employee> = {}): Employee {
     name: `Person ${seq}`,
     jobTitle: 'Engineer',
     jobFamily: null,
+    jobFunction: null,
     businessUnit: 'Silicon Engineering',
     department: 'Design Verification',
     location: 'San Jose',

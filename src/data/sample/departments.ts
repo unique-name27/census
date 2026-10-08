@@ -20,7 +20,8 @@ export type Ladder = 'eng' | 'biz' | 'tech'
 export interface Track {
   role: string
   w: number
-  family?: string
+  /** Comp market seed for the track (see `Person.marketKey`); the department name when absent. */
+  marketKey?: string
   min?: IcLevel
   max?: IcLevel
   ladder?: Ladder
@@ -349,7 +350,7 @@ export const DEPTS: DeptSpec[] = [
     tracks: [
       { role: 'Supply Chain Planner', w: 3, ladder: 'biz' },
       { role: 'Foundry Operations Engineer', w: 2 },
-      { role: 'Procurement Specialist', w: 2, ladder: 'biz', family: 'Procurement' },
+      { role: 'Procurement Specialist', w: 2, ladder: 'biz', marketKey: 'Procurement' },
       { role: 'Logistics Specialist', w: 1, ladder: 'biz', max: 'L4' },
     ],
   },
@@ -407,7 +408,7 @@ export const DEPTS: DeptSpec[] = [
           L6: 'Global Account Director',
         },
       },
-      { role: 'Sales Operations Analyst', w: 1, ladder: 'biz', family: 'Sales operations', max: 'L5' },
+      { role: 'Sales Operations Analyst', w: 1, ladder: 'biz', marketKey: 'Sales operations', max: 'L5' },
     ],
   },
   {
@@ -486,10 +487,10 @@ export const DEPTS: DeptSpec[] = [
     mix: CORP_MIX,
     manager: 'Finance Manager',
     tracks: [
-      { role: 'Accountant', w: 3, ladder: 'biz', family: 'Accounting' },
-      { role: 'Financial Analyst', w: 3, ladder: 'biz', family: 'FP&A' },
-      { role: 'Tax Analyst', w: 1, ladder: 'biz', family: 'Tax', min: 'L2' },
-      { role: 'Treasury Analyst', w: 1, ladder: 'biz', family: 'Treasury', min: 'L2' },
+      { role: 'Accountant', w: 3, ladder: 'biz', marketKey: 'Accounting' },
+      { role: 'Financial Analyst', w: 3, ladder: 'biz', marketKey: 'FP&A' },
+      { role: 'Tax Analyst', w: 1, ladder: 'biz', marketKey: 'Tax', min: 'L2' },
+      { role: 'Treasury Analyst', w: 1, ladder: 'biz', marketKey: 'Treasury', min: 'L2' },
     ],
     plants: { singleDirector: 'San Jose' },
   },
@@ -511,20 +512,20 @@ export const DEPTS: DeptSpec[] = [
     mix: CORP_MIX,
     manager: 'People Operations Manager',
     tracks: [
-      { role: 'HR Operations Specialist', w: 3, ladder: 'biz', family: 'People operations', max: 'L4' },
+      { role: 'HR Operations Specialist', w: 3, ladder: 'biz', marketKey: 'People operations', max: 'L4' },
       {
         role: 'Technical Recruiter',
         w: 2,
         ladder: 'biz',
-        family: 'Talent acquisition',
+        marketKey: 'Talent acquisition',
         min: 'L2',
         max: 'L5',
       },
-      { role: 'Recruiting Coordinator', w: 1, ladder: 'tech', family: 'Talent acquisition', max: 'L3' },
+      { role: 'Recruiting Coordinator', w: 1, ladder: 'tech', marketKey: 'Talent acquisition', max: 'L3' },
       {
         role: 'HR Business Partner',
         w: 1,
-        family: 'HR business partnering',
+        marketKey: 'HR business partnering',
         min: 'L4',
         titles: {
           L4: 'HR Business Partner',
@@ -566,7 +567,7 @@ export const DEPTS: DeptSpec[] = [
         role: 'Trade Compliance Specialist',
         w: 1,
         ladder: 'biz',
-        family: 'Trade compliance',
+        marketKey: 'Trade compliance',
         min: 'L3',
         max: 'L5',
       },
@@ -592,9 +593,9 @@ export const DEPTS: DeptSpec[] = [
     tracks: [
       { role: 'IT Support Specialist', w: 2, ladder: 'biz', max: 'L3' },
       { role: 'Systems Administrator', w: 2, ladder: 'biz', max: 'L5' },
-      { role: 'Enterprise Applications Engineer', w: 2, family: 'Enterprise applications' },
-      { role: 'Security Engineer', w: 2, family: 'Information security', min: 'L2' },
-      { role: 'CAD Infrastructure Engineer', w: 2, family: 'EDA and CAD', min: 'L2' },
+      { role: 'Enterprise Applications Engineer', w: 2, marketKey: 'Enterprise applications' },
+      { role: 'Security Engineer', w: 2, marketKey: 'Information security', min: 'L2' },
+      { role: 'CAD Infrastructure Engineer', w: 2, marketKey: 'EDA and CAD', min: 'L2' },
     ],
     plants: { teams: [{ site: 'Bengaluru', size: 12, tag: 'span-wide' }] },
   },
@@ -634,7 +635,7 @@ export const DEPTS: DeptSpec[] = [
     sites: [['San Jose', 100]],
     mix: [0, 0, 20, 40, 40, 0],
     manager: 'Chief of Staff',
-    tracks: [{ role: 'Strategy Analyst', w: 1, ladder: 'biz', family: 'Corporate strategy' }],
+    tracks: [{ role: 'Strategy Analyst', w: 1, ladder: 'biz', marketKey: 'Corporate strategy' }],
   },
 ]
 

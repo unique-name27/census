@@ -7,7 +7,7 @@ import { type Column, Figure, useExportMeta } from '@/charts'
 import { IconDownload, IconUpload } from '@/components/icons'
 import { Section } from '@/components/Section'
 import { toast } from '@/components/toast'
-import { Button, StatusPill } from '@/components/ui'
+import { Button, StatusPill, Tag } from '@/components/ui'
 import { byWho } from '@/data/quality/text'
 import { canUndo, describeMapping, type ReferenceAudit, type ReferenceMapping } from '@/data/reference'
 import type { Datasets } from '@/data/schema'
@@ -120,15 +120,15 @@ export function EditSection({ model }: { model: MappingModel }) {
             rows: model.orgRows as unknown as Record<string, unknown>[],
           },
           {
-            name: 'Job functions',
-            title: 'Job families by function, after the changes',
+            name: 'Job families',
+            title: 'Job functions by family, after the changes',
             columns: [
-              { key: 'jobFunction', label: 'Job function' },
               { key: 'jobFamily', label: 'Job family' },
+              { key: 'jobFunction', label: 'Job function' },
               { key: 'headcount', label: 'Headcount', format: 'int' },
               { key: 'status', label: 'Status' },
             ],
-            rows: model.familyRows as unknown as Record<string, unknown>[],
+            rows: model.jobRows as unknown as Record<string, unknown>[],
           },
         ],
         meta,
@@ -246,8 +246,8 @@ export function EditSection({ model }: { model: MappingModel }) {
         uses={[
           'employees.businessUnit',
           'employees.department',
-          'employees.jobFunction',
           'employees.jobFamily',
+          'employees.jobFunction',
         ]}
         table={{
           rowTone: (r) => (r.status === 'Applied' ? null : 'warning'),
@@ -279,6 +279,7 @@ function ChangeList({
   const [all, setAll] = useState(false)
   const reference = useCensus((s) => s.reference)
   const undo = useCensus((s) => s.undoReferenceChange)
+  const remove = useCensus((s) => s.removeReferenceMapping)
   const imported = useCensus((s) => s.data)
   const skipped = new Map(model.ctx.reference.skipped.map((s) => [s.id, s.reason]))
   const active = new Set(reference.mappings.map((m) => m.id))
@@ -294,11 +295,11 @@ function ChangeList({
       span={7}
       image={false}
       tableToggle={false}
-      uses={['employees.businessUnit', 'employees.jobFunction']}
+      uses={['employees.businessUnit', 'employees.jobFamily']}
     >
       {audit.length === 0 ? (
         <p className="text-small text-ink-2">
-          No changes yet. Move a department, assign a job family to a function, or merge spellings, and the
+          No changes yet. Move a department, assign a job function to a family, or merge spellings, and the
           change appears here with who made it and when.
         </p>
       ) : (
@@ -308,10 +309,17 @@ function ChangeList({
               const inForce = a.action === 'add' && active.has(a.mappingId)
               const changed = inForce ? model.perMapping[a.mappingId] : undefined
               const reason = inForce ? skipped.get(a.mappingId) : undefined
+              // Made before job families held job functions: it keeps applying as saved.
+              const legacy = a.mapping.kind === 'move-family'
               return (
                 <li key={a.id} className="flex flex-wrap items-start gap-x-3 gap-y-1 py-2.5 first:pt-0">
                   <div className="min-w-0 flex-1 basis-64">
                     <p className="text-small leading-snug text-ink">{a.what}</p>
+                    {legacy && (
+                      <span className="mt-1 flex">
+                        <Tag tone="outline">Made before job families held job functions</Tag>
+                      </span>
+                    )}
                     <p className="mt-0.5 text-meta text-muted">
                       {whenText(a.at)} · by {byWho(a.by)}
                       {changed != null && !reason && (
@@ -345,6 +353,16 @@ function ChangeList({
                       aria-label={`${a.action === 'add' ? 'Undo' : 'Restore'}: ${a.what}`}
                     >
                       {a.action === 'add' ? 'Undo' : 'Restore'}
+                    </Button>
+                  )}
+                  {legacy && inForce && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => remove(a.mappingId, name)}
+                      aria-label={`Remove: ${a.what}`}
+                    >
+                      Remove
                     </Button>
                   )}
                 </li>

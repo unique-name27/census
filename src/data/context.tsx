@@ -13,6 +13,11 @@
  *
  * Every dataset key is always present in `data` and `all` (an empty list when nothing is
  * loaded), including datasets added after rows were saved in this browser.
+ *
+ * `jobs` is the job architecture (docs/TAXONOMY.md, section 7): job families with their job
+ * functions, each function's family and chip development stage (docs/ANALYSES.md, 4.2 and 4.3),
+ * from the official lists and the mapped Employees rows. Company-wide; it never follows the filters. `offerDeclineReasons` is the Offer
+ * decline reasons list in force, each reason with its theme (docs/ANALYSES.md, 3.2).
  */
 import { createContext, type ReactNode, use, useDeferredValue, useMemo } from 'react'
 import { type AccessContext, type AccessInput, accessFor, HR_INPUT } from '@/access/context'
@@ -23,8 +28,13 @@ import { timed } from '@/lib/timing'
 import { defaultMetrics, metricsApi } from '@/metrics/api'
 import { qualityRulesOf } from '@/metrics/quality'
 import type { MetricsApi } from '@/metrics/types'
+import { contextDeclineReasons } from './lists/declines'
+import { EMPTY_LISTS } from './lists/edit'
 import { validationVocab } from './lists/effective'
+import { contextJobs, type JobArchitecture } from './lists/jobs'
 import { useLists } from './lists/store'
+import type { ListsState, ListValue } from './lists/types'
+import { contextUniversities } from './lists/universities'
 import { computeQuality, type ReferenceEffect } from './quality/compute'
 import type { FieldRef } from './quality/fieldRef'
 import { DEFAULT_QUALITY_RULES, type QualityRules } from './quality/rules'
@@ -87,6 +97,22 @@ export interface AnalyticsContext {
   reference: ReferenceSummary
   /** The metric dictionary: wording, targets and the calculation settings engines read. */
   metrics: MetricsApi
+  /**
+   * Job families and the job functions in each, with each function's family (`familyOf`) and stage
+   * order (`stageOf`), from the official lists and `all.employees` (`src/data/lists/jobs.ts`).
+   */
+  jobs: JobArchitecture
+  /**
+   * The Offer decline reasons list in force (Census's reasons plus any you added), each value's
+   * `attrs.theme` its theme. Read declined offers through `readDeclineReason(raw, ctx.offerDeclineReasons)`.
+   */
+  offerDeclineReasons: readonly ListValue[]
+  /**
+   * The Universities list in force, for grouping by school: a retired spelling reads as the name
+   * that replaced it. Read a row's school with `readUniversity(raw, universityNames(ctx.universities))`
+   * from `@/data/lists/universities` (docs/ANALYSES.md, 2.3).
+   */
+  universities: readonly ListValue[]
   /**
    * The mode (docs/ROLES.md, 6.4): HR, Manager or Developer, the manager's org in Manager mode
    * (`lock`), and `decide` bound to the mode. Ask it, never the mode store, so an off-screen render
@@ -194,6 +220,8 @@ export function buildContext(args: {
   metrics?: MetricsApi
   /** The mode and, in Manager mode, the manager; HR when not given (every existing test). */
   access?: AccessInput
+  /** The saved official lists (Settings > Official lists); none saved when not given. */
+  lists?: ListsState
 }): AnalyticsContext {
   const { sources, asOfOverride } = args
   const metrics = args.metrics ?? defaultMetrics()
@@ -239,6 +267,9 @@ export function buildContext(args: {
     standard: args.standard ?? DEFAULT_STANDARD,
     reference: summaryOf(applied),
     metrics,
+    jobs: contextJobs(args.lists ?? EMPTY_LISTS, sources, all.employees, asOf),
+    offerDeclineReasons: contextDeclineReasons(args.lists ?? EMPTY_LISTS, sources),
+    universities: contextUniversities(args.lists ?? EMPTY_LISTS, sources),
     access: accessFor(accessIn.mode, lock, metrics, unset),
   }
 }
@@ -300,6 +331,7 @@ export function AnalyticsProvider({
           quality,
           metrics,
           access: mode === 'manager' ? { mode, managerId } : { mode },
+          lists: savedLists,
         }),
       ),
     [
@@ -317,6 +349,7 @@ export function AnalyticsProvider({
       metrics,
       mode,
       managerId,
+      savedLists,
     ],
   )
   // A filter, mode or data change recomputes every engine. The new context is built in the

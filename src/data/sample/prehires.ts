@@ -10,7 +10,7 @@
 import { type Candidate, type Employee, type Requisition, siteByLocation } from '../schema'
 import { AS_OF, day, iso } from './calendar'
 import { costCenter } from './departments'
-import { jobFunctionOf } from './raw/jobFunction'
+import { sampleJob } from './jobs'
 
 /** Accepted offers starting on or before this date have a pre-hire record. */
 export const PRE_HIRE_HORIZON = '2026-10-16'
@@ -57,8 +57,7 @@ export function preHireRows(
       employeeId: '',
       name: c.candidateName,
       jobTitle: req.jobTitle,
-      jobFamily: mostCommon(active.filter((e) => e.department === req.department).map((e) => e.jobFamily)),
-      jobFunction: jobFunctionOf(req.businessUnit),
+      ...sampleJob(req.department, req.jobTitle, req.level),
       businessUnit: req.businessUnit,
       department: req.department,
       location: req.location,

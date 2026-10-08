@@ -130,15 +130,15 @@ export const DATA_ARTICLES: readonly HelpArticle[] = [
       {
         ul: [
           'Org structure: business unit to department, weighted by headcount, and location to country to region.',
-          'Job architecture: function to job family to job title, and a job family by level matrix.',
+          'Job architecture: job family to job function to job title, and a job function by level matrix.',
           'Category lists: every categorical field across the datasets, with counts, the raw spellings mapped to each value and any values not recognized.',
-          "Conflicts, with a status pill and a drill to the people: a department under more than one business unit, a department with no business unit, requisition departments missing from the roster, a family under several functions, titles outside their family's usual levels and people with no family.",
+          "Conflicts, with a status pill and a drill to the people: a department under more than one business unit, a department with no business unit, requisition departments missing from the roster, a job function under several families, titles outside their function's usual levels and people with no job function.",
         ],
       },
       { h: 'Fixing a category' },
       {
         ul: [
-          'Move a department to another business unit, or a job family to another function.',
+          'Move a department to another business unit, or a job function to another family.',
           'Merge two spellings into one value.',
           'Rename a value.',
         ],
@@ -168,8 +168,10 @@ export const DATA_ARTICLES: readonly HelpArticle[] = [
       'dropdown',
       'business units',
       'departments',
-      'job functions',
       'job families',
+      'job functions',
+      'chip development stage',
+      'stage order',
       'cost centers',
       'locations',
       'retire',
@@ -178,7 +180,10 @@ export const DATA_ARTICLES: readonly HelpArticle[] = [
     ],
     body: [
       {
-        p: "[Settings, Official lists](settings:lists) holds one list per category: business units, departments, job functions, job families, levels, locations, cost centers, case categories, candidate sources, termination reasons, leave reasons, learning categories and survey programs. Each value carries its parent (a department its business unit, a cost center its department) and its details, such as a site's country, region and currency.",
+        p: "[Settings, Official lists](settings:lists) holds one list per category: business units, departments, job families, job functions, levels, locations, cost centers, case categories, candidate sources, termination reasons, leave reasons, learning categories and survey programs. Each value carries its parent (a department its business unit, a cost center its department) and its details, such as a site's country, region and currency.",
+      },
+      {
+        p: 'A job family is the broad group, such as Silicon Engineering, and holds job functions, such as Design RTL. Each job function names its family and, for engineering, its chip development stage, from Architecture and spec to Product and test engineering. Engineering by stage, one of the special analyses on People stats, reads the stage and which families are engineering.',
       },
       { h: 'Official or proposed' },
       {
@@ -187,6 +192,7 @@ export const DATA_ARTICLES: readonly HelpArticle[] = [
           'When you load your own data, each of your lists is proposed from it and checks nothing until you choose Make official. Changes to a proposed list are kept, and it stays proposed until then.',
           'A list you saved stays as you saved it, and checks the kind of data it was built for: one saved while the sample was loaded checks the sample, and one built from your data or a file checks yours. With the other kind loaded it reads as proposed and checks nothing, until you choose Keep checking against this list or rebuild it.',
           'Rebuild from data offers the values your data has that the list does not.',
+          'Fill parents from the data gives each value with no parent the one most of its rows name, such as the job family of a job function.',
         ],
       },
       { h: 'What a list checks' },

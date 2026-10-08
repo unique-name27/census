@@ -49,6 +49,7 @@ import { aggregate, managerWindowStart, type SurveyGroupRow } from '@/lib/survey
 import { minGroupOf, surveyMinimumsOf } from '@/metrics/privacy'
 import { listeningSettingsFor } from '@/views/listening/engine/settings'
 import {
+  DECLINE_REASONS_NEED,
   groupableFields,
   type Joins,
   joinsFor,
@@ -57,6 +58,7 @@ import {
   type QueryField,
   queryDataset,
   type Row,
+  readableDataset,
 } from '../allowlist'
 import { DIFFERENCING, type RowSet, unionOf } from '../audit'
 import { contextFor, scopeOut, scopeWords } from '../scope'
@@ -647,15 +649,17 @@ export function queryRecords(rt: ToolRuntime, raw: unknown): ToolOutput {
   const input = inputOf(raw)
   const bad = unknownKeys(input, ['dataset', 'where', 'group_by', 'measures', 'filters', 'sort', 'limit'])
   if (bad) return fail(bad)
-  const d = queryDataset(String(input.dataset ?? ''))
+  const found = queryDataset(String(input.dataset ?? ''))
   // Manager mode reads eight datasets (docs/ROLES.md, 3.3); the others are refused in plain words.
   const access = rt.base.access
   const readable = QUERY_DATASETS.filter((x) => !access || access.can(`dataset:${x.key}`))
-  if (!d) return fail(`dataset must be one of ${readable.map((x) => x.key).join(', ')}.`)
-  if (!readable.includes(d))
+  if (!found) return fail(`dataset must be one of ${readable.map((x) => x.key).join(', ')}.`)
+  if (!readable.includes(found))
     return fail(
-      `${d.label} is not available in Manager mode. Datasets: ${readable.map((x) => x.key).join(', ')}.`,
+      `${found.label} is not available in Manager mode. Datasets: ${readable.map((x) => x.key).join(', ')}.`,
     )
+  // Fields that feed an analysis the mode hides (education, offer details) are refused too.
+  const d = readableDataset(found, access)
   const s = scopedCtx(rt, input.filters)
   if (!s.ok) return fail(s.error)
   const ctx = s.ctx
@@ -770,6 +774,20 @@ export function queryRecords(rt: ToolRuntime, raw: unknown): ToolOutput {
         )
     }
   }
+  // Where decline reasons are hidden, a cut by rejection reason leaves declined offers out.
+  const dropDeclined =
+    d.key === 'candidates' &&
+    !!access &&
+    !access.can(DECLINE_REASONS_NEED) &&
+    used.some((f) => f.name === 'rejectionReason')
+  if (dropDeclined) {
+    const before = rows.length
+    rows = rows.filter((r) => r.status !== 'Declined')
+    if (rows.length < before)
+      notes.push(
+        'Declined offers are left out of cuts by rejection reason: why offers are declined is not shown in Manager mode.',
+      )
+  }
   for (const w of where) rows = rows.filter((r) => w.test(w.field.get(r, j)))
 
   const sm = surveyMinimumsOf(ctx.metrics)
@@ -830,6 +848,7 @@ export function queryRecords(rt: ToolRuntime, raw: unknown): ToolOutput {
       if (d.key === 'surveyResponses' && !c.features.engagementSurveys)
         rs = rs.filter((r) => r.survey !== 'Engagement')
       if (dropEr) rs = rs.filter((r) => r.category !== ER)
+      if (dropDeclined) rs = rs.filter((r) => r.status !== 'Declined')
       for (const w of where) rs = rs.filter((r) => w.test(w.field.get(r, j)))
       return rs
     }

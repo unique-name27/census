@@ -243,13 +243,13 @@ export function inventoryVocab(lists: EffectiveLists): Partial<Record<ListId, re
 
 const parentsMemo = new WeakMap<
   EffectiveLists,
-  { department: ReadonlyMap<string, string>; jobFamily: ReadonlyMap<string, string> }
+  { department: ReadonlyMap<string, string>; jobFunction: ReadonlyMap<string, string> }
 >()
 
-/** The official business unit of each department and function of each job family (official lists only). */
+/** The official business unit of each department and family of each job function (official lists only). */
 export function officialParentMaps(lists: EffectiveLists): {
   department: ReadonlyMap<string, string>
-  jobFamily: ReadonlyMap<string, string>
+  jobFunction: ReadonlyMap<string, string>
 } {
   let hit = parentsMemo.get(lists)
   if (!hit) {
@@ -258,7 +258,7 @@ export function officialParentMaps(lists: EffectiveLists): {
       if (l.validates) for (const v of l.values) if (v.parent) m.set(v.value, v.parent)
       return m
     }
-    hit = { department: of(lists.department), jobFamily: of(lists.jobFamily) }
+    hit = { department: of(lists.department), jobFunction: of(lists.jobFunction) }
     parentsMemo.set(lists, hit)
   }
   return hit

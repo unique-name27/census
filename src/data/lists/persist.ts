@@ -6,11 +6,13 @@
 import { type Level, levelTrack } from '../schema'
 import { isListId, listDef, listKey } from './defs'
 import { EMPTY_LISTS, MAX_LOG, MAX_TEXT, replaceLists } from './edit'
+import { LISTS_MIGRATION_DROPPED, migrateListsV1, migrateSavedLists } from './migrate'
 import { censusValues } from './seed'
 import type { AttrValue, ListChange, ListId, ListOp, ListsState, ListValue, SavedList } from './types'
 
 export const LISTS_KEY = 'census:lists'
-export const LISTS_STORE_VERSION = 1
+/** 2: job families contain job functions (`./migrate`). */
+export const LISTS_STORE_VERSION = 2
 
 type StorageLike = Pick<Storage, 'getItem' | 'setItem'>
 
@@ -152,12 +154,24 @@ export function sanitizeListsState(raw: unknown): ListsState {
   return { lists: cleanLists(raw.lists), log: cleanLog(raw.log) }
 }
 
-/** The saved lists, or none. Never throws. */
-export function loadLists(storage: StorageLike | null = storageOrNull()): ListsState {
+const versionOf = (raw: unknown): number =>
+  isObj(raw) && typeof raw.version === 'number' && Number.isFinite(raw.version) ? raw.version : 1
+
+/**
+ * The saved lists, or none. Never throws. A state saved before version 2 is migrated
+ * (`migrateListsV1`) and saved again at once, so the migration runs once.
+ */
+export function loadLists(storage: StorageLike | null = storageOrNull(), now = Date.now()): ListsState {
   if (!storage) return EMPTY_LISTS
   try {
     const v = storage.getItem(LISTS_KEY)
-    return v == null ? EMPTY_LISTS : sanitizeListsState(JSON.parse(v))
+    if (v == null) return EMPTY_LISTS
+    const raw: unknown = JSON.parse(v)
+    const state = sanitizeListsState(raw)
+    if (versionOf(raw) >= LISTS_STORE_VERSION) return state
+    const migrated = migrateListsV1(state, now).state
+    saveLists(migrated, storage)
+    return migrated
   } catch {
     return EMPTY_LISTS
   }
@@ -217,13 +231,17 @@ export function importListsSection(
 ): ListsImportResult {
   if (!isObj(section) || !isObj(section.lists))
     return { ok: false, error: 'The official lists in the file could not be read.' }
-  const incoming = cleanLists(section.lists, 'file')
+  const read = cleanLists(section.lists, 'file')
+  // A section from before version 2: the same move as a saved state (sample-based job lists left out).
+  const { lists: incoming, dropped } =
+    versionOf(section) < LISTS_STORE_VERSION ? migrateSavedLists(read) : { lists: read, dropped: [] }
+  const left = dropped.length ? ` ${LISTS_MIGRATION_DROPPED}` : ''
   const changed: Partial<Record<ListId, SavedList>> = {}
   for (const [id, list] of Object.entries(incoming) as [ListId, SavedList][])
     if (!sameList(state.lists[id], list)) changed[id] = list
   const ids = Object.keys(changed) as ListId[]
   if (!ids.length)
-    return { ok: true, state, changed: [], summary: 'The official lists already matched the file.' }
+    return { ok: true, state, changed: [], summary: `The official lists already matched the file.${left}` }
   const n = ids.length
   const r = replaceLists(
     state,
@@ -238,6 +256,6 @@ export function importListsSection(
     ok: true,
     state: r.state,
     changed: ids,
-    summary: `Official lists: replaced ${ids.map((id) => listDef(id).label.toLowerCase()).join(', ')}.`,
+    summary: `Official lists: replaced ${ids.map((id) => listDef(id).label.toLowerCase()).join(', ')}.${left}`,
   }
 }

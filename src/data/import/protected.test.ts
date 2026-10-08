@@ -28,6 +28,27 @@ describe('columns Census never imports', () => {
     expect(dropReason(h)).toBe('protected')
   })
 
+  it.each([
+    'Graduation year',
+    'Grad Year',
+    'Class of',
+    'Class year',
+    'Year graduated',
+    'Degree year',
+    'Year of degree',
+    'Graduation date',
+  ])('drops %s as a stand-in for age', (h) => {
+    expect(dropReason(h)).toBe('proxy')
+  })
+
+  it('reads university, degree and field of study, and says why a graduation year is left out', () => {
+    for (const h of ['University', 'Highest Degree', 'Major', 'Field of study', 'Degree level'])
+      expect(dropReason(h)).toBeNull()
+    expect(droppedText(droppedColumns(['University', 'Grad Year']))).toBe(
+      'Grad Year was left out. Graduation year can reveal age, so Census does not read it.',
+    )
+  })
+
   it.each(['Comments', 'Manager comment', 'Verbatim', 'Open text', 'Free text response'])(
     'drops %s as a free-text comment',
     (h) => {

@@ -13,6 +13,7 @@ export {
   usageOf,
   type ValueUse,
 } from './analyze'
+export { contextDeclineReasons, type DeclineReasonRead, readDeclineReason } from './declines'
 export {
   canAdd,
   childLists,
@@ -24,7 +25,9 @@ export {
   listKey,
   listOfRef,
   SOURCE_TYPES,
+  STAGE_OPTIONS,
   TERMINATION_KINDS,
+  YES_NO,
 } from './defs'
 export {
   applyEdit,
@@ -56,6 +59,23 @@ export {
   validationVocab,
 } from './effective'
 export {
+  type AttrSource,
+  contextJobs,
+  type EngineeringPlace,
+  type JobArchitecture,
+  type JobFamilyEntry,
+  type JobFunctionEntry,
+  type JobLists,
+  jobArchitecture,
+  type StageOfFunction,
+} from './jobs'
+export {
+  JOB_LISTS,
+  LISTS_MIGRATION_DROPPED,
+  LISTS_MIGRATION_WHAT,
+  migrateListsV1,
+} from './migrate'
+export {
   importListsSection,
   LISTS_KEY,
   type ListsFileSection,
@@ -66,5 +86,13 @@ export {
   saveLists,
 } from './persist'
 export { censusValues, listFromData, sampleListValues } from './seed'
+export {
+  proposeEngineering,
+  proposeStage,
+  savedEngineering,
+  savedStageKey,
+  stageFromText,
+  stageOrder,
+} from './stages'
 export { useLists } from './store'
 export type * from './types'

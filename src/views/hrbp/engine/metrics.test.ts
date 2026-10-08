@@ -19,6 +19,9 @@ import { validateCatalog } from '@/metrics/registry'
 import { metricsWith, metricsWithEdits, paramRef, paramsOfView, recordParamReads } from '@/metrics/testing'
 import type { MetricsApi } from '@/metrics/types'
 import { ORG_METRIC } from '@/views/org/metrics'
+import { AID, ANALYSES_SET } from '../analyses/metrics'
+import { analysisModel } from '../analyses/registry'
+import { ANALYSIS_KEYS } from '../analyses/tab'
 import { ID, INHERITS, metrics, SET } from '../metrics'
 import { computeHrbp, type HrbpModel, hrbpHeadline, talkingPoints } from '.'
 import { hrbpActions } from './actions'
@@ -46,13 +49,16 @@ describe('the People stats entries', () => {
   })
 
   it('registers exactly the ids the view uses, once each', () => {
-    expect(metrics.map((d) => d.id).sort()).toEqual([...IDS].sort())
-    expect(new Set(IDS).size).toBe(IDS.length)
+    // The Special analyses register theirs beside the view's (src/views/hrbp/analyses/metrics.ts).
+    const ids = [...IDS, ...Object.values(AID)]
+    expect(metrics.map((d) => d.id).sort()).toEqual([...ids].sort())
+    expect(new Set(ids).size).toBe(ids.length)
   })
 
   it('names every setting the engine reads, and registers no other', () => {
     const registered = paramsOfView('hrbp').sort()
-    const own = Object.values(SET).filter((r) => r.metricId.startsWith('hrbp.'))
+    // The Special analyses' settings sit on their own metrics (`ANALYSES_SET`).
+    const own = [...Object.values(SET), ...ANALYSES_SET].filter((r) => r.metricId.startsWith('hrbp.'))
     const named = own.map((r) => paramRef(r.metricId, r.key)).sort()
     expect(named).toEqual(registered)
     // The org design thresholds have one home, on the Org chart, and are read there.
@@ -175,6 +181,8 @@ describe('every registered setting is read by the engine', () => {
       hrbpHeadline(ctx)
       // The Action center's stay conversations read their due window.
       hrbpActions(ctx)
+      // The Special analyses compute apart from the view model (docs/ANALYSES.md, 1.4).
+      for (const k of ANALYSIS_KEYS) analysisModel(ctx, k)
     }
     const missing = paramsOfView('hrbp').filter((r) => !reads.has(r))
     expect(missing).toEqual([])

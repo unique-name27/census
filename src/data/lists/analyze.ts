@@ -102,8 +102,8 @@ export function analyzeLists(lists: EffectiveLists, data: Datasets): Record<List
 export const usageOf = (a: ListAnalysis, value: string): number => a.uses.get(value)?.total ?? 0
 
 /**
- * The official parent of each value of a list with parents (department → business unit, job family
- * → function), for values that have one. Empty while the list is only proposed.
+ * The official parent of each value of a list with parents (department → business unit, job function
+ * → job family), for values that have one. Empty while the list is only proposed.
  */
 export function officialParents(list: EffectiveList): Map<string, string> {
   const out = new Map<string, string>()

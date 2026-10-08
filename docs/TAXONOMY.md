@@ -22,7 +22,7 @@ the columns the user's way keep working unchanged.
 | Hierarchy | job function → job family → job title | job family → job function → job title |
 | `jobFamily` holds | a discipline, e.g. "Design Verification" (in the sample: the department name, or a track's own family such as FP&A) | the broad group, e.g. "Silicon Engineering" |
 | `jobFunction` holds | a broad function from the business unit: Engineering, Operations, Sales & marketing, G&A, Executive | the discipline inside the family, e.g. "Design RTL" |
-| Official lists | Job functions (no parent), then Job families (parent: job function) | Job families (no parent), then Job functions (parent: job family; new Stage order attribute) |
+| Official lists | Job functions (no parent), then Job families (parent: job function) | Job families (no parent; Engineering attribute), then Job functions (parent: job family; Chip development stage attribute, see the note in 2.4) |
 | Reference mapping | `move-family`: put a job family under a job function (writes `employees.jobFunction`) | `move-function`: put a job function under a job family (writes `employees.jobFamily`); saved `move-family` mappings keep applying as legacy |
 | Categories & mapping | function → family → title, family × level heatmap, "family under several functions" | family → function → title, function × level heatmap, "function under several families" |
 | Level outliers | a title against its family's other titles | a title against its function's other titles |
@@ -95,6 +95,13 @@ Executive. Pre-hires take the department's most common family and the business u
 The new assignment is specified in section 4.
 
 ### 2.4 Official lists (`src/data/lists`, Settings > Official lists)
+
+**Superseded by docs/ANALYSES.md 4.2 and 4.3.** The Job functions attribute is `stage`, labelled "Chip development stage": a
+choice from `CHIP_STAGES` (eleven stages), not a "Stage order" number. Census proposes a stage from
+keywords while it is blank. The Job families list has an `engineering` attribute (Yes or No) that
+says which families Engineering by stage counts. Where this table says Stage order, read Chip
+development stage. Numbers saved before the change read as that stage's position, so 1 to 8 keep
+their meaning.
 
 | Where | Today | Change |
 |---|---|---|
@@ -274,6 +281,13 @@ Another workflow is editing `src/ask` now. Make these changes after it lands.
    development; blank means the function is not a development stage. It is an attribute of the
    official list, so a company sets its own order in Settings and in the Official lists
    workbook. The sample sets it on Silicon Engineering's eight functions.
+   **Superseded by docs/ANALYSES.md 4.2 and 4.3.** The attribute is a chip development stage chosen from `CHIP_STAGES`,
+   proposed from keywords while blank. The sample saves stages on the functions of Silicon
+   Engineering and Systems & Software Engineering, on the product, test and quality functions of
+   Product & Test Operations, and on EDA & CAD Infrastructure (Corporate), and leaves Packaging
+   proposed. One stage per function: static timing and physical verification are titles in the
+   Physical Design function, so they count in Physical design, signal integrity counts with
+   Hardware Engineering in Post-silicon validation, and Signoff and tape-out holds Packaging.
 7. Neither field is a protected characteristic or a proxy for one, so no privacy rule changes.
    Every rate or count by family or function follows `MIN_GROUP`: groups under 5 are hidden or
    fold into "Other (k)".
@@ -554,6 +568,7 @@ in memory on every load, so nothing cached holds the old sample values.
     families: readonly { name: string; functions: readonly { name: string; stage: number | null }[] }[]
     /** The official family of a function, else the family most of its rows name, else null. */
     familyOf(jobFunction: string): string | null
+    /** Superseded (ANALYSES 4.3): the position, 1 to 11, of the function's chip development stage. */
     stageOf(jobFunction: string): number | null
     /** Where the shape came from: the official lists, or the data alone. */
     source: 'official' | 'data'
@@ -564,6 +579,10 @@ in memory on every load, so nothing cached holds the old sample values.
 - **Engineering resources by stage** reads the family Silicon Engineering by default. Make the
   family a setting of the analysis' metric rather than a constant, so a company whose engineering
   family has another name can point it there.
+  **Superseded by docs/ANALYSES.md 4.2 and 4.3.** Which families count is the Job families list's Engineering attribute
+  (saved, else proposed from the family name), not a metric setting. `ctx.jobs` also has
+  `stageFor(fn)` (the saved or proposed stage), `engineeringOf(family)` and
+  `engineeringPlace(e)`.
 - **Drills**: neither field is a filter, so figures grouped by family or function set no
   `filter`; every count drills to the people, who show both fields (2.7).
 - **Uses**: `employees.jobFamily` and `employees.jobFunction`, with tiers, like any field.
@@ -604,7 +623,8 @@ Each item names the test file and what it checks.
 **Official lists**
 
 - `src/data/lists/lists.test.ts:41-90, 328, 479-529`: the sample's Job functions carry their
-  family as parent (Design RTL under Silicon Engineering, stage 2; Packaging stage 7); Job
+  family as parent (Design RTL under Silicon Engineering, stage 2; Packaging stage 7, superseded:
+  stages are chip development stage keys, and Packaging is left proposed); Job
   families have no parent; the "Executive leadership has no parent" check is replaced; renaming a
   family renames the parent on its functions; deleting a family still used as a parent is refused.
 - `src/data/lists/sample.test.ts:46, 101-102`: both refs are checked; nothing in the sample is off
@@ -684,7 +704,9 @@ Calls made in this plan:
 - Field keys keep their names; meanings and hierarchy flip. No dataset rows are rewritten.
 - Six sample families, including Executive for E1-E3, so VPs who lead several functions are not
   forced into one; the stage view counts the people doing the work and their managers.
-- Stage order is an attribute of the Job functions list, so a company sets its own flow.
+- Stage order is an attribute of the Job functions list, so a company sets its own flow. It became
+  one `stage` attribute holding a chip development stage from `CHIP_STAGES` (docs/ANALYSES.md 4.2);
+  numbers saved before the change read as stage positions, so there is never a second attribute.
 - Compensation Market moves to job function, falling back to department.
 - Saved lists copied from the old sample are dropped; lists built from your data keep their
   values; parents are proposed again from the data, never inverted.

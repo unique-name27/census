@@ -3,6 +3,8 @@ import { useRouteShown } from '@/components/RouteLink'
 import { useAnalytics } from '@/data/context'
 import { fmt } from '@/lib/format'
 import type { ViewDef } from '../types'
+import { AnalysesTab } from './analyses/shell/AnalysesTab'
+import { ANALYSES_TAB, parseAnalysesTab } from './analyses/tab'
 import { hrbpHeadline } from './engine'
 import { hrbpActions, hrbpSummary } from './engine/actions'
 import { HRBP_DATASETS } from './engine/lineage'
@@ -15,6 +17,12 @@ import { Overview } from './ui/Overview'
 import { Workforce } from './ui/Workforce'
 
 function Body({ tab }: { tab: string }) {
+  // Special analyses keeps its own model per analysis (never computeHrbp): docs/ANALYSES.md, 1.4.
+  if (parseAnalysesTab(tab).onTab) return <AnalysesTab tab={tab} />
+  return <CoreBody tab={tab} />
+}
+
+function CoreBody({ tab }: { tab: string }) {
   const m = useHrbp()
   switch (tab) {
     case 'workforce':
@@ -68,6 +76,7 @@ export const view: ViewDef = {
     { key: 'attrition', label: 'Attrition' },
     { key: 'movement', label: 'Movement' },
     { key: 'org', label: 'Org design' },
+    { key: ANALYSES_TAB, label: 'Special analyses' },
   ],
   View,
   headline: (ctx) => {

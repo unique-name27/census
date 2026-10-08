@@ -25,6 +25,14 @@ export interface SummaryCut {
 /** Fewest rows naming a person before the Summary shows. */
 export const SUMMARY_MIN_ROWS = 10
 
+/**
+ * Whether the Summary describes the list: at least ten rows name a person, and they are most of
+ * the rows. A list of offers where most candidates never joined (declined offers) would otherwise
+ * be summarized by the few hires' departments and levels, not by the offers.
+ */
+export const showsSummary = (cut: Pick<SummaryCut, 'people' | 'unnamed'>): boolean =>
+  cut.people >= SUMMARY_MIN_ROWS && cut.people >= cut.unnamed
+
 /** Group rows by a field of the person each names, largest first (ties by name); "Not set" for blanks. */
 export function summaryCut(
   people: readonly (Employee | null | undefined)[],

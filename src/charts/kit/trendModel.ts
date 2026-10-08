@@ -12,6 +12,8 @@ export interface TrendSeries {
   id: string
   /** The measure name above the cell. */
   name: string
+  /** A shorter name for the cell's header when `name` does not fit; the tooltip and table keep `name`. */
+  short?: string
   /** Oldest first; the last value is the latest. Null breaks the line. */
   values: readonly (number | null)[]
   /**

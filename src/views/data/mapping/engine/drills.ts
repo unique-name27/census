@@ -19,8 +19,8 @@ const EXTRA: Record<PeopleFocus, Column[]> = {
     { key: 'costCenter', label: 'Cost center' },
   ],
   job: [
-    { key: 'jobFunction', label: 'Job function' },
     { key: 'jobFamily', label: 'Job family' },
+    { key: 'jobFunction', label: 'Job function' },
   ],
   location: [{ key: 'country', label: 'Country' }],
 }
@@ -56,8 +56,8 @@ export function peopleSpec(args: {
       values: (e) => ({
         businessUnit: e.businessUnit,
         costCenter: e.costCenter ?? null,
-        jobFunction: e.jobFunction ?? null,
         jobFamily: e.jobFamily ?? null,
+        jobFunction: e.jobFunction ?? null,
         country: e.country,
       }),
     },

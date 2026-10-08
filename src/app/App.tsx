@@ -7,6 +7,7 @@
  */
 import { MotionConfig, motion } from 'motion/react'
 import { type CSSProperties, lazy, Suspense, useEffect, useRef } from 'react'
+import { baseTab } from '@/access/policy'
 import { connectAccessUi } from '@/access/ui/connectUi'
 import { ManagerPicker } from '@/access/ui/ManagerPicker'
 import { AskPanel } from '@/ask/ui/AskPanel'
@@ -52,14 +53,18 @@ function ViewPage({ view: registered, requestedTab }: { view: ViewDef; requested
   // The tabs the mode shows, too (Manager mode hides Retention risk, Sources & offers…).
   const { access } = useAnalytics()
   const view = withAccessTabs(withFeatureTabs(registered, { engagementSurveys }), access)
-  const tab = resolveTab(view.tabs, requestedTab)
+  // A part of a tab picked in the address ("analyses:quality") belongs to its tab: the shell
+  // works with the tab, and the view gets the whole address to pick the part.
+  const requestedBase = baseTab(requestedTab)
+  const tab = resolveTab(view.tabs, requestedBase)
+  const viewTab = requestedBase === tab && requestedTab ? requestedTab : tab
   const hasSubTabs = view.tabs.length > 1
   // A feature tab switched off while open (Engagement), or a tab the mode hides, shows the first
   // tab: the address follows, so a reload or a shared link doesn't name a tab that isn't there.
   const dropped =
     !!requestedTab &&
-    registered.tabs.some((t) => t.key === requestedTab) &&
-    !view.tabs.some((t) => t.key === requestedTab)
+    registered.tabs.some((t) => t.key === requestedBase) &&
+    !view.tabs.some((t) => t.key === requestedBase)
   const navigate = useCensus((s) => s.navigate)
   useEffect(() => {
     if (dropped) navigate(view.key, tab, { scroll: false })
@@ -88,7 +93,7 @@ function ViewPage({ view: registered, requestedTab }: { view: ViewDef; requested
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.12, ease: 'easeOut' }}
               >
-                <view.View tab={tab} />
+                <view.View tab={viewTab} />
               </motion.div>
             </ViewErrorBoundary>
           </div>

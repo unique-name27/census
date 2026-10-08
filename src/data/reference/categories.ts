@@ -62,10 +62,10 @@ export const CATEGORIES: readonly CategoryDef[] = [
     'hiringPlan.location',
   ]),
   c('country', 'Country', 'org', ['employees.country']),
-  // Functions are open: JOB_FUNCTIONS are the suggested values (the move form offers them), and a
-  // company's own function is a value like any other, never "not in the list".
-  c('jobFunction', 'Job function', 'job', ['employees.jobFunction']),
+  // Families are open: JOB_FAMILIES are the suggested values (the move form offers them), and a
+  // company's own family is a value like any other, never "not in the list". Functions are open too.
   c('jobFamily', 'Job family', 'job', ['employees.jobFamily']),
+  c('jobFunction', 'Job function', 'job', ['employees.jobFunction']),
   c('jobTitle', 'Job title', 'job', ['employees.jobTitle', 'requisitions.jobTitle']),
   c('level', 'Level', 'job', [
     'employees.level',

@@ -199,6 +199,20 @@ describe('query_records recounts', () => {
     for (const row of rows(c)) expect(row.count).toBe(wantC.get(row.group?.['org.businessUnit'] as string))
   })
 
+  it('groups rows joined to employees by the person’s job family and job function', () => {
+    const fields = (key: string) => queryDataset(key)?.fields.map((f) => f.name) ?? []
+    for (const key of ['learning', 'reviews', 'comp', 'cases'])
+      expect(fields(key).indexOf('org.jobFamily'), key).toBe(fields(key).indexOf('org.jobFunction') - 1)
+    // Candidates join through the requisition, which has neither field.
+    expect(fields('candidates')).not.toContain('org.jobFamily')
+    const r = q({ dataset: 'learning', group_by: ['org.jobFamily'], limit: 50 })
+    const emp = new Map(ctx.data.employees.map((e) => [e.employeeId, e]))
+    const want = countBy(ctx.data.learning, (x) => emp.get(x.employeeId)?.jobFamily)
+    expect(rows(r).length).toBeGreaterThan(0)
+    for (const row of rows(r)) expect(row.count).toBe(want.get(row.group?.['org.jobFamily'] as string))
+    expect(byGroup(r, 'org.jobFamily').has('Silicon Engineering')).toBe(true)
+  })
+
   it('applies the call’s filters like the app does', () => {
     const scoped = sampleCtx({ filters: { location: ['Hsinchu'] } })
     const r = q({ dataset: 'learning', group_by: ['category'], filters: { location: ['Hsinchu'] } })

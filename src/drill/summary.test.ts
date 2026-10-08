@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Employee } from '@/data/schema'
-import { summaryCut } from './summary'
+import { showsSummary, summaryCut } from './summary'
 
 const person = (department: string, level: Employee['level']) => ({ department, level }) as Employee
 
@@ -32,5 +32,15 @@ describe('records panel summary', () => {
       ['Not set', 1],
     ])
     expect(cut.groups.reduce((s, g) => s + g.count, 0)).toBe(cut.people)
+  })
+})
+
+describe('when the summary shows', () => {
+  it('needs ten people, and most rows naming one', () => {
+    expect(showsSummary({ people: 9, unnamed: 0 })).toBe(false)
+    expect(showsSummary({ people: 10, unnamed: 0 })).toBe(true)
+    // 92 offers, 38 of them to people who joined: a summary of the hires would misdescribe the offers.
+    expect(showsSummary({ people: 38, unnamed: 54 })).toBe(false)
+    expect(showsSummary({ people: 50, unnamed: 42 })).toBe(true)
   })
 })

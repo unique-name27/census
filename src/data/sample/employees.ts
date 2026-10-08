@@ -347,7 +347,7 @@ export function addLeavers(w: World, names: NameBook, rng: Rng): void {
     level: 'E1',
     title: 'Vice President, Systems Engineering',
     role: 'Vice President, Systems Engineering',
-    family: 'Executive leadership',
+    marketKey: 'Executive leadership',
     mgr: exec('svp-ss'),
     hire: day('2016-03-07'),
     term: day('2024-04-19'),
@@ -719,7 +719,7 @@ export function addContingent(w: World, names: NameBook, rng: Rng): void {
     if (type === 'Intern') {
       p.title = `${dept} Intern`
       p.role = p.title
-      p.family = dept
+      p.marketKey = dept
     } else {
       assignIcRole(p, spec, rng.pick<IcLevel>(['L2', 'L3', 'L3', 'L4']), rng)
       p.title = `${p.title} (Contract)`
@@ -1140,7 +1140,6 @@ export function employeeRows(w: World): Employee[] {
       employeeId: p.id,
       name: p.name,
       jobTitle: p.title,
-      jobFamily: p.family,
       businessUnit: p.bu,
       department: p.dept,
       location: p.site,

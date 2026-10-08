@@ -6,6 +6,7 @@
 import type { Datasets, ISODate } from '../schema'
 import { day } from './calendar'
 import { compRows } from './comp'
+import { planEducation, withEducation } from './education'
 import {
   addContingent,
   addLeavers,
@@ -20,15 +21,17 @@ import {
   plantLongTenureL4,
   plantStagnant,
 } from './employees'
+import { withFte } from './fte'
 import { hiringPlanRows } from './hiringPlan'
+import { withJobs } from './jobs'
 import { withLeaveHistory } from './leave'
 import type { World } from './model'
 import { NameBook } from './names'
+import { withOfferDetails } from './offerDetails'
 import { onboardingTaskRows } from './onboarding'
 import { buildOrg } from './org'
 import { preHireRows } from './prehires'
 import { rngFor } from './prng'
-import { withJobFunction } from './raw/jobFunction'
 import { recruitingRows } from './recruiting'
 import { exportPlantsOf, rightToWorkRows } from './rightToWork'
 import { caseRows, transactionRows } from './services'
@@ -63,8 +66,16 @@ export function generateSample(): Datasets {
   buildHistory(world, rngFor('history'), isConsecutiveHigh)
   assignIds(world)
 
-  const { requisitions, candidates } = recruitingRows(world, names, rngFor('recruiting'))
-  const roster = withJobFunction(employeeRows(world))
+  const ats = recruitingRows(world, names, rngFor('recruiting'))
+  const requisitions = ats.requisitions
+  // Offer details (docs/ANALYSES.md, 3.10): their own stream, right after recruiting.
+  const candidates = withOfferDetails(
+    ats.candidates,
+    requisitions,
+    SAMPLE_AS_OF,
+    rngFor('recruiting-offer-detail'),
+  )
+  const roster = withJobs(employeeRows(world))
   // Accepted offers that start within five weeks are in the HRIS already, as pre-hires.
   const employees = [...roster, ...preHireRows(roster, candidates, requisitions)]
   // The original modules, in their original order (each draws from its own stream).
@@ -102,8 +113,12 @@ export function generateSample(): Datasets {
     },
     rngFor('surveys'),
   )
+  // Education and FTE (docs/ANALYSES.md, 2.10 and 4.10): new columns only, each from its own
+  // stream after every other module, so no story above moves.
+  const education = planEducation(employees, reviews, jobChanges, SAMPLE_AS_OF, rngFor('education'))
+  const staff = withFte(withEducation(employees, education), SAMPLE_AS_OF, rngFor('fte'))
   return {
-    employees,
+    employees: staff,
     jobChanges,
     requisitions,
     candidates,

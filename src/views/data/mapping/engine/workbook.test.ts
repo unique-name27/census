@@ -24,7 +24,15 @@ const MAPPINGS: ReferenceMapping[] = [
     from: 'Systems',
     to: 'Silicon',
   },
-  { kind: 'move-family', id: 'b', at: AT, by: null, jobFamily: 'Firmware', from: null, to: 'Engineering' },
+  {
+    kind: 'move-function',
+    id: 'b',
+    at: AT,
+    by: null,
+    jobFunction: 'Firmware',
+    from: null,
+    to: 'Systems & Software Engineering',
+  },
   {
     kind: 'merge',
     id: 'c',
@@ -66,10 +74,16 @@ describe('mappingRows', () => {
     const rows = mappingRows(MAPPINGS, { a: 12, c: 3 }, [{ id: 'd', reason: 'Nope.' }])
     expect(rows.map((r) => r.change)).toEqual([
       'Move department',
-      'Move job family',
+      'Move job function',
       'Merge values',
       'Rename value',
     ])
+    expect(rows[1]).toMatchObject({
+      field: 'Employees: Job family',
+      fieldRef: 'employees.jobFamily',
+      subject: 'Firmware',
+      to: 'Systems & Software Engineering',
+    })
     expect(rows[0]).toMatchObject({
       order: 1,
       subject: 'Design Verification',
@@ -86,6 +100,26 @@ describe('mappingRows', () => {
     expect(rows[3].status).toBe('Not applied: Nope.')
     expect(rows[3].scope).toBe('This field only')
     expect(rows[1].rows).toBeNull()
+    expect(MAPPING_COLUMNS.find((c) => c.key === 'subject')?.label).toBe('Department or job function')
+  })
+
+  it('writes a legacy move-family mapping with its own label', () => {
+    const legacy: ReferenceMapping = {
+      kind: 'move-family',
+      id: 'old',
+      at: AT,
+      by: null,
+      jobFamily: 'Digital Design',
+      from: null,
+      to: 'Engineering',
+    }
+    const [row] = mappingRows([legacy])
+    expect(row).toMatchObject({
+      change: 'Set job function (before job families held functions)',
+      fieldRef: 'employees.jobFunction',
+      subject: 'Digital Design',
+      description: 'Set the job function of job family Digital Design rows to Engineering.',
+    })
   })
 })
 
@@ -154,6 +188,42 @@ describe('parseMappingSheet', () => {
     })
     expect(out.mappings).toEqual([])
     expect(out.errors[0].message).toMatch(/No "Change" column/)
+  })
+
+  it('refuses legacy rows (a job family moved under a function), from either column', () => {
+    const legacy: ReferenceMapping = {
+      kind: 'move-family',
+      id: 'old',
+      at: AT,
+      by: null,
+      jobFamily: 'Digital Design',
+      from: null,
+      to: 'Engineering',
+    }
+    const exported = parseMappingSheet(
+      sheetOf(mappingRows([legacy]) as unknown as Record<string, unknown>[], MAPPING_COLUMNS),
+    )
+    expect(exported.mappings).toEqual([])
+    expect(exported.errors[0].message).toBe('Made before job families held job functions; not imported.')
+    const typed = parseMappingSheet(
+      sheetOf(
+        [
+          { change: 'Move job family', subject: 'Digital Design', to: 'Engineering' },
+          { change: 'Move job function', subject: 'Design RTL', to: 'Silicon Engineering' },
+        ],
+        [
+          { key: 'change', label: 'Change' },
+          { key: 'subject', label: 'Department or job function' },
+          { key: 'to', label: 'To' },
+        ],
+      ),
+    )
+    expect(typed.errors.map((e) => e.message)).toEqual([
+      'Made before job families held job functions; not imported.',
+    ])
+    expect(typed.mappings).toEqual([
+      { kind: 'move-function', jobFunction: 'Design RTL', from: null, to: 'Silicon Engineering', by: null },
+    ])
   })
 
   it('rejects an unreadable mapping column', () => {

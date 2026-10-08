@@ -10,6 +10,7 @@ import type { ListsState } from './types'
 import {
   applyListsImport,
   buildListsWorkbook,
+  OLD_JOB_LAYOUT,
   planListsImport,
   planSummary,
   readListsWorkbook,
@@ -148,6 +149,86 @@ describe('the Official lists workbook', () => {
     expect(ccs.find((v) => v.value === '1110-SJC')?.parent).toBe('System architecture')
     expect(ccs.some((v) => v.parent === 'Architecture')).toBe(false)
     expect(r.change?.lists).toEqual(['department', 'costCenter'])
+  })
+
+  it('puts Job families before Job functions, with a Job family column and a stage column', async () => {
+    const eff = sampleEff()
+    const wb = await load(await buildListsWorkbook(eff))
+    const names = wb.worksheets.map((w) => w.name)
+    expect(names.indexOf('Job families')).toBeLessThan(names.indexOf('Job functions'))
+    const fams = wb.getWorksheet('Job families')!
+    expect((fams.getRow(1).values as unknown[]).slice(1)).toEqual([
+      'Job family',
+      'Engineering',
+      'Status',
+      'Replaced by',
+      'Census ID',
+    ])
+    const fns = wb.getWorksheet('Job functions')!
+    expect((fns.getRow(1).values as unknown[]).slice(1)).toEqual([
+      'Job function',
+      'Job family',
+      'Chip development stage',
+      'Status',
+      'Replaced by',
+      'Census ID',
+    ])
+    expect(fns.getCell('B2').dataValidation).toMatchObject({ type: 'list', formulae: ['JobFamilies'] })
+    let rtl = 0
+    fns.eachRow((row, n) => {
+      if (row.getCell(1).value === 'Design RTL') rtl = n
+    })
+    expect(fns.getRow(rtl).getCell(2).value).toBe('Silicon Engineering')
+    expect(fns.getRow(rtl).getCell(3).value).toBe('RTL design')
+    expect(fns.getCell('C2').dataValidation).toMatchObject({ type: 'list' })
+  })
+
+  it('round-trips parents and stages, and reads an edited stage as a change', async () => {
+    const eff = sampleEff()
+    const wb = await load(await buildListsWorkbook(eff))
+    const fns = wb.getWorksheet('Job functions')!
+    fns.eachRow((row) => {
+      if (row.getCell(1).value === 'Software') row.getCell(3).value = 'Shared engineering'
+      if (row.getCell(1).value === 'Packaging') row.getCell(2).value = 'Systems & Software Engineering'
+    })
+    const parsed = await readListsWorkbook((await wb.xlsx.writeBuffer()) as ArrayBuffer)
+    expect(parsed.notes).toEqual([])
+    const plan = planListsImport(parsed, EMPTY_LISTS, eff)
+    expect(plan.lists.map((p) => p.id)).toEqual(['jobFunction'])
+    expect(plan.lists[0].lines.map((l) => l.text)).toEqual([
+      'Move "Packaging" to Systems & Software Engineering',
+      'Change the chip development stage of "Software"',
+    ])
+    const r = applyListsImport(EMPTY_LISTS, eff, plan, { now: 1_000 })
+    const saved = r.state.lists.jobFunction!.values
+    expect(saved.find((v) => v.value === 'Software')?.attrs).toEqual({ stage: 'Shared engineering' })
+    expect(saved.find((v) => v.value === 'Packaging')).toMatchObject({
+      parent: 'Systems & Software Engineering',
+      attrs: { stage: null },
+    })
+  })
+
+  it('leaves out the job sheets of a workbook saved before job families held job functions', async () => {
+    const ExcelJS = await excel()
+    const wb = new ExcelJS.Workbook()
+    const fams = wb.addWorksheet('Job families')
+    fams.addRow(['Job family', 'Job function', 'Status', 'Census ID'])
+    fams.addRow(['Design verification', 'Engineering', 'Active', 'Design verification'])
+    const fns = wb.addWorksheet('Job functions')
+    fns.addRow(['Job function', 'Status', 'Census ID'])
+    fns.addRow(['Engineering', 'Active', 'Engineering'])
+    const depts = wb.addWorksheet('Departments')
+    depts.addRow(['Department', 'Business unit', 'Status', 'Census ID'])
+    depts.addRow(['Photonics', 'Silicon Engineering', 'Active', null])
+    const parsed = await readListsWorkbook((await wb.xlsx.writeBuffer()) as ArrayBuffer)
+    expect(Object.keys(parsed.lists)).toEqual(['department'])
+    expect(parsed.notes).toEqual([OLD_JOB_LAYOUT])
+    expect(OLD_JOB_LAYOUT).toBe(
+      'This workbook was saved before job families contained job functions. Its Job families and Job functions sheets were left out; export a new workbook to edit them.',
+    )
+    const plan = planListsImport(parsed, EMPTY_LISTS, sampleEff())
+    expect(plan.notes).toEqual([OLD_JOB_LAYOUT])
+    expect(plan.lists.map((p) => p.id)).toEqual(['department'])
   })
 
   it('refuses a file it cannot read, in plain words', async () => {

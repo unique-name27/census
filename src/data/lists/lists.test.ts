@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest'
 import { computeQuality } from '../quality'
 import { emp, emptyDatasets, req } from '../quality/test-fixtures'
 import { addMapping, EMPTY_REFERENCE } from '../reference/state'
-import { DATASET_KEYS, type DatasetKey, type Datasets, type HrCase } from '../schema'
+import { FAMILY_OF_FUNCTION } from '../sample/jobs'
+import { DATASET_KEYS, type DatasetKey, type Datasets, type HrCase, JOB_FAMILIES } from '../schema'
 import { DEFAULT_SETTINGS, parseSettingsFile, settingsBlob } from '../settings'
 import { analyzeList, officialParents } from './analyze'
 import { listDef } from './defs'
@@ -38,13 +39,15 @@ function company(): Datasets {
       department: 'Firmware',
       businessUnit: 'Systems & Software',
       costCenter: 'CC-200',
-      jobFamily: 'Firmware',
+      jobFamily: 'Systems & Software Engineering',
+      jobFunction: 'Firmware',
     }),
     emp(5, {
       department: 'Firmware',
       businessUnit: 'Systems & Software',
       costCenter: 'CC-200',
-      jobFamily: 'Firmware',
+      jobFamily: 'Systems & Software Engineering',
+      jobFunction: 'Firmware',
     }),
     emp(6, { department: 'Payroll', businessUnit: 'Corporate', costCenter: 'CC-300', location: 'Austin' }),
   ]
@@ -86,8 +89,37 @@ describe('starting lists', () => {
       parent: 'Architecture',
       attrs: { name: 'Architecture, San Jose' },
     })
-    // A family spread over several functions gets no parent: no function holds most of it.
-    expect(lists.jobFamily!.values.find((v) => v.value === 'Executive leadership')?.parent).toBeNull()
+    // Job families have no parent; every job function names its family, and the engineering
+    // functions their place in the chip development flow.
+    expect(lists.jobFamily!.values.map((v) => v.value).sort()).toEqual([...JOB_FAMILIES].sort())
+    for (const v of lists.jobFamily!.values) expect(v.parent).toBeUndefined()
+    const fns = lists.jobFunction!.values
+    expect(fns).toHaveLength(38)
+    for (const v of fns) expect(v.parent, v.value).toBe(FAMILY_OF_FUNCTION.get(v.value))
+    expect(fns.find((v) => v.value === 'Design RTL')).toMatchObject({
+      parent: 'Silicon Engineering',
+      attrs: { stage: 'RTL design' },
+    })
+    // Packaging is left for Census to propose (docs/ANALYSES.md, 4.10).
+    expect(fns.find((v) => v.value === 'Packaging')).toMatchObject({
+      parent: 'Silicon Engineering',
+      attrs: { stage: null },
+    })
+    expect(fns.find((v) => v.value === 'Software')?.attrs).toEqual({ stage: 'Software and firmware' })
+    expect(fns.find((v) => v.value === 'Sales')?.attrs).toEqual({ stage: null })
+    expect(lists.jobFamily!.values.find((v) => v.value === 'Silicon Engineering')?.attrs).toEqual({
+      engineering: 'Yes',
+    })
+    expect(lists.jobFamily!.values.find((v) => v.value === 'Product & Test Operations')?.attrs).toEqual({
+      engineering: 'No',
+    })
+    expect(listDef('jobFamily').parent).toBeUndefined()
+    expect(listDef('jobFamily').attrs).toMatchObject([{ key: 'engineering', options: ['Yes', 'No'] }])
+    expect(listDef('jobFunction')).toMatchObject({
+      parent: 'jobFamily',
+      attrs: [{ key: 'stage', label: 'Chip development stage' }],
+    })
+    expect(listDef('jobFunction').attrs[0].options).toHaveLength(11)
     expect(sampleLists()).toBe(sampleLists())
   })
 
@@ -362,6 +394,57 @@ describe('editing', () => {
     const values = r.state.lists.department!.values.map((v) => v.value)
     expect(values).toEqual(['Design Verification', 'DV', 'Firmware', 'Payroll', 'Photonics lab'])
     expect(applyEdit(s, eff, { kind: 'add', list: 'level', value: 'L7' }).ok).toBe(false)
+  })
+
+  it('renames a job family and the job functions that name it; refuses to delete a family still a parent', () => {
+    const d = company()
+    const eff = effectiveLists(EMPTY_LISTS, d, own)
+    let s = must(EMPTY_LISTS, eff, { kind: 'make-official', list: 'jobFamily' }).state
+    s = must(s, effectiveLists(s, d, own), { kind: 'make-official', list: 'jobFunction' }, 2_000).state
+    const e2 = effectiveLists(s, d, own)
+    expect(e2.jobFunction.values.find((v) => v.value === 'Firmware')?.parent).toBe(
+      'Systems & Software Engineering',
+    )
+    const r = must(
+      s,
+      e2,
+      {
+        kind: 'rename',
+        list: 'jobFamily',
+        from: 'Systems & Software Engineering',
+        to: 'Systems Engineering',
+      },
+      3_000,
+    )
+    expect(r.change.lists).toEqual(['jobFamily', 'jobFunction'])
+    expect(r.state.lists.jobFunction!.values.find((v) => v.value === 'Firmware')?.parent).toBe(
+      'Systems Engineering',
+    )
+    const added = must(s, e2, { kind: 'add', list: 'jobFamily', value: 'Photonics' }, 4_000)
+    const e3 = effectiveLists(added.state, d, own)
+    const placed = must(
+      added.state,
+      e3,
+      {
+        kind: 'add',
+        list: 'jobFunction',
+        value: 'Optics',
+        parent: 'Photonics',
+        attrs: { stage: 'post-silicon validation and bring-up' },
+      },
+      5_000,
+    )
+    expect(placed.state.lists.jobFunction!.values.find((v) => v.value === 'Optics')).toMatchObject({
+      parent: 'Photonics',
+      attrs: { stage: 'Post-silicon validation and bring-up' },
+    })
+    expect(
+      applyEdit(placed.state, effectiveLists(placed.state, d, own), {
+        kind: 'delete',
+        list: 'jobFamily',
+        value: 'Photonics',
+      }),
+    ).toEqual({ ok: false, error: 'It is the job family of 1 job function. Move them first.' })
   })
 
   it('renames a value and the values that name it as their parent', () => {

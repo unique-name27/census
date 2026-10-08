@@ -48,14 +48,19 @@ describe('field references', () => {
   })
 })
 
-describe('job function in the schema', () => {
-  it('has its own header names, no longer shared with job family', () => {
+describe('job family and job function in the schema', () => {
+  it('a job family is the broad group and a job function the discipline inside it', () => {
     const fields = DATASETS.find((d) => d.key === 'employees')!.fields
     const fam = fields.find((f) => f.key === 'jobFamily')!
     const fn = fields.find((f) => f.key === 'jobFunction')!
-    expect(fam.synonyms).not.toContain('job function')
-    expect(fam.synonyms).not.toContain('function')
-    expect(fn.synonyms).toEqual(['job function', 'function', 'functional area', 'job function name'])
+    expect(fam.synonyms).toEqual(['job family', 'family', 'functional area'])
+    expect(fn.synonyms).toEqual(['job function', 'function', 'job function name', 'discipline'])
+    const words = (list: string[]) => new Set(list.flatMap((s) => s.split(' ')))
+    expect(words(fam.synonyms).has('function')).toBe(false)
+    expect(words(fam.synonyms).has('discipline')).toBe(false)
+    expect(words(fn.synonyms).has('family')).toBe(false)
+    expect(fam.description).toMatch(/Silicon Engineering/)
+    expect(fn.description).toMatch(/Design RTL/)
   })
 })
 

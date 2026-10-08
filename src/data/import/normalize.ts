@@ -97,6 +97,34 @@ export function detectPercentWhole(values: readonly unknown[]): boolean {
   return (median(xs) ?? 0) > 1.5
 }
 
+/**
+ * A share of a whole (FTE, an offer's position in its range): a fraction, or a percentage when the
+ * cell has a % sign or reads above 1.5 (80 is 0.8, 35% is 0.35). Read value by value, so a column
+ * that mixes 0.8 and 80 still works. Outside `min` to 1.5 after that is logged and left blank.
+ */
+export function coerceShare(
+  v: unknown,
+  label: string,
+  min: { value: number; inclusive: boolean },
+): Coerced<number> {
+  if (isBlank(v)) return NONE
+  if (typeof v === 'boolean' || v instanceof Date) return fail(`${quote(v)} is not ${label}.`)
+  const r = readNumber(v)
+  if (r.value == null) return NONE
+  if (!Number.isFinite(r.value)) return fail(`${quote(v)} is not ${label}.`)
+  const x = r.percent || r.value > 1.5 ? r.value / 100 : r.value
+  const low = min.inclusive ? x < min.value : x <= min.value
+  if (low || x > 1.5) return fail(`${quote(v)} is outside the range for ${label}.`, 'out-of-range')
+  return ok(x)
+}
+
+/** Fields read as a share by `coerceShare`, with the smallest value each takes. */
+const SHARE_FIELDS: Readonly<Record<string, { label: string; min: { value: number; inclusive: boolean } }>> =
+  {
+    'employees.fte': { label: 'an FTE', min: { value: 0, inclusive: false } },
+    'candidates.offerPositionInRange': { label: 'a position in range', min: { value: 0, inclusive: true } },
+  }
+
 /* ───────────── booleans ───────────── */
 
 const FALSY =
@@ -230,6 +258,8 @@ export function coerceValue(
   }
   const ref = `${dataset}.${field.key}`
   if (MONTH_FIELDS.has(ref)) return coerceMonth(v, col.dateOrder)
+  const share = SHARE_FIELDS[ref]
+  if (share) return coerceShare(v, share.label, share.min)
   if (RELATIVE_FIELDS.has(ref)) {
     const r = readRelativeDay(v)
     if (r) return ok<PendingRelative>({ __relative: r })

@@ -251,7 +251,7 @@ describe('settings are read through the dictionary', () => {
       exceptions: { topRatingFloor: 0.02, lowRatingCap: 0.03, outlierZ: 3.5, outlierMinPeers: 10 },
       differentiation: { floor: 1.15, strong: 1.3, material: 0.15 },
       marketMedian: { material: 0.03 },
-      marketGap: { minFamily: 10, jobWatch: 0.1 },
+      marketGap: { minFunction: 10, jobWatch: 0.1 },
       belowMarket: { threshold: 0.05, rangeGap: 0.05 },
     })
   })
@@ -263,7 +263,7 @@ describe('settings are read through the dictionary', () => {
       findings: m.findings.map((f) => [f.id, f.severity, f.title, f.detail ?? '', f.action ?? '']),
       exceptions: m.cycle.exceptions.map((e) => [e.id, e.kind, e.rule]),
       compression: m.ranges.compression.map((c) => [c.group, c.gap, c.flagged]),
-      market: m.market.familyChart.map((r) => [r.group, r.median]),
+      market: m.market.jobChart.map((r) => [r.group, r.median]),
     })
     expect(pick(base)).toEqual(pick(legacy))
     expect(kpi(base, 'merit-spend').value!).toBeCloseTo(0.03544, 5)
@@ -347,7 +347,7 @@ describe('changing a setting changes the numbers', () => {
     expect(finding(base, analog)!.severity).toBe('warning')
     const deeper = run(metricsWith({ 'comp.market.belowMarket': { threshold: 0.1 } }))
     expect(finding(deeper, analog)).toBeUndefined()
-    // With a wider range gap no family's ranges trail the market: every gap is pay position.
+    // With a wider range gap no function's ranges trail the market: every gap is pay position.
     const trail = run(metricsWith({ 'comp.market.belowMarket': { rangeGap: 0.2 } }))
     const below = trail.findings.filter((f) => f.id.startsWith('comp-below-market'))
     expect(below.length).toBeGreaterThan(0)
@@ -364,7 +364,7 @@ describe('changing a setting changes the numbers', () => {
     const m = run(metricsWith({ [ANONYMITY.metricId]: { [ANONYMITY.key]: 40 } }))
     expect(m.rules.minGroup).toBe(40)
     expect(m.rules.compression.minGroup).toBe(40)
-    for (const rows of [m.overview.byLocation, m.overview.byDepartment, m.market.byFamily])
+    for (const rows of [m.overview.byLocation, m.overview.byDepartment, m.market.byJob])
       for (const r of rows)
         if (!r.group.startsWith('Other (')) expect(r.n, r.group).toBeGreaterThanOrEqual(40)
     expect(m.ranges.compression).toEqual([])
@@ -386,7 +386,7 @@ describe('edited wording shows everywhere', () => {
     const m = run(edited)
     expect(kpi(m, 'median-compa').definition).toBe('Our own wording for the median.')
     expect(m.definitions['comp-compa-by-location'][0].text).toBe('Our own wording for the median.')
-    expect(m.definitions['comp-market-by-family'][0].formula).toBe('median market ratio − 1')
+    expect(m.definitions['comp-market-by-function'][0].formula).toBe('median market ratio − 1')
     // Numbers do not move when only wording changes.
     expect(kpi(m, 'median-compa').value).toBe(kpi(base, 'median-compa').value)
   })

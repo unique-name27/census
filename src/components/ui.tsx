@@ -221,7 +221,8 @@ export function Segmented<T extends string>({
 }: {
   value: T
   onChange: (v: T) => void
-  options: { value: T; label: string; icon?: ReactNode }[]
+  /** `hint`: a muted word after the label ("Needs data"), part of the option, not a badge. */
+  options: { value: T; label: string; icon?: ReactNode; hint?: string }[]
   label: string
   size?: 'sm' | 'md'
 }) {
@@ -245,6 +246,7 @@ export function Segmented<T extends string>({
         >
           {o.icon}
           {o.label}
+          {o.hint && <span className="font-normal text-muted">{o.hint}</span>}
         </Toggle>
       ))}
     </ToggleGroup>

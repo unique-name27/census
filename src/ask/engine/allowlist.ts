@@ -13,13 +13,17 @@
  * person's rating or assessment (potential, readiness, risk of loss) hides small counts.
  *
  * Datasets about people also offer `org.*` fields: the business unit, department, location, level,
- * job function and manager of the person the row is about (the requisition's for candidates).
+ * job family, job function and manager of the person the row is about (the requisition's for
+ * candidates). A job family is the broad group (Silicon Engineering) and contains job functions
+ * (Design RTL).
  */
 import type { AnalyticsContext } from '@/data/context'
+import type { JobArchitecture } from '@/data/lists/jobs'
 import type { FieldRef } from '@/data/quality/fieldRef'
 import {
   type Candidate,
   type CompRecord,
+  chipStageByKey,
   DATASETS,
   type DatasetKey,
   type Employee,
@@ -32,6 +36,7 @@ import { isActiveAt, isEmployee } from '@/data/scope'
 import { hoursBetween } from '@/lib/dates'
 import { tenureYears } from '@/lib/people'
 import { type RespondentRecord, respondentIndex } from '@/lib/surveys'
+import { NOT_MAPPED, stagePlacer } from '@/views/hrbp/analyses/stages/engine/placer'
 
 /** A schema row read by name. */
 export type Row = Readonly<Record<string, unknown>>
@@ -45,6 +50,12 @@ export interface Joins {
   requisition(id: unknown): Requisition | undefined
   candidate(applicationId: unknown): Candidate | undefined
   respondent(key: unknown): RespondentRecord
+  /**
+   * The chip development stage of an Employees row (its job function's) or a Requisitions row (its
+   * department's most common job function), as Engineering by stage counts it; null outside
+   * engineering. Absent when the job architecture is not known.
+   */
+  chipStage?(dataset: 'employees' | 'requisitions', row: Row): string | null
 }
 
 export interface QueryField {
@@ -67,6 +78,8 @@ export interface QueryField {
   hidesEr?: boolean
   /** The unit of a number: 'fraction' values are shares (0.12 = 12%). */
   unit?: 'fraction' | 'ratio' | 'hours' | 'years' | 'count' | 'score'
+  /** A surface the mode must show for Ask to read the field (the analysis it feeds); see `fieldShown`. */
+  needs?: string
 }
 
 export interface QueryDataset {
@@ -142,7 +155,45 @@ const SENSITIVE: ReadonlySet<string> = new Set([
   'comp.lastIncreasePct',
   'comp.meritPct',
   'comp.promotionPct',
+  // Education can stand in for where someone grew up (docs/ANALYSES.md, 2.8): groups only, small ones hidden.
+  'employees.university',
+  'employees.degreeLevel',
+  'employees.fieldOfStudy',
+  // A candidate's offer against the range: a pay ratio, like compa-ratio.
+  'candidates.offerPositionInRange',
+  // What one candidate told us, or how we changed their offer (Offer declines, docs/ANALYSES.md 3).
+  'candidates.competingOffer',
+  'candidates.offerRevised',
 ])
+
+/**
+ * Fields Ask reads only where the analysis they feed is shown (docs/ANALYSES.md, 1.7). Manager
+ * mode hides Quality of hire (education) and Offer declines (competing and revised offers, where
+ * offers sat in the range), so Ask does not read these fields there either.
+ */
+const NEEDS: Readonly<Record<string, string>> = {
+  'employees.university': 'metric:hrbp.quality.score',
+  'employees.degreeLevel': 'metric:hrbp.quality.score',
+  'employees.fieldOfStudy': 'metric:hrbp.quality.score',
+  'candidates.competingOffer': 'metric:hrbp.declines.rate',
+  'candidates.offerRevised': 'metric:hrbp.declines.rate',
+  'candidates.offerPositionInRange': 'metric:hrbp.declines.rate',
+}
+
+/**
+ * Why a declined offer was declined is a decline reason (Recruiting > Sources & offers, Offer
+ * declines): where the mode hides it, a cut by `rejectionReason` leaves declined offers out.
+ */
+export const DECLINE_REASONS_NEED = 'metric:recruiting.offers.declineReasons'
+
+/** What `fieldShown` asks of the mode. */
+export interface FieldAccess {
+  can(surface: string): boolean
+}
+
+/** Whether the mode lets Ask read a field (true without an access answer, as in tests). */
+export const fieldShown = (f: QueryField, access?: FieldAccess | null): boolean =>
+  !f.needs || !access || access.can(f.needs)
 
 /** Grouped counts only (leave reasons; immigration fields are flagged in the schema). */
 const COUNTS_ONLY: ReadonlySet<string> = new Set(['transactions.leaveReason'])
@@ -168,6 +219,7 @@ const UNITS: Readonly<Record<string, QueryField['unit']>> = {
   'learning.hours': 'hours',
   'requisitions.openings': 'count',
   'hiringPlan.plannedHires': 'count',
+  'candidates.offerPositionInRange': 'ratio',
 }
 
 /* ───────────── building the list ───────────── */
@@ -209,6 +261,7 @@ function fromSchema(dataset: DatasetKey, f: FieldDef): QueryField | string {
     ...(f.immigration || COUNTS_ONLY.has(r) || COUNTS_ONLY_DATASETS.has(dataset) ? { countsOnly: true } : {}),
     ...(SENSITIVE.has(r) ? { sensitive: true } : {}),
     ...(HIDES_ER.has(r) ? { hidesEr: true } : {}),
+    ...(NEEDS[r] ? { needs: NEEDS[r] } : {}),
   }
   switch (f.type) {
     case 'date':
@@ -227,7 +280,7 @@ function fromSchema(dataset: DatasetKey, f: FieldDef): QueryField | string {
         ...base,
         ...flags,
         kind: 'number',
-        unit: f.type === 'percent' ? 'fraction' : (UNITS[r] ?? undefined),
+        unit: UNITS[r] ?? (f.type === 'percent' ? 'fraction' : undefined),
         get: (row) => (typeof row[f.key] === 'number' && Number.isFinite(row[f.key]) ? row[f.key] : null),
       }
     default:
@@ -242,6 +295,25 @@ function fromSchema(dataset: DatasetKey, f: FieldDef): QueryField | string {
       }
   }
 }
+
+/**
+ * The chip development stage (People stats > Special analyses > Engineering by stage): a person's
+ * from their job function, a req's from its department's most common job function. Engineering
+ * only; blank for everyone else, and "Not mapped" for an engineering job function with no stage.
+ */
+const CHIP_STAGE = (dataset: 'employees' | 'requisitions'): QueryField => ({
+  name: 'chipStage',
+  label:
+    dataset === 'employees'
+      ? 'Chip development stage of the job function (engineering only)'
+      : 'Chip development stage, from the most common job function of the req’s department (engineering only)',
+  kind: 'category',
+  uses:
+    dataset === 'employees'
+      ? ['employees.jobFamily', 'employees.jobFunction']
+      : ['requisitions.department', 'employees.department', 'employees.jobFunction'],
+  get: (row, j) => j.chipStage?.(dataset, row) ?? null,
+})
 
 /** Ratios and durations computed from a row; they read the row's fields, never return an amount. */
 function derived(dataset: DatasetKey): QueryField[] {
@@ -277,7 +349,10 @@ function derived(dataset: DatasetKey): QueryField[] {
             return e.hireDate && e.hireDate <= j.asOf ? tenureYears(e, j.asOf) : null
           },
         },
+        CHIP_STAGE('employees'),
       ]
+    case 'requisitions':
+      return [CHIP_STAGE('requisitions')]
     case 'comp': {
       const positive = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : null)
       return [
@@ -400,14 +475,24 @@ function orgFields(dataset: DatasetKey): QueryField[] {
     },
   }))
   if (viaEmp)
-    out.push({
-      name: 'org.jobFunction',
-      label: 'Job function of the person',
-      kind: 'category',
-      ...flags,
-      uses: [ref('employees', 'jobFunction')],
-      get: (row, j) => of(row, j).e?.jobFunction ?? null,
-    })
+    out.push(
+      {
+        name: 'org.jobFamily',
+        label: 'Job family of the person',
+        kind: 'category',
+        ...flags,
+        uses: [ref('employees', 'jobFamily')],
+        get: (row, j) => of(row, j).e?.jobFamily ?? null,
+      },
+      {
+        name: 'org.jobFunction',
+        label: 'Job function of the person',
+        kind: 'category',
+        ...flags,
+        uses: [ref('employees', 'jobFunction')],
+        get: (row, j) => of(row, j).e?.jobFunction ?? null,
+      },
+    )
   out.push({
     name: 'org.manager',
     label: dataset === 'candidates' ? 'Hiring manager of the requisition' : 'Manager of the person',
@@ -491,12 +576,63 @@ export const queryDataset = (key: string): QueryDataset | undefined =>
 /** The fields a dataset can group by (categories, people, dates and booleans). */
 export const groupableFields = (d: QueryDataset): QueryField[] => d.fields.filter((f) => f.kind !== 'number')
 
+/** The fields of a dataset the mode lets Ask read (`fieldShown`). */
+export const shownFields = (d: QueryDataset, access?: FieldAccess | null): QueryField[] =>
+  d.fields.filter((f) => fieldShown(f, access))
+
+const NEEDS_REASON: Readonly<Record<string, string>> = {
+  'metric:hrbp.quality.score':
+    'Quality of hire is not shown in Manager mode, so Ask does not read education.',
+  'metric:hrbp.declines.rate':
+    'Offer declines is not shown in Manager mode, so Ask does not read offer details.',
+}
+
+/** A dataset as the mode lets Ask read it: the fields it hides move to `denied`, with the reason. */
+export function readableDataset(d: QueryDataset, access?: FieldAccess | null): QueryDataset {
+  const hidden = d.fields.filter((f) => !fieldShown(f, access))
+  if (!hidden.length) return d
+  const denied = new Map(d.denied)
+  for (const f of hidden) denied.set(f.name, (f.needs && NEEDS_REASON[f.needs]) ?? 'Not shown in this mode.')
+  return { ...d, fields: d.fields.filter((f) => !hidden.includes(f)), denied }
+}
+
 /* ───────────── joins ───────────── */
 
 const joinCache = new WeakMap<object, Map<string, Joins>>()
 
-/** Lookups over the loaded data (all rows, not just the scope) for joined fields. */
-export function joinsFor(ctx: Pick<AnalyticsContext, 'all' | 'org' | 'asOf'>): Joins {
+const stagedCache = new WeakMap<Joins, WeakMap<JobArchitecture, Joins>>()
+
+/** The joins with the chip development stage of rows, from the job architecture in force. */
+function withChipStage(j: Joins, jobs: JobArchitecture, employees: readonly Employee[]): Joins {
+  let byJobs = stagedCache.get(j)
+  if (!byJobs) {
+    byJobs = new WeakMap()
+    stagedCache.set(j, byJobs)
+  }
+  let hit = byJobs.get(jobs)
+  if (!hit) {
+    const placer = stagePlacer(jobs, employees, j.asOf)
+    const label = (p: ReturnType<typeof placer.person>) =>
+      p ? (p.stage === NOT_MAPPED ? 'Not mapped' : (chipStageByKey.get(p.stage)?.label ?? null)) : null
+    hit = {
+      ...j,
+      chipStage: (dataset, row) =>
+        dataset === 'employees'
+          ? label(placer.person(row as unknown as Employee))
+          : label(placer.department((row as unknown as Requisition).department)),
+    }
+    byJobs.set(jobs, hit)
+  }
+  return hit
+}
+
+/**
+ * Lookups over the loaded data (all rows, not just the scope) for joined fields; with the job
+ * architecture (`ctx.jobs`), also each row's chip development stage.
+ */
+export function joinsFor(
+  ctx: Pick<AnalyticsContext, 'all' | 'org' | 'asOf'> & Partial<Pick<AnalyticsContext, 'jobs'>>,
+): Joins {
   let byAsOf = joinCache.get(ctx.all)
   if (!byAsOf) {
     byAsOf = new Map()
@@ -517,5 +653,5 @@ export function joinsFor(ctx: Pick<AnalyticsContext, 'all' | 'org' | 'asOf'>): J
     }
     byAsOf.set(ctx.asOf, j)
   }
-  return j
+  return ctx.jobs ? withChipStage(j, ctx.jobs, ctx.all.employees) : j
 }

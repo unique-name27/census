@@ -44,6 +44,14 @@ describe('the screen line', () => {
     expect(leaks(line)).toEqual([])
   })
 
+  it('names the special analysis on screen', () => {
+    const conv = new Conversation()
+    const f = fakeApp(ctx, { route: { view: 'hrbp', tab: 'analyses:quality' } })
+    expect(screenLine(f.app.screen(), ctx, VIEWS, conv.tokens)).toBe(
+      'On screen: People stats, Special analyses: Quality of hire; the whole company; last 12 months.',
+    )
+  })
+
   it('leaves the scope out where the filter row does not apply, and names an open records panel', () => {
     const conv = new Conversation()
     const data = fakeApp(ctx, { route: { view: 'data', tab: 'metrics/hrbp/attrition/voluntary' } })

@@ -187,6 +187,8 @@ describe('org lineage on the sample company', () => {
     const l: OrgLineage = { subOrg: false, jobChanges: true, filters: NO_DIMS }
     expect(chartUses({ ...l, colorBy: 'jobFunction', reqCards: false })).toContain('employees.jobFunction')
     expect(chartUses({ ...l, colorBy: 'tenure', reqCards: false })).not.toContain('employees.jobFunction')
+    expect(chartUses({ ...l, colorBy: 'jobFamily', reqCards: false })).toContain('employees.jobFamily')
+    expect(chartUses({ ...l, colorBy: 'jobFamily', reqCards: false })).not.toContain('employees.jobFunction')
     expect(chartUses({ ...l, colorBy: 'none', reqCards: false })).toEqual(
       refs(REPORTING_USES, MANAGING_SINCE_USES),
     )
@@ -211,6 +213,7 @@ describe('chart layers held to the data standard', () => {
     // The hand-built roster has no job function.
     const m = buildOrgModel(ctxFor({ employees: smallCompany() }))
     expect(m.gates.color.jobFunction).toEqual({ ok: false, noData: true, reason: 'Job function has no data' })
+    expect(m.gates.color.jobFamily).toEqual({ ok: false, noData: true, reason: 'Job family has no data' })
     expect(m.gates.color.department.ok).toBe(true)
   })
 
@@ -264,6 +267,7 @@ describe('chart layers held to the data standard', () => {
     expect(heldBackNotes(gold, { colorBy: 'none', openRoles: false, flags: false })).toEqual([])
     const all = buildOrgModel(sampleAt('bronze')).gates
     expect(usableColor(all, 'jobFunction')).toBe('jobFunction')
+    expect(usableColor(all, 'jobFamily')).toBe('jobFamily')
     expect(heldBackNotes(all, { colorBy: 'jobFunction', openRoles: true, flags: true })).toEqual([])
   })
 })

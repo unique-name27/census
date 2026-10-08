@@ -27,6 +27,27 @@ describe('planFor', () => {
     expect(names('Hello')).toEqual([['get_context'], ['view_summary']])
   })
 
+  it('asks the special analysis a question is about first', () => {
+    const tabs = (q: string) =>
+      planFor(q).rounds.flatMap((r) => r.map((c) => (c.input as { tab?: string }).tab ?? c.name))
+    expect(tabs('Why were offers declined last quarter?')[0]).toBe('analyses:declines')
+    expect(tabs('How many verification engineers do we have per RTL designer?')).toContain('analyses:stages')
+  })
+
+  it('writes refusals for the reader, without the tool’s instructions', () => {
+    const refused = {
+      name: 'view_summary',
+      input: { view: 'hrbp', tab: 'analyses:declines' },
+      content: JSON.stringify({
+        error:
+          'Offer declines is not shown in Manager mode, so Ask does not answer about it. Say so, and do not estimate it.',
+      }),
+    }
+    const text = composeAnswer([refused])
+    expect(text).toContain('Offer declines is not shown in Manager mode, so I cannot answer about it here.')
+    expect(text).not.toMatch(/Say so|do not estimate|Ask does not answer/)
+  })
+
   it('scopes to a leader named by a token, and brings up faults on request', () => {
     const p = planFor('How is attrition in {{P12}}’s org?')
     expect(p.rounds[0]?.[0]?.input).toEqual({ view: 'hrbp', filters: { leader: '{{P12}}' } })

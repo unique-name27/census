@@ -39,6 +39,36 @@ describe('drill tables', () => {
     expect(t.columns.map((c) => c.key)).not.toContain('terminationDate')
   })
 
+  it('shows Job family and Job function after the title when a row has them, and not otherwise', () => {
+    const rows = data.employees.filter((e) => e.jobFunction === 'Design RTL').slice(0, 5)
+    const t = buildDrillTable(drillSpec({ kind: 'employees', title: 'Design RTL', rows }), ctx)
+    const keys = t.columns.map((c) => c.key)
+    expect(keys.slice(keys.indexOf('jobTitle'), keys.indexOf('jobTitle') + 3)).toEqual([
+      'jobTitle',
+      'jobFamily',
+      'jobFunction',
+    ])
+    expect(t.rows[0]).toMatchObject({ jobFamily: 'Silicon Engineering', jobFunction: 'Design RTL' })
+    const bare = rows.map((e) => ({ ...e, jobFamily: null, jobFunction: null }))
+    const none = buildDrillTable(drillSpec({ kind: 'employees', title: 'No jobs', rows: bare }), ctx)
+    expect(none.columns.map((c) => c.key)).not.toContain('jobFamily')
+    expect(none.columns.map((c) => c.key)).not.toContain('jobFunction')
+    // A view's own column with the same key takes the standard one's place.
+    const extra = buildDrillTable(
+      drillSpec({
+        kind: 'employees',
+        title: 'Extra',
+        rows,
+        extra: {
+          columns: [{ key: 'jobFamily', label: 'Job family' }],
+          values: (e) => ({ jobFamily: e.jobFamily }),
+        },
+      }),
+      ctx,
+    )
+    expect(extra.columns.filter((c) => c.key === 'jobFamily')).toHaveLength(1)
+  })
+
   it('every record kind renders without throwing', () => {
     for (const kind of DATASET_KEYS) {
       const rows = (data[kind] as unknown[]).slice(0, 25)

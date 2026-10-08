@@ -916,6 +916,8 @@ export const metrics: MetricDef[] = defineMetrics('recruiting', [
   {
     id: RM.declineReasons,
     name: 'Offer decline reasons',
+    // People stats > Special analyses, Offer declines leads with the same reasons (docs/ANALYSES.md, 3.4).
+    views: ['hrbp'],
     definition:
       'The rejection reason recorded on applications with status Declined, for offers declined in the period.',
     formula: 'declined offers in the period by recorded reason; share = reason ÷ declined offers',

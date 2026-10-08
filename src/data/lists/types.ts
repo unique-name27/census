@@ -8,8 +8,8 @@ import type { FieldRef } from '../quality/fieldRef'
 export type ListId =
   | 'businessUnit'
   | 'department'
-  | 'jobFunction'
   | 'jobFamily'
+  | 'jobFunction'
   | 'level'
   | 'location'
   | 'costCenter'
@@ -19,6 +19,11 @@ export type ListId =
   | 'leaveReason'
   | 'learningCategory'
   | 'surveyProgram'
+  | 'university'
+  | 'degreeLevel'
+  | 'fieldOfStudy'
+  | 'offerDeclineReason'
+  | 'chipStage'
 
 /**
  * - org: your company's own list (org units, jobs, sites, cost centers). Built from the sample
@@ -41,6 +46,11 @@ export interface ListAttrDef {
   builtInFixed?: boolean
   /** Worked out by Census (a level's track); never edited. */
   derived?: boolean
+  /**
+   * The number or view that reads it, in one plain sentence ("Engineering by stage on People stats
+   * reads it."). Without it the attribute is for reference only.
+   */
+  readBy?: string
 }
 
 export interface ListDef {

@@ -23,11 +23,14 @@ export function validateMapping(m: ReferenceMapping | NewReferenceMapping): stri
       if (blank(m.to)) return 'Choose a business unit.'
       if (m.from != null && m.from === m.to) return 'The department is already under that business unit.'
       return null
-    case 'move-family':
-      if (blank(m.jobFamily)) return 'Choose a job family.'
-      if (blank(m.to)) return 'Choose a job function.'
-      if (m.from != null && m.from === m.to) return 'The job family is already under that function.'
+    case 'move-function':
+      if (blank(m.jobFunction)) return 'Choose a job function.'
+      if (blank(m.to)) return 'Choose a job family.'
+      if (m.from != null && m.from === m.to) return 'The job function is already under that family.'
       return null
+    case 'move-family':
+      // Legacy (before job families held job functions): valid as saved.
+      return blank(m.jobFamily) || blank(m.to) ? 'This mapping is incomplete.' : null
     case 'merge':
     case 'rename': {
       if (!parseFieldRef(m.ref)) return `${m.ref} is not a field Census knows.`
@@ -49,6 +52,8 @@ export function targetRefs(m: ReferenceMapping): FieldRef[] {
   switch (m.kind) {
     case 'move-department':
       return ['employees.businessUnit', 'requisitions.businessUnit', 'hiringPlan.businessUnit']
+    case 'move-function':
+      return ['employees.jobFamily']
     case 'move-family':
       return ['employees.jobFunction']
     default:
@@ -113,7 +118,14 @@ function applyOne(w: Working, m: ReferenceMapping): number {
       write('hiringPlan', 'businessUnit', test, m.to)
       return count()
     }
+    case 'move-function': {
+      const test = (r: Row) =>
+        r.jobFunction === m.jobFunction && (m.from == null || (r.jobFamily ?? null) === m.from)
+      write('employees', 'jobFamily', test, m.to)
+      return count()
+    }
     case 'move-family': {
+      // Legacy, applied exactly as saved: the transform names fields, and the fields kept their keys.
       const test = (r: Row) =>
         r.jobFamily === m.jobFamily && (m.from == null || (r.jobFunction ?? null) === m.from)
       write('employees', 'jobFunction', test, m.to)

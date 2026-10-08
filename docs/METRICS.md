@@ -41,6 +41,10 @@ source of truth for:
     - first-year window (365 days)
     - what counts as regretted (voluntary and flagged regrettable)
     - materiality floor for coloring changes
+    - Quality of hire (Special analyses): weights of the first review and of staying a year (50% each); retention window (12 months); regretted exits in the second year count (on); reductions in force left out (on); hire window (24 months); first full review at least 180 days after hire and within 24 months; scoring on the 1 to 5 scale or as a percentile within the cycle; smallest university shown (10) and smallest degree and field cell (10), never below the anonymity minimum; interval (90%); smallest mix cell for the expected score (10); gap worth a finding (5 points). Education recorded has a target (at least 80%) that its readout rule uses
+    - Level pyramid (Special analyses): size against the level below, tolerance (25%); readout bulge gap (10 pts), smallest level for a bulge (20), thin against the level above (50%), senior share above the company for a top-heavy unit (8 pts), smallest business unit (50)
+    - Engineering by stage (Special analyses): count interns with employees (off); planned starts window (6 months, 1 to 18); count contractors in ratios (on); a reference per ratio, verification per RTL designer 1.5, the other four 0 (none); readout below reference by (15% of the reference), concentrated at one site (40%), contractor-heavy stage (15%), not mapped share (5%), site attrition above the company by (3 pts). A group under the anonymity minimum is never flagged
+    - Offer declines (Special analyses): offers to show a recruiter or hiring manager (10, never below the anonymity minimum); offers in a location and level cell for the expected rate (5); readout rise to flag (10 pts), gap to flag (10 pts), days to decide before an offer counts as slow (7 days), fewest resolved offers (20); gap in the range to flag a location (0.15)
   - **Recruiting:**
     - aging multipliers for "lacks a next step" (1.5× / 2.5× the stage norm)
     - decision wait (2 / 5 days) and offer wait (5 / 10 days)

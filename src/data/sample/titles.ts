@@ -79,7 +79,7 @@ export function assignIcRole(p: Person, spec: DeptSpec, level: IcLevel, rng: Rng
   const { track, level: l } = roleFor(spec, level, rng)
   p.level = l
   p.role = track.role
-  p.family = track.family ?? spec.name
+  p.marketKey = track.marketKey ?? spec.name
   p.title = titleFor(track, l)
 }
 

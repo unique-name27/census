@@ -13,7 +13,7 @@ import { errorMessage, logDevError } from '@/app/devlog'
 import { DATASET_KEYS, DATASETS } from '@/data/schema'
 import { recordSince } from '@/lib/timing'
 import { ACTION_OWNER_ROLES, type ViewDef } from '@/views/types'
-import { QUERY_DATASETS, queryDataset } from './allowlist'
+import { type FieldAccess, QUERY_DATASETS, queryDataset, shownFields } from './allowlist'
 import { MODE_CHANGED, modeMoved } from './app'
 import { ReleaseAudit } from './audit'
 import type { TokenMap } from './privacy'
@@ -26,7 +26,7 @@ import { findMetrics } from './tools/metrics'
 import { explainQuality } from './tools/quality'
 import { DATE_PARTS, MEASURE_OPS, OPS, queryRecords } from './tools/query'
 import type { ToolOutput, ToolRuntime } from './tools/shared'
-import { COMPARE_BY, compareGroups, viewSummary } from './tools/summary'
+import { COMPARE_BY, compareGroups, SUMMARY_TABS, viewSummary } from './tools/summary'
 import type { AnyToolName, ScreenToolName, ToolEnv, ToolName } from './types'
 
 /** The tools that compute numbers (the Developer page's Ask tools console runs these). */
@@ -97,8 +97,15 @@ const FILTERS_SCHEMA = {
   additionalProperties: false,
 } as const
 
-const fieldHelp = (datasets: typeof QUERY_DATASETS) =>
-  datasets.map((d) => `${d.key}: ${d.fields.map((f) => f.name).join(', ')}`).join('\n')
+const fieldHelp = (datasets: typeof QUERY_DATASETS, access?: FieldAccess) =>
+  datasets
+    .map(
+      (d) =>
+        `${d.key}: ${shownFields(d, access)
+          .map((f) => f.name)
+          .join(', ')}`,
+    )
+    .join('\n')
 const queryFieldHelp = fieldHelp(QUERY_DATASETS)
 
 /** query_records' description, over the datasets a mode lets Ask read. */
@@ -137,6 +144,12 @@ export const TOOL_DEFINITIONS: BetaTool[] = [
       type: 'object',
       properties: {
         view: { type: 'string', enum: VIEW_KEYS_WITH_DATA, description: 'The view key.' },
+        tab: {
+          type: 'string',
+          enum: SUMMARY_TABS,
+          description:
+            'People stats (view hrbp) only: one special analysis instead of the view, "analyses:quality" (quality of hire by education), "analyses:declines" (why offers are declined), "analyses:stages" (engineering by chip development stage) or "analyses:pyramid" (workforce pyramid by level). Returns that analysis’s key figures and findings as its tab shows them, plus any aggregate tables it offers (the pyramid: headcount, growth and the 12-month flow by level).',
+        },
         filters: FILTERS_SCHEMA,
       },
       required: ['view'],
@@ -346,7 +359,7 @@ function dataToolsFor(access: ModeAccess | null | undefined): BetaTool[] {
       case 'query_records':
         return {
           ...rest,
-          description: queryDescription(fieldHelp(datasets)),
+          description: queryDescription(fieldHelp(datasets, access)),
           input_schema: withEnum(
             t.input_schema,
             'dataset',

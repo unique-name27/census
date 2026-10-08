@@ -15,7 +15,7 @@
  */
 import type { Workbook } from 'exceljs'
 import type PptxGenJS from 'pptxgenjs'
-import type { ExportMeta, RegisteredFigure } from '@/charts/types'
+import type { ExportMeta, ExportSection, RegisteredFigure } from '@/charts/types'
 import { type DataStandard, STANDARD_LABEL, TIER_LABEL } from '@/data/quality/tier'
 import { fmt } from '@/lib/format'
 import { cellFormat, columnAlign, columnFormat, sampleRow, sampleValue, visibleColumns } from './columns'
@@ -65,16 +65,80 @@ export function viewEntries(figures: ViewFigures): ViewEntry[] {
   return figures.flatMap((group) => group.figures.map((figure) => ({ figure, group })))
 }
 
-/** Sheet name before sanitizing: the figure title, prefixed with its tab label in a whole-view export. */
-export function entrySheetName(e: ViewEntry): string {
+/**
+ * A figure title without its section's name in front, for a sheet name that already says it:
+ * "Quality of hire by university" in Quality of hire is "By university".
+ */
+export function sectionTitle(title: string, section: Pick<ExportSection, 'label'>): string {
+  const lead = `${section.label.toLowerCase()} `
+  if (!title.toLowerCase().startsWith(lead)) return title
+  const rest = title.slice(lead.length).trim()
+  return rest ? rest.charAt(0).toUpperCase() + rest.slice(1) : title
+}
+
+/**
+ * Sheet name before sanitizing: the figure title, prefixed with its tab label in a whole-view
+ * export. A figure in a section of a tab (Special analyses: one per analysis) starts with its
+ * number on the Summary (`n`), so its sheets never need "(2)" however Excel's 31 characters cut
+ * them, then the section's short name in a whole-view export: "23 Quality · By university".
+ */
+export function entrySheetName(e: ViewEntry, n?: number): string {
+  const s = e.figure.section
+  if (s) {
+    const name = `${e.group ? `${s.short} · ` : ''}${sectionTitle(e.figure.title, s)}`
+    return n != null ? `${n} ${name}` : name
+  }
   return e.group ? `${e.group.label} · ${e.figure.title}` : e.figure.title
 }
 
-/** The export meta for one entry: a grouped figure names its own tab. */
-const entryMeta = (meta: ExportMeta, e: ViewEntry): ExportMeta =>
-  e.group ? { ...meta, tab: e.group.label } : meta
+/**
+ * The meta of a section's figures: the tab line names it, and its own window replaces the period.
+ * Applying it twice changes nothing.
+ */
+export function withSection(meta: ExportMeta, s: ExportSection, tab = meta.tab): ExportMeta {
+  const named = tab === s.label || !!tab?.endsWith(` · ${s.label}`)
+  return {
+    ...meta,
+    tab: named ? tab : [tab, s.label].filter(Boolean).join(' · '),
+    ...(s.window ? { window: s.window } : {}),
+  }
+}
+
+/** The export meta for one entry: a grouped figure names its own tab, a section figure its section. */
+export function entryMeta(meta: ExportMeta, e: ViewEntry): ExportMeta {
+  const tab = e.group ? e.group.label : meta.tab
+  const s = e.figure.section
+  if (s) return withSection(meta, s, tab)
+  return e.group ? { ...meta, tab } : meta
+}
+
+/** The one section every figure of a one-tab export sits in (the analysis on screen), or null. */
+export function onlySection(entries: readonly ViewEntry[]): ExportSection | null {
+  const first = entries[0]?.figure.section
+  if (!first || entries.some((e) => e.group || e.figure.section?.key !== first.key)) return null
+  return first
+}
+
+/**
+ * The meta of the whole file. One tab whose figures all sit in one section names it in the
+ * title, file name and window: "People stats · Special analyses · Quality of hire",
+ * census-people-stats-special-analyses-quality-of-hire-2026-09-30.
+ */
+export function exportMeta(meta: ExportMeta, entries: readonly ViewEntry[]): ExportMeta {
+  const s = onlySection(entries)
+  return s ? withSection(meta, s) : meta
+}
 
 const viewStem = (meta: ExportMeta) => fileStem(meta, meta.tab ?? '')
+
+/** The Summary's heading over a tab's figures, or a section's: "Special analyses · Quality of hire · Hires …". */
+const headingOf = (e: ViewEntry): string | null => {
+  const s = e.figure.section
+  const tab = e.group?.label ?? ''
+  if (!s) return tab || null
+  return [tab, s.label, s.window].filter(Boolean).join(' · ')
+}
+const headingKey = (e: ViewEntry) => `${e.group?.key ?? ''}|${e.figure.section?.key ?? ''}`
 
 /**
  * Chart images for view exports, by figure id: each figure's SVG rasterized at 2x in the light
@@ -184,12 +248,17 @@ function writeSummary(
   })
   const colOf = (head: string) => listCols.findIndex((c) => c.head === head) + 1
   let row = r
-  entries.forEach(({ figure: f, group }, i) => {
+  // A single section's export names it in the title already: no heading row then.
+  const oneSection = !!onlySection(entries)
+  entries.forEach((e, i) => {
+    const f = e.figure
     row++
-    // In a whole-view export, each tab's figures sit under a heading row with the tab label.
-    if (group && group !== entries[i - 1]?.group) {
+    // In a whole-view export, each tab's figures sit under a heading row with the tab label, and
+    // a tab with sections (Special analyses) heads each section with its name and window.
+    const heading = oneSection ? null : headingOf(e)
+    if (heading && (i === 0 || headingKey(e) !== headingKey(entries[i - 1]))) {
       const g = ws.getCell(row, 2)
-      g.value = group.label
+      g.value = heading
       g.font = { size: 10, bold: true, color: { argb: XL.ink } }
       g.alignment = { vertical: 'bottom' }
       ws.getRow(row).height = 20
@@ -234,12 +303,13 @@ async function exportImages(
 /** Build (without downloading) the view workbook: Summary plus a sheet per figure. */
 export async function buildViewWorkbook(
   figures: ViewFigures,
-  meta: ExportMeta,
+  given: ExportMeta,
   opts: ViewExportOptions & { images?: boolean },
 ): Promise<Workbook> {
   const entries = viewEntries(figures)
+  const meta = exportMeta(given, entries)
   const wb = await newWorkbook(meta, viewLine(meta) || 'Census')
-  const names = uniqueSheetNames(['Summary', ...entries.map(entrySheetName)])
+  const names = uniqueSheetNames(['Summary', ...entries.map((e, i) => entrySheetName(e, i + 1))])
   wb.addWorksheet(names[0])
   const images = await exportImages(
     entries.map((e) => e.figure),
@@ -288,7 +358,7 @@ export async function exportViewWorkbook(
   opts: ViewExportOptions & { images?: boolean },
 ): Promise<void> {
   const wb = await buildViewWorkbook(figures, meta, opts)
-  await saveWorkbook(wb, opts.fileName ?? viewStem(meta))
+  await saveWorkbook(wb, opts.fileName ?? viewStem(exportMeta(meta, viewEntries(figures))))
 }
 
 /* ───────── Deck ───────── */
@@ -628,10 +698,11 @@ function withheldBody(slide: Slide, f: RegisteredFigure, top: number) {
  */
 export async function exportViewDeck(
   figures: ViewFigures,
-  meta: ExportMeta,
+  given: ExportMeta,
   opts: ViewExportOptions,
 ): Promise<void> {
   const entries = viewEntries(figures)
+  const meta = exportMeta(given, entries)
   const [{ default: Pptx }, images] = await Promise.all([
     import('pptxgenjs'),
     exportImages(

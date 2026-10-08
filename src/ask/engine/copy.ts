@@ -4,6 +4,7 @@
  * view on screen.
  */
 import type { RouteView } from '@/data/store'
+import { type AnalysisKey, parseAnalysesTab } from '@/views/hrbp/analyses/tab'
 
 export const ASK_INTRO =
   'Ask a question about your people data. Census works out the numbers and links them to their records.'
@@ -111,6 +112,28 @@ const SUGGESTIONS: Record<RouteView, readonly string[]> = {
   ],
 }
 
-/** Four suggested questions for the view on screen. */
-export const suggestionsFor = (view: RouteView): readonly string[] =>
-  SUGGESTIONS[view] ?? SUGGESTIONS.scorecard
+/** People stats > Special analyses (docs/ANALYSES.md, 1.8): one question per analysis, in picker order. */
+const ANALYSIS_SUGGESTIONS: Record<AnalysisKey, string> = {
+  quality: 'What drives quality of hire here?',
+  declines: 'Why were offers declined last quarter?',
+  stages: 'How many verification engineers do we have per RTL designer?',
+  pyramid: 'Which levels grew fastest in the last year?',
+}
+
+/**
+ * Four suggested questions for the view on screen. On People stats > Special analyses, one per
+ * analysis the mode shows (`shown`), the one on screen first.
+ */
+export function suggestionsFor(
+  view: RouteView,
+  tab?: string | null,
+  shown: (key: AnalysisKey) => boolean = () => true,
+): readonly string[] {
+  const route = view === 'hrbp' ? parseAnalysesTab(tab) : null
+  if (route?.onTab) {
+    const keys = (Object.keys(ANALYSIS_SUGGESTIONS) as AnalysisKey[]).filter(shown)
+    const first = route.key && keys.includes(route.key) ? [route.key] : []
+    return [...first, ...keys.filter((k) => !first.includes(k))].map((k) => ANALYSIS_SUGGESTIONS[k])
+  }
+  return SUGGESTIONS[view] ?? SUGGESTIONS.scorecard
+}

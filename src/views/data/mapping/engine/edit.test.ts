@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { ReferenceMapping } from '@/data/reference'
 import { inferStructure } from '@/data/reference'
-import { JOB_FUNCTIONS } from '@/data/schema'
+import { JOB_FAMILIES } from '@/data/schema'
 import {
   draftMapping,
   EMPTY_DRAFT,
@@ -38,15 +38,16 @@ describe('editOptions', () => {
     ])
   })
 
-  it('offers every business unit and the standard functions plus your own', () => {
+  it('offers every business unit and the standard families plus your own', () => {
     expect(opts.units).toEqual(['Silicon', 'Systems'])
-    expect(opts.functions.slice(0, JOB_FUNCTIONS.length)).toEqual([...JOB_FUNCTIONS])
+    expect(opts.families.slice(0, JOB_FAMILIES.length)).toEqual([...JOB_FAMILIES])
+    expect(opts.families).toContain('Operations')
     expect(
-      opts.families
+      opts.functions
         .find((f) => f.value === 'Firmware')
         ?.under.map((p) => p.under)
         .sort(),
-    ).toEqual(['Engineering', 'Operations'])
+    ).toEqual(['Operations', 'Silicon Engineering'])
   })
 
   it('writes placements as text', () => {
@@ -166,16 +167,16 @@ describe('draftMapping', () => {
     expect(
       draftMapping({
         ...EMPTY_DRAFT,
-        kind: 'move-family',
-        jobFamily: 'Firmware',
+        kind: 'move-function',
+        jobFunction: 'Firmware',
         from: 'Operations',
-        to: 'Engineering',
+        to: 'Silicon Engineering',
       }),
     ).toEqual({
-      kind: 'move-family',
-      jobFamily: 'Firmware',
+      kind: 'move-function',
+      jobFunction: 'Firmware',
       from: 'Operations',
-      to: 'Engineering',
+      to: 'Silicon Engineering',
     })
     expect(
       draftMapping({ ...EMPTY_DRAFT, kind: 'rename', values: ['A', 'B'], to: 'C', scope: 'field' }),

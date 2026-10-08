@@ -515,6 +515,57 @@ const transactionType = firstMatch([
   ],
 ])
 
+/* ───────────── education ───────────── */
+
+/**
+ * Highest degree, to the five degree levels. Doctorates first, then master's, bachelor's and
+ * associate, so "BS, MS" reads as the higher one; diplomas and certificates are Other.
+ */
+export const normalizeDegreeLevel = firstMatch([
+  [words('phd', 'ph d', 'dphil', 'd phil', 'doctorate', 'doctoral', 'doctor of philosophy'), 'PhD'],
+  [
+    words(
+      'ms',
+      'msc',
+      'm sc',
+      'm s',
+      'ma',
+      'me',
+      'm tech',
+      'mtech',
+      'meng',
+      'm eng',
+      'mba',
+      'master',
+      'masters',
+      'graduate',
+      'postgraduate',
+    ),
+    "Master's",
+  ],
+  [
+    words(
+      'bs',
+      'bsc',
+      'b sc',
+      'b s',
+      'ba',
+      'be',
+      'b e',
+      'b tech',
+      'btech',
+      'beng',
+      'b eng',
+      'bachelor',
+      'bachelors',
+      'undergraduate',
+    ),
+    "Bachelor's",
+  ],
+  [words('aa', 'as', 'aas', 'a a', 'a s', 'a a s', 'associate', 'associates'), 'Associate'],
+  [words('diploma', 'certificate', 'high school', 'secondary', 'ged', 'other'), 'Other'],
+])
+
 /* ───────────── talent ───────────── */
 
 const potential = firstMatch([
@@ -884,6 +935,7 @@ const surveyScale = firstMatch([
 export const ENUM_NORMALIZERS: Record<string, Normalizer> = {
   'employees.terminationType': terminationType,
   'employees.employmentType': employmentType,
+  'employees.degreeLevel': normalizeDegreeLevel,
   'jobChanges.changeType': changeType,
   'requisitions.status': reqStatus,
   'requisitions.reqType': reqType,

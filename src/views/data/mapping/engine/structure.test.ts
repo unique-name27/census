@@ -6,10 +6,10 @@ import {
   activeManagerIds,
   BLANK,
   employeesOnly,
-  familyLevelCells,
-  familyOrder,
-  familyRows,
+  functionLevelCells,
+  functionOrder,
   jobDiagram,
+  jobRows,
   levelText,
   locationDiagram,
   locationRows,
@@ -116,18 +116,26 @@ describe('locations', () => {
 })
 
 describe('job architecture', () => {
-  it('runs function to family with families under several functions flagged', () => {
+  it('runs family to function with functions under several families flagged', () => {
     const { spec, parts } = jobDiagram(report, emps)
-    expect(spec.columns).toEqual(['Job function', 'Job family'])
+    expect(spec.columns).toEqual(['Job family', 'Job function'])
+    expect(spec.nodes.filter((n) => n.column === 0).map((n) => n.label)).toEqual([
+      'Silicon Engineering',
+      'Operations',
+      BLANK.jobFamily,
+    ])
     expect(spec.nodes.find((n) => n.id === 'j:Firmware')?.flag).toBe('warning')
-    expect(spec.nodes.find((n) => n.id === 'j:')?.label).toBe(BLANK.jobFamily)
-    expect(parts.get('f:Engineering')?.headcount).toBe(5)
-    expect(parts.get('j:Firmware')?.flag).toMatch(/2 job functions/)
+    expect(spec.nodes.find((n) => n.id === 'j:')?.label).toBe(BLANK.jobFunction)
+    expect(parts.get('f:Silicon Engineering')?.headcount).toBe(5)
+    expect(parts.get('j:Firmware')?.flag).toMatch(/2 job families/)
+    // One of the two links is the minor placement.
+    const minor = [...parts].filter(([id, p]) => id.endsWith('>j:Firmware') && p.flag)
+    expect(minor.map(([, p]) => p.flag)).toEqual(['The job function sits mostly under another family.'])
   })
 
-  it('adds the titles of one family, folding the smallest', () => {
+  it('adds the titles of one function, folding the smallest', () => {
     const { spec } = jobDiagram(report, emps, { value: 'Design Verification' })
-    expect(spec.columns).toEqual(['Job function', 'Job family', 'Job title'])
+    expect(spec.columns).toEqual(['Job family', 'Job function', 'Job title'])
     expect(spec.nodes.filter((n) => n.column === 1).map((n) => n.label)).toEqual(['Design Verification'])
     const titles = spec.nodes.filter((n) => n.column === 2)
     expect(titles.map((n) => n.label).sort()).toEqual(['Engineer', 'VP Silicon'])
@@ -145,21 +153,24 @@ describe('job architecture', () => {
     expect(titles.at(-1)?.label).toMatch(new RegExp(`^${OTHER_TITLES} \\(\\d+\\)$`))
   })
 
-  it('has family and title rows and a level grid in the diagram order', () => {
-    expect(familyOrder(report)[0]).toBe('Design Verification')
-    const fam = familyRows(report, emps)
-    expect(fam.find((r) => r.jobFamily === 'Firmware' && r.jobFunction === 'Operations')?.status).toBe(
-      'Under several functions',
+  it('has job and title rows and a level grid in the diagram order', () => {
+    expect(functionOrder(report)[0]).toBe('Design Verification')
+    const jobs = jobRows(report, emps)
+    expect(Object.keys(jobs[0]).slice(0, 2)).toEqual(['jobFamily', 'jobFunction'])
+    expect(jobs.find((r) => r.jobFunction === 'Firmware' && r.jobFamily === 'Operations')?.status).toBe(
+      'Under several families',
     )
-    expect(fam.find((r) => r.jobFamily === BLANK.jobFamily)?.status).toBe('No job family')
+    expect(jobs.find((r) => r.jobFunction === BLANK.jobFunction)?.status).toBe('No job function')
     const titles = titleRows(report, emps)
     expect(titles.find((t) => t.jobTitle === 'VP Silicon')?.levels).toBe('E1 1')
-    const grid = familyLevelCells(report, emps)
+    const grid = functionLevelCells(report, emps)
     expect(grid.levels).toEqual(['L3', 'L4', 'E1'])
-    expect(grid.families[0]).toBe('Design Verification')
-    expect(grid.cells.find((c) => c.jobFamily === 'Design Verification' && c.level === 'L4')?.rows).toEqual([
-      2,
-    ])
+    expect(grid.functions[0]).toBe('Design Verification')
+    expect(grid.cells.find((c) => c.jobFunction === 'Design Verification' && c.level === 'L4')?.rows).toEqual(
+      [2],
+    )
+    // A function under two families is one row of the grid.
+    expect(grid.cells.find((c) => c.jobFunction === 'Firmware' && c.level === 'L3')?.headcount).toBe(2)
   })
 
   it('writes levels in ladder order', () => {
@@ -171,6 +182,20 @@ describe('job architecture', () => {
 describe('on the sample company', () => {
   const sample = generateSample()
   const r = inferStructure(sample, { asOf: SAMPLE_AS_OF })
+
+  it('draws the six job families, Silicon Engineering first', () => {
+    const { spec } = jobDiagram(r, sample.employees)
+    expect(spec.nodes.filter((n) => n.column === 0).map((n) => n.label)).toEqual([
+      'Silicon Engineering',
+      'Systems & Software Engineering',
+      'Corporate',
+      'Go-to-Market',
+      'Product & Test Operations',
+      'Executive',
+    ])
+    expect(spec.nodes.filter((n) => n.column === 1)).toHaveLength(38)
+    expect(spec.nodes.filter((n) => n.flag)).toEqual([])
+  })
 
   it('every diagram adds up and lays out with finite numbers', () => {
     for (const { spec, parts } of [
@@ -194,7 +219,8 @@ describe('on the sample company', () => {
     const { spec } = orgDiagram(r, sample.employees)
     expect(spec.nodes.filter((n) => n.column === 0)).toHaveLength(6)
     expect(spec.nodes.find((n) => n.id === 'u:Silicon Engineering')?.value).toBe(556)
-    const grid = familyLevelCells(r, sample.employees)
+    const grid = functionLevelCells(r, sample.employees)
     expect(grid.cells.reduce((s, c) => s + c.headcount, 0)).toBe(1450)
+    expect(grid.functions).toHaveLength(38)
   })
 })

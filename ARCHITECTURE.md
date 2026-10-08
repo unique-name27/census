@@ -188,7 +188,12 @@ documented in `src/data/sample/README.md`. Its as-of date is `SAMPLE_AS_OF` = 20
 - `src/data/scope.ts`: `Filters`, `periodWindows()`, `scopeDatasets()`, `buildOrgIndex()`,
   `subtreeIds()`, `isEmployee()`, `isActiveAt()`, `resolveAsOf()`.
 - `src/data/context.tsx`: `useAnalytics(): AnalyticsContext` =
-  `{ asOf, window, prior, filters, scopeLabel, isCompany, data (scoped), all (unscoped), org, sources, isSample, showPay, access }`.
+  `{ asOf, window, prior, filters, scopeLabel, isCompany, data (scoped), all (unscoped), org, sources, isSample, showPay, access, jobs }`.
+  `jobs` is the job architecture (docs/TAXONOMY.md, section 7): a job family is the broad group and contains job
+  functions; `jobs.families`, `jobs.familyOf(fn)`, `jobs.stageOf(fn)`, `jobs.familyFor(e)`, `jobs.source`, and for
+  Engineering by stage `jobs.stageFor(fn)` (saved or proposed chip development stage), `jobs.engineeringOf(family)`
+  and `jobs.engineeringPlace(e)`. `offerDeclineReasons` is the Offer decline reasons list in force (read a declined
+  offer with `readDeclineReason(raw, ctx.offerDeclineReasons)` from `@/data/lists`).
 
 Engines read `ctx.data` for the scoped population and `ctx.all` for company benchmarks. Org filters
 are already applied to `ctx.data`; **period filtering is each engine's job** using `ctx.window` and
@@ -321,13 +326,13 @@ and accept `onSelect(datum)` for click-to-drill. Accessors are property names of
 | `HBars` | horizontal grouped/stacked/100% bars | `y`, `x`, `series?`, `stack?: boolean|'normalize'`, `seriesOrder?`, `format` |
 | `Lines` | trends over time (x = ISO date or `YYYY-MM`) | `x`, `y`, `series?`, `area?`, `emphasize?`, `ref?`, `format`, `yDomain?` |
 | `Histogram` | distribution of a numeric field | `values` or `data`+`value`, `thresholds`, `format`, `band?: [lo,hi]` (shaded healthy zone), `refs?` |
-| `Heatmap` | grid of values | `x`, `y`, `value`, `format`, `scheme: 'sequential'|'diverging'`, `xOrder?`, `yOrder?`, `showValues?`, `domain?` |
+| `Heatmap` | grid of values | `x`, `y`, `value`, `format`, `scheme: 'sequential'|'diverging'`, `xOrder?`, `yOrder?`, `showValues?`, `domain?`, `blankZero?` (0 cells unfilled and unlabelled) |
 | `Scatter` | two measures per entity | `x`, `y`, `r?`, `tone?`, `label?` (labels a few), `xFormat`, `yFormat`, `refX?`, `refY?` |
 | `DotStrip` | one dot per item along a value axis, grouped by row | `x`, `y`, `tone?`, `xFormat`, `ref?` |
 | `RangeBars` | ranges with a marker (salary range, quartiles) | `y`, `min`, `max`, `mid?`, `value?`, `q1?`, `q3?`, `format` |
 | `Sparkline` | tiny trend for tiles and tables | `values`, `width?`, `height?`, `target?` (1px ink-2 rule) |
-| `BulletList` | measures against target, one row each on its own scale (0 to 1.15 x max of value and target) | `data`, `label`, `value`, `target`, `format: (row, v) => string`, `status?: (row) => {tone, label}`, `group?`, `onSelect`, `onSelectLabel` |
-| `TrendGrid` | small multiples, one cell per measure, each on its own y scale, target rule | `series: TrendSeries[]` (`id`, `name`, `values`, `periods?`, `target?`, `format`), `onSelect(s, i)`; export `trendGridRows(series)` with `TREND_GRID_COLUMNS` |
+| `BulletList` | measures against target, one row each on its own scale (0 to 1.15 x max of value and target), or one shared scale for measures in one unit | `data`, `label`, `value`, `target`, `format: (row, v) => string`, `status?: (row) => {tone, label}`, `group?`, `scale?: 'row'\|'shared'`, `onSelect`, `onSelectLabel` |
+| `TrendGrid` | small multiples, one cell per measure, each on its own y scale, target rule | `series: TrendSeries[]` (`id`, `name`, `short?` for a cell too narrow for the name, `values`, `periods?`, `target?`, `format`), `onSelect(s, i)`; export `trendGridRows(series)` with `TREND_GRID_COLUMNS` |
 | `StatusSplit` | one 100% bar of status counts in fixed order (met, watch, missed, no target, not shown) | `counts`, `labels?`, `unit?`, `onSelect(key)` |
 | `Meter` | a ratio against a target | `value` (0-1), `target?`, `tone?` |
 
@@ -369,6 +374,10 @@ note; phones show four tiles and "Show all n"), `Readout` (`findings: Finding[]`
   filters. Test it with `expectFilterTo` (and `expectLeaveOut` for counts that split the scope) from
   `@/drill/testing`. Findings' `filter`, person cards and these actions all apply through `focusScope()`.
 - `useTableFigure({ id, title, subtitle?, note?, columns, rows })` registers a table-only export without rendering.
+- `<FigureSection section={{ key, label, short, window? }}>` (from `@/charts`) marks the figures inside as one part
+  of a tab (People stats > Special analyses: one per analysis). Exports then number and name its sheets
+  ("23 Quality · By university"), head it on the Summary, and state its own window instead of the period; a
+  This tab export of one section names it in the title and file name.
 - Layout: `Span` and `spanClass(span)`; `Section` takes `actions`.
 - `toast(message, { tone?: 'neutral' | 'good' | 'critical', description?, action?: { label, onClick }, timeout? })`.
 - Charts: `PlotChart` + `housePlot` + axis/grid helpers for custom Plot visuals; `Legend`; `toneColor`, `inkOn`,

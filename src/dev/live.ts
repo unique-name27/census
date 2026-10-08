@@ -9,6 +9,7 @@ import { useMode } from '@/access/store'
 import { readKey, readWorkspaceId } from '@/ask/engine/keys'
 import { DEFAULT_MODEL, readModelChoice } from '@/ask/engine/models'
 import { type AnalyticsContext, buildContext } from '@/data/context'
+import { useLists } from '@/data/lists/store'
 import { pickSettings } from '@/data/settings'
 import { useCensus } from '@/data/store'
 import { useQualityLens } from '@/views/data/quality-overview/lens'
@@ -120,6 +121,7 @@ export function freshContext(live: AnalyticsContext): AnalyticsContext {
     quality: live.quality,
     metrics: live.metrics,
     access: mode.mode === 'manager' ? { mode: 'manager', managerId: mode.managerId } : { mode: mode.mode },
+    lists: useLists.getState().state,
   })
 }
 

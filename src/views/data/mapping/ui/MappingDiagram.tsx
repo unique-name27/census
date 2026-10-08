@@ -1,6 +1,6 @@
 /**
- * A column mapping diagram (business unit → department, location → country → region, function →
- * job family → title): thin ink bars sized by active headcount, ribbons in the series blue, and
+ * A column mapping diagram (business unit → department, location → country → region, job family →
+ * job function → title): thin ink bars sized by active headcount, ribbons in the series blue, and
  * the parts that disagree in the warning color with a diamond beside their label. Hover shows
  * what a node or ribbon stands for; a click (or Enter on a focused bar) lists the people.
  */

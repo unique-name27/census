@@ -89,6 +89,8 @@ export interface ColumnsProps<T extends object> extends Omit<ChartBaseProps<T>, 
   tone?: (d: T) => Tone
   /** Per-column status glyph beside the cap (single series only); the bar keeps its color. */
   glyphTone?: (d: T) => Tone
+  /** Muted text under the value in the tooltip (single series only), e.g. "149 offers". */
+  secondary?: (d: T) => string | null | undefined
   /** Value labels on the caps (default: when every label fits). */
   labels?: boolean
   yDomain?: [number, number]
@@ -129,6 +131,7 @@ export function Columns<T extends object>({
   ref: refLine,
   tone,
   glyphTone,
+  secondary,
   labels,
   yDomain,
   height: heightProp,
@@ -446,9 +449,11 @@ export function Columns<T extends object>({
   const tip = (c: Category<T>, part: string | null): TipContent => {
     if (!multi) {
       const v = c.cells[0]?.value ?? null
+      const d = c.cells[0]?.datum
+      const more = d && secondary ? secondary(d) : null
       return {
         title: catTitle(c.key),
-        rows: [{ value: fmt(v, format) }],
+        rows: [{ value: fmt(v, format) }, ...(more ? [{ value: more }] : [])],
         note: v == null ? HIDDEN_NOTE : lockedOf(c, part),
       }
     }

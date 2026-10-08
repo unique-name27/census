@@ -669,10 +669,10 @@ export const metrics: MetricDef[] = defineMetrics('comp', [
     owner: OWNER,
     params: [
       {
-        key: 'minFamily',
-        label: 'Smallest job family ranked',
+        key: 'minFunction',
+        label: 'Smallest job function ranked',
         description:
-          'The job family chart ranks only families with at least this many people with a market median, and the readout raises only those. Smaller families fold into Other.',
+          'The job function chart ranks only functions with at least this many people with a market median, and the readout raises only those. Smaller functions fold into Other.',
         type: 'number',
         default: 10,
         min: 5,
@@ -684,7 +684,7 @@ export const metrics: MetricDef[] = defineMetrics('comp', [
         key: 'jobWatch',
         label: 'Jobs marked from',
         description:
-          'Job family and level pairs this far or further below market are marked in the jobs table.',
+          'Job function and level pairs this far or further below market are marked in the jobs table.',
         type: 'percent',
         default: 0.1,
         min: 0,
@@ -710,20 +710,20 @@ export const metrics: MetricDef[] = defineMetrics('comp', [
     id: M.belowMarket,
     name: 'Below market',
     definition:
-      'A job family whose median market ratio is at or below 1 minus the below-market threshold. When market medians sit above the range midpoints by the range gap or more, the ranges trail the market; otherwise pay sits low in the range.',
+      'A job function whose median market ratio is at or below 1 minus the below-market threshold. When market medians sit above the range midpoints by the range gap or more, the ranges trail the market; otherwise pay sits low in the range.',
     formula: 'median(baseSalary ÷ marketP50) ≤ 1 − threshold',
-    population: `${POP} Only job families ranked on the job family chart.`,
+    population: `${POP} Only job functions ranked on the job function chart.`,
     window: SNAPSHOT,
     unit: 'ratio',
     goodDirection: 'up',
-    uses: refs(MARKET, MARKET_VS_MID, 'employees.jobFamily', BY.department),
+    uses: refs(MARKET, MARKET_VS_MID, 'employees.jobFunction', BY.department),
     owner: OWNER,
     params: [
       {
         key: 'threshold',
         label: 'Below market from',
         description:
-          'A job family this far or further below market is raised in the readout and marked on the market charts.',
+          'A job function this far or further below market is raised in the readout and marked on the market charts.',
         type: 'percent',
         default: 0.05,
         min: 0,

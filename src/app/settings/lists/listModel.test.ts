@@ -7,14 +7,17 @@ import {
   offListItems,
   offListNote,
   originText,
+  parentFills,
   pausedNote,
   pauseText,
   pickerItems,
   proposals,
+  proposedStageText,
   soleField,
   statusText,
   valueRows,
   valuesText,
+  withProposedStages,
 } from './listModel'
 
 const kinds = (uploads: DatasetKey[] = []): SourceKinds =>
@@ -43,7 +46,7 @@ describe('Official lists view model', () => {
     // Requisitions are still the sample: their "DV verif" is in the data but not on the list.
     expect(dept).toMatchObject({ official: false, values: 2, retired: 0, notOnList: 1, notOnListRows: 1 })
     expect(valuesText({ values: 24, retired: 2 })).toBe('24 values, 2 retired')
-    expect(items.map((i) => i.id)).toHaveLength(13)
+    expect(items.map((i) => i.id)).toHaveLength(18)
   })
 
   it('builds table rows with parent, rows in data, status and a department’s cost centers', () => {
@@ -182,5 +185,73 @@ describe('the Rows count', () => {
     expect(pausedNote(def, 'sample')).toBe(
       'The departments list stays proposed: it checks nothing in the data loaded now until you keep checking against it.',
     )
+  })
+})
+
+describe('Fill parents from the data', () => {
+  it('proposes the family most rows name for each function with none, and nothing where no family has over half', () => {
+    const d = emptyDatasets()
+    d.employees = [
+      emp(1, { jobFamily: 'Silicon Engineering', jobFunction: 'Design RTL' }),
+      emp(2, { jobFamily: 'Silicon Engineering', jobFunction: 'Design RTL' }),
+      emp(3, { jobFamily: 'Corporate', jobFunction: 'Design RTL' }),
+      emp(4, { jobFamily: 'Corporate', jobFunction: 'Legal' }),
+      emp(5, { jobFamily: 'Go-to-Market', jobFunction: 'Legal' }),
+      emp(6, { jobFamily: 'Corporate', jobFunction: 'Facilities' }),
+    ]
+    const own = kinds(['employees'])
+    const lists = effectiveLists(EMPTY_LISTS, d, own)
+    // A list saved without parents (as a version 1 list of job functions is after the migration).
+    const made = applyEdit(EMPTY_LISTS, lists, { kind: 'make-official', list: 'jobFunction' })
+    if (!made.ok) throw new Error(made.error)
+    const state = {
+      ...made.state,
+      lists: {
+        jobFunction: {
+          ...made.state.lists.jobFunction!,
+          values: made.state.lists.jobFunction!.values.map((v) =>
+            v.value === 'Facilities' ? v : { ...v, parent: null },
+          ),
+        },
+      },
+    }
+    const after = effectiveLists(state, d, own)
+    expect(parentFills(after.jobFunction, d)).toEqual([
+      { value: 'Design RTL', parent: 'Silicon Engineering' },
+    ])
+    // A list with no parent offers nothing.
+    expect(parentFills(after.jobFamily, d)).toEqual([])
+  })
+})
+
+describe('Job functions with a proposed stage', () => {
+  const row = (value: string, stage: string | null, retired = false) =>
+    ({
+      value,
+      parent: 'Silicon Engineering',
+      rows: 3,
+      status: 'Active',
+      'attr:stage': stage,
+      item: { value, retired },
+    }) as unknown as Parameters<typeof withProposedStages>[0][number]
+
+  it('shows the proposed stage, marked Proposed, only where none is saved', () => {
+    const stageFor = (fn: string) =>
+      fn === 'Packaging'
+        ? { stage: 'signoff' as const, source: 'proposed' }
+        : fn === 'Design RTL'
+          ? { stage: 'rtl' as const, source: 'saved' }
+          : null
+    const out = withProposedStages(
+      [row('Packaging', null), row('Design RTL', 'RTL design'), row('Widgets', null), row('Old', null, true)],
+      stageFor,
+    )
+    expect(out.map((r) => r['attr:stage'])).toEqual([
+      'Proposed: Signoff and tape-out',
+      'RTL design',
+      null,
+      null,
+    ])
+    expect(proposedStageText('verification')).toBe('Proposed: Design verification')
   })
 })

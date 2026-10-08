@@ -9,6 +9,7 @@ import {
   DEVELOPER_ONLY,
   type Decision,
   decide,
+  MANAGER_HIDDEN_FIGURE_PREFIXES,
   MANAGER_HIDDEN_FIGURES,
   MANAGER_HIDDEN_ITEM_PREFIXES,
   MANAGER_HIDDEN_METRIC_PREFIXES,
@@ -168,6 +169,7 @@ export function accessMatrix(inv: AccessInventory): MatrixRow[] {
   for (const s of inv.shortcuts ?? SHORTCUT_KEYS) add('shortcut', `shortcut:${s}`)
   for (const o of OVERLAY_KEYS) add('overlay', `overlay:${o}`)
   for (const f of MANAGER_HIDDEN_FIGURES) add('figure', `figure:${f}`)
+  for (const p of MANAGER_HIDDEN_FIGURE_PREFIXES) add('figure', `figure:${p}*`)
   for (const f of inv.figures ?? []) add('figure', `figure:${f.id}`, { view: f.view, tab: f.tab })
   for (const m of MANAGER_HIDDEN_METRICS) add('metric', `metric:${m}`)
   for (const p of MANAGER_HIDDEN_METRIC_PREFIXES) add('metric', `metric:${p}*`)

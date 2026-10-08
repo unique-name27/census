@@ -148,6 +148,7 @@ export const NOT_STORAGE_NAMES: readonly { name: string; what: string }[] = [
   { name: 'census:context', what: 'User Timing: the analytics context' },
   { name: 'census:quality', what: 'User Timing: the quality index' },
   { name: 'census:headline', what: 'User Timing: folder-tab headlines' },
+  { name: 'census:analysis', what: 'User Timing: People stats special analyses' },
   { name: 'census:actions', what: 'User Timing: Action center items (also a storage key)' },
   { name: 'census:drill', what: 'User Timing: records panel tables' },
   { name: 'census:ask', what: 'User Timing: Ask tools' },

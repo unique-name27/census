@@ -46,7 +46,9 @@ export function Section({
       className={cx('mt-10 scroll-mt-4 first:mt-0 has-[>div:empty]:hidden', className)}
     >
       <header className="mb-3 flex flex-wrap items-end gap-x-6 gap-y-2">
-        <div className="min-w-0 flex-1">
+        {/* The heading keeps at least 288px: in a narrower area the actions wrap under it instead
+            of squeezing the title and dek into a thin column. */}
+        <div className="min-w-0 grow basis-72">
           <h2 className="cut-head text-section font-semibold">{title}</h2>
           {dek && <p className="mt-1 max-w-[70ch] text-small text-ink-2">{dek}</p>}
         </div>

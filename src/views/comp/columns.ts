@@ -182,11 +182,11 @@ export const marketColumns = (groupLabel: string): Column<MarketRow>[] => [
   { key: 'gap', label: 'Gap to market', format: 'pct' },
   { key: 'marketVsMid', label: 'Market median ÷ midpoint', format: 'ratio' },
 ]
-export const MARKET_BY_FAMILY = marketColumns('Job family')
+export const MARKET_BY_FUNCTION = marketColumns('Job function')
 export const MARKET_BY_LOCATION = marketColumns('Location')
 export const MARKET_BY_LEVEL = marketColumns('Level')
 export const JOBS_COLUMNS: Column<JobMarketRow>[] = [
-  { key: 'jobFamily', label: 'Job family', format: 'text' },
+  { key: 'job', label: 'Job function', format: 'text' },
   { key: 'level', label: 'Level', format: 'text' },
   { key: 'n', label: 'People', format: 'int' },
   { key: 'median', label: 'Median market ratio', format: 'ratio' },

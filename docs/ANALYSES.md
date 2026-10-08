@@ -172,6 +172,16 @@ analyses set a higher minimum for a comparison to be shown (10 scored hires per 
 resolved offers per recruiter or hiring manager); those settings can be lowered to the anonymity
 minimum and no further (`min` on the param).
 
+**Complementary suppression.** A breakdown's rows add up to the scope, whose numbers the KPI strip
+shows, so the hidden rows could be worked out together from the rest. When the hidden rows of a
+cut (or of a heatmap row or column, with the people in no cell) hold some people but fewer than the
+minimum between them, another row is hidden too: an "Other" row first takes the smallest values
+shown until it reaches the minimum; otherwise the smallest row shown that no finding names is
+hidden, keeping its name and count. Planted stories that would give a small group away this way
+move: with Silicon Engineering in scope, the computer science bachelor's cell (17 hires) is hidden
+because the row's 3 master's hires would be its remainder, and in Offer declines L1 to L4 is hidden
+beside the single M1 to E3 offer.
+
 **Not recorded.** A blank grouping value is its own row, "Not recorded", drawn last in
 `--deemph`, never folded into Other, so readers see how much the grouping leaves out.
 
@@ -214,7 +224,7 @@ tab('analyses', 'Special analyses', limited(
 | Analysis | Developer | HR | Manager |
 |---|---|---|---|
 | Quality of hire | Shown | Shown | Hidden: prefix `hrbp.quality.` on `MANAGER_HIDDEN_METRIC_PREFIXES`. Education with first ratings is an HR and TA analysis, and a manager's org makes university groups small enough to point at people. |
-| Why offers are declined | Shown | Shown | Hidden: prefix `hrbp.declines.` (offer analytics are TA's, as Recruiting > Sources & offers and `recruiting.offers.declineReasons` already are). Figure `hrbp-declines-candidate-survey` goes on `MANAGER_HIDDEN_FIGURES` too (a survey). |
+| Why offers are declined | Shown | Shown | Hidden: prefix `hrbp.declines.` (offer analytics are TA's, as Recruiting > Sources & offers and `recruiting.offers.declineReasons` already are). Figure `hrbp-declines-candidate-survey` goes on `MANAGER_HIDDEN_FIGURES` too (a survey). Both analyses' figure ids are hidden by prefix (`MANAGER_HIDDEN_FIGURE_PREFIXES`), and Ask's `query_records` does not read their fields (education; competing offer, offer revised, position in range; decline reasons). |
 | Engineering by stage | Shown | Shown | Limited: exact id `hrbp.stages.planned` hidden; the hiring-in-flight figure and the KPI strip leave the planned series out (the engine asks `ctx.access.can(S.metric('hrbp.stages.planned'))`, as Recruiting does with `showDeclineReasons`). Company comparisons stay as aggregates. |
 | Level pyramid | Shown | Shown | Shown, inside the org; "Compare with: Company" draws the company's shape scaled to the org (an aggregate, never records). |
 
@@ -525,9 +535,11 @@ score**: rows sort by hire date. Education groups are not filter dimensions, so 
      engineering." Action: "Check that role scope and onboarding for computer science graduates
      in design and verification roles are clear."
 4. **Education coverage**: education recorded below `coverageTarget`, naming the business unit
-   with the lowest coverage (decomposed). Severity `info`.
-   - "Education is recorded for 88% of hires in the cohort; Go-to-Market is at 70%." Action: "Ask
-     HR operations to add university and degree from offer paperwork for new hires."
+   with the lowest coverage (units of 10 or more hires), or every unit that rounds to that same
+   share. Severity `info`; Focus on keeps the units named.
+   - "Education is recorded for 88% of hires in the cohort; Corporate and Go-to-Market are at
+     70%." Action: "Ask HR operations to add university and degree from offer paperwork for new
+     hires."
 
 Copy rules: one sentence with the number, up to two of detail, one neutral action. Name no hire
 in a quality of hire finding (`people` stays empty): the finding is about groups.
@@ -586,7 +598,8 @@ Targets, measured on the cohort with the defaults (assert with tolerances):
 6. Bachelor's in Computer Science placed in Silicon Engineering design and verification roles stay
    a year at most 65%; company-wide that cell is at least 6 points below Bachelor's in Electrical
    Engineering, and with Silicon Engineering in scope at least 12 points below (cells of 10 or
-   more). Finding 3 fires in both scopes.
+   more). Finding 3 fires in both scopes; in Silicon Engineering the computer science cell is
+   withheld by complementary suppression (1.6), so it names Bachelor's in Electrical Engineering.
 7. Education recorded for 88% (±2) of the cohort; Go-to-Market and Corporate 65 to 75%; everyone
    else at least 93%. Finding 4 fires naming Go-to-Market or Corporate.
 8. Source: no plant; the test asserts every value is finite or null.
@@ -993,8 +1006,8 @@ on its commonest job title; the first rule that matches wins, in this order:
 
 Nothing matched: blank (Not mapped).
 
-The stages are a **fixed** official list "Chip development stages" (labels editable, order fixed,
-values can be retired), like Levels.
+The stages are a **fixed** official list "Chip development stages" (order fixed, values can be
+retired), like Levels. Census reads the built-in labels; a label edited on the list is not read.
 
 ### 4.4 Definitions
 
@@ -1017,7 +1030,9 @@ values can be retired), like Levels.
   - planned, no req yet: hiring plan starts in the next `planMonths` (6) whose line has no req ID
     and is not matched to an open req by Onboarding's plan matching.
 - **Ratio** of stage A to stage B = people in A ÷ people in B, employees plus contractors when
-  `ratioContractors` is on (default on), heads, never FTE (references are head counts).
+  `ratioContractors` is on (default off, as industry references count employees; the finding, the
+  tile note and the table still give the ratio with contractors), heads, never FTE (references
+  are head counts).
   Ratios shown, each with an editable reference (0 means no reference):
 
 | Ratio | Default reference | Why the default |
@@ -1051,7 +1066,7 @@ Q4 planned starts; contractors are 12% of verification.
 | `hrbp.stages.findings` | Engineering by stage readout | rules in 4.7 | rule |
 
 Settings: on `hrbp.stages.capacity` `countInterns` (boolean, off); on `hrbp.stages.hiring`
-`planMonths` (months, 6, 1 to 18); on `hrbp.stages.ratios` `ratioContractors` (boolean, on) and
+`planMonths` (months, 6, 1 to 18); on `hrbp.stages.ratios` `ratioContractors` (boolean, off) and
 one reference per ratio (`verificationReference` 1.5, `dftReference`, `physicalReference`,
 `postSiliconReference`, `softwareReference`, each number 0 to 10, step 0.05, 0 = none); on
 `hrbp.stages.findings` `belowBy` (percent, 0.15), `concentration` (percent, 0.4),
@@ -1113,9 +1128,12 @@ business unit set **Filter to this**; every other mark opens its records without
 
 **4.6.3 Stage ratios against reference** (`hrbp-stages-ratios`, span 6)
 
-- `BulletList`, one row per ratio (4.4), each on its own scale, tick at the reference, value
+- `BulletList`, one row per ratio (4.4), all on one shared scale (`scale="shared"`, so bar length
+  compares across ratios), tick at the reference, value
   `fmt(v, 'num2')`, status: below the reference by `belowBy` or more → warning "Below reference";
-  within → good "Near reference"; above → default "Above reference"; no reference → "No
+  within → neutral "Near reference" (up to `belowBy` under the reference is not a success state);
+  above → default "Above reference"; no value → "Too few people to compare", or "No one in RTL
+  design in this scope" when nobody is below the line; no reference → "No
   reference" (no tick). `onSelectLabel` opens Metric definitions at the ratio's setting
   (`#data.metrics/...`, hidden link in Manager mode).
 - Drill: a row opens the people in both stages, stage as the first extra column.

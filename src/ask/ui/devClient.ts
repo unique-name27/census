@@ -279,6 +279,19 @@ export function planFor(sent: string, tools: ReadonlySet<string> | null = null):
   const filters = leader ? { filters: { leader } } : {}
   const screen = tools && !tools.has('get_screen') ? { plans: [], off: false } : screenPlans(q, tools)
   const plans: ToolCall[][][] = [...screen.plans]
+  // People stats > Special analyses first: a question about one of them gets its own summary
+  // before the broader topics its words also match (offers, engineers).
+  // Offer declines: why offers were declined, where and when.
+  if (has(q, /declin|turned down|offer acceptance|competing offer|counteroffer/))
+    plans.push([[{ name: 'view_summary', input: { view: 'hrbp', tab: 'analyses:declines', ...filters } }]])
+  // Engineering by stage: capacity, hiring in flight and the stage ratios.
+  if (
+    has(
+      q,
+      /verification|\brtl\b|\bdft\b|tape-?out|signoff|chip (development )?stage|engineers? per|per (rtl )?designer/,
+    )
+  )
+    plans.push([[{ name: 'view_summary', input: { view: 'hrbp', tab: 'analyses:stages', ...filters } }]])
   if (has(q, /attrition|leav|turnover|resign|quit|exit/))
     plans.push([
       [{ name: 'view_summary', input: { view: 'hrbp', ...filters } }],
@@ -302,7 +315,12 @@ export function planFor(sent: string, tools: ReadonlySet<string> | null = null):
     ])
   if (has(q, /compa|\bpay\b|salary|merit|compensation|range/))
     plans.push([[{ name: 'view_summary', input: { view: 'comp', ...filters } }]])
-  if (has(q, /quality|tier|bronze|silver|gold|standard|dataset|official list|mapping|field/))
+  if (
+    has(
+      q,
+      /quality(?! of hire)|tier|bronze|silver|gold|standard|dataset|official list|mapping|field(?! of study)/,
+    )
+  )
     plans.push([[{ name: 'explain_quality', input: {} }]])
   if (has(q, /open item|overdue|action|owner|due /)) plans.push([[{ name: 'open_items', input: {} }]])
   if (has(q, /defin|formula|calculat|what does|mean\b|measure/)) {
@@ -325,6 +343,12 @@ export function planFor(sent: string, tools: ReadonlySet<string> | null = null):
         },
       ],
     ])
+  // People stats > Special analyses > Level pyramid: its tiles, findings and flow by level.
+  if (has(q, /pyramid|\blevels? (grew|shrank|changed)|which levels|level mix|bulge/))
+    plans.push([[{ name: 'view_summary', input: { view: 'hrbp', tab: 'analyses:pyramid', ...filters } }]])
+  // People stats > Special analyses > Quality of hire: its tiles and findings, groups only.
+  if (has(q, /quality of hire|universit|degree|field of study/))
+    plans.push([[{ name: 'view_summary', input: { view: 'hrbp', tab: 'analyses:quality', ...filters } }]])
   if (has(q, /scorecard|target|finding|serious|overall/))
     plans.push([[{ name: 'view_summary', input: { view: 'scorecard', ...filters } }]])
   if (!plans.length)
@@ -426,7 +450,17 @@ function summaryText(v: Json): string[] {
     if (top) out.push(`Most serious finding, from ${md(top.practice)}: ${link(md(top.title), top.ref)}`)
     return out
   }
-  out.push(`**${md(v.label)}** for ${scopeText(v)}:`)
+  // A special analysis names itself and the window its numbers cover, which is not always the period.
+  const w = v.analysis_window
+  out.push(
+    v.analysis
+      ? `**${md(v.label)}, ${md(v.analysis)}** for ${
+          w?.ignores_period
+            ? `${lower(typeof v.scope === 'string' ? v.scope : 'the scope you picked')}, ${md(lower(w.label))}`
+            : scopeText(v)
+        }:`
+      : `**${md(v.label)}** for ${scopeText(v)}:`,
+  )
   const lines = (v.key_figures ?? []).map(figureLine).filter(Boolean).slice(0, 3)
   if (lines.length) out.push(lines.join('\n'))
   const findings: Json[] = (v.findings ?? []).slice(0, 2)
@@ -607,6 +641,13 @@ export interface ToolResult {
   content: string
 }
 
+/** A tool's refusal says what is hidden; Ask answers for the person, not with the tool's instructions. */
+const HIDDEN_IN_MODE = /is not shown in (Manager|this) mode/
+const forReader = (error: unknown): string =>
+  String(error)
+    .replace(/\s*Say so, and do not estimate it\.?$/, '')
+    .replace(/, so Ask does not answer about it\.?$/, ', so I cannot answer about it here.')
+
 /** The scripted answer: what the tools said, with their refs, people and links. */
 export function composeAnswer(results: readonly ToolResult[], opts: { actionsOff?: boolean } = {}): string {
   const parts: string[] = []
@@ -627,8 +668,10 @@ export function composeAnswer(results: readonly ToolResult[], opts: { actionsOff
     if (v?.error) {
       parts.push(
         ACTION_NAMES.includes(r.name)
-          ? `Census did not change the screen: ${md(v.error)}`
-          : `Census could not work this out: ${md(v.error)}`,
+          ? `Census did not change the screen: ${md(forReader(v.error))}`
+          : HIDDEN_IN_MODE.test(v.error)
+            ? md(forReader(v.error))
+            : `Census could not work this out: ${md(forReader(v.error))}`,
       )
       continue
     }

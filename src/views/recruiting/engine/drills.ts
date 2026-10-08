@@ -303,9 +303,12 @@ export interface AppDrillOptions {
   hide?: string[]
 }
 
-/** Applications as a drill: their candidate rows, extra columns, and links to the roster. */
+/**
+ * Applications as a drill: their candidate rows, extra columns, and links to the roster. It reads
+ * only the roster, so People stats > Special analyses passes `{ roster }` for its offers.
+ */
 export function appDrill(
-  b: RecruitingBase,
+  b: Pick<RecruitingBase, 'roster'>,
   apps: readonly App[],
   o: AppDrillOptions,
 ): DrillSpec<'candidates'> | null {

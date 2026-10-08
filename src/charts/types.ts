@@ -76,6 +76,27 @@ export interface RegisteredFigure {
   withheld?: boolean
   /** The metric dictionary entry the figure shows (`Figure`'s `metric`). */
   metric?: string
+  /**
+   * The part of a tab the figure belongs to, when one tab holds several (People stats > Special
+   * analyses: one per analysis). Set by `FigureSection`; exports name it on the sheets and use its
+   * own window.
+   */
+  section?: ExportSection
+}
+
+/** A named part of a tab whose figures export together (`FigureSection` in `@/charts`). */
+export interface ExportSection {
+  /** Stable key, e.g. 'quality'. */
+  key: string
+  /** Its name in titles, meta lines and file names: "Quality of hire". */
+  label: string
+  /** Its name before a sheet name, where Excel allows 31 characters: "Quality". */
+  short: string
+  /**
+   * The window its numbers cover when it is not the period picked ("Hires 1 Oct 2023 to 30 Sep
+   * 2025", "As of 30 Sep 2026"); exports state it instead of the period.
+   */
+  window?: string
 }
 
 /** One KPI tile or readout finding, as the Developer page's contract checks read it. */

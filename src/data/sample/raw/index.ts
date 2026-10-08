@@ -5,7 +5,6 @@
  * `./load` (see `main.tsx`); this barrel is for tests and tools.
  */
 export type { RawExtract } from './extract'
-export { FUNCTION_BY_UNIT, jobFunctionOf, withJobFunction } from './jobFunction'
 export {
   CERTIFIED,
   CONFIRMED,

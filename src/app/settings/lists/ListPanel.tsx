@@ -26,10 +26,12 @@ import { changeNote, undoFromToast } from './actions'
 import {
   checksText,
   intText,
+  listText,
   type OffListItem,
   offListItems,
   offListNote,
   originText,
+  parentFills,
   pauseText,
   plural,
   proposals,
@@ -38,6 +40,7 @@ import {
   type ValueRow,
   valueRows,
   valuesNote,
+  withProposedStages,
 } from './listModel'
 import { ValueEditor } from './ValueEditor'
 
@@ -467,11 +470,14 @@ export function ListPanel({
   const ctx = useAnalytics()
   const def = list.def
   const run = useRun(lists, analysis)
+  const editMany = useLists((s) => s.editMany)
+  const [name] = useYourName()
   const [panel, setPanel] = useState<'add' | 'rebuild' | null>(null)
   const [selected, setSelected] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const ids = useId()
-  const rows = valueRows(list, analysis, lists)
+  const listed = valueRows(list, analysis, lists)
+  const rows = def.id === 'jobFunction' ? withProposedStages(listed, (fn) => ctx.jobs.stageFor(fn)) : listed
   const value = selected ? list.values.find((v) => v.value === selected) : undefined
   const parentDef = def.parent ? listDef(def.parent) : null
   const notInData = analysis.notInData
@@ -508,6 +514,27 @@ export function ListPanel({
     { key: 'rows', label: 'Rows', format: 'int', drill: drillValue },
     { key: 'status', label: 'Status' },
   ]
+
+  // Values with no parent whose rows mostly name one (after job functions gained a family).
+  const fills = parentFills(list, ctx.all)
+  const fillParents = () => {
+    const parent = parentDef?.singular.toLowerCase() ?? 'parent'
+    const r = editMany(
+      fills.map((f) => ({ kind: 'move', list: def.id, value: f.value, parent: f.parent })),
+      lists,
+      `Filled the ${parent} of ${plural(fills.length, def.singular.toLowerCase(), def.label.toLowerCase())} from the data.`,
+      { by: name },
+    )
+    const change = r.change
+    if (!change) {
+      toast(r.rejected[0]?.error ?? 'Nothing was changed.', { tone: 'critical' })
+      return
+    }
+    toast(change.what, {
+      tone: 'good',
+      action: { label: 'Undo', onClick: () => undoFromToast(change.id, name) },
+    })
+  }
 
   const makeOfficial = () =>
     setError(
@@ -589,6 +616,21 @@ export function ListPanel({
           </Button>
         )}
       </div>
+      {fills.length > 0 && (
+        <div className="flex flex-col gap-2 rounded-control bg-sheet-2 px-3.5 py-3">
+          <p className="text-small text-ink">
+            {plural(fills.length, 'value')} {fills.length === 1 ? 'has' : 'have'} no{' '}
+            {parentDef?.singular.toLowerCase()}, and most of {fills.length === 1 ? 'its' : 'their'} rows name
+            one: {listText(fills.slice(0, 3).map((f) => `${f.value} under ${f.parent}`))}
+            {fills.length > 3 ? ` and ${intText(fills.length - 3)} more` : ''}.
+          </p>
+          <div>
+            <Button size="sm" onClick={fillParents}>
+              Fill parents from the data
+            </Button>
+          </div>
+        </div>
+      )}
       {panel === 'add' && (
         <AddForm key={def.id} list={list} lists={lists} analysis={analysis} onDone={() => setPanel(null)} />
       )}

@@ -16,8 +16,9 @@ export interface PersonRow {
   managerId: string
   level: string
   businessUnit: string
-  jobFunction: string
   department: string
+  jobFamily: string
+  jobFunction: string
   location: string
   workerType: string
   hireDate: string
@@ -34,8 +35,9 @@ export const PERSON_COLUMNS: Column<PersonRow>[] = [
   { key: 'managerId', label: 'Manager ID' },
   { key: 'level', label: 'Level' },
   { key: 'businessUnit', label: 'Business unit' },
-  { key: 'jobFunction', label: 'Job function' },
   { key: 'department', label: 'Department' },
+  { key: 'jobFamily', label: 'Job family' },
+  { key: 'jobFunction', label: 'Job function' },
   { key: 'location', label: 'Location' },
   { key: 'workerType', label: 'Worker type' },
   { key: 'hireDate', label: 'Hire date', format: 'date' },
@@ -54,8 +56,9 @@ export function personRow(tree: OrgTree, e: Employee, flags?: readonly Flag[]): 
     managerId: m ?? '',
     level: e.level ?? '',
     businessUnit: e.businessUnit,
-    jobFunction: e.jobFunction ?? '',
     department: e.department,
+    jobFamily: e.jobFamily ?? '',
+    jobFunction: e.jobFunction ?? '',
     location: e.location,
     workerType: e.employmentType ?? '',
     hireDate: e.hireDate,

@@ -32,6 +32,21 @@ describe('peopleSpec', () => {
     expect(spec.extra?.values(spec.rows[1])).toMatchObject({ businessUnit: 'Systems' })
   })
 
+  it('adds job family then job function for a job architecture number', () => {
+    const spec = peopleSpec({
+      title: 'Firmware',
+      asOf: AS_OF,
+      employees: data.employees,
+      rows: [5, 6],
+      focus: 'job',
+    })!
+    expect(spec.extra?.columns.map((c) => c.label)).toEqual(['Job family', 'Job function'])
+    expect(spec.extra?.values(spec.rows[1])).toMatchObject({
+      jobFamily: 'Operations',
+      jobFunction: 'Firmware',
+    })
+  })
+
   it('is null when there is no one to list', () => {
     expect(
       peopleSpec({ title: 'x', asOf: AS_OF, employees: data.employees, rows: [], focus: 'job' }),

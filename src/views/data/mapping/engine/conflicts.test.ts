@@ -90,26 +90,75 @@ describe('orgConflicts', () => {
 describe('jobConflicts', () => {
   const conflicts = jobConflicts(report, data.employees)
 
-  it('flags a family under several functions and people with no family', () => {
-    expect(countByKind(conflicts)).toEqual({ 'family-several-functions': 1, 'people-no-family': 1 })
-    const fam = conflicts.find((c) => c.kind === 'family-several-functions')!
-    expect(fam.text).toBe(
-      'Firmware appears under 2 job functions: Engineering (1 person) and Operations (1 person).',
+  it('flags a function under several families and people with no function', () => {
+    expect(countByKind(conflicts)).toEqual({ 'function-several-families': 1, 'people-no-function': 1 })
+    const fn = conflicts.find((c) => c.kind === 'function-several-families')!
+    expect(fn.text).toBe(
+      'Firmware appears under 2 job families: Operations (1 person) and Silicon Engineering (1 person).',
     )
-    expect(fam.fix).toEqual({ kind: 'move-family', jobFamily: 'Firmware', from: null, to: 'Engineering' })
-    const none = conflicts.find((c) => c.kind === 'people-no-family')!
+    expect(fn.fix).toEqual({ kind: 'move-function', jobFunction: 'Firmware', from: null, to: 'Operations' })
+    expect(fn.fixLabel).toBe('Put it all under Operations')
+    const none = conflicts.find((c) => c.kind === 'people-no-function')!
+    expect(none.text).toBe('1 person has no job function. Fix it in the source system and upload again.')
     expect(none.rows).toEqual([7])
     expect(none.fix).toBeNull()
   })
 
-  it('flags families with no function when the data has none', () => {
+  it('flags functions with no family when the data has none', () => {
+    const d = messyCompany()
+    d.employees = d.employees.map((e) => ({ ...e, jobFamily: null }))
+    const cs = jobConflicts(inferStructure(d, { asOf: AS_OF }), d.employees)
+    const c = cs.find((x) => x.kind === 'function-no-family')!
+    expect(c.text).toBe('2 job functions have no job family (6 people).')
+    expect(c.rows).not.toContain(3)
+    expect(c.fix).toMatchObject({ kind: 'move-function', jobFunction: 'Design Verification', to: '' })
+    expect(c.fixLabel).toBe('Assign a family')
+  })
+
+  it('says nothing about people without a function when Employees has no function column', () => {
     const d = messyCompany()
     d.employees = d.employees.map((e) => ({ ...e, jobFunction: null }))
     const cs = jobConflicts(inferStructure(d, { asOf: AS_OF }), d.employees)
-    const c = cs.find((x) => x.kind === 'family-no-function')!
-    expect(c.text).toBe('2 job families have no job function (6 people).')
-    expect(c.rows).not.toContain(3)
-    expect(c.fix).toMatchObject({ kind: 'move-family', jobFamily: 'Design Verification', to: '' })
+    expect(cs.some((c) => c.kind === 'people-no-function')).toBe(false)
+  })
+
+  it('flags level outliers within a job function', () => {
+    const d = messyCompany()
+    for (let i = 0; i < 12; i++)
+      d.employees.push({
+        ...d.employees[1],
+        employeeId: `R${i}`,
+        jobFunction: 'Design RTL',
+        jobTitle: 'RTL Design Engineer',
+      })
+    d.employees.push({
+      ...d.employees[1],
+      employeeId: 'R99',
+      jobFunction: 'Design RTL',
+      jobTitle: 'Chief RTL Design Engineer',
+      level: 'L6',
+    })
+    const c = jobConflicts(inferStructure(d, { asOf: AS_OF }), d.employees).find(
+      (x) => x.kind === 'title-level-outlier',
+    )
+    expect(c?.text).toBe(
+      'Chief RTL Design Engineer (Design RTL) sits at L6, outside the function’s usual L3 to L3.',
+    )
+  })
+
+  it('notes job columns that look swapped, with no fix button', () => {
+    const sample = generateSample()
+    const flipped = {
+      ...sample,
+      employees: sample.employees.map((e) => ({ ...e, jobFamily: e.jobFunction, jobFunction: e.jobFamily })),
+    }
+    const cs = jobConflicts(inferStructure(flipped, { asOf: SAMPLE_AS_OF }), flipped.employees)
+    const c = cs.find((x) => x.kind === 'job-levels-swapped')!
+    expect(c.severity).toBe('info')
+    expect(c.fix).toBeNull()
+    expect(c.text).toBe(
+      'These two columns look swapped. In Census a job family contains job functions, but here 38 job families sit inside 6 job functions. Upload Employees again and swap the two columns in the mapping step.',
+    )
   })
 })
 
@@ -119,6 +168,9 @@ describe('on the sample company', () => {
   const all = [...orgConflicts(r), ...jobConflicts(r, sample.employees)]
 
   it('reports conflicts with counts that match their rows, all of them employees', () => {
+    expect(all.some((c) => c.kind === 'function-several-families' || c.kind === 'job-levels-swapped')).toBe(
+      false,
+    )
     for (const c of all) {
       expect(c.count).toBe(c.rows.length)
       expect(c.text).not.toMatch(/—/)
@@ -132,7 +184,7 @@ describe('on the sample company', () => {
     expect(outliers.length).toBeLessThanOrEqual(5)
     // Directors sit one rung above managers: the same track, not an outlier.
     expect(outliers.some((c) => c.text.startsWith('Director'))).toBe(false)
-    // A large family's entry-level associates sit at the bottom of a normal ladder.
+    // A large function's entry-level associates sit at the bottom of a normal ladder.
     expect(outliers.some((c) => c.text.startsWith('Associate Design Verification Engineer'))).toBe(false)
   })
 })

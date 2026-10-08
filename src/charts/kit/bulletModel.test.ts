@@ -59,6 +59,24 @@ describe('BulletList layout', () => {
     expect(height).toBe(3 * 24 + 4 * 28)
   })
 
+  it('puts every row on one scale when asked, so bar lengths compare', () => {
+    const ratios = [
+      { name: 'Verification per RTL designer', practice: '', value: 1.16, target: 1.5 },
+      { name: 'DFT per RTL designer', practice: '', value: 0.39, target: null },
+      { name: 'Software per silicon engineer', practice: '', value: 0.26, target: null },
+      { name: 'Hidden', practice: '', value: null, target: null },
+    ]
+    const own = bulletLayout(ratios, acc).rows
+    // On their own scales, rows without a target all draw at the same length.
+    expect(own[1].valueAt).toBeCloseTo(own[2].valueAt ?? 0)
+    const { rows } = bulletLayout(ratios, acc, { scale: 'shared' })
+    for (const r of rows) expect(r.max).toBeCloseTo(1.5 * BULLET_HEADROOM)
+    expect(rows[0].targetAt).toBeCloseTo(1 / BULLET_HEADROOM)
+    expect(rows[1].valueAt).toBeCloseTo(0.39 / (1.5 * BULLET_HEADROOM))
+    expect((rows[1].valueAt ?? 0) / (rows[2].valueAt ?? 1)).toBeCloseTo(0.39 / 0.26)
+    expect(rows[3].valueAt).toBeNull()
+  })
+
   it('treats missing, zero and negative values safely', () => {
     const { rows } = bulletLayout([{ name: 'x', practice: '', value: -3, target: 0 }], acc)
     expect(rows[0].max).toBe(1)

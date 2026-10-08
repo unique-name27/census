@@ -17,7 +17,7 @@ import {
   COMPA,
   dimUses,
   FIGURE_IDS,
-  familyUses,
+  jobUses,
   MARKET,
   MARKET_VS_MID,
   MERIT,
@@ -94,12 +94,12 @@ describe('compensation lineage', () => {
     expect(dimUses(undefined)).toEqual([])
   })
 
-  it('lists job family only when the roster has one, and potential only when no cycle is named annual', () => {
-    expect(familyUses({ has: { jobFamily: false } as CompModel['pop']['has'] })).toEqual([
+  it('lists job function only when the roster has one, and potential only when no cycle is named annual', () => {
+    expect(jobUses({ has: { jobFunction: false } as CompModel['pop']['has'] })).toEqual([
       'employees.department',
     ])
-    expect(familyUses({ has: { jobFamily: true } as CompModel['pop']['has'] })).toEqual([
-      'employees.jobFamily',
+    expect(jobUses({ has: { jobFunction: true } as CompModel['pop']['has'] })).toEqual([
+      'employees.jobFunction',
       'employees.department',
     ])
     expect(annualRatingUses('2025 Annual')).not.toContain('reviews.potential')

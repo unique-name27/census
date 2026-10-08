@@ -38,7 +38,7 @@ export const FIGURE_METRIC: Readonly<Record<FigureId, CompMetricId>> = {
   'comp-bonus-by-rating': M.bonus,
   'comp-equity-by-rating': M.equity,
   'comp-market-vs-range': M.marketVsMid,
-  'comp-market-by-family': M.marketGap,
+  'comp-market-by-function': M.marketGap,
   'comp-market-by-location': M.marketGap,
   'comp-market-by-level': M.marketGap,
   'comp-jobs-below-market': M.marketGap,
@@ -115,7 +115,7 @@ export function settingsSentence(id: CompMetricId, r: CompRules): string | null 
     case M.differentiation:
       return `Below ${fmt(r.differentiation.floor, 'times')} ratings make little difference to pay. Needs ${int(r.minGroup)} people on each side.`
     case M.marketGap:
-      return `The job family chart ranks families of ${int(r.marketGap.minFamily)} or more people; jobs ${settingPct(r.marketGap.jobWatch)} or more below market are marked.`
+      return `The job function chart ranks functions of ${int(r.marketGap.minFunction)} or more people; jobs ${settingPct(r.marketGap.jobWatch)} or more below market are marked.`
     case M.belowMarket:
       return `Flagged at ${settingPct(r.belowMarket.threshold)} or more below market; the ranges trail the market when market medians sit ${settingPct(r.belowMarket.rangeGap)} or more above the midpoints.`
     default:
@@ -201,7 +201,7 @@ export function figureDefinitions(m: Defs, r: CompRules): Record<FigureId, Defin
       DEF_NO_AMOUNTS,
       pop(M.marketGap),
     ],
-    'comp-market-by-family': marketBars,
+    'comp-market-by-function': marketBars,
     'comp-market-by-location': marketBars,
     'comp-market-by-level': marketBars,
     'comp-jobs-below-market': [row(M.marketGap), row(M.marketVsMid), pop(M.marketGap)],

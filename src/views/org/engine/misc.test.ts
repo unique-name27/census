@@ -7,7 +7,7 @@ import { AS_OF, ctxFor, person, smallCompany } from './fixtures'
 import { computeFlags } from './flags'
 import { layoutTree, reqCardId, visibleIds, visibleTree } from './layout'
 import { buildOrgModel, peopleManagers } from './model'
-import { flagRows, moveRows, rosterRows, shownRows } from './rows'
+import { flagRows, moveRows, PERSON_COLUMNS, rosterRows, shownRows } from './rows'
 import { applyScenario } from './scenario'
 import { searchPeople } from './search'
 import { defaultSlideLeaders, planSlides, SLIDE } from './slides'
@@ -51,11 +51,35 @@ describe('colorScheme', () => {
     expect(swatchCss(s.swatchOf(rows[0]))).toBe('var(--s1)')
     expect(swatchCss(s.swatchOf(rows[rows.length - 1]))).toBe('var(--deemph)')
   })
+  it('colors by job family, largest first, with people who have none grouped together', () => {
+    const rows = [
+      person('A', null, { jobFamily: 'Silicon Engineering', jobFunction: 'Design RTL' }),
+      person('B', null, { jobFamily: 'Silicon Engineering', jobFunction: 'DFT' }),
+      person('C', null, { jobFamily: 'Corporate', jobFunction: 'Legal' }),
+      person('D', null, { jobFamily: null }),
+      person('E', null, { jobFamily: '  ' }),
+      person('F', null),
+    ]
+    const s = colorScheme('jobFamily', rows, AS_OF)
+    expect(s.legend.map((k) => [k.label, k.count])).toEqual([
+      ['No job family', 3],
+      ['Silicon Engineering', 2],
+      ['Corporate', 1],
+    ])
+    expect(swatchCss(s.swatchOf(rows[0]))).toBe('var(--s2)')
+    expect(COLOR_BY_LABELS.jobFamily).toBe('Job family')
+    expect(COLOR_BY_OPTIONS.indexOf('jobFamily')).toBe(COLOR_BY_OPTIONS.indexOf('jobFunction') - 1)
+    // Functions are many: past eight they fold into Other, as the color rule says.
+    const many = Array.from({ length: 10 }, (_, i) => person(`P${i}`, null, { jobFunction: `Function ${i}` }))
+    const f = colorScheme('jobFunction', many, AS_OF)
+    expect(f.legend).toHaveLength(8)
+    expect(f.legend.at(-1)?.label).toBe('Other (3)')
+  })
   it('colors by job function, largest first, with people who have none grouped together', () => {
     const rows = [
-      person('A', null, { jobFunction: 'Engineering' }),
-      person('B', null, { jobFunction: 'Engineering' }),
-      person('C', null, { jobFunction: 'G&A' }),
+      person('A', null, { jobFunction: 'Design RTL' }),
+      person('B', null, { jobFunction: 'Design RTL' }),
+      person('C', null, { jobFunction: 'Legal' }),
       person('D', null, { jobFunction: null }),
       person('E', null, { jobFunction: '  ' }),
       person('F', null),
@@ -63,8 +87,8 @@ describe('colorScheme', () => {
     const s = colorScheme('jobFunction', rows, AS_OF)
     expect(s.legend.map((k) => [k.label, k.count])).toEqual([
       ['No job function', 3],
-      ['Engineering', 2],
-      ['G&A', 1],
+      ['Design RTL', 2],
+      ['Legal', 1],
     ])
     expect(swatchCss(s.swatchOf(rows[0]))).toBe('var(--s2)')
     expect(COLOR_BY_LABELS.jobFunction).toBe('Job function')
@@ -292,5 +316,17 @@ describe('model', () => {
     })
     const whole = ctxFor({ employees: smallCompany() })
     expect(peopleManagers(whole)).toEqual({ managers: 7, people: 18 })
+  })
+})
+
+describe('org table columns', () => {
+  it('list the org structure, then the job taxonomy', () => {
+    const keys = PERSON_COLUMNS.map((c) => c.key)
+    expect(keys.slice(keys.indexOf('businessUnit'), keys.indexOf('businessUnit') + 4)).toEqual([
+      'businessUnit',
+      'department',
+      'jobFamily',
+      'jobFunction',
+    ])
   })
 })

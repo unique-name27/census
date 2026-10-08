@@ -1,6 +1,6 @@
 /**
- * What the edit forms offer (departments with their business units, job families with their
- * functions, the values of a field) and what a change would do before it is made. Pure.
+ * What the edit forms offer (departments with their business units, job functions with their
+ * families, the values of a field) and what a change would do before it is made. Pure.
  */
 import { type FieldRef, parseFieldRef } from '@/data/quality/fieldRef'
 import {
@@ -13,13 +13,13 @@ import {
   type StructureReport,
   validateMapping,
 } from '@/data/reference'
-import { type DatasetKey, type Datasets, datasetDef, JOB_FUNCTIONS } from '@/data/schema'
+import { type DatasetKey, type Datasets, datasetDef, JOB_FAMILIES } from '@/data/schema'
 
-export type EditKind = 'move-department' | 'move-family' | 'merge' | 'rename'
+export type EditKind = 'move-department' | 'move-function' | 'merge' | 'rename'
 
 export const EDIT_LABEL: Record<EditKind, string> = {
   'move-department': 'Move a department',
-  'move-family': 'Assign a job family',
+  'move-function': 'Assign a job function',
   merge: 'Merge spellings',
   rename: 'Rename a value',
 }
@@ -28,10 +28,10 @@ export const EDIT_LABEL: Record<EditKind, string> = {
 export interface Draft {
   kind: EditKind
   department: string
-  /** Business unit or function to move from; '' moves every row. */
+  /** Business unit or job family to move from; '' moves every row. */
   from: string
   to: string
-  jobFamily: string
+  jobFunction: string
   ref: FieldRef
   /** Values to merge, or the one value to rename. */
   values: string[]
@@ -43,7 +43,7 @@ export const EMPTY_DRAFT: Draft = {
   department: '',
   from: '',
   to: '',
-  jobFamily: '',
+  jobFunction: '',
   ref: 'employees.department',
   values: [],
   scope: 'category',
@@ -54,8 +54,8 @@ export function draftMapping(d: Draft): NewReferenceMapping {
   switch (d.kind) {
     case 'move-department':
       return { kind: d.kind, department: d.department, from: d.from || null, to: d.to.trim() }
-    case 'move-family':
-      return { kind: d.kind, jobFamily: d.jobFamily, from: d.from || null, to: d.to.trim() }
+    case 'move-function':
+      return { kind: d.kind, jobFunction: d.jobFunction, from: d.from || null, to: d.to.trim() }
     case 'merge':
       return { kind: d.kind, ref: d.ref, from: [...d.values], to: d.to.trim(), scope: d.scope }
     case 'rename':
@@ -73,7 +73,7 @@ export function whenText(at: string): string {
 }
 
 export interface Placement {
-  /** The business unit or function; null when blank. */
+  /** The business unit or job family; null when blank. */
   under: string | null
   headcount: number
 }
@@ -81,8 +81,10 @@ export interface Placement {
 export interface EditOptions {
   departments: { value: string; under: Placement[] }[]
   units: string[]
-  families: { value: string; under: Placement[] }[]
-  functions: string[]
+  /** Every job function in the data and the families it sits under now. */
+  functions: { value: string; under: Placement[] }[]
+  /** The suggested families (`JOB_FAMILIES`) and every family in the data. */
+  families: string[]
 }
 
 const byName = (a: string, b: string) => a.localeCompare(b)
@@ -111,7 +113,7 @@ function placements<T>(
     .sort((a, b) => byName(a.value, b.value))
 }
 
-/** Choices for the move forms: every department and job family in the data, where each sits now. */
+/** Choices for the move forms: every department and job function in the data, where each sits now. */
 export function editOptions(r: StructureReport, data: Datasets): EditOptions {
   const departments = placements(
     r.org,
@@ -127,18 +129,18 @@ export function editOptions(r: StructureReport, data: Datasets): EditOptions {
   const units = new Set<string>()
   for (const e of data.employees) if (e.businessUnit?.trim()) units.add(e.businessUnit)
   for (const q of data.requisitions) if (q.businessUnit?.trim()) units.add(q.businessUnit)
-  const fns = new Set<string>(JOB_FUNCTIONS)
-  for (const e of data.employees) if (e.jobFunction?.trim()) fns.add(e.jobFunction)
+  const fams = new Set<string>(JOB_FAMILIES)
+  for (const e of data.employees) if (e.jobFamily?.trim()) fams.add(e.jobFamily)
   return {
     departments,
     units: [...units].sort(byName),
-    families: placements(
-      r.functions,
-      (e) => e.jobFamily,
+    functions: placements(
+      r.jobs,
       (e) => e.jobFunction,
+      (e) => e.jobFamily,
       (e) => e.headcount,
     ),
-    functions: [...fns],
+    families: [...fams],
   }
 }
 

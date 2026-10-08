@@ -2,12 +2,14 @@
  * Candidates as a raw ATS export: names split into first and last, the ATS's own stage and
  * status names, US dates, the start date of accepted offers, and source names that are mostly
  * mappable. Reneged offers read "Withdrew" with the renege as the reason. 4% of applications carry a
- * source spelling Census does not recognize ("LinkedIn Recruiter", "Indeed").
+ * source spelling Census does not recognize ("LinkedIn Recruiter", "Indeed"). Offers resolved
+ * since 1 Oct 2025 carry "Competing Offer?" and "Offer Revised" (Y or N) and "Offer Range
+ * Position" ("35%").
  */
 import type { Candidate, CandidateStatus, Datasets, Stage } from '../../../schema'
 import { rngFor } from '../../prng'
 import { pickRows, type RawExtract } from '../extract'
-import { type Column, mmddyyyy, splitName, toAoa } from '../format'
+import { type Column, mmddyyyy, splitName, toAoa, yn } from '../format'
 import { FILES } from '../plan'
 
 const STAGE: Record<Stage, string> = {
@@ -101,6 +103,13 @@ export function candidatesExtract(base: Datasets): RawExtract<'candidates'> {
     { header: 'Next Interview', cell: (r) => mmddyyyy(r.nextEventDate) },
     { header: 'Last Activity', cell: (r) => mmddyyyy(r.lastActivityDate) },
     { header: 'Start Date', cell: (r) => mmddyyyy(r.startDate) },
+    // Offer details, recorded since 1 Oct 2025 (docs/ANALYSES.md, 3.10).
+    { header: 'Competing Offer?', cell: (r) => yn(r.competingOffer) },
+    { header: 'Offer Revised', cell: (r) => yn(r.offerRevised) },
+    {
+      header: 'Offer Range Position',
+      cell: (r) => (r.offerPositionInRange == null ? null : `${Math.round(r.offerPositionInRange * 100)}%`),
+    },
   ]
   return {
     dataset: 'candidates',

@@ -3,7 +3,7 @@
  *
  *  - pay position against voluntary attrition, one dot per location or department;
  *  - median compa-ratio by location and level group;
- *  - pay or the range, one dot per job family (market median ÷ midpoint against compa-ratio);
+ *  - pay or the range, one dot per job function (market median ÷ midpoint against compa-ratio);
  *  - who is below the range minimum, by location and why (promoted, hired, neither).
  *
  * Every number is recounted from the population (`CompPerson`, built from the raw comp and
@@ -233,10 +233,11 @@ export function compaGrid(people: readonly CompPerson[], min: number): CompaGrid
   return { cells, locations, groups: groups.map((g) => g.key), hiddenCells, noLevel }
 }
 
-/* ───────── pay or the range: job families against the market ───────── */
+/* ───────── pay or the range: job functions against the market ───────── */
 
-export interface FamilyPositionRow {
-  family: string
+export interface JobPositionRow {
+  /** Job function, or department where the roster has none. */
+  job: string
   /** People with both a market median and a compa-ratio. */
   n: number
   /** Median of market median ÷ range midpoint: above 1.00 the range trails the market. */
@@ -248,9 +249,9 @@ export interface FamilyPositionRow {
   members: CompPerson[]
 }
 
-export interface FamilyPosition {
-  rows: FamilyPositionRow[]
-  /** Families left out: fewer people with a market median than the anonymity minimum. */
+export interface JobPosition {
+  rows: JobPositionRow[]
+  /** Job functions left out: fewer people with a market median than the anonymity minimum. */
   hidden: number
   /** People with a compa-ratio and no market median (left out). */
   unpriced: number
@@ -258,18 +259,18 @@ export interface FamilyPosition {
   total: number
 }
 
-export function familyMarketPosition(people: readonly CompPerson[], min: number): FamilyPosition {
+export function jobMarketPosition(people: readonly CompPerson[], min: number): JobPosition {
   const valued = people.filter((p) => p.compa != null)
   const priced = valued.filter((p) => p.marketVsMid != null)
-  const byFamily = new Map<string, CompPerson[]>()
+  const byJob = new Map<string, CompPerson[]>()
   for (const p of priced) {
-    const arr = byFamily.get(p.jobFamily)
+    const arr = byJob.get(p.job)
     if (arr) arr.push(p)
-    else byFamily.set(p.jobFamily, [p])
+    else byJob.set(p.job, [p])
   }
-  const rows: FamilyPositionRow[] = []
+  const rows: JobPositionRow[] = []
   let hidden = 0
-  for (const [family, members] of byFamily) {
+  for (const [job, members] of byJob) {
     const marketVsMid = safeMedian(
       values(members, (p) => p.marketVsMid),
       min,
@@ -283,7 +284,7 @@ export function familyMarketPosition(people: readonly CompPerson[], min: number)
       continue
     }
     rows.push({
-      family,
+      job,
       n: members.length,
       marketVsMid,
       compa,
@@ -294,7 +295,7 @@ export function familyMarketPosition(people: readonly CompPerson[], min: number)
       members,
     })
   }
-  rows.sort((a, b) => b.marketVsMid - a.marketVsMid || a.family.localeCompare(b.family))
+  rows.sort((a, b) => b.marketVsMid - a.marketVsMid || a.job.localeCompare(b.job))
   return { rows, hidden, unpriced: valued.length - priced.length, total: valued.length }
 }
 
@@ -428,10 +429,10 @@ export function compaCellDrill(m: Scope, cell: CompaCell): DrillCompSpec | null 
   return { ...spec, filter: { ...loc, ...lvl }, filterLabel: `${cell.location}, ${cell.levelGroup}` }
 }
 
-/** A job family's people with their compa-ratio and how their range compares with the market. */
-export function familyPositionDrill(m: Scope, row: FamilyPositionRow): DrillCompSpec | null {
+/** A job function's people with their compa-ratio and how their range compares with the market. */
+export function jobPositionDrill(m: Scope, row: JobPositionRow): DrillCompSpec | null {
   return peopleDrill({
-    title: `Pay and the range in ${row.family}`,
+    title: `Pay and the range in ${row.job}`,
     subtitle: scopeLine(m),
     people: row.members,
     extras: [X_MARKET_MID, X_MARKET, X_POSITION],

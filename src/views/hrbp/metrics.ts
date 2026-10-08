@@ -11,6 +11,7 @@ import type { FieldRef } from '@/data/quality/fieldRef'
 import { defineMetrics } from '@/metrics/define'
 import type { MetricDef } from '@/metrics/types'
 import { ORG_METRIC, ORG_PARAM } from '@/views/org/metrics'
+import { ANALYSES_METRICS } from './analyses/metrics'
 import {
   ATTRITION,
   all,
@@ -218,7 +219,7 @@ const withSources = (defs: MetricDef[]): MetricDef[] =>
     return from?.length ? { ...d, dependsOn: from } : d
   })
 
-export const metrics: MetricDef[] = withSources(
+const viewMetrics: MetricDef[] = withSources(
   defineMetrics('hrbp', [
     /* ───────── headcount and flows ───────── */
     {
@@ -1241,3 +1242,6 @@ export const metrics: MetricDef[] = withSources(
     },
   ]),
 )
+
+/** People stats' entries, then the Special analyses' (`./analyses/metrics`). */
+export const metrics: MetricDef[] = [...viewMetrics, ...ANALYSES_METRICS]

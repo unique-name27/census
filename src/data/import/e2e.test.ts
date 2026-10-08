@@ -4,7 +4,7 @@
  * "Last, First" names and free-text worker types. The import must reproduce the clean roster.
  */
 import { describe, expect, it } from 'vitest'
-import { datasetDef, type Employee, type Level } from '../schema'
+import { type DegreeLevel, datasetDef, type Employee, type Level } from '../schema'
 import { applyMapping } from './apply'
 import { autoMap } from './automap'
 import { guessDataset } from './detect'
@@ -25,6 +25,14 @@ const LEVEL_TEXT: Record<Level, string> = {
   E2: 'SVP',
   E3: 'CEO',
 }
+/** How the HRIS writes the highest degree. */
+const DEGREE_TEXT: Record<DegreeLevel, string> = {
+  Associate: 'A.S.',
+  "Bachelor's": 'B.Tech',
+  "Master's": 'MS',
+  PhD: 'Ph.D.',
+  Other: 'Diploma',
+}
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 const dmy = (d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}/${d.slice(0, 4)}`
 const dMonY = (d: string) => `${+d.slice(8, 10)}-${MONTHS[+d.slice(5, 7) - 1]}-${d.slice(0, 4)}`
@@ -41,7 +49,7 @@ function hrisExport(employees: Employee[]): string {
     'Full Name',
     'Business Title',
     'Job Family Group',
-    'Job Function',
+    'Job Family',
     'Division',
     'Supervisory Organization',
     'Work Location',
@@ -56,6 +64,11 @@ function hrisExport(employees: Employee[]): string {
     'Worker Type',
     'HR Partner',
     'Cost Centre',
+    'University',
+    'Highest Degree',
+    'Major',
+    'Graduation Year',
+    'FTE %',
   ]
   const lines = employees.map((e) => {
     const mgr = e.managerId ? byId.get(e.managerId) : undefined
@@ -83,6 +96,12 @@ function hrisExport(employees: Employee[]): string {
       workerType,
       e.hrbp ?? '',
       e.costCenter ?? '',
+      e.university ?? '',
+      e.degreeLevel ? DEGREE_TEXT[e.degreeLevel] : '',
+      e.fieldOfStudy ?? '',
+      // Never read: it reveals age.
+      '2009',
+      e.fte == null ? '' : String(Math.round(e.fte * 100)),
     ]
       .map(csvCell)
       .join(',')
@@ -96,6 +115,7 @@ describe('messy HRIS roster export', () => {
     const book = readWorkbook(new TextEncoder().encode(csv), 'Workers report.csv')
     const sheet = book.sheets[0]
     expect(sheet.headerRow).toBe(3)
+    expect(sheet.dropped).toEqual([{ header: 'Graduation Year', reason: 'proxy' }])
 
     const [best] = guessDataset(sheet)
     expect(best.key).toBe('employees')

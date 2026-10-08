@@ -121,3 +121,15 @@ export function personSummary(
     ...(limited ? { limited: true } : {}),
   }
 }
+
+/**
+ * The person card's job line: the job function in its family, "Design Verification, Silicon
+ * Engineering family" (docs/TAXONOMY.md: a family contains functions). The word "family" keeps it
+ * apart from the org line, where the same words often name the department and business unit.
+ */
+export function jobLine(e: { jobFunction?: string | null; jobFamily?: string | null }): string {
+  const fn = e.jobFunction?.trim()
+  const family = e.jobFamily?.trim()
+  const fam = family ? `${family} family` : ''
+  return fn && fam ? `${fn}, ${fam}` : fn || fam || ''
+}

@@ -164,6 +164,70 @@ describe('Ask in Manager mode', () => {
     expect(enumOf).toContain('employees')
   })
 
+  it('does not read the fields of the analyses Manager mode hides (education, offer details, decline reasons)', () => {
+    // Quality of hire and Offer declines are hidden in Manager mode (docs/ANALYSES.md, 1.7).
+    const m = managerCtx('E10427')
+    const conv = new Conversation()
+    const refused = (dataset: string, input: Record<string, unknown>) => {
+      const r = call(conv, envOf(m), 'query_records', { dataset, ...input })
+      expect(r.isError, JSON.stringify(input)).toBe(true)
+      expect(String(r.json.error)).toMatch(/not shown in Manager mode/)
+    }
+    for (const field of ['university', 'degreeLevel', 'fieldOfStudy']) {
+      refused('employees', { group_by: [{ field }] })
+      refused('employees', { where: [{ field, op: 'is_null', value: null }] })
+    }
+    for (const field of ['competingOffer', 'offerRevised']) {
+      refused('candidates', { group_by: [{ field }, { field: 'status' }] })
+      refused('candidates', { where: [{ field, op: 'eq', value: true }] })
+    }
+    refused('candidates', {
+      group_by: [{ field: 'status' }],
+      measures: [{ op: 'median', field: 'offerPositionInRange' }],
+    })
+    // Claude is not told about them either.
+    const q = toolDefinitionsFor(m.access).find((t) => t.name === 'query_records')!
+    for (const f of [
+      'university',
+      'degreeLevel',
+      'fieldOfStudy',
+      'competingOffer',
+      'offerRevised',
+      'offerPositionInRange',
+    ])
+      expect(q.description).not.toMatch(new RegExp(`\b${f}\b`))
+    // A cut by rejection reason leaves declined offers out; rejections still count.
+    const reasons = call(conv, envOf(m), 'query_records', {
+      dataset: 'candidates',
+      group_by: [{ field: 'rejectionReason' }, { field: 'status' }],
+    })
+    expect(reasons.isError).toBe(false)
+    const rows = reasons.json.rows as { group: Record<string, unknown> }[]
+    expect(rows.some((r) => r.group.status === 'Declined')).toBe(false)
+    expect(rows.length).toBeGreaterThan(0)
+    expect(String(reasons.json.notes ?? reasons.json.note ?? JSON.stringify(reasons.json))).toMatch(
+      /Declined offers are left out/,
+    )
+    const declined = call(conv, envOf(m), 'query_records', {
+      dataset: 'candidates',
+      where: [{ field: 'status', op: 'eq', value: 'Declined' }],
+      group_by: [{ field: 'rejectionReason' }],
+    })
+    expect(declined.json.rows).toEqual([])
+    // HR mode reads them, with small groups hidden (one candidate's answer).
+    const hr = call(new Conversation(), envOf(company), 'query_records', {
+      dataset: 'candidates',
+      group_by: [{ field: 'competingOffer' }],
+    })
+    expect(hr.isError).toBe(false)
+    expect(JSON.stringify(hr.json)).toMatch(/Counts under 5 people are hidden/)
+    const edu = call(new Conversation(), envOf(company), 'query_records', {
+      dataset: 'employees',
+      group_by: [{ field: 'university' }],
+    })
+    expect(edu.isError).toBe(false)
+  })
+
   it('refuses a leader outside the org and leaving a leader out', () => {
     const conv = new Conversation()
     conv.tokens.index(ctx)

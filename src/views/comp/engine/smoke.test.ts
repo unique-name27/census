@@ -143,7 +143,7 @@ describe('compensation on the sample company', () => {
     expect(f.severity).toBe('warning')
     expect(f.detail).toContain('10% above the range midpoints')
     expect(f.filter).toEqual({ department: ['Analog & Mixed-Signal'] })
-    const analog = m.market.byFamily.find((r) => r.group === 'Analog & Mixed-Signal')!
+    const analog = m.market.byJob.find((r) => r.group === 'Analog & Mixed-Signal')!
     expect(analog.median!).toBeCloseTo(0.92, 2)
     // Other families with a gap are pay-positioning notes, not range findings.
     const rangeFindings = m.findings.filter(
@@ -227,7 +227,7 @@ describe('compensation on the sample company', () => {
   })
 
   it('ranks only job families of 10 or more on the market chart', () => {
-    const ranked = m.market.familyChart.filter((r) => !r.group.startsWith('Other ('))
+    const ranked = m.market.jobChart.filter((r) => !r.group.startsWith('Other ('))
     expect(ranked.every((r) => r.n >= 10)).toBe(true)
     expect(ranked[0].group).toBe('Firmware')
   })

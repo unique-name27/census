@@ -276,6 +276,8 @@ const entries: MetricInput[] = [
   {
     id: M.renege,
     name: 'Renege rate',
+    // People stats > Special analyses, Offer declines shows the same rate (docs/ANALYSES.md, 3.4).
+    views: ['hrbp'],
     definition:
       'Share of offers accepted in the period that were later withdrawn, so the person never started. One country is tracked on its own, since long notice periods leave more time for counteroffers.',
     formula: 'accepted then withdrawn ÷ accepted',

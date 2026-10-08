@@ -1,7 +1,7 @@
 /**
  * Lineage: the dataset fields each Compensation number is computed from, so its tier (no data,
  * bronze, silver or gold) can be worked out (docs/DATA-TIERS.md). A field that only decides who is
- * counted still counts. An optional field with a fallback (job family, equity in the rewards mix)
+ * counted still counts. An optional field with a fallback (job function, equity in the rewards mix)
  * is listed only when the data has it, so its absence never blanks a number that does not need it.
  * Pure.
  */
@@ -61,9 +61,9 @@ export function meetsFor(ctx: Pick<AnalyticsContext, 'quality' | 'standard'>): M
 
 type Has = Pick<Population, 'has' | 'annualCycle'>
 
-/** Job family, which falls back to department for people the roster gives none. */
-export const familyUses = (pop: Pick<Population, 'has'>): FieldRef[] =>
-  refs(pop.has.jobFamily && 'employees.jobFamily', BY.department)
+/** Job function (the job the market prices), which falls back to department for people the roster gives none. */
+export const jobUses = (pop: Pick<Population, 'has'>): FieldRef[] =>
+  refs(pop.has.jobFunction && 'employees.jobFunction', BY.department)
 
 /**
  * The rating in the latest annual cycle. The cycle is found by its name; when no cycle is named
@@ -101,7 +101,7 @@ export const FIGURE_IDS = [
   'comp-bonus-by-rating',
   'comp-equity-by-rating',
   'comp-market-vs-range',
-  'comp-market-by-family',
+  'comp-market-by-function',
   'comp-market-by-location',
   'comp-market-by-level',
   'comp-jobs-below-market',
@@ -120,7 +120,7 @@ export type FigureUses = Record<FigureId, readonly FieldRef[]>
  */
 export function figureUses(m: { pop: Has; showPay: boolean; promotionsShown?: boolean }): FigureUses {
   const { pop, showPay, promotionsShown = true } = m
-  const family = familyUses(pop)
+  const job = jobUses(pop)
   const people = [BY.department, BY.level, BY.location]
   // Compa-ratio tables also count who is below minimum and above maximum.
   const compaTable = refs(COMPA, POSITION)
@@ -148,11 +148,11 @@ export function figureUses(m: { pop: Has; showPay: boolean; promotionsShown?: bo
     'comp-differentiation-by-department': refs(MERIT, RATING, BY.department),
     'comp-bonus-by-rating': refs('comp.bonusPayoutPct', annualRatingUses(pop.annualCycle), POPULATION),
     'comp-equity-by-rating': refs('comp.annualEquityUsd', FX, RATING, POPULATION),
-    'comp-market-vs-range': refs(MARKET_VS_MID, COMPA, family),
-    'comp-market-by-family': refs(market, family),
+    'comp-market-vs-range': refs(MARKET_VS_MID, COMPA, job),
+    'comp-market-by-function': refs(market, job),
     'comp-market-by-location': refs(market, BY.location),
     'comp-market-by-level': refs(market, BY.level),
-    'comp-jobs-below-market': refs(market, family, BY.level),
+    'comp-jobs-below-market': refs(market, job, BY.level),
     'comp-spend-by-bu': refs(MERIT, FX, BY.businessUnit),
     'comp-merit-distribution': MERIT,
     'comp-guideline-exceptions': refs(MERIT, RATING, BY.department, BY.level, PROMOTION),

@@ -29,8 +29,8 @@ export interface CompRules {
   exceptions: { topRatingFloor: number; lowRatingCap: number; outlierZ: number; outlierMinPeers: number }
   differentiation: { floor: number; strong: number; material: number }
   marketMedian: { material: number }
-  /** `minFamily` is never below the anonymity minimum. */
-  marketGap: { minFamily: number; jobWatch: number }
+  /** `minFunction` is never below the anonymity minimum. */
+  marketGap: { minFunction: number; jobWatch: number }
   belowMarket: { threshold: number; rangeGap: number }
 }
 
@@ -77,7 +77,7 @@ function read(m: Reader, cycle: CycleSettings | undefined): CompRules {
     },
     marketMedian: { material: n(M.marketMedian, 'material') },
     marketGap: {
-      minFamily: Math.max(minGroup, n(M.marketGap, 'minFamily')),
+      minFunction: Math.max(minGroup, n(M.marketGap, 'minFunction')),
       jobWatch: n(M.marketGap, 'jobWatch'),
     },
     belowMarket: { threshold: n(M.belowMarket, 'threshold'), rangeGap: n(M.belowMarket, 'rangeGap') },
@@ -111,5 +111,5 @@ export const defaultRules = (): CompRules => compRulesOf(defaultMetrics())
 export const lowCompaAt = (median: number | null | undefined, threshold: number): boolean =>
   median != null && Math.round(median * 100) / 100 <= threshold + 1e-9
 
-/** The median market ratio at or below which a job family is below market. */
+/** The median market ratio at or below which a job function is below market. */
 export const marketFlag = (r: Pick<CompRules, 'belowMarket'>): number => 1 - r.belowMarket.threshold

@@ -11,6 +11,7 @@ import { STANDARD_DESCRIPTION } from '@/data/quality/tier'
 import { DATASETS } from '@/data/schema'
 import { type Filters, PERIOD_LABELS } from '@/data/scope'
 import { DATA_TABS, PANEL_LABEL, parseDataTab } from '@/views/data/links'
+import { ANALYSIS_LABEL, parseAnalysesTab } from '@/views/hrbp/analyses/tab'
 import type { ViewDef } from '@/views/types'
 import { withAccessTabs, withFeatureTabs } from '@/views/types'
 import { FIGURE_HIDDEN_FROM_ASK, figureHiddenFromAsk, type ScreenRoute, type ScreenState } from './app'
@@ -72,11 +73,18 @@ export function placeOf(route: ScreenRoute, ctx: AnalyticsContext, views: readon
     const tabs = view.tabs.map((t) => ({ tab: t.key, label: t.label }))
     const base = route.tab.split(/[:/]/)[0] ?? ''
     const tab = view.tabs.find((t) => t.key === base) ?? (route.tab ? undefined : view.tabs[0])
+    // People stats > Special analyses names the analysis on screen: "Special analyses: Quality of hire".
+    const analysis = view.key === 'hrbp' ? parseAnalysesTab(route.tab).key : null
     return {
       view: view.key,
       viewLabel: view.label,
       tab: tab?.key ?? route.tab,
-      tabLabel: view.tabs.length > 1 ? (tab?.label ?? null) : null,
+      tabLabel:
+        view.tabs.length > 1
+          ? tab && analysis
+            ? `${tab.label}: ${ANALYSIS_LABEL[analysis]}`
+            : (tab?.label ?? null)
+          : null,
       scoped: view.datasets.length > 0,
       tabs,
     }

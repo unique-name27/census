@@ -27,12 +27,12 @@ export function messyCompany(): Datasets {
     }),
     // 4: Design Verification under Systems: the department sits under two units
     emp(5, { businessUnit: 'Systems', department: 'Design Verification', level: 'L3', managerId: 'E001' }),
-    // 5-6: Firmware under Systems, function Operations for one of them
+    // 5-6: Firmware under Systems, the job function Firmware under the family Operations for one of them
     emp(6, {
       businessUnit: 'Systems',
       department: 'Firmware',
-      jobFamily: 'Firmware',
-      jobFunction: 'Engineering',
+      jobFamily: 'Silicon Engineering',
+      jobFunction: 'Firmware',
       location: 'Bengaluru',
       country: 'India',
       costCenter: 'CC-200',
@@ -40,13 +40,13 @@ export function messyCompany(): Datasets {
     emp(7, {
       businessUnit: 'Systems',
       department: 'Firmware',
-      jobFamily: 'Firmware',
-      jobFunction: 'Operations',
+      jobFamily: 'Operations',
+      jobFunction: 'Firmware',
       location: 'Bengaluru',
       country: 'India',
       managerId: 'E006',
     }),
-    // 7: Facilities with no business unit, no job family and an unknown location
+    // 7: Facilities with no business unit, no job family or function and an unknown location
     emp(8, {
       businessUnit: '',
       department: 'Facilities',

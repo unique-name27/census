@@ -20,8 +20,8 @@ import { type EditOptions, editOptions } from '../engine/edit'
 import { remapSpellings } from '../engine/lists'
 import {
   activeManagerIds,
-  familyLevelCells,
-  familyRows,
+  functionLevelCells,
+  jobRows,
   locationDiagram,
   locationRows,
   type MappedDiagram,
@@ -39,9 +39,9 @@ export interface MappingModel {
   orgRows: ReturnType<typeof orgRows>
   locations: MappedDiagram
   locationRows: ReturnType<typeof locationRows>
-  familyRows: ReturnType<typeof familyRows>
+  jobRows: ReturnType<typeof jobRows>
   titleRows: ReturnType<typeof titleRows>
-  heat: ReturnType<typeof familyLevelCells>
+  heat: ReturnType<typeof functionLevelCells>
   orgConflicts: Conflict[]
   jobConflicts: Conflict[]
   options: EditOptions
@@ -87,9 +87,9 @@ export function useMappingModel(): MappingModel {
       orgRows: orgRows(report, emps, activeManagerIds(emps, active)),
       locations: locationDiagram(report, emps),
       locationRows: locationRows(report, emps),
-      familyRows: familyRows(report, emps),
+      jobRows: jobRows(report, emps),
       titleRows: titleRows(report, emps),
-      heat: familyLevelCells(report, emps),
+      heat: functionLevelCells(report, emps),
       orgConflicts: withOfficialParents(orgConflicts(report), official, parents, 'org'),
       jobConflicts: withOfficialParents(jobConflicts(report, emps), official, parents, 'job'),
       options: editOptions(report, data),

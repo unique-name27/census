@@ -207,9 +207,22 @@ describe('store', () => {
 
   it('adds, removes and undoes reference mappings', () => {
     const st = () => S.useCensus.getState()
-    const bad = st().addReferenceMapping({ kind: 'move-family', jobFamily: '', from: null, to: 'G&A' })
+    const bad = st().addReferenceMapping({
+      kind: 'move-function',
+      jobFunction: '',
+      from: null,
+      to: 'Corporate',
+    })
     expect(bad.ok).toBe(false)
-    const a = st().addReferenceMapping({ kind: 'move-family', jobFamily: 'Legal', from: null, to: 'G&A' })
+    // A legacy kind (made before job families held job functions) can't be created any more.
+    const legacy = { kind: 'move-family', jobFamily: 'Legal', from: null, to: 'G&A' }
+    expect(st().addReferenceMapping(legacy as never).ok).toBe(false)
+    const a = st().addReferenceMapping({
+      kind: 'move-function',
+      jobFunction: 'Legal',
+      from: null,
+      to: 'Corporate',
+    })
     if (!a.ok) throw new Error(a.error)
     st().removeReferenceMapping(a.mapping.id)
     expect(st().reference.mappings).toEqual([])

@@ -1,6 +1,6 @@
 /**
  * Data room → Categories & mapping (#data.mapping): how the categories in the data relate
- * (business unit → department, location → country → region, function → job family → title),
+ * (business unit → department, location → country → region, job family → job function → title),
  * where they disagree, the values of every categorical field, and your changes to the mapping,
  * which apply before every number in Census.
  */
@@ -39,8 +39,8 @@ interface Stop {
 function stops(m: MappingModel, changes: number): Stop[] {
   const units = new Set(m.orgRows.map((r) => r.businessUnit)).size
   const depts = new Set(m.orgRows.map((r) => r.department)).size
-  const families = new Set(m.familyRows.map((r) => r.jobFamily)).size
-  const titles = new Set(m.titleRows.map((r) => r.jobTitle)).size
+  const families = new Set(m.jobRows.map((r) => r.jobFamily)).size
+  const functions = new Set(m.jobRows.map((r) => r.jobFunction)).size
   const fields = m.report.categories.length
   // The fields listed under "Values not in their list", so the card and the panel agree.
   const unrecognized = new Set(unlistedValues(m.report.categories).map((u) => u.ref)).size
@@ -54,7 +54,7 @@ function stops(m: MappingModel, changes: number): Stop[] {
     {
       id: 'data-map-job',
       label: 'Job architecture',
-      detail: `${plural(families, 'job family', 'job families')}, ${plural(titles, 'title')}`,
+      detail: `${plural(families, 'job family', 'job families')}, ${plural(functions, 'job function')}`,
       review: m.jobConflicts.length,
     },
     {

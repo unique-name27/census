@@ -96,7 +96,7 @@ fields, then passed through the privacy pass):
 |---|---|
 | `get_context` | as-of date, current period window and comparison window, scope (filters in words; leader as a token), data standard, each dataset (loaded or not, sample or uploaded, rows, tier), feature switches, the views and their tabs, and the filter vocabularies (business units, departments, locations, levels; leaders as tokens with org size) |
 | `find_metrics` `{query?, view?}` | up to 25 metric dictionary entries: id, name, views, definition, formula, population, window, unit, target, good direction, changed from default |
-| `view_summary` `{view, filters?}` | the view's `summary(ctx)`: key figures (label, metricId, value as number and as text, unit, change and its label, target and met or missed, tier, hidden by the data standard and why, suppressed, note) and findings (severity, title, detail, next step), each with a `ref` when it has records |
+| `view_summary` `{view, tab?, filters?}` | the view's `summary(ctx)`: key figures (label, metricId, value as number and as text, unit, change and its label, target and met or missed, tier, hidden by the data standard and why, suppressed, note) and findings (severity, title, detail, next step), each with a `ref` when it has records. With `tab` (People stats only, `analyses:quality`, `analyses:declines`, `analyses:stages` or `analyses:pyramid`), that special analysis's key figures and findings from `analysisSummary(ctx, key)`, plus the aggregate `tables` it offers (the pyramid's headcount and 12-month flow by level), each held back when its fields fall below the data standard (docs/ANALYSES.md, 1.8) |
 | `compare_groups` `{view, kpi, by, values?, filters?}` | one key figure of a view for each group of `by` (business unit, department, location, level, or leader), the 12 largest groups by default; small groups follow the figure's own suppression |
 | `query_records` `{dataset, where?, group_by?, measures?, filters?, sort?, limit?}` | aggregates over the scoped rows of one dataset: count, distinct people, sum, mean, median, min, max, share; group by up to 2 allowlisted fields (dates by month, quarter or year); at most 50 rows; each row with a `ref` |
 | `explain_quality` `{dataset?, field?}` | tiers and their reasons (from `ctx.quality` explanations), and values not on the official lists with counts |
@@ -107,12 +107,21 @@ categories: business unit, department, location, country, job family, job functi
 source, category, channel, team, termination reason, stage, status, reason and similar), dates,
 booleans, and number and percent fields that are not pay. Derived fields: on employees `active`
 (active on the as-of date, contractors and interns included), `inHeadcount` (an employee, not a
-contractor or intern, active on the as-of date: headcount as every screen counts it) and
-`tenureYears`. **Never allowed:** `id` fields, person
+contractor or intern, active on the as-of date: headcount as every screen counts it),
+`tenureYears` and `chipStage` (the chip development stage of the person's job function, as People
+stats > Special analyses > Engineering by stage counts it; blank outside engineering), and on
+requisitions `chipStage` (from the most common job function of the req's department). **Never allowed:** `id` fields, person
 name fields (employee name, candidate name, hiring manager, recruiter, coordinator, HRBP, assignee),
 `money` and `pay: true` fields (ratios such as compa-ratio are allowed), free text, survey
 `respondentKey`, and immigration fields except as grouped counts. Grouping by recruiter, hiring
 manager, HRBP, assignee or manager is allowed and returns person tokens.
+
+Education (`university`, `degreeLevel`, `fieldOfStudy`) and a candidate's offer details
+(`competingOffer`, `offerRevised`, `offerPositionInRange`) are one person's facts: means and
+medians only, and small counts hidden whenever a filter or grouping uses them. Where a mode hides
+the analysis they feed (Manager mode hides Quality of hire and Offer declines), `query_records`
+does not read them at all: they leave the field list Claude is sent, a call that names one is
+refused with the reason, and a cut by `rejectionReason` leaves declined offers out.
 
 **Privacy rules the tools enforce** (the same rules as the rest of Census):
 - Rates, means, medians and shares for groups under the anonymity minimum (`minGroupOf(ctx.metrics)`)

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { datasetDef } from '../schema'
-import { autoMap, knownShare, rankHeaders, withChoice } from './automap'
+import { autoMap, knownShare, profileJobPair, rankHeaders, withChoice } from './automap'
+import { applyProfile, makeProfile } from './profiles'
 import { profileColumn } from './sniff'
 import type { Mapping } from './types'
 
@@ -391,6 +392,85 @@ describe('learned synonyms and manual choices', () => {
     )
     expect(ranked.map((r) => r.header)).toEqual(['Hire Date', 'Start Date'])
     expect(ranked[0].confidence).toBe('high')
+  })
+})
+
+describe('job family and job function pairs', () => {
+  const emp = datasetDef('employees')
+  const job = (m: Mapping) => ({ family: m.jobFamily.header, fn: m.jobFunction.header })
+
+  it('reads a Workday pair: Job Family Group is the family, Job Family the function', () => {
+    const m = autoMap(['Employee ID', 'Job Family Group', 'Job Family', 'Job Profile'], [], emp)
+    expect(job(m)).toEqual({ family: 'Job Family Group', fn: 'Job Family' })
+    expect(m.jobFamily.confidence).toBe('high')
+    expect(m.jobFunction.confidence).toBe('high')
+    expect(m.jobFamily.reason).toBe('Workday names the broad group Job Family Group')
+    expect(m.jobFunction.reason).toBe('Next to Job Family Group, Job Family is the job function')
+    expect(m.jobTitle.header).toBe('Job Profile')
+  })
+
+  it('reads the Workday pair in any order and with the Name suffix', () => {
+    const m = autoMap(['Job Family Name', 'Worker', 'Job Family Group Name'], [], emp)
+    expect(job(m)).toEqual({ family: 'Job Family Group Name', fn: 'Job Family Name' })
+  })
+
+  it('maps Job Family and Job Function by name (SuccessFactors)', () => {
+    const m = autoMap(['Employee ID', 'Job Family', 'Job Function'], [], emp)
+    expect(job(m)).toEqual({ family: 'Job Family', fn: 'Job Function' })
+  })
+
+  it('maps Job Family alone to the job family', () => {
+    const m = autoMap(['Employee ID', 'Job Family'], [], emp)
+    expect(job(m)).toEqual({ family: 'Job Family', fn: null })
+  })
+
+  it('reads Function with Sub Function as the family and the function', () => {
+    const m = autoMap(['Employee ID', 'Function', 'Sub Function'], [], emp)
+    expect(job(m)).toEqual({ family: 'Function', fn: 'Sub Function' })
+    expect(m.jobFamily.reason).toBe('Next to Sub Function, Function is the broad group')
+    const n = autoMap(['Job Sub Function', 'Job Function'], [], emp)
+    expect(job(n)).toEqual({ family: 'Job Function', fn: 'Job Sub Function' })
+  })
+
+  it('maps Discipline to the job function and Functional Area to the job family', () => {
+    const m = autoMap(['Employee ID', 'Functional Area', 'Discipline'], [], emp)
+    expect(job(m)).toEqual({ family: 'Functional Area', fn: 'Discipline' })
+  })
+
+  it('leaves Job Category and Job Classification unmapped', () => {
+    const m = autoMap(['Employee ID', 'Job Category', 'Job Classification'], [], emp)
+    expect(job(m)).toEqual({ family: null, fn: null })
+  })
+
+  it("never overrides the person's own picks", () => {
+    const headers = ['Employee ID', 'Job Family Group', 'Job Family']
+    const m = autoMap(headers, [], emp, { 'job family': 'jobFamily' })
+    expect(job(m)).toEqual({ family: 'Job Family', fn: null })
+    const chosen = withChoice(autoMap(headers, [], emp), 'jobFamily', 'Job Family')
+    expect(chosen.jobFamily.header).toBe('Job Family')
+    expect(chosen.jobFunction.header).toBe(null)
+  })
+
+  it('a saved profile is applied as saved, and a pre-change Workday profile is flagged', () => {
+    const headers = ['Employee ID', 'Job Family Group', 'Job Family']
+    const old: Mapping = {
+      ...autoMap(headers, [], emp),
+      jobFamily: { header: 'Job Family', confidence: 'high', score: 1, reason: 'x' },
+      jobFunction: { header: null, confidence: 'low', score: 0, reason: 'x' },
+    }
+    const saved = applyProfile(makeProfile('employees', headers, old), headers, emp).mapping
+    expect(job(saved)).toEqual({ family: 'Job Family', fn: null })
+    const fixed = profileJobPair(emp, saved, headers)
+    expect(fixed?.changed).toEqual(['jobFamily', 'jobFunction'])
+    expect(fixed && job(fixed.mapping)).toEqual({ family: 'Job Family Group', fn: 'Job Family' })
+    expect(fixed?.mapping.jobFamily.reason).toMatch(/^Changed from your saved choice/)
+    // A profile saved the new way needs nothing.
+    expect(profileJobPair(emp, fixed?.mapping ?? saved, headers)).toBe(null)
+  })
+
+  it('applies to Employees only', () => {
+    const m = autoMap(['Req ID', 'Job Family Group', 'Job Family'], [], datasetDef('requisitions'))
+    expect(m.jobFamily).toBeUndefined()
   })
 })
 

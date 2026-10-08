@@ -9,11 +9,13 @@ import { Button, cx, Segmented, Switch, Tag, Tip } from '@/components/ui'
 import {
   type Confidence,
   type DateOrder,
+  jobLevelsSwapped,
   type MappedField,
   type Mapping,
   normalizeHeader,
   rankHeaders,
   type SuggestedOptions,
+  swappedText,
   withChoice,
 } from '@/data/import'
 import { type DatasetDef, type DatasetKey, datasetDef, type FieldDef } from '@/data/schema'
@@ -172,6 +174,44 @@ function DatasetPicker({ item, draft, def }: { item: SessionSheet; draft: Draft;
   )
 }
 
+/**
+ * "Job family" and "Job function" columns whose values read upside down (many families, each inside
+ * one of a few functions), with a button that exchanges the two columns before anything is imported.
+ */
+function SwappedJobLevels({ item, draft }: { item: SessionSheet; draft: Draft }) {
+  const update = useImportSession((s) => s.update)
+  const family = draft.mapping?.jobFamily?.header
+  const fn = draft.mapping?.jobFunction?.header
+  if (!family || !fn) return null
+  const shape = jobLevelsSwapped(item.sheet.rows.map((r) => ({ jobFamily: r[family], jobFunction: r[fn] })))
+  if (!shape) return null
+  const swap = () =>
+    update(item.id, (d) => {
+      const m = d.mapping ?? {}
+      const a = m.jobFamily?.header ?? null
+      const b = m.jobFunction?.header ?? null
+      const picked = (header: string | null): MappedField => ({
+        header,
+        confidence: 'high',
+        score: 1,
+        reason: 'Swapped by you',
+      })
+      const overrides = [...new Set([...d.overrides, 'jobFamily', 'jobFunction'])]
+      return { mapping: { ...m, jobFamily: picked(b), jobFunction: picked(a) }, overrides }
+    })
+  return (
+    <div className="flex gap-2 text-small">
+      <IconInfoFilled className="mt-0.5 size-3.5 shrink-0 text-s1" />
+      <div className="min-w-0 max-w-[80ch]">
+        <p>{swappedText(shape)}</p>
+        <Button size="sm" variant="secondary" className="mt-2" onClick={swap}>
+          Swap the two columns
+        </Button>
+      </div>
+    </div>
+  )
+}
+
 function MappingTable({
   item,
   draft,
@@ -269,6 +309,7 @@ function MappingTable({
                     <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
                       <span className="font-medium">{f.label}</span>
                       <Requirement f={f} />
+                      {draft.changed?.includes(f.key) && <Tag tone="outline">Changed</Tag>}
                     </span>
                     <span className="mt-0.5 block text-meta leading-snug text-muted">{f.description}</span>
                   </td>
@@ -475,6 +516,14 @@ export function ColumnsStep({
               below.
             </p>
           )}
+          {draft.changed && draft.changed.length > 0 && (
+            <p className="max-w-[80ch] text-small text-ink-2">
+              In Census a job family is the broad group, so “{draft.mapping.jobFamily?.header}” now feeds Job
+              family and “{draft.mapping.jobFunction?.header}” feeds Job function, not what you saved for this
+              layout. Check the two marked fields below.
+            </p>
+          )}
+          <SwappedJobLevels item={item} draft={draft} />
           {def && payLeftOut(def, blockers, null) && <PayLeftOutNote />}
           {blockerLabels.length > 0 && (
             <p className="flex gap-2 text-small">

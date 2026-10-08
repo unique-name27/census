@@ -46,6 +46,11 @@ export interface Draft {
   fromProfile: boolean
   /** A saved profile exists but no longer covers a required field. */
   profileStale: boolean
+  /**
+   * Fields the columns step changed from the saved profile (a Workday layout saved before job
+   * families held job functions), marked for the person to confirm once.
+   */
+  changed?: string[]
   step: Step
   /** Bumped on every change so derived work can tell whether it is current. */
   version: number
@@ -153,7 +158,9 @@ async function makeDraft(lib: ImportLib, item: SessionSheet, dataset: DatasetKey
   const def = datasetDef(dataset)
   const saved = await lib.loadProfile(dataset, item.sheet.headers)
   if (saved) {
-    const { mapping, options } = lib.applyProfile(saved, item.sheet.headers, def)
+    const { mapping: savedMapping, options } = lib.applyProfile(saved, item.sheet.headers, def)
+    const pair = lib.profileJobPair(def, savedMapping, item.sheet.headers)
+    const mapping = pair?.mapping ?? savedMapping
     const stale = blockingFields(lib.applyMapping, item.sheet, def, mapping).length > 0
     return {
       ...base,
@@ -162,7 +169,8 @@ async function makeDraft(lib: ImportLib, item: SessionSheet, dataset: DatasetKey
       options,
       fromProfile: true,
       profileStale: stale,
-      step: stale ? 'columns' : 'check',
+      ...(pair ? { changed: pair.changed } : {}),
+      step: stale || pair ? 'columns' : 'check',
     }
   }
   const mapping = lib.autoMap(item.sheet.headers, item.sheet.rows, def, lib.loadLearnedSynonyms(dataset))

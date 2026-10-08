@@ -168,6 +168,11 @@ function ImportPreview({
           )}
         </div>
       ))}
+      {plan.notes.map((n) => (
+        <p key={n} className="text-meta text-ink-2">
+          {n}
+        </p>
+      ))}
       {plan.ignored.length > 0 && (
         <p className="text-meta text-muted">
           Sheets Census does not know were left out: {plan.ignored.join(', ')}.
@@ -275,7 +280,7 @@ export function ListsSection() {
     setBusy('import')
     try {
       const parsed = await readListsWorkbook(await file.arrayBuffer())
-      if (!Object.keys(parsed.lists).length) {
+      if (!Object.keys(parsed.lists).length && !parsed.notes.length) {
         toast('No official lists in the file', {
           tone: 'critical',
           description: 'Census reads the sheets of an exported Official lists workbook, such as Departments.',

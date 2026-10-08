@@ -1,9 +1,10 @@
 /**
  * How the categories in the data relate: business unit → department, location → country →
- * region, function → job family → job title, plus where they disagree, and an inventory of the
+ * region, job family → job function → job title, plus where they disagree, and an inventory of the
  * values of every categorical field. Pure; headcounts are active employees on the as-of date.
  */
 import { todayISO } from '@/lib/dates'
+import { jobLevelsSwapped, type SwappedJobLevels } from '../import/swap'
 import type { ImportIssue } from '../import/types'
 import { isFilled } from '../quality/applicability'
 import type { FieldRef } from '../quality/fieldRef'
@@ -80,41 +81,46 @@ export interface LocationEdge {
   rows: number[]
 }
 
-export interface FunctionEdge {
-  jobFunction: string | null
+/** One job family → job function placement. */
+export interface JobEdge {
   jobFamily: string | null
+  jobFunction: string | null
   headcount: number
   rows: number[]
 }
 
-export interface FamilyConflict {
-  jobFamily: string
-  functions: Split[]
+/** A job function whose rows name more than one job family. */
+export interface FunctionConflict {
+  jobFunction: string
+  /** The families it appears under, largest first (a null value: rows with no family). */
+  families: Split[]
   headcount: number
 }
 
 export interface TitleEdge {
-  jobFunction: string | null
   jobFamily: string | null
+  jobFunction: string | null
   jobTitle: string
   headcount: number
   levels: Partial<Record<Level, number>>
   rows: number[]
 }
 
-export interface FamilyLevelCell {
+export interface FunctionLevelCell {
   jobFamily: string | null
+  jobFunction: string | null
   level: Level | null
   headcount: number
   rows: number[]
 }
 
 export interface LevelOutlier {
-  jobFamily: string
+  /** The job function the title sits in: the discipline holds the level ladder. */
+  jobFunction: string
   jobTitle: string
   /** The title's median level. */
   level: Level
-  /** The usual range of the family's other titles on the same track: 10th to 90th percentile. */
+  /** The usual range of the function's other titles on the same track: 10th to 90th percentile. */
   usual: [Level, Level]
   /** Active employees with this title and a level; equals `rows.length`. */
   headcount: number
@@ -152,12 +158,18 @@ export interface StructureReport {
   departmentsWithoutUnit: Split[]
   reqDepartmentsNotInRoster: ReqDepartmentGap[]
   locations: LocationEdge[]
-  functions: FunctionEdge[]
-  familiesUnderSeveralFunctions: FamilyConflict[]
+  /** Job family → job function placements, families in name order, then largest first. */
+  jobs: JobEdge[]
+  functionsUnderSeveralFamilies: FunctionConflict[]
   titles: TitleEdge[]
-  familyLevels: FamilyLevelCell[]
+  functionLevels: FunctionLevelCell[]
   levelOutliers: LevelOutlier[]
-  peopleWithoutFamily: { headcount: number; rows: number[] }
+  /** Active employees with no job function (counted only when some Employees row has one). */
+  peopleWithoutFunction: { headcount: number; rows: number[] }
+  /** Some Employees row has a job function. */
+  hasJobFunction: boolean
+  /** The two job columns look swapped: families sit inside functions (`jobLevelsSwapped`). */
+  swapped: SwappedJobLevels | null
   categories: FieldInventory[]
 }
 
@@ -221,21 +233,21 @@ const trackOf = (li: number) => LEVELS[li][0]
 
 /** People in the same track with other titles needed before a title can be called an outlier. */
 const MIN_OTHERS = 10
-/** Rungs beyond the family's other titles before a title is flagged (2 = a rung left empty). */
+/** Rungs beyond the function's other titles before a title is flagged (2 = a rung left empty). */
 const OUTLIER_RUNGS = 2
 
 /**
- * Titles whose median level sits 2 or more rungs beyond every level held by the family's other
- * titles on the same track, so at least one rung between them is empty. Comparing within a track
+ * Titles whose median level sits 2 or more rungs beyond every level held by the job function's
+ * other titles on the same track, so at least one rung between them is empty. Comparing within a track
  * and against the other titles means the ends of a ladder (an entry-level associate, a principal
  * above a thin staff rung, a director over managers) are not flagged. `usual` reports the other
  * titles' 10th to 90th percentile.
  */
 function findLevelOutliers(
-  famTitles: ReadonlyMap<string, ReadonlyMap<string, { levels: number[]; rows: number[] }>>,
+  fnTitles: ReadonlyMap<string, ReadonlyMap<string, { levels: number[]; rows: number[] }>>,
 ): LevelOutlier[] {
   const out: LevelOutlier[] = []
-  for (const [fam, byTitle] of famTitles) {
+  for (const [fn, byTitle] of fnTitles) {
     for (const [title, g] of byTitle) {
       const sorted = g.levels.slice().sort((a, b) => a - b)
       const med = sorted[Math.floor((sorted.length - 1) / 2)]
@@ -251,7 +263,7 @@ function findLevelOutliers(
       const lo = quantileLevel(others, 0.1)
       const hi = quantileLevel(others, 0.9)
       out.push({
-        jobFamily: fam,
+        jobFunction: fn,
         jobTitle: title,
         level: LEVELS[med],
         usual: [LEVELS[lo], LEVELS[hi]],
@@ -378,32 +390,32 @@ export function inferStructure(datasets: Datasets, opts: InferOptions = {}): Str
   }
   const locations = [...locs.values()].sort(bySize)
 
-  /* job architecture: function → family → title */
-  const fns = new Map<string, FunctionEdge>()
+  /* job architecture: job family → job function → title */
+  const jobs = new Map<string, JobEdge>()
   const titles = new Map<string, TitleEdge>()
-  const cells = new Map<string, FamilyLevelCell>()
-  /** Per family, the level indexes of its employees by title (employees with a level only). */
-  const famTitles = new Map<string, Map<string, { levels: number[]; rows: number[] }>>()
-  const noFamily: number[] = []
+  const cells = new Map<string, FunctionLevelCell>()
+  /** Per function, the level indexes of its employees by title (employees with a level only). */
+  const fnTitles = new Map<string, Map<string, { levels: number[]; rows: number[] }>>()
+  const noFunction: number[] = []
   for (const i of active) {
     const e = emps[i]
-    const fn = str(e.jobFunction)
     const fam = str(e.jobFamily)
+    const fn = str(e.jobFunction)
     const title = str(e.jobTitle) ?? '(No title)'
     const emp = isEmp(i)
-    const f = bucket(fns, `${fn}${SEP}${fam}`, () => ({
-      jobFunction: fn,
+    const j = bucket(jobs, `${fam}${SEP}${fn}`, () => ({
       jobFamily: fam,
+      jobFunction: fn,
       headcount: 0,
       rows: [] as number[],
     }))
-    f.rows.push(i)
+    j.rows.push(i)
     const t = bucket(
       titles,
-      `${fn}${SEP}${fam}${SEP}${title}`,
+      `${fam}${SEP}${fn}${SEP}${title}`,
       (): TitleEdge => ({
-        jobFunction: fn,
         jobFamily: fam,
+        jobFunction: fn,
         jobTitle: title,
         headcount: 0,
         levels: {},
@@ -411,23 +423,24 @@ export function inferStructure(datasets: Datasets, opts: InferOptions = {}): Str
       }),
     )
     t.rows.push(i)
-    const c = bucket(cells, `${fam}${SEP}${e.level}`, () => ({
+    const c = bucket(cells, `${fam}${SEP}${fn}${SEP}${e.level}`, () => ({
       jobFamily: fam,
+      jobFunction: fn,
       level: e.level,
       headcount: 0,
       rows: [] as number[],
     }))
     c.rows.push(i)
     if (!emp) continue
-    f.headcount++
+    j.headcount++
     t.headcount++
     c.headcount++
     if (e.level) t.levels[e.level] = (t.levels[e.level] ?? 0) + 1
-    if (!fam) noFamily.push(i)
+    if (!fn) noFunction.push(i)
     const li = levelIndex(e.level ?? '')
-    if (fam && li >= 0) {
+    if (fn && li >= 0) {
       const g = bucket(
-        bucket(famTitles, fam, () => new Map()),
+        bucket(fnTitles, fn, () => new Map()),
         title,
         () => ({
           levels: [] as number[],
@@ -438,26 +451,27 @@ export function inferStructure(datasets: Datasets, opts: InferOptions = {}): Str
       g.rows.push(i)
     }
   }
-  const functions = [...fns.values()].sort(
-    (a, b) => (a.jobFunction ?? '￿').localeCompare(b.jobFunction ?? '￿') || bySize(a, b),
+  const jobEdges = [...jobs.values()].sort(
+    (a, b) => (a.jobFamily ?? '￿').localeCompare(b.jobFamily ?? '￿') || bySize(a, b),
   )
-  const famFns = new Map<string, Map<string | null, { headcount: number; rows: number[] }>>()
-  for (const edge of functions) {
-    if (!edge.jobFamily || !edge.headcount) continue
-    bucket(famFns, edge.jobFamily, () => new Map()).set(edge.jobFunction, {
+  const fnFams = new Map<string, Map<string | null, { headcount: number; rows: number[] }>>()
+  for (const edge of jobEdges) {
+    if (!edge.jobFunction || !edge.headcount) continue
+    bucket(fnFams, edge.jobFunction, () => new Map()).set(edge.jobFamily, {
       headcount: edge.headcount,
       rows: edge.rows.filter(isEmp),
     })
   }
-  const familiesUnderSeveralFunctions: FamilyConflict[] = [...famFns.entries()]
+  const functionsUnderSeveralFamilies: FunctionConflict[] = [...fnFams.entries()]
     .filter(([, m]) => m.size > 1)
-    .map(([jobFamily, m]) => {
-      const fs = splits(m)
-      return { jobFamily, functions: fs, headcount: fs.reduce((a, s) => a + s.headcount, 0) }
+    .map(([jobFunction, m]) => {
+      const families = splits(m)
+      return { jobFunction, families, headcount: families.reduce((a, s) => a + s.headcount, 0) }
     })
     .sort(bySize)
 
-  const levelOutliers = findLevelOutliers(famTitles)
+  const levelOutliers = findLevelOutliers(fnTitles)
+  const hasJobFunction = emps.some((e) => !!str(e.jobFunction))
 
   return {
     asOf,
@@ -466,16 +480,21 @@ export function inferStructure(datasets: Datasets, opts: InferOptions = {}): Str
     departmentsWithoutUnit,
     reqDepartmentsNotInRoster,
     locations,
-    functions,
-    familiesUnderSeveralFunctions,
+    jobs: jobEdges,
+    functionsUnderSeveralFamilies,
     titles: [...titles.values()].sort(bySize),
-    familyLevels: [...cells.values()].sort(
+    functionLevels: [...cells.values()].sort(
       (a, b) =>
         (a.jobFamily ?? '￿').localeCompare(b.jobFamily ?? '￿') ||
+        (a.jobFunction ?? '￿').localeCompare(b.jobFunction ?? '￿') ||
         levelIndex(a.level ?? '') - levelIndex(b.level ?? ''),
     ),
     levelOutliers,
-    peopleWithoutFamily: { headcount: noFamily.length, rows: noFamily },
+    peopleWithoutFunction: hasJobFunction
+      ? { headcount: noFunction.length, rows: noFunction }
+      : { headcount: 0, rows: [] },
+    hasJobFunction,
+    swapped: jobLevelsSwapped(emps),
     categories: inventory(datasets, opts),
   }
 }

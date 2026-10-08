@@ -1,5 +1,5 @@
 /**
- * Market: base pay against the market median by job family, location and level, and the jobs
+ * Market: base pay against the market median by job function, location and level, and the jobs
  * furthest below. Every bar and count opens the people behind it with their market ratio.
  */
 import { BarList, Figure, Scatter } from '@/charts'
@@ -8,7 +8,7 @@ import { drill } from '@/drill'
 import { formatDate } from '@/lib/dates'
 import { fmt } from '@/lib/format'
 import { jobsColumns, marketDrillColumns } from '../drillColumns'
-import { type FamilyPositionRow, familyPositionDrill } from '../engine/charts'
+import { type JobPositionRow, jobPositionDrill } from '../engine/charts'
 import { FIGURE_METRIC } from '../engine/definitions'
 import { lazyDrill, marketDrill } from '../engine/drill'
 import type { JobMarketRow, MarketRow } from '../engine/market'
@@ -17,7 +17,7 @@ import { marketFlag } from '../engine/rules'
 import { settingPct } from '../engine/text'
 import { asOfNote, emptyIf, MISSING, note } from '../shared'
 
-/** Families at or below the below-market threshold ('comp.market.belowMarket') get the diamond. */
+/** Groups at or below the below-market threshold ('comp.market.belowMarket') get the diamond. */
 const gapTone = (flag: number) => (d: MarketRow) =>
   d.median != null && d.median <= flag + 1e-9 ? 'warning' : 'default'
 /**
@@ -41,11 +41,11 @@ export function Market({ m }: { m: CompModel }) {
   const sub = `Median base ÷ market median minus 1, as of ${asOf}`
   const onBar = (d: MarketRow) => drill(marketDrill(m, d))
   const tone = gapTone(marketFlag(m.rules))
-  const { minFamily, jobWatch } = m.rules.marketGap
-  const fp = k.familyPosition
-  const familyDrill = (d: FamilyPositionRow) => lazyDrill(d.members.length, () => familyPositionDrill(m, d))
+  const { minFunction, jobWatch } = m.rules.marketGap
+  const fp = k.jobPosition
+  const jobDrill = (d: JobPositionRow) => lazyDrill(d.members.length, () => jobPositionDrill(m, d))
   const fpHidden = fp.hidden
-    ? ` · ${fmt(fp.hidden, 'int')} ${fp.hidden === 1 ? 'family' : 'families'} under ${fmt(m.rules.minGroup, 'int')} people not drawn`
+    ? ` · ${fmt(fp.hidden, 'int')} ${fp.hidden === 1 ? 'function' : 'functions'} under ${fmt(m.rules.minGroup, 'int')} people not drawn`
     : ''
   const unpriced = fp.unpriced
     ? ` · ${fmt(fp.unpriced, 'int')} of ${fmt(fp.total, 'int')} people have no market median`
@@ -55,33 +55,33 @@ export function Market({ m }: { m: CompModel }) {
     <div>
       <Section
         title="Pay or the range"
-        dek="When a job family is paid below market, whether people sit low in their range or the range itself trails the market. Right of 1.00 the range trails the market; below 1.00 pay sits low in the range."
+        dek="When a job function is paid below market, whether people sit low in their range or the range itself trails the market. Right of 1.00 the range trails the market; below 1.00 pay sits low in the range."
       >
         <Figure
           id="comp-market-vs-range"
           uses={m.uses['comp-market-vs-range']}
           metric={FIGURE_METRIC['comp-market-vs-range']}
-          title="Is it pay or the range? Job families against the market"
-          subtitle={`Market median ÷ range midpoint (across) against median compa-ratio (up), one dot per job family, as of ${asOf}`}
+          title="Is it pay or the range? Job functions against the market"
+          subtitle={`Market median ÷ range midpoint (across) against median compa-ratio (up), one dot per job function, as of ${asOf}`}
           data={fp.rows}
           columns={[
-            { key: 'family', label: 'Job family', format: 'text' },
-            { key: 'n', label: 'People with a market median', format: 'int', drill: familyDrill },
-            { key: 'marketVsMid', label: 'Market median ÷ midpoint', format: 'ratio', drill: familyDrill },
-            { key: 'compa', label: 'Median compa-ratio', format: 'ratio', drill: familyDrill },
+            { key: 'job', label: 'Job function', format: 'text' },
+            { key: 'n', label: 'People with a market median', format: 'int', drill: jobDrill },
+            { key: 'marketVsMid', label: 'Market median ÷ midpoint', format: 'ratio', drill: jobDrill },
+            { key: 'compa', label: 'Median compa-ratio', format: 'ratio', drill: jobDrill },
             { key: 'marketRatio', label: 'Median market ratio', format: 'ratio' },
           ]}
           definitions={m.definitions['comp-market-vs-range']}
-          note={`${fmt(fp.rows.length, 'int')} job families${fpHidden}${unpriced} · ${asOfNote(m)}`}
+          note={`${fmt(fp.rows.length, 'int')} job functions${fpHidden}${unpriced} · ${asOfNote(m)}`}
           span={7}
-          empty={emptyIf(fp.rows, missing, 'No job family has enough people with a market median.')}
+          empty={emptyIf(fp.rows, missing, 'No job function has enough people with a market median.')}
         >
           <Scatter
             data={fp.rows}
             x="marketVsMid"
             y="compa"
             r="n"
-            label="family"
+            label="job"
             labelCount={4}
             xFormat="ratio"
             yFormat="ratio"
@@ -91,8 +91,8 @@ export function Market({ m }: { m: CompModel }) {
             rLabel="People"
             refX={{ value: 1, label: 'Range at market 1.00' }}
             refY={{ value: 1, label: 'Midpoint 1.00' }}
-            ariaLabel="Job families: market median against range midpoint and median compa-ratio"
-            onSelect={(d) => drill(familyDrill(d))}
+            ariaLabel="Job functions: market median against range midpoint and median compa-ratio"
+            onSelect={(d) => drill(jobDrill(d))}
           />
         </Figure>
         <Figure
@@ -127,20 +127,20 @@ export function Market({ m }: { m: CompModel }) {
         dek={`How base salary compares with the market median for each job. Bars left of zero are below market; the diamond marks a gap of ${settingPct(m.rules.belowMarket.threshold)} or more.`}
       >
         <Figure
-          id="comp-market-by-family"
-          uses={m.uses['comp-market-by-family']}
-          metric={FIGURE_METRIC['comp-market-by-family']}
-          title="Gap to market by job family"
-          subtitle={`The 15 families of ${fmt(minFamily, 'int')} or more people furthest below market, median base ÷ market median minus 1, as of ${asOf}`}
-          data={k.familyChart}
-          columns={marketDrillColumns('Job family', m)}
-          definitions={m.definitions['comp-market-by-family']}
+          id="comp-market-by-function"
+          uses={m.uses['comp-market-by-function']}
+          metric={FIGURE_METRIC['comp-market-by-function']}
+          title="Gap to market by job function"
+          subtitle={`The 15 job functions of ${fmt(minFunction, 'int')} or more people furthest below market, median base ÷ market median minus 1, as of ${asOf}`}
+          data={k.jobChart}
+          columns={marketDrillColumns('Job function', m)}
+          definitions={m.definitions['comp-market-by-function']}
           note={note(m, k.total.n)}
           span={6}
-          empty={emptyIf(k.familyChart, missing, 'No market medians in this scope.')}
+          empty={emptyIf(k.jobChart, missing, 'No market medians in this scope.')}
         >
           <BarList
-            data={k.familyChart}
+            data={k.jobChart}
             label="group"
             value="gap"
             format="pct"
@@ -179,13 +179,13 @@ export function Market({ m }: { m: CompModel }) {
         </Figure>
       </Section>
 
-      <Section title="By job" dek="The job family and level pairs furthest below market.">
+      <Section title="By job" dek="The job function and level pairs furthest below market.">
         <Figure
           id="comp-jobs-below-market"
           uses={m.uses['comp-jobs-below-market']}
           metric={FIGURE_METRIC['comp-jobs-below-market']}
           title="Jobs furthest below market"
-          subtitle={`Job family and level pairs with ${fmt(m.rules.minGroup, 'int')} or more people, lowest market ratio first; ${settingPct(jobWatch)} or more below market is marked, as of ${asOf}`}
+          subtitle={`Job function and level pairs with ${fmt(m.rules.minGroup, 'int')} or more people, lowest market ratio first; ${settingPct(jobWatch)} or more below market is marked, as of ${asOf}`}
           data={k.jobs}
           columns={jobsColumns(m)}
           definitions={m.definitions['comp-jobs-below-market']}

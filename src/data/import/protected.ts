@@ -1,8 +1,9 @@
 /**
  * Columns Census never reads or keeps, whatever the sheet: protected characteristics (gender,
  * ethnicity, age and birth date, nationality, citizenship, religion, disability, veteran status,
- * sexual orientation, marital status) and free-text survey comments. They are dropped when the
- * sheet is read, so they never reach the stored raw sheet, the mapping or a dataset. Pure.
+ * sexual orientation, marital status), stand-ins for them (graduation year reveals age) and
+ * free-text survey comments. They are dropped when the sheet is read, so they never reach the
+ * stored raw sheet, the mapping or a dataset. Pure.
  */
 import { normalizeHeader } from './text'
 
@@ -46,6 +47,24 @@ const PROTECTED_HEADERS = new Set([
   'lgbtq',
 ])
 
+/**
+ * Stand-ins for a protected characteristic: graduation year reveals age (docs/ANALYSES.md, 2.3).
+ * University is read; when it was earned is not.
+ */
+const PROXY_WORDS = new Set(['graduation', 'graduated'])
+const PROXY_HEADERS = new Set([
+  'grad year',
+  'grad yr',
+  'grad date',
+  'class of',
+  'class year',
+  'year graduated',
+  'degree year',
+  'year of degree',
+  'degree date',
+  'year of graduation',
+])
+
 /** Free-text answers and comments: never imported (survey privacy). */
 const COMMENT_WORDS = new Set(['comment', 'comments', 'verbatim', 'verbatims'])
 const COMMENT_HEADERS = new Set([
@@ -58,7 +77,7 @@ const COMMENT_HEADERS = new Set([
   'free text response',
 ])
 
-export type DropReason = 'protected' | 'comment'
+export type DropReason = 'protected' | 'proxy' | 'comment'
 
 /** Why a column is never imported, or null when it may be. */
 export function dropReason(header: unknown): DropReason | null {
@@ -74,6 +93,7 @@ export function dropReason(header: unknown): DropReason | null {
     // "Sex" only as its own word: "Essex" or "Sussex" sites never match (words are whole).
     return 'protected'
   }
+  if (PROXY_HEADERS.has(h) || words.some((w) => PROXY_WORDS.has(w))) return 'proxy'
   if (COMMENT_HEADERS.has(h) || words.some((w) => COMMENT_WORDS.has(w))) return 'comment'
   return null
 }
@@ -93,6 +113,9 @@ export function droppedColumns(headers: readonly string[]): DroppedColumn[] {
   return out
 }
 
+/** The Data room's reason for leaving out a graduation year. */
+export const PROXY_TEXT = 'Graduation year can reveal age, so Census does not read it.'
+
 /** "Gender and Citizenship were left out: Census never imports protected characteristics." */
 export function droppedText(dropped: readonly DroppedColumn[]): string | null {
   if (!dropped.length) return null
@@ -100,11 +123,14 @@ export function droppedText(dropped: readonly DroppedColumn[]): string | null {
     xs.length < 2 ? xs[0] : `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}`
   const parts: string[] = []
   const prot = dropped.filter((d) => d.reason === 'protected').map((d) => d.header)
+  const proxies = dropped.filter((d) => d.reason === 'proxy').map((d) => d.header)
   const comments = dropped.filter((d) => d.reason === 'comment').map((d) => d.header)
   if (prot.length)
     parts.push(
       `${list(prot)} ${prot.length === 1 ? 'was' : 'were'} left out: Census never imports protected characteristics.`,
     )
+  if (proxies.length)
+    parts.push(`${list(proxies)} ${proxies.length === 1 ? 'was' : 'were'} left out. ${PROXY_TEXT}`)
   if (comments.length)
     parts.push(
       `${list(comments)} ${comments.length === 1 ? 'was' : 'were'} left out: free-text comments are never imported.`,

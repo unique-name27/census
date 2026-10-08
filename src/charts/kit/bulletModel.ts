@@ -19,7 +19,7 @@ export interface BulletRow<T> {
   group: string | null
   value: number | null
   target: number | null
-  /** The row's own scale end: 1.15 x the larger of value and target (1 when both are missing or zero). */
+  /** The row's scale end: 1.15 x the larger of value and target (of every row's, on a shared scale; 1 when missing or zero). */
   max: number
   /** Value and target as shares of the row's scale (0 to 1), null when missing; negatives clamp to 0. */
   valueAt: number | null
@@ -55,12 +55,14 @@ export interface BulletAccessors<T> {
 
 /**
  * Rows in input order, grouped under a header each time the group changes (keep a group's rows
- * together). Every row gets its own scale from 0 to 1.15 x max(value, target).
+ * together). Every row gets its own scale from 0 to 1.15 x max(value, target), or with
+ * `scale: 'shared'` (measures in one unit, such as ratios of heads) one scale for every row, from
+ * 0 to 1.15 x the largest value or target, so bar lengths compare across rows.
  */
 export function bulletLayout<T>(
   data: readonly T[],
   acc: BulletAccessors<T>,
-  opts: { rowHeight?: number; groupHeight?: number; top?: number } = {},
+  opts: { rowHeight?: number; groupHeight?: number; top?: number; scale?: 'row' | 'shared' } = {},
 ): BulletLayout<T> {
   const rowH = opts.rowHeight ?? 28
   const groupH = opts.groupHeight ?? 28
@@ -68,6 +70,10 @@ export function bulletLayout<T>(
   let last: string | null | undefined
   const rows: BulletRow<T>[] = []
   const groups: BulletGroup[] = []
+  const shared =
+    opts.scale === 'shared'
+      ? Math.max(0, ...data.map((d) => Math.max(finite(acc.value(d)) ?? 0, finite(acc.target(d)) ?? 0)))
+      : null
   data.forEach((d, i) => {
     const group = acc.group?.(d) ?? null
     if (group != null && group !== last) {
@@ -77,7 +83,7 @@ export function bulletLayout<T>(
     last = group
     const value = finite(acc.value(d))
     const target = finite(acc.target(d))
-    const top = Math.max(value ?? 0, target ?? 0)
+    const top = shared ?? Math.max(value ?? 0, target ?? 0)
     const max = top > 0 ? top * BULLET_HEADROOM : 1
     rows.push({
       key: `${i}`,

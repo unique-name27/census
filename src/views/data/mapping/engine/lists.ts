@@ -45,7 +45,7 @@ export const LIST_GROUPS: readonly ListGroup[] = [
   {
     id: 'org',
     label: 'Org and jobs',
-    categories: ['businessUnit', 'department', 'jobFunction', 'jobFamily', 'jobTitle'],
+    categories: ['businessUnit', 'department', 'jobFamily', 'jobFunction', 'jobTitle'],
   },
   {
     id: 'exits',

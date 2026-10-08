@@ -2,17 +2,31 @@
  * Ranges with markers, one row per category. Range mode: a light track from min to max with an
  * ink tick at the midpoint and value dots (e.g. salary range, midpoint and median pay). Quartile
  * mode (q1 and q3 given): a thin whisker from min to max, a box from q1 to q3 and a median tick.
+ *
+ * Optional: a reference rule (`ref`, labelled above the plot), and a tail after each row with a
+ * status glyph and its word (`glyphTone`, `glyphLabel`: "Above", "Below") and a muted secondary
+ * text (`secondary`, left to the tooltip under 560px). The marks keep their colors; a status
+ * never fills a range. `deemph` draws a row's marks in the de-emphasis color ("Not recorded").
  */
 import * as Plot from '@observablehq/plot'
 import { type Format, fmt } from '@/lib/format'
+import { isStatusTone, toneColor } from '../core/color'
 import type { LegendSpec } from '../core/legend'
-import { hoverBand, labelsMark, scalePos } from '../core/marks'
-import { maxTextWidth, truncateText } from '../core/measure'
+import {
+  bandLabel,
+  bandLabelLines,
+  glyphForTone,
+  hoverBand,
+  labelsMark,
+  refRule,
+  scalePos,
+} from '../core/marks'
+import { textWidth, truncateText } from '../core/measure'
 import type { TipContent, TipRow } from '../core/tooltip'
 import { axisX, gridX, housePlot, type PlotBuildContext, PlotChart, type PlotElement, plotPos } from '../plot'
 import { seriesColor, useChartTheme } from '../theme'
 import { extent, numericAxis } from './scale'
-import { type ChartBaseProps, gateOf, type Key, numAt, textAt } from './shared'
+import { type ChartBaseProps, gateOf, type Key, numAt, type RefLine, type Tone, textAt } from './shared'
 
 export interface RangeMarker<T> {
   key: Key<T>
@@ -40,6 +54,16 @@ export interface RangeBarsProps<T extends object> extends ChartBaseProps<T> {
   labels?: { min?: string; max?: string; mid?: string; value?: string; range?: string }
   xDomain?: [number, number]
   rowHeight?: number
+  /** Reference rule, e.g. the company mean ("Company 66.9"), labelled above the plot. */
+  ref?: RefLine
+  /** Per-row status shown as a glyph in the row's tail; the marks keep their colors. */
+  glyphTone?: (d: T) => Tone
+  /** The word after the glyph ("Above", "Below"). */
+  glyphLabel?: (d: T) => string | null | undefined
+  /** Muted text in the row's tail, e.g. "38 hires · expected 65.8"; tooltip only under 560px. */
+  secondary?: (d: T) => string | null | undefined
+  /** Draw the row's dots and range in the de-emphasis color ("Not recorded"). */
+  deemph?: (d: T) => boolean
 }
 
 interface Row<T> {
@@ -51,8 +75,14 @@ interface Row<T> {
   q1: number | null
   q3: number | null
   marks: (number | null)[]
+  glyph: 'good' | 'warning' | 'serious' | 'critical' | null
+  word: string | null
+  secondary: string | null
+  deemph: boolean
   datum: T
 }
+
+const statusOf = (g: Tone | undefined): Row<object>['glyph'] => (isStatusTone(g) ? g : null)
 
 export function RangeBars<T extends object>({
   data,
@@ -68,6 +98,11 @@ export function RangeBars<T extends object>({
   labels,
   xDomain,
   rowHeight = 32,
+  ref: refLine,
+  glyphTone,
+  glyphLabel,
+  secondary,
+  deemph,
   onSelect,
   selectable,
   lockedNote,
@@ -85,9 +120,15 @@ export function RangeBars<T extends object>({
     q1: q1 ? numAt(d, q1) : null,
     q3: q3 ? numAt(d, q3) : null,
     marks: markerDefs.map((m) => numAt(d, m.key)),
+    glyph: statusOf(glyphTone?.(d)),
+    word: glyphLabel?.(d) || null,
+    secondary: secondary?.(d) || null,
+    deemph: deemph?.(d) ?? false,
     datum: d,
   }))
-  const height = 6 + rows.length * rowHeight + 26
+  const marginTop = refLine ? 22 : 6
+  const height = marginTop + rows.length * rowHeight + 26
+  const hasTail = rows.some((r) => r.glyph || r.word || r.secondary)
   const midName = labels?.mid ?? (quartiles ? 'Median' : 'Midpoint')
 
   const theme = useChartTheme()
@@ -111,10 +152,29 @@ export function RangeBars<T extends object>({
   const build = ({ width, theme: t }: PlotBuildContext) => {
     if (!rows.length) return null
     const labelMax = Math.max(48, width * 0.3)
-    const shown = rows.map((r) => truncateText(r.label, labelMax, 12))
-    const marginLeft = Math.ceil(maxTextWidth(shown, 12)) + 14
-    const marginRight = 16
-    const ext = extent(rows.flatMap((r) => [r.min, r.max, r.mid, r.q1, r.q3, ...r.marks]))
+    // Category labels wrap to two lines in rows of 26px or more, else they are shortened.
+    const band = bandLabelLines(
+      rows.map((r) => r.label),
+      labelMax,
+      rowHeight,
+    )
+    const marginLeft = Math.ceil(band.width) + 14
+    // The tail: glyph, word and (from 560px) the secondary text, at most 36% of the width.
+    const withSecondary = width >= 560
+    const head = (r: Row<T>) => (r.glyph ? 12 : 0) + (r.word ? textWidth(r.word, 11, 500) + 4 : 0)
+    const tailText = (r: Row<T>) => {
+      if (!withSecondary || !r.secondary) return null
+      const room = width * 0.36 - 16 - head(r)
+      if (textWidth(r.secondary, 11) <= room) return r.secondary
+      return room >= 40 ? truncateText(r.secondary, room, 11) : null
+    }
+    const tails = rows.map(tailText)
+    const tailWidth = (r: Row<T>, i: number) =>
+      head(r) + (tails[i] ? textWidth(tails[i] as string, 11) + 5 : 0)
+    const marginRight = hasTail ? Math.ceil(Math.max(16, ...rows.map((r, i) => tailWidth(r, i) + 16))) : 16
+    const ext = extent(
+      rows.flatMap((r) => [r.min, r.max, r.mid, r.q1, r.q3, ...r.marks, refLine ? refLine.value : null]),
+    )
     const axis = numericAxis(
       ext?.[0] ?? 0,
       ext?.[1] ?? 1,
@@ -156,7 +216,7 @@ export function RangeBars<T extends object>({
           y: (r) => r.key,
           x1: (r) => r.min,
           x2: (r) => r.max,
-          fill: t.seq[100],
+          fill: (r: Row<T>) => (r.deemph ? t.rule : t.seq[100]),
           insetTop: inset(10),
           insetBottom: inset(10),
           r: 3,
@@ -178,6 +238,7 @@ export function RangeBars<T extends object>({
         ),
       )
     }
+    if (refLine) marks.push(...refRule(refLine, 'x', t))
     markerDefs.forEach((_, i) => {
       marks.push(
         Plot.dot(
@@ -186,7 +247,7 @@ export function RangeBars<T extends object>({
             y: (r) => r.key,
             x: (r) => r.marks[i],
             r: 4.5,
-            fill: seriesColor(t, i),
+            fill: (r: Row<T>) => (r.deemph ? t.deemph : seriesColor(t, i)),
             stroke: t.sheet,
             strokeWidth: 2,
           },
@@ -196,22 +257,47 @@ export function RangeBars<T extends object>({
     marks.push(
       labelsMark(
         (scales, dims) =>
-          rows.map((r, i) => ({
-            x: dims.marginLeft - 10,
-            y: scalePos(scales, 'y', r.key),
-            anchor: 'end' as const,
-            parts: [{ text: shown[i], color: t.ink2, size: 12 }],
-            title: shown[i] === r.label ? undefined : r.label,
-          })),
+          rows.flatMap((r, i) =>
+            bandLabel(
+              r.label,
+              band.lines[i],
+              dims.marginLeft - 10,
+              scalePos(scales, 'y', r.key),
+              r.deemph ? t.muted : t.ink2,
+            ),
+          ),
         'category labels',
       ),
       axisX(t, { ticks: axis.ticks, tickFormat: axis.format }),
     )
+    if (hasTail)
+      marks.push(
+        labelsMark(
+          (scales, dims) =>
+            rows.flatMap((r, i) => {
+              const tail = tails[i]
+              if (!r.glyph && !r.word && !tail) return []
+              return [
+                {
+                  x: dims.width - dims.marginRight + 10,
+                  y: scalePos(scales, 'y', r.key),
+                  anchor: 'start' as const,
+                  glyph: r.glyph ? { shape: glyphForTone(r.glyph), color: toneColor(t, r.glyph) } : undefined,
+                  parts: [
+                    ...(r.word ? [{ text: r.word, color: t.ink, size: 11, weight: 500 }] : []),
+                    ...(tail ? [{ text: tail, color: t.muted, size: 11 }] : []),
+                  ],
+                },
+              ]
+            }),
+          'row status',
+        ),
+      )
     return housePlot(
       { width, theme: t },
       {
         height,
-        marginTop: 6,
+        marginTop,
         marginRight,
         marginBottom: 26,
         marginLeft,
@@ -240,6 +326,8 @@ export function RangeBars<T extends object>({
         shape: 'dot' as const,
       })),
     ]
+    const extra = [r.word, r.secondary].filter(Boolean).join(' · ')
+    if (extra) out.push({ value: extra, strong: false })
     const locked = onSelect && !open(r) && hasRange(r) ? lockedNote?.(r.datum) : null
     return { title: r.label, rows: out, ...(locked ? { note: locked } : {}) }
   }

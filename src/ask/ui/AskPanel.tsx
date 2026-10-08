@@ -37,6 +37,7 @@ import { Button, cx, IconButton, Segmented } from '@/components/ui'
 import { useAnalytics } from '@/data/context'
 import { openSettings, type RouteView, useCensus } from '@/data/store'
 import { useActionMarks } from '@/views/actions/ui/store'
+import { analysisSurface } from '@/views/hrbp/analyses/tab'
 import { VIEWS } from '@/views/registry'
 import { AskChartFigure } from './AskChartFigure'
 import { Composer } from './Composer'
@@ -144,6 +145,8 @@ const actionsNow = (_version: number) => readScreenActions()
 
 function Suggestions({ onAsk }: { onAsk: (q: string) => void }) {
   const view = useCensus((s) => s.route.view)
+  const tab = useCensus((s) => s.route.tab)
+  const access = useAnalytics().access
   const version = useAsk((s) => s.keyVersion)
   const actions = actionsNow(version)
   return (
@@ -173,7 +176,7 @@ function Suggestions({ onAsk }: { onAsk: (q: string) => void }) {
           {NO_DATA.has(view) ? 'Questions to start with' : `Questions about ${pageLabel(view)}`}
         </h3>
         <ul className="flex flex-col">
-          {suggestionsFor(view).map((q) => (
+          {suggestionsFor(view, tab, (k) => access.can(analysisSurface(k))).map((q) => (
             <li key={q}>
               <button
                 type="button"

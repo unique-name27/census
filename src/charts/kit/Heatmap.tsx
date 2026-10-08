@@ -49,6 +49,11 @@ export interface HeatmapProps<T extends object> extends ChartBaseProps<T> {
    * row share. The tooltip keeps both.
    */
   cellText?: (d: T) => string
+  /**
+   * Draw cells whose value is 0 with no fill and no text (a row share where most cells are empty),
+   * so the cells that hold something stand out. The tooltip still says 0.
+   */
+  blankZero?: boolean
   rowHeight?: number
 }
 
@@ -87,6 +92,7 @@ export function Heatmap<T extends object>({
   n,
   detail,
   cellText,
+  blankZero = false,
   rowHeight = 30,
   onSelect,
   selectable,
@@ -163,7 +169,8 @@ export function Heatmap<T extends object>({
     const marginTop = rotate ? Math.ceil(Math.sin(rad) * xLabelW + 18) : marginTopFlat
     const height = marginTop + ys.length * rowHeight + 2
 
-    const fillOf = (c: Cell<T>) => (c.value == null ? t.sheet2 : color(c.value))
+    const blank = (c: Cell<T>) => blankZero && c.value === 0
+    const fillOf = (c: Cell<T>) => (c.value == null || blank(c) ? t.sheet2 : color(c.value))
     const marks: Plot.Markish[] = [
       Plot.cell(cells, { x: (c) => c.x, y: (c) => c.y, fill: fillOf, inset: 1, r: 2 }),
       Plot.cell(
@@ -193,6 +200,7 @@ export function Heatmap<T extends object>({
         labelsMark(
           (scales) =>
             cells.flatMap((c) => {
+              if (blank(c)) return []
               const text = c.value == null ? DASH : (cellText?.(c.datum) ?? fmt(c.value, format))
               if (textWidth(text, 11, 500) > cellW - 8) return []
               return [

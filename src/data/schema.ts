@@ -698,8 +698,19 @@ export const POTENTIALS = ['Low', 'Moderate', 'High'] as const
 export type Potential = (typeof POTENTIALS)[number]
 export const READINESS = ['Ready now', 'Ready in 1-2 years', 'Ready in 3+ years'] as const
 export type Readiness = (typeof READINESS)[number]
-/** Job functions, the level above job family. Uploaded data may use its own; these are the sample's. */
-export const JOB_FUNCTIONS = ['Engineering', 'Operations', 'Sales & marketing', 'G&A', 'Executive'] as const
+/**
+ * Job families, the broad groups of related jobs; each contains job functions. These are the sample's
+ * six, in order, and the suggested values for the move form. Uploaded data may use its own. The
+ * functions of each family live in the sample (`src/data/sample/jobs.ts`); a test keeps the two in step.
+ */
+export const JOB_FAMILIES = [
+  'Silicon Engineering',
+  'Systems & Software Engineering',
+  'Product & Test Operations',
+  'Go-to-Market',
+  'Corporate',
+  'Executive',
+] as const
 export const LEARNING_CATEGORIES = [
   'Compliance',
   'Security',
@@ -708,14 +719,180 @@ export const LEARNING_CATEGORIES = [
   'Onboarding',
 ] as const
 
+/* education (docs/ANALYSES.md, 2.3): the highest degree only, never a graduation year */
+export const DEGREE_LEVELS = ['Associate', "Bachelor's", "Master's", 'PhD', 'Other'] as const
+export type DegreeLevel = (typeof DEGREE_LEVELS)[number]
+/** Census's starting list of fields of study; your own spellings can be added to the official list. */
+export const FIELDS_OF_STUDY = [
+  'Electrical Engineering',
+  'Computer Engineering',
+  'Computer Science',
+  'Physics',
+  'Materials Science',
+  'Mechanical Engineering',
+  'Chemical Engineering',
+  'Mathematics',
+  'Business',
+  'Other',
+] as const
+
+/* chip development stages (docs/ANALYSES.md, 4.3) */
+export const CHIP_STAGE_KEYS = [
+  'architecture',
+  'rtl',
+  'ams',
+  'verification',
+  'dft',
+  'physical',
+  'signoff',
+  'postSilicon',
+  'productTest',
+  'software',
+  'shared',
+] as const
+export type ChipStageKey = (typeof CHIP_STAGE_KEYS)[number]
+export type ChipPhase =
+  | 'Pre-silicon, front end'
+  | 'Pre-silicon, back end'
+  | 'Post-silicon'
+  | 'Across the lifecycle'
+export interface ChipStage {
+  key: ChipStageKey
+  /** The name Census shows and the value the Job functions list stores. */
+  label: string
+  phase: ChipPhase
+  /** Position in the flow, 1 to 11: the nine lifecycle stages, then the two that run across it. */
+  order: number
+  /** Software and firmware, Shared engineering: drawn after the nine, past a hairline. */
+  acrossLifecycle: boolean
+  what: string
+}
+const chipStage = (
+  key: ChipStageKey,
+  label: string,
+  phase: ChipPhase,
+  what: string,
+): Omit<ChipStage, 'order' | 'acrossLifecycle'> => ({ key, label, phase, what })
+/**
+ * The stages of chip development in lifecycle order (a fabless company: fabrication and assembly
+ * are the foundry's and the assembly partner's, so they are not staffed stages here).
+ */
+export const CHIP_STAGES: readonly ChipStage[] = [
+  chipStage(
+    'architecture',
+    'Architecture and spec',
+    'Pre-silicon, front end',
+    'Product and system architecture, micro-architecture, performance and power modeling, the specification.',
+  ),
+  chipStage(
+    'rtl',
+    'RTL design',
+    'Pre-silicon, front end',
+    'Digital logic design in RTL, IP integration, synthesis-ready design.',
+  ),
+  chipStage(
+    'ams',
+    'Analog and mixed-signal design',
+    'Pre-silicon, front end',
+    'Analog, mixed-signal and SerDes circuit design and analog layout. It runs beside RTL design, with its own talent pool and hiring market.',
+  ),
+  chipStage(
+    'verification',
+    'Design verification',
+    'Pre-silicon, front end',
+    'Functional verification (UVM), formal, emulation and FPGA prototyping.',
+  ),
+  chipStage('dft', 'DFT', 'Pre-silicon, front end', 'Scan, BIST, ATPG and test insertion.'),
+  chipStage(
+    'physical',
+    'Physical design',
+    'Pre-silicon, back end',
+    'Floorplan, place and route, clock tree, timing closure.',
+  ),
+  chipStage(
+    'signoff',
+    'Signoff and tape-out',
+    'Pre-silicon, back end',
+    'Static timing, power and IR signoff, physical verification (DRC, LVS), package co-design, tape-out.',
+  ),
+  chipStage(
+    'postSilicon',
+    'Post-silicon validation and bring-up',
+    'Post-silicon',
+    'First silicon bring-up, validation, characterization, evaluation and validation boards.',
+  ),
+  chipStage(
+    'productTest',
+    'Product and test engineering',
+    'Post-silicon',
+    'Production test programs (ATE), yield, qualification, quality and reliability.',
+  ),
+  chipStage(
+    'software',
+    'Software and firmware',
+    'Across the lifecycle',
+    'Firmware, drivers, compilers and SDKs: pre-silicon on emulation, then on silicon.',
+  ),
+  chipStage(
+    'shared',
+    'Shared engineering',
+    'Across the lifecycle',
+    'EDA and CAD, methodology, engineering program management, engineering leadership.',
+  ),
+].map((s, i) => ({ ...s, order: i + 1, acrossLifecycle: s.phase === 'Across the lifecycle' }))
+export const chipStageByKey: ReadonlyMap<ChipStageKey, ChipStage> = new Map(
+  CHIP_STAGES.map((s) => [s.key, s]),
+)
+
+/* offer declines (docs/ANALYSES.md, 3.2) */
+export const OFFER_DECLINE_THEMES = [
+  'Competition',
+  'Pay',
+  'Role',
+  'Logistics',
+  'Process',
+  'Personal',
+  'Other',
+] as const
+export type OfferDeclineTheme = (typeof OFFER_DECLINE_THEMES)[number]
+export interface OfferDeclineReason {
+  reason: string
+  theme: OfferDeclineTheme
+  /** Who owns the next step for declines with this reason; null when nobody does. */
+  owner: string | null
+}
+/** Why candidates decline an offer, each in a theme. Anything not recognized sits under Other. */
+export const OFFER_DECLINE_REASONS: readonly OfferDeclineReason[] = [
+  {
+    reason: 'Accepted competing offer',
+    theme: 'Competition',
+    owner: 'Talent acquisition and hiring managers',
+  },
+  {
+    reason: 'Counteroffer from current employer',
+    theme: 'Competition',
+    owner: 'Talent acquisition and hiring managers',
+  },
+  { reason: 'Compensation below expectations', theme: 'Pay', owner: 'Total rewards' },
+  { reason: 'Equity, bonus or total rewards', theme: 'Pay', owner: 'Total rewards' },
+  { reason: 'Role or level', theme: 'Role', owner: 'Hiring managers' },
+  { reason: 'Team or manager', theme: 'Role', owner: 'Hiring managers' },
+  { reason: 'Location or relocation', theme: 'Logistics', owner: 'Talent acquisition and global mobility' },
+  { reason: 'Start date or notice period', theme: 'Logistics', owner: 'Talent acquisition' },
+  { reason: 'Process took too long', theme: 'Process', owner: 'Talent acquisition' },
+  { reason: 'Personal reasons', theme: 'Personal', owner: null },
+  { reason: 'Other', theme: 'Other', owner: null },
+]
+
 /* ───────────────────────── record types ───────────────────────── */
 
 export interface Employee {
   employeeId: string
   name: string
   jobTitle: string
+  /** Broad group of related jobs (Silicon Engineering). Contains job functions. */
   jobFamily?: string | null
-  /** Broad function above the job family (Engineering, Operations, Sales & marketing, G&A, Executive). */
+  /** Discipline within the job family (Design RTL). */
   jobFunction?: string | null
   businessUnit: string
   department: string
@@ -733,6 +910,13 @@ export interface Employee {
   employmentType: EmploymentType | null
   hrbp?: string | null
   costCenter?: string | null
+  /** School of the highest degree, as the HRIS records it. Never with a graduation year. */
+  university?: string | null
+  degreeLevel?: DegreeLevel | null
+  /** Subject of the highest degree (Electrical Engineering). */
+  fieldOfStudy?: string | null
+  /** Share of a full-time schedule: 1 full time, 0.5 half. Blank counts as 1. */
+  fte?: number | null
 }
 
 export interface JobChange {
@@ -798,6 +982,12 @@ export interface Candidate {
    * (`hiredDate` set) later marked Withdrawn.
    */
   startDate?: ISODate | null
+  /** The candidate told us they held another offer when this one was made or decided. */
+  competingOffer?: boolean | null
+  /** We improved the offer after it was first extended. */
+  offerRevised?: boolean | null
+  /** Where the offered base sat in the role's range: 0 at the minimum, 1 at the maximum. A ratio, never an amount. */
+  offerPositionInRange?: number | null
 }
 
 export interface HrCase {
@@ -1192,15 +1382,15 @@ export const DATASETS: DatasetDef[] = [
         'jobFamily',
         'Job family',
         'string',
-        ['job family', 'discipline', 'family'],
-        'Discipline, e.g. Design verification.',
+        ['job family', 'family', 'functional area'],
+        'Broad group of related jobs, e.g. Silicon Engineering. Each job family contains job functions.',
       ),
       f(
         'jobFunction',
         'Job function',
         'string',
-        ['job function', 'function', 'functional area', 'job function name'],
-        'Broad function above the job family, e.g. Engineering or G&A.',
+        ['job function', 'function', 'job function name', 'discipline'],
+        'Discipline within a job family, e.g. Design RTL.',
       ),
       f(
         'businessUnit',
@@ -1296,6 +1486,69 @@ export const DATASETS: DatasetDef[] = [
         'Assigned HR business partner.',
       ),
       f('costCenter', 'Cost center', 'string', ['cost center', 'cost centre', 'cc'], 'Cost center code.'),
+      f(
+        'university',
+        'University',
+        'string',
+        [
+          'university',
+          'school',
+          'college',
+          'institution',
+          'alma mater',
+          'school name',
+          'university name',
+          'education institution',
+        ],
+        'School of the highest degree, as the HRIS records it.',
+      ),
+      f(
+        'degreeLevel',
+        'Degree level',
+        'enum',
+        [
+          'degree level',
+          'degree',
+          'highest degree',
+          'education level',
+          'highest education',
+          'qualification',
+          'degree type',
+        ],
+        "Associate, Bachelor's, Master's, PhD or Other.",
+        { values: DEGREE_LEVELS },
+      ),
+      f(
+        'fieldOfStudy',
+        'Field of study',
+        'string',
+        [
+          'field of study',
+          'major',
+          'area of study',
+          'degree subject',
+          'specialization',
+          'specialisation',
+          'degree field',
+          'concentration',
+        ],
+        'The subject of the highest degree, e.g. Electrical Engineering.',
+      ),
+      f(
+        'fte',
+        'FTE',
+        'number',
+        [
+          'fte',
+          'full time equivalent',
+          'fte pct',
+          'fte percent',
+          'work percentage',
+          'scheduled hours percent',
+          'standard hours percent',
+        ],
+        'Share of a full-time schedule: 1 is full time, 0.5 half. Values above 1.5 are read as percentages (80 is 0.8). Blank counts as 1.',
+      ),
     ],
   },
   {
@@ -1649,6 +1902,33 @@ export const DATASETS: DatasetDef[] = [
         'date',
         ['start date', 'expected start date', 'anticipated start date', 'planned start date', 'first day'],
         'Expected first day for an accepted offer.',
+      ),
+      f(
+        'competingOffer',
+        'Competing offer',
+        'boolean',
+        [
+          'competing offer',
+          'other offer',
+          'has competing offer',
+          'competitive offer',
+          'competing offer flag',
+        ],
+        'The candidate told us they held another offer when this one was made or decided.',
+      ),
+      f(
+        'offerRevised',
+        'Offer revised',
+        'boolean',
+        ['offer revised', 'revised offer', 'offer improved', 'renegotiated', 'counter made'],
+        'We improved the offer after it was first extended.',
+      ),
+      f(
+        'offerPositionInRange',
+        'Offer position in range',
+        'percent',
+        ['position in range', 'offer position in range', 'offer range position', 'range position'],
+        "Where the offered base sat in the role's pay range: 0 at the minimum, 1 at the maximum. A ratio, never an amount.",
       ),
     ],
   },

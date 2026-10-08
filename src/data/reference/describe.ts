@@ -14,10 +14,13 @@ export function describeMapping(m: ReferenceMapping | NewReferenceMapping): stri
   switch (m.kind) {
     case 'move-department':
       return m.from ? `Moved ${m.department} from ${m.from} to ${m.to}.` : `Moved ${m.department} to ${m.to}.`
-    case 'move-family':
+    case 'move-function':
       return m.from
-        ? `Moved job family ${m.jobFamily} from ${m.from} to ${m.to}.`
-        : `Put job family ${m.jobFamily} under ${m.to}.`
+        ? `Moved job function ${m.jobFunction} from ${m.from} to ${m.to}.`
+        : `Put job function ${m.jobFunction} under ${m.to}.`
+    case 'move-family':
+      // Legacy: made before job families contained job functions.
+      return `Set the job function of job family ${m.jobFamily} rows to ${m.to}.`
     case 'merge':
     case 'rename': {
       const label = categoryOf(m.ref)?.label.toLowerCase() ?? m.ref

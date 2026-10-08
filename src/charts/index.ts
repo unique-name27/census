@@ -63,6 +63,13 @@ export { Histogram, type HistogramProps } from './kit/Histogram'
 export { clearOfRules, type GroupLayout, groupIndexAt, groupLayout, nearestBy, segmentAt } from './kit/hit'
 export { Lines, type LinesProps } from './kit/Lines'
 export { Meter, type MeterProps } from './kit/Meter'
+export {
+  Pyramid,
+  type PyramidColumn,
+  type PyramidGroupIn,
+  type PyramidProps,
+  type PyramidSegmentIn,
+} from './kit/Pyramid'
 export { type BarRow, type Category, type FoldRule, type HistogramBin, quarterLabel } from './kit/prepare'
 export { RangeBars, type RangeBarsProps, type RangeMarker } from './kit/RangeBars'
 export { Scatter, type ScatterProps } from './kit/Scatter'
@@ -103,8 +110,8 @@ export {
   plotPos,
   tickFormat,
 } from './plot'
-export { FigureRegistryProvider, nextFigureOrder, useFigureRegistry } from './registry'
+export { FigureRegistryProvider, FigureSection, nextFigureOrder, useFigureRegistry } from './registry'
 export { Sparkline } from './Sparkline'
 export { type ChartTheme, readChartTheme, seriesColor, useChartTheme } from './theme'
-export type { Column, Definition, ExportMeta, RegisteredFigure, RowFormat } from './types'
+export type { Column, Definition, ExportMeta, ExportSection, RegisteredFigure, RowFormat } from './types'
 export { useExportMeta } from './useExportMeta'

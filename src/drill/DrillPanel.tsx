@@ -42,7 +42,7 @@ import { focusScope } from './focus'
 import { PersonCard } from './PersonCard'
 import { buildDrillTable, DRILLS_KEY, drillNoun, drillTableHint, ROW_KEY, rowPerson } from './records'
 import { pushDrill, useDrillStore } from './store'
-import { SUMMARY_MIN_ROWS, type SummaryGroup, summaryCut } from './summary'
+import { type SummaryGroup, showsSummary, summaryCut } from './summary'
 import { drillTier } from './tier'
 import { type DrillFilter, type DrillSpec, drillDataset } from './types'
 
@@ -420,7 +420,7 @@ function RecordsSummary({ spec, table }: { spec: DrillSpec; table: ReturnType<ty
   )
   const byDept = useMemo(() => summaryCut(people, 'department'), [people])
   const byLevel = useMemo(() => summaryCut(people, 'level'), [people])
-  if (byDept.people < SUMMARY_MIN_ROWS) return null
+  if (!showsSummary(byDept)) return null
   const subset = (label: string, rows: readonly number[]) =>
     pushDrill({ ...spec, title: `${spec.title}: ${label}`, rows: rows.map((i) => spec.rows[i]) } as DrillSpec)
   const cut = (id: string, title: string, column: string, groups: SummaryGroup[]) => (

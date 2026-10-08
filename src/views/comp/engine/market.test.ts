@@ -11,10 +11,10 @@ function people(...ts: ReturnType<typeof team>[]) {
 }
 
 describe('market position', () => {
-  it('takes the median of base ÷ market median per job family, falling back to department', () => {
+  it('takes the median of base ÷ market median per job function, falling back to department', () => {
     const analog = team(5, { department: 'Analog & Mixed-Signal' }, () => ({ marketP50: 110_000 }))
-    const dv = team(5, { jobFamily: 'Verification' })
-    const rows = marketBy(people(analog, dv), (p) => p.jobFamily)
+    const dv = team(5, { jobFunction: 'Verification', jobFamily: 'Silicon Engineering' })
+    const rows = marketBy(people(analog, dv), (p) => p.job)
     const a = rows.find((r) => r.group === 'Analog & Mixed-Signal')!
     expect(a.median).toBeCloseTo(100 / 110)
     expect(a.gap).toBeCloseTo(100 / 110 - 1)
@@ -29,9 +29,9 @@ describe('market position', () => {
   })
 
   it('orders levels and ranks the jobs furthest below market', () => {
-    const l5 = team(5, { level: 'L5', jobFamily: 'Analog' }, () => ({ marketP50: 125_000 }))
-    const l2 = team(5, { level: 'L2', jobFamily: 'Analog' }, () => ({ marketP50: 105_000 }))
-    const above = team(5, { level: 'L3', jobFamily: 'Software' }, () => ({ marketP50: 95_000 }))
+    const l5 = team(5, { level: 'L5', jobFunction: 'Analog' }, () => ({ marketP50: 125_000 }))
+    const l2 = team(5, { level: 'L2', jobFunction: 'Analog' }, () => ({ marketP50: 105_000 }))
+    const above = team(5, { level: 'L3', jobFunction: 'Software' }, () => ({ marketP50: 95_000 }))
     const ps = people(l5, l2, above)
     expect(marketByLevel(ps).map((r) => r.group)).toEqual(['L2', 'L3', 'L5'])
     const jobs = jobsBelowMarket(ps)
@@ -39,25 +39,25 @@ describe('market position', () => {
     expect(jobs[0].median).toBeCloseTo(0.8)
   })
 
-  it('keeps the families furthest below market and folds the rest from their people', () => {
-    const a = team(5, { jobFamily: 'A' }, () => ({ marketP50: 125_000 }))
-    const b = team(5, { jobFamily: 'B' }, () => ({ marketP50: 110_000 }))
-    const c = team(3, { jobFamily: 'C' }, () => ({ marketP50: 100_000 }))
-    const d = team(3, { jobFamily: 'D' }, () => ({ marketP50: 80_000 }))
-    const rows = marketLowest(people(a, b, c, d), (p) => p.jobFamily, 1, 5)
+  it('keeps the functions furthest below market and folds the rest from their people', () => {
+    const a = team(5, { jobFunction: 'A' }, () => ({ marketP50: 125_000 }))
+    const b = team(5, { jobFunction: 'B' }, () => ({ marketP50: 110_000 }))
+    const c = team(3, { jobFunction: 'C' }, () => ({ marketP50: 100_000 }))
+    const d = team(3, { jobFunction: 'D' }, () => ({ marketP50: 80_000 }))
+    const rows = marketLowest(people(a, b, c, d), (p) => p.job, 1, 5)
     expect(rows.map((r) => r.group)).toEqual(['A', 'Other (3)'])
     expect(rows[1].n).toBe(11)
     expect(rows[1].median).toBeCloseTo(1)
-    expect(marketLowest(people(a, b), (p) => p.jobFamily, 1, 5).map((r) => r.group)).toEqual(['A', 'B'])
+    expect(marketLowest(people(a, b), (p) => p.job, 1, 5).map((r) => r.group)).toEqual(['A', 'B'])
   })
 
-  it('never ranks a family under 10 people, however far below market it is', () => {
-    const tiny = team(7, { jobFamily: 'EDA' }, () => ({ marketP50: 125_000 }))
-    const big = team(12, { jobFamily: 'Analog' }, () => ({ marketP50: 110_000 }))
-    const mid = team(10, { jobFamily: 'Software' }, () => ({ marketP50: 100_000 }))
-    const rows = marketLowest(people(tiny, big, mid), (p) => p.jobFamily, 15)
+  it('never ranks a function under 10 people, however far below market it is', () => {
+    const tiny = team(7, { jobFunction: 'EDA' }, () => ({ marketP50: 125_000 }))
+    const big = team(12, { jobFunction: 'Analog' }, () => ({ marketP50: 110_000 }))
+    const mid = team(10, { jobFunction: 'Software' }, () => ({ marketP50: 100_000 }))
+    const rows = marketLowest(people(tiny, big, mid), (p) => p.job, 15)
     expect(rows.map((r) => r.group)).toEqual(['Analog', 'Software', 'Other (1)'])
-    const top1 = marketLowest(people(tiny, big, mid), (p) => p.jobFamily, 1)
+    const top1 = marketLowest(people(tiny, big, mid), (p) => p.job, 1)
     expect(top1.map((r) => r.group)).toEqual(['Analog', 'Other (2)'])
     expect(top1[1].n).toBe(17)
   })

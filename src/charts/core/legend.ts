@@ -2,8 +2,11 @@
  * Legend description shared by the on-screen legend (HTML above the plot) and image exports,
  * which read it back from the chart SVG's `data-legend` attribute and draw it into the picture.
  */
-/** `medal`: the tier medal glyph (a disc on a ribbon), for tier-coded charts. */
-export type LegendShape = 'rect' | 'line' | 'dot' | 'diamond' | 'medal'
+/**
+ * `medal`: the tier medal glyph (a disc on a ribbon), for tier-coded charts. `outline`: an
+ * unfilled rounded square, for an outline drawn over bars (the Pyramid's year-ago shape).
+ */
+export type LegendShape = 'rect' | 'line' | 'dot' | 'diamond' | 'medal' | 'outline'
 
 export interface LegendSwatch {
   label: string
@@ -58,6 +61,15 @@ export function swatchSvg(shape: LegendShape | undefined, x: number, cy: number)
       }
     case 'medal':
       return { tag: 'path', attrs: { d: medalPath(x, cy) } }
+    case 'outline':
+      // A 10px square ring 1.5px wide, as one filled path (the export fills every swatch).
+      return {
+        tag: 'path',
+        attrs: {
+          d: `M${x},${cy - 5}h10v10h-10Z M${x + 1.5},${cy - 3.5}v7h7v-7Z`,
+          'fill-rule': 'evenodd',
+        },
+      }
     default:
       return { tag: 'rect', attrs: { x, y: cy - 5, width: 10, height: 10, rx: 2 } }
   }

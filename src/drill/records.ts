@@ -108,6 +108,9 @@ const EMPLOYEE_COLUMNS: Column[] = [
   C('employeeId', 'Employee ID'),
   C('name', 'Name'),
   C('jobTitle', 'Job title'),
+  // Shown only when a row in the list has one (empty columns are dropped).
+  C('jobFamily', 'Job family'),
+  C('jobFunction', 'Job function'),
   C('department', 'Department'),
   C('location', 'Location'),
   C('level', 'Level'),
@@ -136,6 +139,8 @@ function employeeRow(ctx: DrillContext, e: Employee): Row {
     employeeId: e.employeeId,
     name: e.name,
     jobTitle: e.jobTitle,
+    jobFamily: e.jobFamily ?? null,
+    jobFunction: e.jobFunction ?? null,
     department: e.department,
     location: e.location,
     level: levelText(e.level),
@@ -835,7 +840,8 @@ function drillTableOf(spec: DrillSpec, ctx: DrillContext): DrillTable {
     extraKeys.has(l.key),
   )
   const hide = new Set([...(spec.hide ?? []), ...links.map((l) => l.standard)])
-  const columns = [...kind.columns.filter((c) => !hide.has(c.key)), ...extraCols]
+  // A view's extra column with a standard column's key takes its place.
+  const columns = [...kind.columns.filter((c) => !hide.has(c.key) && !extraKeys.has(c.key)), ...extraCols]
   const values = spec.extra?.values as ((r: unknown) => Record<string, unknown>) | undefined
   const rows = spec.rows.map((r, i) => {
     const record = r as DrillRecordMap[DrillKind]

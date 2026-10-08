@@ -224,7 +224,13 @@ export interface ParsedLists {
   lists: Partial<Record<ListId, ParsedRow[]>>
   /** Sheets that matched no list (the Read me and the hidden Lists sheet are expected and not listed). */
   ignored: string[]
+  /** Sheets left out for a reason the preview states (a workbook saved before a change in shape). */
+  notes: string[]
 }
+
+/** Shown when a workbook has the layout from before job families contained job functions. */
+export const OLD_JOB_LAYOUT =
+  'This workbook was saved before job families contained job functions. Its Job families and Job functions sheets were left out; export a new workbook to edit them.'
 
 const norm = (s: string) =>
   s
@@ -250,7 +256,9 @@ export async function readListsWorkbook(input: ArrayBuffer | Uint8Array): Promis
   } catch {
     throw new Error('The file could not be read. Save it as .xlsx and try again.')
   }
-  const out: ParsedLists = { lists: {}, ignored: [] }
+  const out: ParsedLists = { lists: {}, ignored: [], notes: [] }
+  /** Whether the Job families sheet has a Job function column: the layout before the flip. */
+  let oldJobLayout = false
   for (const ws of wb.worksheets) {
     const def = LIST_DEFS.find((d) => norm(d.sheet) === norm(ws.name) || norm(d.label) === norm(ws.name))
     if (!def) {
@@ -264,6 +272,7 @@ export async function readListsWorkbook(input: ArrayBuffer | Uint8Array): Promis
       if (h && !headers.has(h)) headers.set(h, c)
     }
     const at = (label: string) => headers.get(norm(label))
+    if (def.id === 'jobFamily' && at(listDef('jobFunction').singular)) oldJobLayout = true
     const valueCol = at(def.singular) ?? at('Name') ?? at('Value') ?? at(def.label)
     if (!valueCol) {
       out.ignored.push(ws.name)
@@ -295,6 +304,11 @@ export async function readListsWorkbook(input: ArrayBuffer | Uint8Array): Promis
     }
     out.lists[def.id] = rows
   }
+  if (oldJobLayout) {
+    delete out.lists.jobFamily
+    delete out.lists.jobFunction
+    out.notes.push(OLD_JOB_LAYOUT)
+  }
   return out
 }
 
@@ -318,6 +332,8 @@ export interface ListPlan {
 export interface ListsImportPlan {
   lists: ListPlan[]
   ignored: string[]
+  /** Sheets left out, with the reason (`ParsedLists.notes`). */
+  notes: string[]
   /** Changes that would apply. */
   total: number
 }
@@ -430,7 +446,7 @@ export function planListsImport(
       } else p.lines[i].error = r.rejected[0]?.error
     })
   }
-  return { lists: plans, ignored: parsed.ignored, total }
+  return { lists: plans, ignored: parsed.ignored, notes: parsed.notes ?? [], total }
 }
 
 const COUNT_WORD: Record<PlanLine['kind'], [string, string]> = {

@@ -29,8 +29,8 @@ import {
   siteByLocation,
 } from '../schema'
 import { AS_OF, iso } from './calendar'
+import { OPS, SE, SS } from './departments'
 import type { Rng } from './prng'
-import { jobFunctionOf } from './raw/jobFunction'
 
 /** Starts covered: everyone who started from this date, and everyone about to start. */
 export const ONBOARDING_FROM = '2025-07-01'
@@ -64,7 +64,8 @@ export const PROBATION_MONTHS: Readonly<Record<string, number>> = {
 }
 
 const T12_FROM = '2025-10-01'
-const SCREENED_FUNCTIONS = new Set(['Engineering', 'Operations'])
+/** Business units whose starts get export screening tasks (engineering and operations). */
+const SCREENED_UNITS: ReadonlySet<string> = new Set([SE, SS, OPS])
 const CHECK_INS = new Set(['30-day check-in', '60-day check-in', '90-day check-in'])
 
 /** One person onboarding: a start in the roster (or a pre-hire), or an accepted candidate. */
@@ -207,7 +208,7 @@ export function onboardingTaskRows(
 
   for (const s of past) {
     const key = keyOf(s)
-    const screened = SCREENED_FUNCTIONS.has(jobFunctionOf(s.businessUnit) ?? '')
+    const screened = SCREENED_UNITS.has(s.businessUnit)
     for (const def of tasksFor(s.site)) {
       const due = dueFor(def, s.start, s.site)!
       const notNeeded = def.task === 'Export-control screening' && !screened
@@ -280,7 +281,7 @@ export function onboardingTaskRows(
   for (const s of upcoming) {
     const key = keyOf(s)
     const days = Math.round((Date.parse(s.start) - Date.parse(asOf)) / 86_400_000)
-    const screened = SCREENED_FUNCTIONS.has(jobFunctionOf(s.businessUnit) ?? '')
+    const screened = SCREENED_UNITS.has(s.businessUnit)
     const apac = APAC_SITES.has(s.site)
     for (const def of tasksFor(s.site)) {
       const due = dueFor(def, s.start, s.site)

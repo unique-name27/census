@@ -203,7 +203,7 @@ describe('drill-down on the sample company', () => {
       if (r.ratio != null) expect(differentiationDrill(m, r, r.group, null)!.rows).toHaveLength(r.n45 + r.n3)
       expect(differentiationDrill(m, r, r.group, '45')?.rows.length ?? 0).toBe(r.merit45 == null ? 0 : r.n45)
     }
-    for (const r of [...m.market.byFamily, ...m.market.familyChart, ...m.market.byLocation, ...m.market.jobs])
+    for (const r of [...m.market.byJob, ...m.market.jobChart, ...m.market.byLocation, ...m.market.jobs])
       expect(marketDrill(m, r)?.rows.length ?? 0, r.group).toBe(r.median == null ? 0 : r.n)
     for (const r of m.cycle.byBu) {
       expect(spendDrill(m, r, 'eligible')?.rows.length ?? 0, r.group).toBe(r.spendPct == null ? 0 : r.n)

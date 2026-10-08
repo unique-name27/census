@@ -800,7 +800,7 @@ Location or department with median compa-ratio ≤ 0.92 (link the same group's v
 from `src/lib/people.ts` when it is above company), below-minimum people (count; cost to bring to
 minimum only when showPay), above-maximum cluster (decompose by level/tenure), compression in a
 department × level, merit spend over budget by business unit, guideline exceptions (rating 5 with
-merit < 2%; rating ≤ 2 with merit > 3%), job family below market by ≥ 5%, department with no
+merit < 2%; rating ≤ 2 with merit > 3%), job function below market by ≥ 5%, department with no
 differentiation (ratio < 1.15). One `good` finding.
 
 ### Figures
@@ -820,7 +820,7 @@ Pay for performance: Compa-ratio by rating (DotStrip or Columns), Merit % by rat
 %, diverging vs guideline), Differentiation by department (BarList of the ratio, ref 1.15), Bonus
 payout by rating (Columns).
 
-Market: Base vs market median by job family (BarList diverging around 0%), by location, by level,
+Market: Base vs market median by job function (BarList diverging around 0%), by location, by level,
 Jobs furthest below market (tableOnly).
 
 Merit cycle: Merit spend vs budget by business unit (BarList with budget ref; amounts in the table

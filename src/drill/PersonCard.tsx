@@ -16,7 +16,7 @@ import { fmt } from '@/lib/format'
 import { openInOrgChart } from '@/views/org/link'
 import { Drill } from './Drill'
 import { focusScope } from './focus'
-import { personSummary } from './person'
+import { jobLine, personSummary } from './person'
 import { directsSpec, openCasesSpec, orgSpec, overdueSpec } from './related'
 import { useDrillStore } from './store'
 
@@ -85,10 +85,21 @@ export function PersonCard({ employeeId }: { employeeId: string }) {
           {e.jobTitle}
           {p.levelLabel ? ` · ${p.levelLabel}` : ''}
         </BDialog.Description>
-        <p className="text-small text-ink-2">
-          {[e.department, e.businessUnit, e.location].filter(Boolean).join(' · ')}
-          {e.employmentType && e.employmentType !== 'Employee' ? ` · ${e.employmentType}` : ''}
-        </p>
+        {/* Job (function in its family) and org (department, business unit, site) are labelled:
+            they often share words, and unlabelled they read as one line printed twice. */}
+        <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-0.5 text-small">
+          {jobLine(e) && (
+            <>
+              <dt className="text-muted">Job</dt>
+              <dd className="text-ink-2">{jobLine(e)}</dd>
+            </>
+          )}
+          <dt className="text-muted">Org</dt>
+          <dd className="text-ink-2">
+            {[e.department, e.businessUnit, e.location].filter(Boolean).join(' · ') || '—'}
+            {e.employmentType && e.employmentType !== 'Employee' ? ` · ${e.employmentType}` : ''}
+          </dd>
+        </dl>
         <PersonActions employeeId={e.employeeId} manages={p.directs.length > 0} />
       </header>
 

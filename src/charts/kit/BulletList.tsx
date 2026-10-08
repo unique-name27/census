@@ -66,6 +66,11 @@ export interface BulletListProps<T extends object> extends ChartBaseProps<T> {
   rowHeight?: number
   /** Tooltip note for rows without a value (default: hidden for anonymity). */
   nullNote?: string
+  /**
+   * 'row' (default): each row on its own scale. 'shared': one scale for every row, for measures in
+   * one unit (ratios of heads), so bar lengths compare across rows.
+   */
+  scale?: 'row' | 'shared'
 }
 
 const TRACK = 6
@@ -96,15 +101,20 @@ export function BulletList<T extends object>({
   lockedNote,
   rowHeight = 28,
   nullNote = HIDDEN_NOTE,
+  scale = 'row',
   ariaLabel,
 }: BulletListProps<T>) {
-  const layout = bulletLayout(data, {
-    label: text(label),
-    value: num(value),
-    target: num(target),
-    status,
-    group: group ? (d) => text(group)(d) || null : undefined,
-  })
+  const layout = bulletLayout(
+    data,
+    {
+      label: text(label),
+      value: num(value),
+      target: num(target),
+      status,
+      group: group ? (d) => text(group)(d) || null : undefined,
+    },
+    { rowHeight, scale },
+  )
   const { rows, groups, height } = layout
   const valueText = (r: BulletRow<T>) => (r.value == null ? DASH : format(r.datum, r.value))
   const statusTone = (s: BulletStatus | null) => (s && s.tone !== 'none' ? s.tone : null)

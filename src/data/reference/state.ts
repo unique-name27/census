@@ -49,6 +49,12 @@ export function addMapping(
   by?: string | null,
   now = Date.now(),
 ): AddResult {
+  // The legacy kind keeps applying where it was saved, but no new one can be made.
+  if ((input as { kind: string }).kind === 'move-family')
+    return {
+      ok: false,
+      error: 'Job families now contain job functions. Put a job function under a family instead.',
+    }
   const err = validateMapping(input)
   if (err) return { ok: false, error: err }
   const who = clean(by)
@@ -79,13 +85,13 @@ export function addMapping(
         from: input.from ?? null,
       }
       break
-    case 'move-family':
+    case 'move-function':
       mapping = {
         ...input,
         id,
         at,
         by: who,
-        jobFamily: input.jobFamily.trim(),
+        jobFunction: input.jobFunction.trim(),
         to: input.to.trim(),
         from: input.from ?? null,
       }

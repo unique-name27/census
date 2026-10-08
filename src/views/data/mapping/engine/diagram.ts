@@ -1,6 +1,6 @@
 /**
  * Layout for the column mapping diagrams (business unit → department, location → country →
- * region, function → job family → job title): nodes stacked in columns, sized by active
+ * region, job family → job function → job title): nodes stacked in columns, sized by active
  * headcount, joined by ribbons as thick as the people they carry. Pure: text is measured by the
  * function passed in, so the layout is tested without a browser.
  */

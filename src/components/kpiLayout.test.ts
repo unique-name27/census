@@ -23,3 +23,30 @@ describe('KPI value row', () => {
     expect(row).toContain('max-sm:items-start')
   })
 })
+
+/**
+ * KPI labels in narrow tiles (about 160px: six tiles in a 1005px area with Ask docked, or two a
+ * row on phones): the label shrank to about 53px beside the tier medal and broke words in the
+ * middle ("Decline d offers"). Labels wrap at spaces only and keep their longest word whole; the
+ * medal and info button wrap under the label instead. Checked in the browser at 1005 and 375.
+ */
+describe('KPI label row', () => {
+  const row = /ROW\.label,\s*'([^']+)'/.exec(src)?.[1] ?? ''
+  const labels = [...src.matchAll(/className="([^"]*text-meta[^"]*text-ink-2[^"]*)"/g)].map((m) => m[1])
+
+  it('lets the medal and info button wrap under the label', () => {
+    expect(row).toContain('flex-wrap')
+    expect(src).toMatch(/className="ml-auto flex shrink-0/)
+  })
+
+  it('never breaks a label word in the middle', () => {
+    expect(labels.length).toBeGreaterThanOrEqual(2)
+    for (const c of labels) {
+      expect(c).not.toMatch(/\bbreak-(words|all)\b/)
+      expect(c).toContain('break-normal')
+      // The label is never narrower than its longest word.
+      expect(c).toContain('min-w-min')
+      expect(c).not.toMatch(/\bmin-w-0\b/)
+    }
+  })
+})

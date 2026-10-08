@@ -139,13 +139,15 @@ mapping. Mapping your own categories is part of what makes data silver.
   - requisition departments that are not in the roster
 
 **2. Job architecture**
-- Function → job family → job title, with headcount.
-- A job family × level matrix (heatmap of headcount) shows each family's level spread.
+- Job family → job function → job title, with headcount (docs/TAXONOMY.md: a job family is the broad group, such as Silicon Engineering, and contains job functions, such as Design RTL).
+- A job function × level matrix (heatmap of headcount) shows each function's level spread.
 - **Conflicts:**
-  - a family under several functions
-  - titles whose level doesn't fit their family's usual range
-  - people with no family
-- **New field:** `jobFunction` on Employees (Engineering, Operations, Sales & marketing, G&A, Executive) with its own header names. "Job function" and "Function" stop being treated as synonyms of job family. The sample derives it from business unit.
+  - a job function under several families
+  - job functions with no family
+  - titles whose level doesn't fit their function's usual range
+  - people with no job function
+  - job family and job function columns that look swapped (families inside functions)
+- **Fields:** `jobFamily` and `jobFunction` on Employees, each with its own header names. A Workday "Job Family Group" column is the job family and its "Job Family" column the job function; "Function" next to "Sub Function" reads the same way. The sample gives every person a family and a function from their department and title (`src/data/sample/jobs.ts`).
 
 **3. Category lists**
 - One table per categorical field across the ten datasets:
@@ -158,7 +160,7 @@ mapping. Mapping your own categories is part of what makes data silver.
 - Each table shows the canonical values, counts and shares, the raw spellings that were mapped to each value (from the import logs), and any unrecognized values.
 
 **Editing the mapping (stored in this browser, applied before every metric):**
-- **Move** a department to another business unit, or a job family to another function.
+- **Move** a department to another business unit, or a job function to another family.
 - **Merge** two spellings into one value (e.g. "DV" and "Design Verification").
 - **Rename** a value.
 

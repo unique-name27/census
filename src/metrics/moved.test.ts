@@ -46,6 +46,27 @@ describe('moved settings', () => {
     expect(m.state.overrides['hrbp.findings.spanOutliers']).toBeUndefined()
   })
 
+  it('carry a saved smallest job family ranked to the smallest job function, a saved minFunction winning', () => {
+    const one = metricsApi(
+      sanitizeMetricsState(
+        { overrides: { 'comp.market.gap': { text: {}, params: { minFamily: 25 } } }, log: [] },
+        CATALOG,
+      ),
+    )
+    expect(one.num('comp.market.gap', 'minFunction')).toBe(25)
+    expect(one.state.overrides['comp.market.gap']?.params?.minFamily).toBeUndefined()
+    const both = metricsApi(
+      sanitizeMetricsState(
+        {
+          overrides: { 'comp.market.gap': { text: {}, params: { minFamily: 25, minFunction: 12 } } },
+          log: [],
+        },
+        CATALOG,
+      ),
+    )
+    expect(both.num('comp.market.gap', 'minFunction')).toBe(12)
+  })
+
   it('turn an HR ops "target" setting into the metric’s own target', () => {
     const saved = {
       overrides: {

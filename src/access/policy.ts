@@ -177,6 +177,13 @@ export const MANAGER_TABS: Readonly<Partial<Record<ViewKey, readonly ManagerTab[
     tab('attrition', 'Attrition', limited('The exit survey number is hidden.')),
     tab('movement', 'Movement'),
     tab('org', 'Org design', limited('Manager feedback (a survey) is hidden.')),
+    tab(
+      'analyses',
+      'Special analyses',
+      limited(
+        'Quality of hire and Why offers are declined are hidden, and planned hires from the hiring plan are left out of Engineering by stage.',
+      ),
+    ),
   ],
   org: [
     tab('chart', 'Chart', limited('Rooted at the manager, with nothing above them.')),
@@ -193,6 +200,26 @@ export const MANAGER_TABS: Readonly<Partial<Record<ViewKey, readonly ManagerTab[
     tab('retention', 'Retention risk', hidden('Flight-risk scores about named people stay with HR.')),
     tab('learning', 'Learning', limited('Training evaluation (a survey) is hidden.')),
   ],
+}
+
+/**
+ * Parts of a shown tab picked in its address with the colon form (`#hrbp.analyses:quality`) that
+ * Manager mode hides, each with the part it opens instead. Their decisions are the
+ * `tab:<view>.<tab>:<part>` entries of `MANAGER_SURFACES`.
+ */
+export const MANAGER_HIDDEN_PARTS: Readonly<
+  Record<string, { label: string; instead: string; insteadLabel: string }>
+> = {
+  'hrbp.analyses:quality': {
+    label: 'Quality of hire',
+    instead: 'analyses:stages',
+    insteadLabel: 'Engineering by stage',
+  },
+  'hrbp.analyses:declines': {
+    label: 'Offer declines',
+    instead: 'analyses:stages',
+    insteadLabel: 'Engineering by stage',
+  },
 }
 
 /** The first tab of a view that Manager mode shows (null when the view is hidden). */
@@ -218,6 +245,10 @@ export const MANAGER_HIDDEN_METRIC_PREFIXES: readonly string[] = [
   'recruiting.sources.',
   // The Reorg sandbox's measures (its tab and Simulate exit are hidden).
   'org.scenario.',
+  // People stats special analyses (docs/ANALYSES.md, 1.7): education with first ratings is an HR
+  // and TA analysis, and offer analytics are TA's.
+  'hrbp.quality.',
+  'hrbp.declines.',
 ]
 
 export const MANAGER_HIDDEN_METRICS: readonly string[] = [
@@ -236,6 +267,8 @@ export const MANAGER_HIDDEN_METRICS: readonly string[] = [
   'talent.finding.keyTalent',
   // Compares managers with each other (Talent > Performance, calibration).
   'talent.performance.byReviewer',
+  // Planned hires come from the hiring plan, a finance and TA artifact.
+  'hrbp.stages.planned',
 ]
 
 /** Belt and braces for figures that also carry a hidden metric. */
@@ -256,7 +289,15 @@ export const MANAGER_HIDDEN_FIGURES: readonly string[] = [
   'recruiting-time-to-fill-quarter',
   'onboarding-late-tasks-by-region',
   'onboarding-task-timing',
+  // A survey, on a hidden analysis (docs/ANALYSES.md, 1.7).
+  'hrbp-declines-candidate-survey',
 ]
+
+/**
+ * Belt and braces for the special analyses Manager mode hides (docs/ANALYSES.md, 1.7): their
+ * figures are hidden by id, wherever they are drawn (an Ask chart gates on the id alone).
+ */
+export const MANAGER_HIDDEN_FIGURE_PREFIXES: readonly string[] = ['hrbp-quality-', 'hrbp-declines-']
 
 /** Drill kinds whose records Manager mode lists (rows outside the org left out). */
 export const MANAGER_DRILL_KINDS: readonly string[] = [
@@ -465,6 +506,13 @@ export const MANAGER_SURFACES: Readonly<Record<string, Decision>> = {
   'org:simulate-exit': hidden('An exit what-if is a reorg scenario, worked through with the HRBP.'),
   // Action center items
   'item:onboarding:i9:': hidden('An I-9 item is a Compliance measure.'),
+  // People stats > Special analyses, each analysis by its address (docs/ANALYSES.md, 1.7)
+  'tab:hrbp.analyses:quality': hidden(
+    "Education with first ratings is an HR and TA analysis, and a manager's org makes university groups small enough to point at people.",
+  ),
+  'tab:hrbp.analyses:declines': hidden("Offer analytics are TA's, as Recruiting's Sources & offers is."),
+  'tab:hrbp.analyses:stages': limited('Planned hires from the hiring plan are left out.'),
+  'tab:hrbp.analyses:pyramid': limited("Inside the org; the company's shape is an aggregate outline."),
 }
 
 /* ───────────── decide ───────────── */
@@ -493,6 +541,9 @@ function managerTab(view: string, t: string): Decision {
   // Pages without a tab table (the Action center) take the page's decision.
   if (!tabs) return v
   if (!t) return tabs[0]?.decision ?? v
+  // A part of a tab picked in its address (`analyses:quality`) has its own decision.
+  const part = t.includes(':') ? MANAGER_SURFACES[`tab:${view}.${t}`] : undefined
+  if (part) return part
   return tabs.find((x) => x.key === baseTab(t))?.decision ?? hidden('Not named by the Manager mode policy.')
 }
 
@@ -507,6 +558,8 @@ const HIDDEN_FIGURE_PREFIXES = [
 
 function managerFigure(id: string, at?: At): Decision {
   if (FIGURE_SET.has(id)) return hidden('On the Manager mode figure list.')
+  if (MANAGER_HIDDEN_FIGURE_PREFIXES.some((p) => id.startsWith(p)))
+    return hidden('Its analysis is not shown in Manager mode.')
   if (HIDDEN_FIGURE_PREFIXES.some((p) => id.startsWith(p))) return hidden(N_A)
   if (!at) return SHOWN
   const d = at.tab != null ? managerTab(at.view, at.tab) : managerPlace(at.view)
@@ -627,6 +680,7 @@ export function routeShown(mode: Mode, view: string, t = ''): boolean {
   if (!t) return true
   // A tab the policy does not name is left for the view to resolve (it opens its first shown tab).
   const named = MANAGER_TABS[view as ViewKey]?.find((x) => x.key === baseTab(t))
+  if (MANAGER_HIDDEN_PARTS[`${view}.${t}`]) return false
   return named?.decision.access !== 'hidden'
 }
 
@@ -663,6 +717,17 @@ export function routeDecision(mode: Mode, route: Route): RouteDecision {
     }
   const tabs = MANAGER_TABS[route.view as ViewKey]
   const named = route.tab ? tabs?.find((x) => x.key === baseTab(route.tab)) : undefined
+  // A hidden part of a shown tab opens the part named instead, with the same toast.
+  const part = MANAGER_HIDDEN_PARTS[`${route.view}.${route.tab}`]
+  if (part && named && named.decision.access !== 'hidden')
+    return {
+      route: { view: route.view as RouteView, tab: part.instead },
+      redirected: true,
+      reason: {
+        title: hiddenTabTitle(placeLabel(route.view), part.label, mode),
+        description: openedTabInstead(part.insteadLabel),
+      },
+    }
   if (named?.decision.access !== 'hidden') return same
   const first = firstManagerTab(route.view)
   return {

@@ -366,6 +366,7 @@ Arrow keys move over the shown tabs only.
 | People stats · Attrition | Shown | Shown | Limited: the exit survey number is hidden |
 | People stats · Movement | Shown | Shown | Shown |
 | People stats · Org design | Shown | Shown | Limited: manager feedback (a survey) is hidden |
+| People stats · Special analyses | Shown | Shown | Limited: Quality of hire (`tab:hrbp.analyses:quality`) and Offer declines (`tab:hrbp.analyses:declines`) are hidden, and their addresses open Engineering by stage with the toast; Engineering by stage leaves out planned hires from the hiring plan; the Level pyramid shows inside the org |
 | Org chart · Chart | Shown | Shown | Limited: rooted at the scope's leader, nothing above the manager (4.5); names above the manager in the details panel are plain text; no "Simulate exit" (an exit what-if is a reorg scenario, `org:simulate-exit`); Org slide export shown |
 | Org chart · Reorg sandbox | Shown | Shown | Hidden (reorg scenarios are worked through with the HRBP) |
 | HR ops · Overview, Cases, HR transactions, Leave & return, Service levels | Shown | Shown | Hidden (cases, transactions and leave are HR ops records) |
@@ -390,18 +391,25 @@ source).
 - **Metric ids** (a KPI, figure or finding whose `metricId` / `metric` matches is not rendered,
   not exported, not in Ask, not in the glossary or Formulas):
   - prefixes `scorecard.`, `services.`, `comp.`, `compliance.`, `listening.`, `ai.`,
-    `onboarding.plan.`, `recruiting.sources.`, `org.scenario.`
+    `onboarding.plan.`, `recruiting.sources.`, `org.scenario.`, `hrbp.quality.`, `hrbp.declines.`
   - exact `onboarding.first90.i9Section2`, `onboarding.first90.newHireEntered`,
     `onboarding.first90.pulseReady`, `recruiting.recruiters.load`,
     `recruiting.offers.declineReasons`, `recruiting.offers.acceptanceByLocation`,
     `recruiting.data.reqMatch`, `talent.retention.flightRisk`, `talent.retention.keyTalent`,
     `talent.retention.riskBands`, `talent.retention.backTest`, `talent.retention.riskDrivers`,
-    `talent.finding.keyTalent`
+    `talent.finding.keyTalent`, `hrbp.stages.planned`
 - **Figure ids** (belt and braces for figures that also carry a hidden metric):
   `recruiting-recruiter-load`, `recruiting-candidate-survey`, `recruiting-hiring-manager-survey`,
   `onboarding-new-hire-entered`, `onboarding-pulse`, `hrbp-exit-survey`, `hrbp-manager-feedback`,
   `talent-key-talent-top`, `talent-key-talent-at-risk`, `talent-stay-interviews`,
-  `talent-training-evaluation`, plus every figure on a hidden tab.
+  `talent-training-evaluation`, `hrbp-declines-candidate-survey`, plus every figure on a hidden
+  tab or a hidden part of one (`tab:hrbp.analyses:quality`), and by id prefix
+  (`MANAGER_HIDDEN_FIGURE_PREFIXES`) every `hrbp-quality-` and `hrbp-declines-` figure, wherever it
+  is drawn.
+- **Ask fields** of the hidden analyses: `query_records` does not read employees' `university`,
+  `degreeLevel` and `fieldOfStudy` or candidates' `competingOffer`, `offerRevised` and
+  `offerPositionInRange` (`NEEDS` in `src/ask/engine/allowlist.ts`), and a cut by
+  `rejectionReason` leaves declined offers out.
 - **`LinkedSurvey`** (`src/views/listening/LinkedSurvey.tsx`) renders nothing while Listening is
   hidden, section and all.
 - **Drill kinds hidden:** `cases`, `transactions`, `comp`, `rightToWork`, `hiringPlan`,

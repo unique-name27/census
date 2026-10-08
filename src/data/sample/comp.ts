@@ -112,11 +112,14 @@ const MERIT: Record<number, number> = { 1: 0, 2: 0.01, 3: 0.031, 4: 0.045, 5: 0.
 const round = (x: number, unit: number): number => Math.round(x / unit) * unit
 const round3 = (x: number): number => Math.round(x * 1000) / 1000
 
-/** Deterministic spread of market medians around the range midpoint per job family and level. */
-function marketFactor(family: string, level: string, dept: string): number {
+/**
+ * Deterministic spread of market medians around the range midpoint per market key and level. The key
+ * is `Person.marketKey` (the old job family strings), so the spread does not move with the job taxonomy.
+ */
+function marketFactor(marketKey: string, level: string, dept: string): number {
   if (dept === 'Analog & Mixed-Signal') return 1.1
   let h = 0
-  for (const ch of `${family}|${level}`) h = (h * 31 + ch.charCodeAt(0)) >>> 0
+  for (const ch of `${marketKey}|${level}`) h = (h * 31 + ch.charCodeAt(0)) >>> 0
   return 0.97 + 0.06 * ((h % 1000) / 1000)
 }
 
@@ -288,7 +291,7 @@ export function compRows(w: World, rng: Rng): CompRecord[] {
       targetBonusPct: bonusTarget,
       bonusPayoutPct: payout == null ? null : round3(payout),
       annualEquityUsd: equity,
-      marketP50: round(mid * marketFactor(p.family, p.level, p.dept), unit),
+      marketP50: round(mid * marketFactor(p.marketKey, p.level, p.dept), unit),
       lastIncreaseDate: lastDate == null ? null : iso(lastDate),
       lastIncreasePct: lastPct == null ? null : round3(lastPct),
       meritPct: merit.get(p.idx) ?? null,

@@ -2,17 +2,23 @@
  * Where lists start: Census's own vocabularies, the sample company's structure, and lists
  * proposed from your data. Pure.
  *
- * A value's parent (a department's business unit, a family's function, a cost center's
+ * A value's parent (a department's business unit, a job function's family, a cost center's
  * department) is proposed only when most of its rows agree: over half of the rows that name a
  * parent name the same one. Otherwise it is left blank for you to set.
  */
 import { isFilled } from '../quality/applicability'
 import { parseFieldRef } from '../quality/fieldRef'
+import { ENGINEERING_OF_FAMILY, STAGE_OF_FUNCTION } from '../sample/jobs'
 import { OLD_DEPARTMENT_NAMES } from '../sample/raw/extracts/requisitions'
+import { universityVariant, variantUniversityRows } from '../sample/raw/gold'
 import {
   CASE_CATEGORIES,
+  CHIP_STAGES,
+  chipStageByKey,
   type DatasetKey,
   type Datasets,
+  DEGREE_LEVELS,
+  FIELDS_OF_STUDY,
   INVOLUNTARY_REASONS,
   LEARNING_CATEGORIES,
   LEAVE_REASONS,
@@ -20,6 +26,7 @@ import {
   LEVELS,
   levelIndex,
   levelTrack,
+  OFFER_DECLINE_REASONS,
   SITES,
   SOURCES,
   SURVEY_PROGRAMS,
@@ -71,6 +78,14 @@ export function censusValues(id: ListId): ListValue[] {
       return LEARNING_CATEGORIES.map((c) => built(c))
     case 'surveyProgram':
       return SURVEY_PROGRAMS.map((p) => built(p.survey, { when: p.when }))
+    case 'degreeLevel':
+      return DEGREE_LEVELS.map((d) => built(d, { label: d }))
+    case 'fieldOfStudy':
+      return FIELDS_OF_STUDY.map((f) => built(f))
+    case 'offerDeclineReason':
+      return OFFER_DECLINE_REASONS.map((r) => built(r.reason, { theme: r.theme }))
+    case 'chipStage':
+      return CHIP_STAGES.map((c) => built(c.label, { label: c.label, phase: c.phase }))
     default:
       return []
   }
@@ -84,7 +99,7 @@ export const censusNames = (id: ListId): string[] => censusValues(id).map((v) =>
 /** The field on the same row that names a value's parent, per dataset. */
 const PARENT_FIELD: Partial<Record<ListId, Partial<Record<DatasetKey, string>>>> = {
   department: { employees: 'businessUnit', requisitions: 'businessUnit', hiringPlan: 'businessUnit' },
-  jobFamily: { employees: 'jobFunction' },
+  jobFunction: { employees: 'jobFamily' },
   costCenter: { employees: 'department' },
 }
 
@@ -202,10 +217,11 @@ export function locationAttrs(location: string, country: string | null): Record<
 const ownLists: ListId[] = [
   'businessUnit',
   'department',
-  'jobFunction',
   'jobFamily',
+  'jobFunction',
   'location',
   'costCenter',
+  'university',
 ]
 
 /** "1110-SJC" → "1110". */
@@ -215,7 +231,10 @@ const ccNumber = (cc: string) => /^(\d+)/.exec(cc)?.[1] ?? null
  * The sample company's lists, built from its clean structure: the org units, jobs, sites and cost
  * centers it has, with codes from its cost center scheme, each business unit's most senior person
  * as its owner, and the two department names the ATS used before the naming standard, retired
- * and pointing at the names that replaced them.
+ * and pointing at the names that replaced them; the short forms of a few school names the HRIS
+ * holds are retired the same way. Its job families say which are engineering, and
+ * its job functions carry their chip development stage (all but Packaging, left for Census to
+ * propose: docs/ANALYSES.md, 4.10).
  */
 export function sampleListValues(clean: Datasets): Partial<Record<ListId, ListValue[]>> {
   const out: Partial<Record<ListId, ListValue[]>> = {}
@@ -254,6 +273,13 @@ export function sampleListValues(clean: Datasets): Partial<Record<ListId, ListVa
   for (const e of emps) if (e.costCenter) ccName.add(e.costCenter, `${e.department}, ${e.location}`)
   for (const c of out.costCenter ?? []) c.attrs = { name: ccName.majority(c.value) }
 
+  // Engineering families, and each engineering function's chip development stage.
+  for (const f of out.jobFamily ?? []) f.attrs = { engineering: ENGINEERING_OF_FAMILY.get(f.value) ?? null }
+  for (const f of out.jobFunction ?? []) {
+    const stage = STAGE_OF_FUNCTION.get(f.value)
+    f.attrs = { stage: stage ? (chipStageByKey.get(stage)?.label ?? null) : null }
+  }
+
   // Old ATS names: still on closed requisitions, so retired rather than missing.
   for (const [current, old] of Object.entries(OLD_DEPARTMENT_NAMES)) {
     const now = departments.find((d) => d.value === current)
@@ -267,5 +293,17 @@ export function sampleListValues(clean: Datasets): Partial<Record<ListId, ListVa
     })
   }
   departments.sort(byValue)
+
+  // School names typed the short way on a few HRIS rows ("Coyote Valley Univ."): retired values
+  // pointing at the school's name, so they are recognized and say what replaced them.
+  const schools = out.university ?? []
+  for (const i of variantUniversityRows(emps)) {
+    const name = emps[i].university
+    if (!name) continue
+    const short = universityVariant(name)
+    if (!schools.some((v) => v.value === short))
+      schools.push({ value: short, retired: true, replacedBy: name })
+  }
+  schools.sort(byValue)
   return out
 }

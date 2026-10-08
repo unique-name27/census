@@ -26,6 +26,7 @@ tab:hrbp.workforce                             Shown     Shown     Shown
 tab:hrbp.attrition                             Shown     Shown     Limited   Manager: The exit survey number is hidden.
 tab:hrbp.movement                              Shown     Shown     Shown
 tab:hrbp.org                                   Shown     Shown     Limited   Manager: Manager feedback (a survey) is hidden.
+tab:hrbp.analyses                              Shown     Shown     Limited   Manager: Quality of hire and Why offers are declined are hidden, and planned hires from the hiring plan are left out of Engineering by stage.
 tab:org.chart                                  Shown     Shown     Limited   Manager: Rooted at the manager, with nothing above them.
 tab:org.sandbox                                Shown     Shown     Hidden    Manager: Reorg scenarios are worked through with the HRBP.
 tab:services.overview                          Shown     Shown     Hidden    Manager: Its view is not shown in Manager mode.
@@ -288,6 +289,9 @@ figure:talent-rating-by-manager                Shown     Shown     Hidden    Man
 figure:recruiting-time-to-fill-quarter         Shown     Shown     Hidden    Manager: On the Manager mode figure list.
 figure:onboarding-late-tasks-by-region         Shown     Shown     Hidden    Manager: On the Manager mode figure list.
 figure:onboarding-task-timing                  Shown     Shown     Hidden    Manager: On the Manager mode figure list.
+figure:hrbp-declines-candidate-survey          Shown     Shown     Hidden    Manager: On the Manager mode figure list.
+figure:hrbp-quality-*                          Shown     Shown     Hidden    Manager: Its analysis is not shown in Manager mode.
+figure:hrbp-declines-*                         Shown     Shown     Hidden    Manager: Its analysis is not shown in Manager mode.
 figure:team-kpis                               Shown     Hidden    Shown     HR: HR mode leaves out the developer surfaces and My team.
 figure:team-readout                            Shown     Hidden    Shown     HR: HR mode leaves out the developer surfaces and My team.
 figure:team-headcount-trend                    Shown     Hidden    Shown     HR: HR mode leaves out the developer surfaces and My team.
@@ -330,6 +334,7 @@ metric:talent.retention.backTest               Shown     Shown     Hidden    Man
 metric:talent.retention.riskDrivers            Shown     Shown     Hidden    Manager: On the Manager mode metric list.
 metric:talent.finding.keyTalent                Shown     Shown     Hidden    Manager: On the Manager mode metric list.
 metric:talent.performance.byReviewer           Shown     Shown     Hidden    Manager: On the Manager mode metric list.
+metric:hrbp.stages.planned                     Shown     Shown     Hidden    Manager: On the Manager mode metric list.
 metric:scorecard.*                             Shown     Shown     Hidden    Manager: On the Manager mode metric list.
 metric:services.*                              Shown     Shown     Hidden    Manager: On the Manager mode metric list.
 metric:comp.*                                  Shown     Shown     Hidden    Manager: On the Manager mode metric list.
@@ -339,6 +344,8 @@ metric:ai.*                                    Shown     Shown     Hidden    Man
 metric:onboarding.plan.*                       Shown     Shown     Hidden    Manager: On the Manager mode metric list.
 metric:recruiting.sources.*                    Shown     Shown     Hidden    Manager: On the Manager mode metric list.
 metric:org.scenario.*                          Shown     Shown     Hidden    Manager: On the Manager mode metric list.
+metric:hrbp.quality.*                          Shown     Shown     Hidden    Manager: On the Manager mode metric list.
+metric:hrbp.declines.*                         Shown     Shown     Hidden    Manager: On the Manager mode metric list.
 item:onboarding:i9:                            Shown     Shown     Hidden    Manager: An I-9 item is a Compliance measure.
 ui:error-details                               Shown     Hidden    Hidden    HR: HR mode leaves out the developer surfaces and My team. Manager: Developer mode only.
 ui:tier-badge                                  Shown     Shown     Limited   Manager: Glyph, word and hover explanation; not a button.
@@ -347,3 +354,7 @@ ui:kpi-delta-company                           Shown     Shown     Hidden    Man
 ui:route-link                                  Shown     Shown     Limited   Manager: A link to a page this mode hides reads as plain text.
 ui:actions-team                                Shown     Hidden    Hidden    HR: Not ready yet: Developer mode only. Manager: Not ready yet: Developer mode only.
 org:simulate-exit                              Shown     Shown     Hidden    Manager: An exit what-if is a reorg scenario, worked through with the HRBP.
+tab:hrbp.analyses:quality                      Shown     Shown     Hidden    Manager: Education with first ratings is an HR and TA analysis, and a manager's org makes university groups small enough to point at people.
+tab:hrbp.analyses:declines                     Shown     Shown     Hidden    Manager: Offer analytics are TA's, as Recruiting's Sources & offers is.
+tab:hrbp.analyses:stages                       Shown     Shown     Limited   Manager: Planned hires from the hiring plan are left out.
+tab:hrbp.analyses:pyramid                      Shown     Shown     Limited   Manager: Inside the org; the company's shape is an aggregate outline.

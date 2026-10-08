@@ -44,6 +44,7 @@ describe('official lists on the sample company', () => {
       'employees.costCenter',
       'cases.location',
       'employees.jobFamily',
+      'employees.jobFunction',
     ])
       expect(vocab.refs.has(ref), ref).toBe(true)
     expect(vocab.refs.get('requisitions.department')?.has('Photonics')).toBe(false)
@@ -98,8 +99,8 @@ describe('official lists on the sample company', () => {
     for (const id of [
       'businessUnit',
       'department',
-      'jobFunction',
       'jobFamily',
+      'jobFunction',
       'location',
       'costCenter',
     ] as const)

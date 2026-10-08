@@ -21,6 +21,15 @@ function Swatch({ color, shape = 'rect' }: { color: string; shape?: LegendShape 
       </svg>
     )
   }
+  if (shape === 'outline') {
+    return (
+      <span
+        aria-hidden="true"
+        className="inline-block size-2.5 shrink-0 rounded-mark"
+        style={{ border: `1.5px solid ${color}` }}
+      />
+    )
+  }
   const size =
     shape === 'line'
       ? 'h-[2px] w-3.5 rounded-mark'

@@ -1,7 +1,7 @@
 /**
  * Reference mappings: your own fixes to how categories relate, stored in this browser and
- * applied before every metric. Moves change a department's business unit or a job family's
- * function; merges and renames change spellings of any categorical field.
+ * applied before every metric. Moves change a department's business unit or a job function's
+ * family; merges and renames change spellings of any categorical field.
  */
 import type { FieldRef } from '../quality/fieldRef'
 import type { Datasets } from '../schema'
@@ -23,7 +23,20 @@ export interface MoveDepartment extends Base {
   to: string
 }
 
-/** Assign a job family to a job function (employees). */
+/** Put a job function under a job family (employees): writes `employees.jobFamily`. */
+export interface MoveFunction extends Base {
+  kind: 'move-function'
+  jobFunction: string
+  /** Only rows under this family; null moves every row of the function. */
+  from: string | null
+  to: string
+}
+
+/**
+ * Legacy: made before job families contained job functions, when it set the job function of a job
+ * family's rows (writes `employees.jobFunction`). Saved ones keep applying exactly as saved; new
+ * ones can't be made (it is not in `NewReferenceMapping`).
+ */
 export interface MoveFamily extends Base {
   kind: 'move-family'
   jobFamily: string
@@ -47,14 +60,14 @@ export interface ValueMapping extends Base {
   scope: 'category' | 'field'
 }
 
-export type ReferenceMapping = MoveDepartment | MoveFamily | ValueMapping
+export type ReferenceMapping = MoveDepartment | MoveFunction | MoveFamily | ValueMapping
 
 type Made = 'id' | 'at' | 'by'
 
 /** A mapping as the UI builds it; the store adds `id`, `at` and `by` (and `scope` defaults to 'category'). */
 export type NewReferenceMapping =
   | Omit<MoveDepartment, Made>
-  | Omit<MoveFamily, Made>
+  | Omit<MoveFunction, Made>
   | (Omit<ValueMapping, Made | 'scope'> & { scope?: ValueMapping['scope'] })
 
 /** One line of the change list. */

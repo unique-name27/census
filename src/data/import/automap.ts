@@ -20,7 +20,7 @@ import { readNumber } from './numbers'
 import { type ColumnProfile, profileColumn, vocabularyHit } from './sniff'
 import { EXTRA_SYNONYMS } from './synonyms'
 import { headerTokens, normalizeHeader } from './text'
-import type { Confidence, HeaderCandidate, KnownValues, Mapping } from './types'
+import type { Confidence, HeaderCandidate, KnownValues, MappedField, Mapping } from './types'
 
 export const MIN_SCORE = 0.5
 export const confidenceOf = (score: number): Confidence =>
@@ -353,6 +353,8 @@ export function autoMapProfiled(
   const mapping: Mapping = {}
   const usedHeaders = new Set<number>()
   const usedFields = new Set<number>()
+  /** Fields fed by the person's own earlier picks; the job pair rule leaves them alone. */
+  const chosen = new Set<string>()
 
   if (learned) {
     for (const h of infos) {
@@ -365,6 +367,7 @@ export function autoMapProfiled(
         score: 1,
         reason: 'You chose this column before',
       }
+      chosen.add(fields[fi].key)
       usedFields.add(fi)
       usedHeaders.add(h.index)
     }
@@ -411,7 +414,116 @@ export function autoMapProfiled(
 
   for (const f of fields)
     mapping[f.key] ??= { header: null, confidence: 'low', score: 0, reason: 'No matching column' }
+  return resolveJobPair(def, mapping, headers, chosen)
+}
+
+/* ───────────── job family and job function pairs ───────────── */
+
+const JOB_PAIR_GROUP = new Set(['job family group', 'job family group name', 'family group'])
+const JOB_PAIR_FAMILY = new Set(['job family', 'job family name'])
+const JOB_PAIR_FUNCTION = new Set(['function', 'job function'])
+const JOB_PAIR_SUB = new Set(['sub function', 'job sub function', 'subfunction'])
+
+const NO_COLUMN: MappedField = { header: null, confidence: 'low', score: 0, reason: 'No matching column' }
+
+/** The mapping with `field` fed by `header`, released from any other field that used it. */
+function assign(mapping: Mapping, field: string, entry: MappedField): Mapping {
+  const next: Mapping = {}
+  for (const [k, m] of Object.entries(mapping))
+    next[k] = k !== field && entry.header != null && m.header === entry.header ? NO_COLUMN : m
+  next[field] = entry
+  return next
+}
+
+/**
+ * HRIS exports name the two job levels their own way. Workday calls the broad group "Job Family
+ * Group" and the discipline "Job Family"; Darwinbox and others use "Function" and "Sub Function".
+ * Scoring alone puts "Job Family" in `jobFamily` and leaves the group column out, so after scoring
+ * the pair is read together:
+ *
+ * 1. A family-group column next to a "Job Family" column, with no column already a strong match
+ *    for `jobFunction`: the group is the job family and "Job Family" the job function.
+ * 2. A "Function" or "Job Function" column next to a sub-function column: the function is the job
+ *    family and the sub function the job function.
+ *
+ * Never applied to a field in `locked` (the person's own picks) or to a non-Employees dataset.
+ */
+export function resolveJobPair(
+  def: DatasetDef,
+  mapping: Mapping,
+  headers: readonly string[],
+  locked: ReadonlySet<string> = new Set(),
+): Mapping {
+  const keys = new Set(def.fields.map((f) => f.key))
+  if (!keys.has('jobFamily') || !keys.has('jobFunction')) return mapping
+  if (locked.has('jobFamily') || locked.has('jobFunction')) return mapping
+  const find = (names: Set<string>) => headers.find((h) => names.has(normalizeHeader(h)))
+  const group = find(JOB_PAIR_GROUP)
+  const family = find(JOB_PAIR_FAMILY)
+  const fn = mapping.jobFunction
+  if (group && family && !(fn?.header && fn.confidence === 'high' && fn.header !== family)) {
+    const withFamily = assign(mapping, 'jobFamily', {
+      header: group,
+      confidence: 'high',
+      score: 0.98,
+      reason: `Workday names the broad group ${group}`,
+    })
+    return assign(withFamily, 'jobFunction', {
+      header: family,
+      confidence: 'high',
+      score: 0.98,
+      reason: `Next to ${group}, ${family} is the job function`,
+    })
+  }
+  const broad = find(JOB_PAIR_FUNCTION)
+  const sub = find(JOB_PAIR_SUB)
+  const fam = mapping.jobFamily
+  if (
+    broad &&
+    sub &&
+    !(fam?.header && fam.confidence === 'high' && fam.header !== broad && fam.header !== sub)
+  ) {
+    const withFamily = assign(mapping, 'jobFamily', {
+      header: broad,
+      confidence: 'high',
+      score: 0.98,
+      reason: `Next to ${sub}, ${broad} is the broad group`,
+    })
+    return assign(withFamily, 'jobFunction', {
+      header: sub,
+      confidence: 'high',
+      score: 0.98,
+      reason: `Matches the name "${normalizeHeader(sub)}"`,
+    })
+  }
   return mapping
+}
+
+/**
+ * A mapping saved before job families held job functions, from a Workday file: "Job Family" feeds
+ * `jobFamily` and "Job Family Group" is left out. Returns the mapping with the pair rule applied
+ * and the two fields it changed (for the columns step to mark), or null when the profile is fine.
+ */
+export function profileJobPair(
+  def: DatasetDef,
+  mapping: Mapping,
+  headers: readonly string[],
+): { mapping: Mapping; changed: string[] } | null {
+  const family = mapping.jobFamily?.header
+  if (!family || !JOB_PAIR_FAMILY.has(normalizeHeader(family)) || mapping.jobFunction?.header) return null
+  const used = new Set(Object.values(mapping).flatMap((m) => (m.header ? [m.header] : [])))
+  const group = headers.find((h) => JOB_PAIR_GROUP.has(normalizeHeader(h)))
+  if (!group || used.has(group)) return null
+  const next = resolveJobPair(def, mapping, headers)
+  if (next.jobFamily?.header !== group) return null
+  const mark = (m: MappedField): MappedField => ({
+    ...m,
+    reason: `Changed from your saved choice. ${m.reason}`,
+  })
+  return {
+    mapping: { ...next, jobFamily: mark(next.jobFamily), jobFunction: mark(next.jobFunction) },
+    changed: ['jobFamily', 'jobFunction'],
+  }
 }
 
 /**

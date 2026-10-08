@@ -208,7 +208,7 @@ describe('Filter to on Compensation', () => {
     expect(checked).toBeGreaterThan(0)
   })
 
-  it('sets filters only on org filters, for values in the data; families, ratings and bins set none', () => {
+  it('sets filters only on org filters, for values in the data; job functions, ratings and bins set none', () => {
     const allowed = new Set<string>([...FILTER_DIMENSIONS, 'modes'])
     const model = m(ctx)
     const o = model.overview
@@ -240,7 +240,7 @@ describe('Filter to on Compensation', () => {
     }
     expect(n).toBeGreaterThan(30)
     const none: DrillSource[] = [
-      ...model.market.byFamily.map((r) => () => marketDrill(model, r)),
+      ...model.market.byJob.map((r) => () => marketDrill(model, r)),
       ...model.market.jobs.map((r) => () => marketDrill(model, r)),
       () => marketDrill(model, model.market.total, true),
       // A headline tile titles the row as the whole scope: no group.

@@ -18,8 +18,8 @@ import {
   belowMinByCause,
   type CompaGrid,
   compaGrid,
-  type FamilyPosition,
-  familyMarketPosition,
+  type JobPosition,
+  jobMarketPosition,
   type PayAttrition,
   payAttrition,
 } from './charts'
@@ -179,14 +179,15 @@ export interface CompModel {
   }
   market: {
     total: MarketRow
-    byFamily: MarketRow[]
-    /** The 15 families furthest below market plus Other, for the chart. */
-    familyChart: MarketRow[]
+    /** By job function (department where the roster has none). */
+    byJob: MarketRow[]
+    /** The 15 job functions furthest below market plus Other, for the chart. */
+    jobChart: MarketRow[]
     byLocation: MarketRow[]
     byLevel: MarketRow[]
     jobs: JobMarketRow[]
-    /** Job families: market median ÷ midpoint against median compa-ratio. */
-    familyPosition: FamilyPosition
+    /** Job functions: market median ÷ midpoint against median compa-ratio. */
+    jobPosition: JobPosition
   }
   cycle: {
     kpis: Kpi[]
@@ -298,15 +299,15 @@ export function computeComp(ctx: AnalyticsContext, settings?: CycleSettings): Co
   }
   const market = {
     total: marketTotal(people, 'All', min),
-    byFamily: marketBy(people, (p) => p.jobFamily, undefined, min),
-    familyChart: marketLowest(people, (p) => p.jobFamily, 15, rules.marketGap.minFamily, min),
+    byJob: marketBy(people, (p) => p.job, undefined, min),
+    jobChart: marketLowest(people, (p) => p.job, 15, rules.marketGap.minFunction, min),
     byLocation: tagDim(
       'location',
       marketBy(people, (p) => p.location, undefined, min),
     ),
     byLevel: tagDim('level', marketByLevel(people, min)),
     jobs: jobsBelowMarket(people, 15, min),
-    familyPosition: familyMarketPosition(people, min),
+    jobPosition: jobMarketPosition(people, min),
   }
   const overview = {
     hist: histDomain ? binBy(valued, (p) => p.compa!, histDomain[0], histDomain[1], COMPA_STEP) : [],

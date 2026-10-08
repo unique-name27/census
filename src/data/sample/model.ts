@@ -50,7 +50,12 @@ export interface Person {
   name: string
   bu: string
   dept: string
-  family: string
+  /**
+   * Seed of the comp market spread (`comp.ts`), not a job family: the department name, or a track's
+   * own key such as FP&A. It keeps the strings the sample's job families had before families held job
+   * functions, so every market median stays where it was (docs/TAXONOMY.md, section 4.3).
+   */
+  marketKey: string
   /** Role on the department's career track (e.g. "Design Verification Engineer"). */
   role: string
   title: string
@@ -110,7 +115,7 @@ export function newPerson(
   return {
     idx,
     id: '',
-    family: init.dept,
+    marketKey: init.dept,
     role: '',
     title: '',
     mgr: null,

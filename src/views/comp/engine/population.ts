@@ -26,8 +26,11 @@ export interface CompPerson {
   record: CompRecord
   name: string
   jobTitle: string
-  /** Job family, falling back to department when the roster has none. */
-  jobFamily: string
+  /**
+   * The job the market prices: the job function, falling back to department when the roster has
+   * none (a job family such as Silicon Engineering is too broad for a market survey).
+   */
+  job: string
   businessUnit: string
   department: string
   location: string
@@ -77,8 +80,8 @@ export interface Population {
   noFx: number
   /** Which optional fields exist in at least one row (missing columns give null, not 0). */
   has: {
-    /** Some roster row has a job family (otherwise job family falls back to department for everyone). */
-    jobFamily: boolean
+    /** Some roster row has a job function (otherwise the job falls back to department for everyone). */
+    jobFunction: boolean
     ranges: boolean
     market: boolean
     merit: boolean
@@ -137,14 +140,14 @@ export function buildPopulation(
   const people: CompPerson[] = []
   const seen = new Set<string>()
   let noFx = 0
-  let hasFamily = false
+  let hasFunction = false
   for (const c of data.comp) {
     const e = active.get(c.employeeId)
     if (!e || seen.has(c.employeeId) || !isNum(c.baseSalary)) continue
     seen.add(c.employeeId)
     const fx = positive(c.fxToUsd)
     if (fx == null) noFx++
-    if (e.jobFamily) hasFamily = true
+    if (e.jobFunction) hasFunction = true
     const min = positive(c.rangeMin)
     const mid = positive(c.rangeMid)
     const max = positive(c.rangeMax)
@@ -156,7 +159,7 @@ export function buildPopulation(
       record: c,
       name: e.name,
       jobTitle: e.jobTitle,
-      jobFamily: e.jobFamily || e.department,
+      job: e.jobFunction || e.department,
       businessUnit: e.businessUnit,
       department: e.department,
       location: e.location,
@@ -198,7 +201,7 @@ export function buildPopulation(
     missing,
     noFx,
     has: {
-      jobFamily: hasFamily,
+      jobFunction: hasFunction,
       ranges: people.some((p) => p.position != null),
       market: some((p) => p.marketRatio),
       merit: some((p) => p.merit),

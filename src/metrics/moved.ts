@@ -6,6 +6,8 @@
  *   manager window, single-report chains, the deep-chain layer) live on the Org chart.
  * - The rating the Org chart exit simulation lists from is Talent's high performer rating.
  * - The HR ops targets kept as a "target" setting are the metrics' own targets.
+ * - Compensation's market chart ranks job functions, not job families, since job families became
+ *   the broad group (docs/TAXONOMY.md): its smallest group setting moved from minFamily to minFunction.
  *
  * Pure, and free of the views' registries: the ids are written out here.
  */
@@ -48,6 +50,10 @@ export const MOVED_SETTINGS: readonly MovedSetting[] = [
   {
     from: { metricId: 'org.exit.backfills', key: 'minRating' },
     to: { metricId: 'talent.performance.highPerformers', key: 'minRating' },
+  },
+  {
+    from: { metricId: 'comp.market.gap', key: 'minFamily' },
+    to: { metricId: 'comp.market.gap', key: 'minFunction' },
   },
 ]
 

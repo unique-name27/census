@@ -459,11 +459,12 @@ const PEOPLE_STATS: Tour = {
       placement: 'top',
     },
     {
-      ...at('hrbp', 'org'),
-      target: figureTarget('hrbp-managers'),
-      title: 'Managers and spans',
-      body: "Each manager's directs, total org, tenure and regretted exits, flagged Overloaded, Heavy, Light, New or Healthy.",
-      placement: 'top',
+      ...at('hrbp', 'analyses'),
+      target: tourTarget('hrbp-analyses-picker'),
+      surface: 'tab:hrbp.analyses',
+      title: 'Special analyses',
+      body: 'Four analyses for a readout: quality of hire by education, why offers are declined, engineering by chip development stage and the level pyramid. Pick one here; each leads with its key figures, readout and lead chart.',
+      placement: 'bottom',
     },
   ],
 }

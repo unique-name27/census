@@ -21,7 +21,7 @@ import * as Plot from '@observablehq/plot'
 import { DASH, fmt } from '@/lib/format'
 import type { KeyPoint } from '../core/keyboard'
 import { HOVER_CLASS, svgEl } from '../core/marks'
-import { truncateText } from '../core/measure'
+import { textWidth, truncateText } from '../core/measure'
 import type { TipContent } from '../core/tooltip'
 import { housePlot, type PlotBuildContext, PlotChart, type PlotElement } from '../plot'
 import {
@@ -73,7 +73,9 @@ export function TrendGrid({ series, onSelect, selectable, ariaLabel, ...opts }: 
         const g = svgEl(doc, 'g')
         // Header: name, then the latest value.
         const name = svgEl(doc, 'text', { x: c.x + 4, y: c.y + 9, dy: '0.32em', 'text-anchor': 'start' })
-        name.textContent = truncateText(c.series.name, c.w - 8, 12)
+        const room = c.w - 8
+        const fits = textWidth(c.series.name, 12) <= room
+        name.textContent = truncateText(fits ? c.series.name : (c.series.short ?? c.series.name), room, 12)
         name.style.fill = t.ink2
         name.style.fontSize = '12px'
         const title = svgEl(doc, 'title')
