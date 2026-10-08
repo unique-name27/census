@@ -130,6 +130,11 @@ export function DeviceSection() {
       r.accessDraftSection !== undefined ? useDraft.getState().importSection(r.accessDraftSection) : null
     if (draft && !draft.ok)
       toast('The Security center draft was not imported', { tone: 'critical', description: draft.error })
+    else if (draft?.ok && draft.skipped)
+      toast('Part of the Security center draft was left out', {
+        tone: 'critical',
+        description: `${draft.skipped === 1 ? 'One line crosses' : `${draft.skipped} lines cross`} a guard rail. The Security center lists ${draft.skipped === 1 ? 'it' : 'them'}.`,
+      })
     toast('Settings imported', {
       tone: 'good',
       description:

@@ -8,6 +8,7 @@ import { type Employee, type ISODate, LEVELS, RATING_LABELS, VOLUNTARY_REASONS }
 import type { Window } from '@/data/scope'
 import { addMonths } from '@/lib/dates'
 import { buildReviewIndex, isEmployee, reviewAt, TENURE_BANDS, tenureBand, tenureYears } from '@/lib/people'
+import { ID } from '../metrics'
 import type { Prep } from './base'
 import { quarterBlocks } from './base'
 import { attrition, type Counts, exitsIn, leftWithin } from './population'
@@ -345,25 +346,54 @@ export function computeAttrition(p: Prep): AttritionModel {
       annualize: p.set.annualize,
       regretted: p.set.regretted,
     }).rate
+  // A mode that hides regretted attrition or exit reasons (Manager: docs/ROLES-V2.md, Decisions
+  // made, 8 Oct 2026) gets a model that holds none, so nothing drawn from it can show them.
+  const regrettedShown = p.ctx.access.can(`metric:${ID.regretted}`)
+  const reasonsShown = p.ctx.access.can(`metric:${ID.exitReasons}`)
   return {
     quarters,
-    regrettedByQuarter,
-    reasons,
+    regrettedByQuarter: regrettedShown ? regrettedByQuarter : [],
+    reasons: reasonsShown ? reasons : [],
     voluntaryExits: voluntary.length,
     byDepartment,
     byLocation,
     byLevel,
     byTenure,
     byRating,
-    regrettedLeavers,
+    regrettedLeavers: regrettedShown ? regrettedLeavers : [],
     company: {
       all: left ? companyRate('all') : null,
       voluntary: typed ? companyRate('voluntary') : null,
-      regretted: p.regrettedReady ? companyRate('regretted') : null,
+      regretted: p.regrettedReady && regrettedShown ? companyRate('regretted') : null,
     },
     leavers,
-    regretted,
+    regretted: regrettedShown ? regretted : [],
     lastRating: lastRatings,
+  }
+}
+
+/**
+ * The Attrition tab's section words where they depend on the mode: without exit reasons (Manager
+ * mode) the second section is about where attrition runs highest only, and without regretted
+ * attrition "Who left" names no regretted leavers.
+ */
+export function attritionSections(
+  shows: { reasons: boolean; regretted: boolean },
+  window: string,
+): { where: { title: string; dek: string }; whoLeft: string } {
+  return {
+    where: shows.reasons
+      ? {
+          title: 'Why and where',
+          dek: `Reasons given for voluntary exits and the groups where attrition runs highest, ${window}.`,
+        }
+      : {
+          title: 'Where attrition runs highest',
+          dek: `The departments and locations where attrition runs highest, ${window}.`,
+        },
+    whoLeft: shows.regretted
+      ? `Exits ${window} by level and last performance rating, and the regretted leavers by name.`
+      : `Exits ${window} by level and last performance rating.`,
   }
 }
 

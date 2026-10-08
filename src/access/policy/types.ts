@@ -74,6 +74,12 @@ export interface RolePolicy {
   hiddenFigurePrefixes: readonly string[]
   /** Drill kinds whose records the mode lists. */
   drillKinds: readonly DrillKind[]
+  /**
+   * Standard columns of a listed drill kind the mode leaves out of every list of those records, its
+   * exports and the person card (`'employees.regrettable'`); each column's how is
+   * `surfaces['column:<kind>.<key>']`. Absent: none. A column of a listed kind not named here shows.
+   */
+  hiddenColumns?: readonly string[]
   /** The decision for a listed drill kind (scoped modes: limited, rows outside the scope left out). */
   drillListed: Decision
   datasets: readonly DatasetKey[]

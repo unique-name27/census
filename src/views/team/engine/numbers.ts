@@ -8,6 +8,7 @@ import type { Finding, Kpi, ViewLink } from '@/components/types'
 import type { AnalyticsContext } from '@/data/context'
 import type { RouteView } from '@/data/store'
 import { minGroupOf } from '@/metrics/privacy'
+import { ID } from '@/views/hrbp/metrics'
 import { type PracticeView, rankFindings, type SourcedFinding, sourced } from '@/views/scorecard/engine/model'
 import { managerAnswers, type TeamSources } from './sources'
 
@@ -85,18 +86,21 @@ function hideRate(k: Kpi | undefined, small: boolean): Kpi | undefined {
  * Headcount, voluntary and regretted attrition (against the company), open reqs, starts in the
  * next 30 days and required training on time, each the producing view's tile. With `small` (the
  * org is under the anonymity minimum) the training rate is hidden as the attrition rates are.
+ * Where the mode hides regretted attrition (Manager: whether an exit was regretted is HR's call
+ * about named leavers), the attrition tile, every exit, takes its place.
  */
 export function teamKpis(
   s: TeamSources,
   labelOf: LabelOf,
-  ctx?: Pick<AnalyticsContext, 'all'>,
+  ctx?: Pick<AnalyticsContext, 'all'> & Partial<Pick<AnalyticsContext, 'access'>>,
   small = false,
 ): Kpi[] {
   const h = s.hrbp.kpi.kpis
+  const regretted = !ctx?.access || ctx.access.can(`metric:${ID.regretted}`)
   return [
     ...relink(pick(h, 'headcount'), 'hrbp', labelOf),
     ...relink(hideRate(pick(h, 'voluntary'), small), 'hrbp', labelOf),
-    ...relink(hideRate(pick(h, 'regretted'), small), 'hrbp', labelOf),
+    ...relink(hideRate(pick(h, regretted ? 'regretted' : 'attrition'), small), 'hrbp', labelOf),
     ...relink(openReqsTile(pick(s.recruiting.kpis, 'open-reqs'), ctx), 'recruiting', labelOf),
     ...relink(pick(s.onboarding.kpis.upcoming, 'starts-30'), 'onboarding', labelOf),
     ...relink(hideRate(pick(s.talent.kpis, 'talent-training-on-time'), small), 'talent', labelOf),

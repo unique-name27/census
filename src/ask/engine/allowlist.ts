@@ -171,7 +171,9 @@ const SENSITIVE: ReadonlySet<string> = new Set([
 /**
  * Fields Ask reads only where the analysis they feed is shown (docs/ANALYSES.md, 1.7). Manager
  * mode hides Quality of hire (education) and Offer declines (competing and revised offers, where
- * offers sat in the range), so Ask does not read these fields there either.
+ * offers sat in the range), so Ask does not read these fields there either. A column the mode
+ * leaves out of its records (`column:` surfaces: Manager's exit reasons, regrettable flags and
+ * candidates' reasons) is not read either, so no cut by it says what the records keep back.
  */
 const NEEDS: Readonly<Record<string, string>> = {
   'employees.university': 'metric:hrbp.quality.score',
@@ -180,6 +182,9 @@ const NEEDS: Readonly<Record<string, string>> = {
   'candidates.competingOffer': 'metric:hrbp.declines.rate',
   'candidates.offerRevised': 'metric:hrbp.declines.rate',
   'candidates.offerPositionInRange': 'metric:hrbp.declines.rate',
+  'employees.terminationReason': 'column:employees.terminationReason',
+  'employees.regrettable': 'column:employees.regrettable',
+  'candidates.rejectionReason': 'column:candidates.rejectionReason',
 }
 
 /**
@@ -589,6 +594,12 @@ const NEEDS_REASON: Readonly<Record<string, (mode: string) => string>> = {
     `Quality of hire is not shown in ${mode}, so Ask does not read education.`,
   'metric:hrbp.declines.rate': (mode) =>
     `Offer declines is not shown in ${mode}, so Ask does not read offer details.`,
+  'column:employees.terminationReason': (mode) =>
+    `Exit reasons are not shown in ${mode}, so Ask does not read them.`,
+  'column:employees.regrettable': (mode) =>
+    `Whether an exit was regretted is not shown in ${mode}, so Ask does not read it.`,
+  'column:candidates.rejectionReason': (mode) =>
+    `Candidates' reasons for leaving the process are not shown in ${mode}, so Ask does not read them.`,
 }
 
 /** A dataset as the mode lets Ask read it: the fields it hides move to `denied`, with the reason. */

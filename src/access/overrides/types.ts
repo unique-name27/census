@@ -13,19 +13,8 @@ export const POLICY_FILE_NAME = 'access-policy.json'
 /** The roles the Security center edits: every mode but Developer, which always sees everything. */
 export type PolicyRole = Exclude<Mode, 'developer'>
 
-/** In the access matrix's column order: HR, CHRO, BU, Rgn, Comp, Tal, Ops, Rec, Fin, Mgr. */
-export const POLICY_ROLES: readonly PolicyRole[] = [
-  'hr',
-  'chro',
-  'hrbp-unit',
-  'hrbp-region',
-  'compensation',
-  'talent-management',
-  'hr-ops',
-  'recruiter',
-  'finance',
-  'manager',
-]
+/** In the Mode menu's order (`MODES`), as the access matrix's columns: HR, CHRO, BU, Rgn, Comp, Tal, Rec, Ops, Fin, Mgr. */
+export const POLICY_ROLES: readonly PolicyRole[] = MODES.filter((m): m is PolicyRole => m !== 'developer')
 
 export const isPolicyRole = (v: unknown): v is PolicyRole =>
   typeof v === 'string' && v !== 'developer' && (MODES as readonly string[]).includes(v)

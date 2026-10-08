@@ -18,10 +18,12 @@ export const MANAGER_VIEWS: Readonly<Record<ViewKey, Decision>> = {
   home: hidden('Manager mode opens on My team.'),
   team: SHOWN,
   scorecard: hidden('It judges the whole people function, including pay, HR ops and compliance.'),
-  recruiting: limited('Sources & offers, recruiter load and hiring manager satisfaction are hidden.'),
-  onboarding: limited('The hiring plan and I-9 measures are hidden.'),
-  hrbp: limited('Survey numbers and Copy talking points are hidden.'),
-  org: limited('Rooted at the manager; the Reorg sandbox is hidden.'),
+  recruiting: limited(
+    "Sources & offers, recruiter load, hiring manager satisfaction and candidates' reasons are hidden.",
+  ),
+  onboarding: limited("The hiring plan, I-9 measures and candidates' reasons for reneging are hidden."),
+  hrbp: limited('Survey numbers, regretted exits, exit reasons and Copy talking points are hidden.'),
+  org: limited('Rooted at the manager; the Reorg sandbox and regretted exits are hidden.'),
   services: hidden('Cases, transactions and leave are HR ops records.'),
   talent: limited('Retention risk and key talent at risk are hidden.'),
   comp: hidden('Compensation stays with total rewards and HR.'),
@@ -53,14 +55,20 @@ export const MANAGER_TABS: Readonly<Partial<Record<ViewKey, readonly ManagerTab[
     tab(
       'first90',
       'First 90 days',
-      limited('I-9 Section 2 on time, new hires entered by day -3 and the day-30 pulse are hidden.'),
+      limited('I-9 Section 2 on time, new hires entered by day −3 and the day-30 pulse are hidden.'),
     ),
     tab('plan', 'Hiring plan', hidden('Plan versions are a finance and TA artifact.')),
   ],
   hrbp: [
     tab('overview', 'Overview'),
     tab('workforce', 'Workforce'),
-    tab('attrition', 'Attrition', limited('The exit survey number is hidden.')),
+    tab(
+      'attrition',
+      'Attrition',
+      limited(
+        'Why people left, regretted exits, the regretted leavers and the exit survey number are hidden.',
+      ),
+    ),
     tab('movement', 'Movement'),
     tab('org', 'Org design', limited('Manager feedback (a survey) is hidden.')),
     tab(
@@ -72,11 +80,23 @@ export const MANAGER_TABS: Readonly<Partial<Record<ViewKey, readonly ManagerTab[
     ),
   ],
   org: [
-    tab('chart', 'Chart', limited('Rooted at the manager, with nothing above them.')),
+    tab(
+      'chart',
+      'Chart',
+      limited(
+        'Rooted at the manager, with nothing above them. The details panel counts exits, not regretted exits.',
+      ),
+    ),
     tab('sandbox', 'Reorg sandbox', hidden('Reorg scenarios are worked through with the HRBP.')),
   ],
   talent: [
-    tab('overview', 'Overview', limited('The key talent at risk tile, table and finding are hidden.')),
+    tab(
+      'overview',
+      'Overview',
+      limited(
+        'The key talent at risk tile, table and finding, and regretted exits of high performers, are hidden.',
+      ),
+    ),
     tab('performance', 'Performance'),
     tab(
       'succession',
@@ -150,6 +170,17 @@ export const MANAGER_HIDDEN_METRICS: readonly string[] = [
   'talent.performance.byReviewer',
   // Planned hires come from the hiring plan, a finance and TA artifact.
   'hrbp.stages.planned',
+  // Managers see exits, not regretted exits: whether an exit was regretted is HR's call about named
+  // leavers (docs/ROLES-V2.md, "Decisions made", 7 and 8 Oct 2026). Their records leave out each
+  // leaver's exit reason and regrettable flag (`MANAGER_HIDDEN_COLUMNS`).
+  'hrbp.attrition.regretted',
+  'hrbp.findings.regrettedCluster',
+  'talent.retention.regrettedHigh',
+  'talent.finding.hipoExits',
+  'org.team.regrettedExits',
+  // No breakdown of why people left: in a manager's org a reason group points at named leavers.
+  'hrbp.attrition.exitReasons',
+  'recruiting.flow.exitReasons',
 ]
 
 /** Belt and braces for figures that also carry a hidden metric. */
@@ -172,6 +203,13 @@ export const MANAGER_HIDDEN_FIGURES: readonly string[] = [
   'onboarding-task-timing',
   // A survey, on a hidden analysis (docs/ANALYSES.md, 1.7).
   'hrbp-declines-candidate-survey',
+  // Regretted exits, and the regretted leavers by name (HR's classification).
+  'hrbp-regretted-quarter',
+  'hrbp-regretted-leavers',
+  'talent-regretted-high-performers',
+  // Why people left (and why candidates left): reason breakdowns point at named people in an org.
+  'hrbp-exit-reasons',
+  'recruiting-exit-reasons',
 ]
 
 /**
@@ -192,6 +230,19 @@ export const MANAGER_DRILL_KINDS: readonly DrillKind[] = [
   'onboardingTasks',
   'actionItems',
   'actionOwners',
+]
+
+/**
+ * Columns Manager mode leaves out of every list of their records, the records exports, the person
+ * card and Ask's `query_records`: a leaver's exit reason and regrettable flag (whether an exit was
+ * regretted is HR's call about named leavers, and a small team's reasons point at people), and a
+ * candidate's reason for being rejected, withdrawing, declining or reneging (TA's records). Each
+ * column's how is its `column:` entry in `MANAGER_SURFACES`.
+ */
+export const MANAGER_HIDDEN_COLUMNS: readonly string[] = [
+  'employees.terminationReason',
+  'employees.regrettable',
+  'candidates.rejectionReason',
 ]
 
 /** Datasets Manager mode reads (Ask, Inventory, provenance). */
@@ -318,9 +369,13 @@ export const MANAGER_SURFACES: Readonly<Record<string, Decision>> = {
   ask: limited('Off with a plain reason when the org has fewer than the anonymity minimum of employees.'),
   'ask:get_context': limited(ASK_LIMIT),
   'ask:find_metrics': limited('Metrics of the shown views after the hide lists.'),
-  'ask:view_summary': limited('Recruiting, Onboarding, People stats and Talent; hidden figures dropped.'),
+  'ask:view_summary': limited(
+    'Recruiting, Onboarding, People stats and Talent; hidden figures, regretted exits and reasons dropped.',
+  ),
   'ask:compare_groups': limited('The same views; by leader lists leaders inside the org only.'),
-  'ask:query_records': limited('The eight Manager mode datasets only.'),
+  'ask:query_records': limited(
+    "The eight Manager mode datasets only, without exit reasons, the regrettable flag or candidates' reasons.",
+  ),
   'ask:explain_quality': hidden('Not sent to Claude, and refused if called.'),
   'ask:open_items': limited('The items Manager mode lists.'),
   // Ask on the screen (docs/ASK-ACTIONS.md): every action passes the clamp and the route guard.
@@ -362,7 +417,9 @@ export const MANAGER_SURFACES: Readonly<Record<string, Decision>> = {
   'export:data-room': hidden("The Data room is HR's."),
   'export:formulas': limited('The shown metrics only.'),
   // Records panel and person card (3.12)
-  'person:inside-org': limited('No compa-ratio; open items show overdue required courses only.'),
+  'person:inside-org': limited(
+    'No compa-ratio, exit reason or regrettable flag; open items show overdue required courses only.',
+  ),
   'person:outside-org': limited('Name, title, department and "Outside … org" only, with no actions.'),
   'person:compa-ratio': hidden('Compensation is not part of Manager mode.'),
   'person:open-cases': hidden('HR ops cases are not part of Manager mode.'),
@@ -383,6 +440,16 @@ export const MANAGER_SURFACES: Readonly<Record<string, Decision>> = {
   'shortcut:org': limited('Inside the org.'),
   'shortcut:tour': SHOWN,
   'shortcut:dev-overlays': hidden(DEV_ONLY),
+  // Columns of records (docs/ROLES-V2.md, Decisions made, 8 Oct 2026): `MANAGER_HIDDEN_COLUMNS`.
+  'column:employees.terminationReason': hidden(
+    "A leaver's exit reason stays with HR: in a manager's team it points at a named person.",
+  ),
+  'column:employees.regrettable': hidden(
+    "Whether an exit was regretted is HR's call about named leavers; managers see exits.",
+  ),
+  'column:candidates.rejectionReason': hidden(
+    "Why a candidate was rejected, withdrew, declined or reneged stays in TA's records.",
+  ),
   // Org chart (3.2): an exit what-if is a reorg scenario, and on the manager it is all about people above them.
   'org:simulate-exit': hidden('An exit what-if is a reorg scenario, worked through with the HRBP.'),
   // Action center items
@@ -412,6 +479,7 @@ export const MANAGER_POLICY: RolePolicy = {
   hiddenFigures: MANAGER_HIDDEN_FIGURES,
   hiddenFigurePrefixes: MANAGER_HIDDEN_FIGURE_PREFIXES,
   drillKinds: MANAGER_DRILL_KINDS,
+  hiddenColumns: MANAGER_HIDDEN_COLUMNS,
   drillListed: limited('Rows about people outside the org are left out.'),
   datasets: MANAGER_DATASETS,
   hiddenItemPrefixes: MANAGER_HIDDEN_ITEM_PREFIXES,

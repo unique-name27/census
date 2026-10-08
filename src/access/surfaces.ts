@@ -119,6 +119,11 @@ export const S = {
   header: (what: ViewKey | 'agents' | 'about' | 'scope' | string) => surface(`header:${what}`),
   export: (kind: ExportKind) => surface(`export:${kind}`),
   drill: (kind: DrillKind | string) => surface(`drill:${kind}`),
+  /**
+   * One standard column of a drill kind's records ("column:employees.regrettable"): the records
+   * panel, its exports, the person card and Ask's `query_records` leave it out where it is hidden.
+   */
+  column: (kind: DrillKind | string, key: string) => surface(`column:${kind}.${key}`),
   /** Filter to and Leave out in the records panel, Focus on on findings and person cards. */
   focus: (what: 'filter-to' | 'leave-out' | 'leave-out-leader' | 'finding') => surface(`focus:${what}`),
   dataset: (key: DatasetKey | string) => surface(`dataset:${key}`),

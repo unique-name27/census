@@ -10,10 +10,10 @@ Tal   home        budget
 Tal   onboarding  candidates, hiringPlan, transactions
 Tal   hrbp        candidates
 Tal   listening   candidates
-Ops   home        budget
-Ops   onboarding  hiringPlan
 Rec   home        budget
 Rec   onboarding  hiringPlan, learning, surveyGroups, transactions
+Ops   home        budget
+Ops   onboarding  hiringPlan
 Fin   recruiting  candidates
 Fin   onboarding  candidates, learning, onboardingTasks, surveyGroups, transactions
 Fin   hrbp        candidates, jobChanges

@@ -14,7 +14,15 @@ import { parseRouteTarget } from './links'
 import type { HelpLink } from './markup'
 import type { Block, Condition, HelpArticle, Tour, TourStep, Without } from './types'
 
-type Access = Pick<AccessContext, 'mode' | 'can'>
+/** What help reads of a mode: its decisions, and the scope it holds (absent: held, as in every mode's own app). */
+type Access = Pick<AccessContext, 'mode' | 'can'> & { scope?: AccessContext['scope'] }
+
+/**
+ * Whether the mode holds a scope (Manager's org, an HRBP's business unit or region, a recruiter's
+ * reqs). Recruiter mode with "Every recruiter" picked holds none, and neither do the modes without
+ * a scope.
+ */
+const scopeHeld = (access: Access): boolean => access.scope !== null
 
 export const articleShown = (access: Access, id: string): boolean => access.can(`help:article:${id}`)
 export const tourShown = (access: Access, id: string): boolean => access.can(`help:tour:${id}`)
@@ -33,13 +41,17 @@ const listOf = (s: string | readonly string[] | undefined): readonly string[] =>
   s === undefined ? [] : typeof s === 'string' ? [s] : s
 
 /**
- * Whether a block, step or wording applies in a mode: every `surface` shown, and not every `unless`
- * shown (so `{ surface: x }` and `{ unless: x }` split the modes in two, whatever x lists).
+ * Whether a block, step or wording applies in a mode: every `surface` shown, not every `unless`
+ * shown (so `{ surface: x }` and `{ unless: x }` split the modes in two, whatever x lists), every
+ * `hidden` hidden, and `scoped`, when given, matching whether the mode holds a scope.
  */
 export function holds(access: Access, c: Condition): boolean {
+  if (c.scoped !== undefined && c.scoped !== scopeHeld(access)) return false
   const unless = listOf(c.unless)
   return (
-    listOf(c.surface).every((s) => access.can(s)) && !(unless.length && unless.every((s) => access.can(s)))
+    listOf(c.surface).every((s) => access.can(s)) &&
+    !(unless.length && unless.every((s) => access.can(s))) &&
+    listOf(c.hidden).every((s) => !access.can(s))
   )
 }
 

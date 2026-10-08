@@ -62,7 +62,7 @@ describe('fmtDelta', () => {
     expect(fmtDelta(-0.012, 'pct')).toBe('−1.2 pts')
     expect(fmtDelta(0.0123, 'pct2')).toBe('+1.23 pts')
     expect(fmtDelta(-0.12, 'times')).toBe('−0.12×')
-    expect(fmtDelta(-12_000, 'money')).toBe('−$12K')
+    expect(fmtDelta(-12_000, 'money')).toBe('−$12.0K')
   })
   it('shows ± for no change, including changes that round to zero', () => {
     expect(fmtDelta(0, 'int')).toBe('±0')

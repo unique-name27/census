@@ -31,6 +31,7 @@ import {
 import {
   type CostModel,
   type CostRow,
+  costColumnsFor,
   costPeopleDrill,
   costRowDrill,
   isCosted,
@@ -299,7 +300,8 @@ export function mixColumns(m: DrillScope): Column<RewardsMixRow>[] {
 /** A Workforce cost table: each count and total opens the people it covers (employees in Finance). */
 export function costTableColumns<T extends CostRow>(c: CostModel, cols: readonly Column<T>[]): Column<T>[] {
   const open = (r: T): DrillSource => (r.members.length ? () => costRowDrill(c, r) : null)
-  return withDrill(cols, {
+  // In millions where the amounts are rounded (Finance).
+  return withDrill(costColumnsFor(cols, c), {
     people: open,
     baseUsd: open,
     bonusUsd: open,
@@ -318,7 +320,7 @@ export function meritCostColumns(m: DrillScope, c: CostModel): Column<SpendRow>[
             ? costPeopleDrill(c, `Merit proposals, ${r.group}`, r.members.filter(isCosted))
             : spendDrill(m, r, 'priced')
       : null
-  return withDrill(SPEND_COLUMNS, {
+  return withDrill(costColumnsFor(SPEND_COLUMNS, c), {
     n: open,
     spendPct: open,
     eligibleBaseUsd: open,
@@ -330,7 +332,12 @@ export function meritCostColumns(m: DrillScope, c: CostModel): Column<SpendRow>[
 /** Open reqs at range midpoint: the reqs behind each row. */
 export function openReqColumns(c: CostModel): Column<OpenReqRow>[] {
   const open = (r: OpenReqRow): DrillSource => (r.reqs ? () => openReqDrill(c, r) : null)
-  return withDrill(OPEN_REQ_COST_COLUMNS, { reqs: open, openings: open, estimated: open, estimateUsd: open })
+  return withDrill(costColumnsFor(OPEN_REQ_COST_COLUMNS, c), {
+    reqs: open,
+    openings: open,
+    estimated: open,
+    estimateUsd: open,
+  })
 }
 
 /** Merit cycle progress: each count opens the unit's eligible people, those with no proposal first. */

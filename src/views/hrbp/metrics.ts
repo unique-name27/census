@@ -424,7 +424,7 @@ const viewMetrics: MetricDef[] = withSources(
       id: ID.trailing12,
       name: 'Attrition, rolling 12 months',
       definition:
-        'At each month end, the exits of one kind (voluntary, or regretted) in the 12 months to that date divided by the average headcount of those months. It moves one month at a time, so it is smoother than quarterly rates. Under an org filter the company line is drawn beside it. A point whose average headcount is under the anonymity minimum (5 by default) is hidden.',
+        'At each month end, the exits of the kind the figure shows (voluntary by default) in the 12 months to that date divided by the average headcount of those months. It moves one month at a time, so it is smoother than quarterly rates. Under an org filter the company line is drawn beside it. A point whose average headcount is under the anonymity minimum (5 by default) is hidden.',
       formula: 'exits in the 12 months to the month end ÷ mean of the 13 month-end headcounts',
       population: RATES,
       window: 'The last 24 month ends to the as-of date, each with its own 12 months, whatever the period',

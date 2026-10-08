@@ -10,11 +10,14 @@
  * - `region`: the location filter is a non-empty subset of the region's sites, include only.
  * - `reqs`: no change (every filter works inside the reqs, as on Recruiting today).
  * - Finance (no scope): leader, department, location and level are cleared, the business unit
- *   keeps its values in include mode (an excluded list becomes empty). The period is kept.
+ *   keeps its values in include mode (an excluded list becomes empty). The period is kept. Any
+ *   other unscoped mode whose pay view is 'totals' (cost totals without the switch) gets the same
+ *   restriction, so its totals also differ only by whole business units (`byWholeUnits`).
  */
 import { FILTER_DIMENSIONS, type FilterDimension, type Filters, isExcluded, withMode } from '@/data/scope'
 import { linkLeaderReplaced } from '../copy'
 import { MODE_NAME, type Mode } from '../modes'
+import { payView } from '../pay'
 import { leaderInLock } from './org'
 import { pinnedSites } from './region'
 import type { OrgScope, RegionScope, ScopeLock, UnitScope } from './types'
@@ -96,9 +99,13 @@ function clampFinance(f: Filters): Filters {
   }
 }
 
+/** Finance's restriction applies: Finance, or any unscoped mode showing cost totals without the switch. */
+export const byWholeUnits = (mode: Mode | undefined): boolean =>
+  mode === 'finance' || (!!mode && payView(mode) === 'totals')
+
 /**
- * The filters inside a scope (or Finance's restriction when `mode` is Finance and there is no
- * scope). The same object when nothing changes.
+ * The filters inside a scope (or Finance's restriction when `mode` shows cost totals without the
+ * switch and there is no scope). The same object when nothing changes.
  */
 export function clampFilters(filters: Filters, scope: ScopeLock | null | undefined, mode?: Mode): Filters {
   if (scope)
@@ -112,13 +119,13 @@ export function clampFilters(filters: Filters, scope: ScopeLock | null | undefin
       case 'reqs':
         return filters
     }
-  if (mode === 'finance') return clampFinance(filters)
+  if (byWholeUnits(mode)) return clampFinance(filters)
   return filters
 }
 
 /** Whether a mode changes filters at all (a scope, or Finance's restriction). */
 export const clamps = (scope: ScopeLock | null | undefined, mode?: Mode): boolean =>
-  (!!scope && scope.kind !== 'reqs') || (!scope && mode === 'finance')
+  (!!scope && scope.kind !== 'reqs') || (!scope && byWholeUnits(mode))
 
 /**
  * The one toast a link or a saved view gets when the clamp changed its filters (2.3), or null when
@@ -154,7 +161,7 @@ export function clampReason(
       ? `${MODE_NAME[mode]} mode shows ${scope.label}, so the ${what}'s other locations were left out.`
       : null
   }
-  if (!scope && mode === 'finance')
-    return `Finance mode filters by business unit and period, so the ${what}'s other filters were left out.`
+  if (!scope && byWholeUnits(mode))
+    return `${MODE_NAME[mode]} mode filters by business unit and period, so the ${what}'s other filters were left out.`
   return null
 }

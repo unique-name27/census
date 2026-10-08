@@ -16,7 +16,7 @@ import type { FieldRef } from '@/data/quality/fieldRef'
 import { SAMPLE_COMPANY } from '@/data/sample'
 import { DATASET_KEYS } from '@/data/schema'
 import type { RasterImage } from '@/lib/export/image'
-import { type ViewDef, withFeatureTabs } from '../../types'
+import { type ViewDef, withAccessTabs, withFeatureTabs } from '../../types'
 import { PRACTICE_STANDING_COLUMNS, practiceStanding } from '../engine/band'
 import type { ScorecardModel, SourcedFinding } from '../engine/model'
 import {
@@ -140,18 +140,23 @@ function findingsFigure(
   )
 }
 
-/** Lay out each practice's first tab off screen and keep its key figures, lead chart and image. */
+/**
+ * Lay out each practice's first tab off screen and keep its key figures, lead chart and image: the
+ * practices the mode shows, as on the Scorecard.
+ */
 async function practiceFigures(
   views: readonly ViewDef[],
   features: Features,
   onProgress: (p: ReportProgress) => void,
+  access: AnalyticsContext['access'],
 ): Promise<{ list: PracticeFigures[]; failed: string[] }> {
   const lib = await import('@/lib/export')
   const list: PracticeFigures[] = []
   const failed: string[] = []
-  const practices = practiceViews(views)
+  const practices = practiceViews(views, access)
   for (const [i, registered] of practices.entries()) {
-    const view = withFeatureTabs(registered, features)
+    // The first tab the mode shows (Talent management hides Onboarding's Upcoming starts).
+    const view = withAccessTabs(withFeatureTabs(registered, features), access)
     const first = view.tabs[0]
     onProgress({
       title: 'Building the monthly people report',
@@ -200,7 +205,7 @@ export async function downloadMonthlyReport(
   },
 ): Promise<ReportResult> {
   const { ctx, model } = args
-  const { list, failed } = await practiceFigures(args.views, args.features, args.onProgress)
+  const { list, failed } = await practiceFigures(args.views, args.features, args.onProgress, ctx.access)
   args.onProgress({
     title: kind === 'deck' ? 'Writing the slides' : 'Writing the workbook',
     description: `The scorecard, the findings and ${list.filter((p) => p.lead).length} practice charts.`,

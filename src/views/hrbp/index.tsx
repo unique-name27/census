@@ -76,7 +76,7 @@ export const view: ViewDef = {
     { key: 'attrition', label: 'Attrition' },
     { key: 'movement', label: 'Movement' },
     { key: 'org', label: 'Org design' },
-    { key: ANALYSES_TAB, label: 'Special analyses' },
+    { key: ANALYSES_TAB, label: 'Special analyses', parts: true },
   ],
   View,
   headline: (ctx) => {

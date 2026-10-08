@@ -295,6 +295,7 @@ function unitFamily(f: Format): string {
       return 'number'
     case 'money':
     case 'moneyFull':
+    case 'moneyM':
       return 'money'
     default:
       return f

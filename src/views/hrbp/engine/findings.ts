@@ -93,9 +93,14 @@ const firstYearPhrase = (p: Prep) =>
 
 /**
  * Exit reasons are cited (in details and people notes) only when their data meets the data
- * standard, so a bronze reason field never hides a finding whose number is confirmed.
+ * standard, so a bronze reason field never hides a finding whose number is confirmed, and only
+ * where the mode shows them: Manager mode shows no exit reason, in aggregate or for a named leaver
+ * (`hrbp.attrition.exitReasons`, `column:employees.terminationReason`).
  */
-const citesReasons = (p: Prep): boolean => p.meets(REASON)
+const citesReasons = (p: Prep): boolean =>
+  p.meets(REASON) &&
+  p.ctx.access.can(`metric:${ID.exitReasons}`) &&
+  p.ctx.access.can('column:employees.terminationReason')
 const reasonLineage = (p: Prep): Lineage => (citesReasons(p) ? ifPresent(REASON) : NONE)
 
 function leaverNote(e: Employee, p: Prep): string {

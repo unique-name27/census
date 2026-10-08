@@ -15,6 +15,7 @@ import { scopeOfAccess } from '@/access/scopes/records'
 import type { AnalyticsContext } from '@/data/context'
 import { formatDate } from '@/lib/dates'
 import type { Collected, OpenAction } from './collect'
+import { foldRoleLists } from './rollups'
 import { settingsOf } from './settings'
 
 /** Items Needs attention lists before "Show all" (docs/ACTION-CENTER-AUDIT.md part 6, volume). */
@@ -33,12 +34,14 @@ export const showsLists = (access: Ctx['access']): boolean =>
 export interface RoleView {
   /** The mode shows the two lists; false in Developer, HR and CHRO (every item in owner sheets). */
   lists: boolean
-  /** Every open item the mode lists (its full list in Developer, HR and CHRO). */
+  /** Every open item the mode lists (its full list in Developer, HR and CHRO), never rolled up. */
   open: OpenAction[]
-  /** Needs attention, most pressing first (escalations by their reason first). */
+  /** Needs attention, most pressing first (escalations by their reason first), with its roll-ups. */
   needs: OpenAction[]
-  /** Waiting on others. */
+  /** Waiting on others, with its roll-ups (HRBP modes). */
   waiting: OpenAction[]
+  /** Roll-ups marked handled or snoozed in this browser (for the Handled and snoozed list). */
+  parked: OpenAction[]
   /** Open items the mode lists in neither list (said as a count). */
   left: number
   /** The masthead's number: Needs attention in a role mode, every open item in Developer, HR and CHRO. */
@@ -47,21 +50,42 @@ export interface RoleView {
   critical: number
 }
 
-/** The two lists over the open items of a collection (`isOpen` says which are open in this browser). */
-export function roleView(collected: Collected, ctx: Ctx, isOpen: (a: OpenAction) => boolean): RoleView {
-  const { listed: open, needs, waiting, left } = roleItems(collected.items.filter(isOpen), lensFor(ctx))
+/**
+ * The two lists over the open items of a collection (`isOpen` says which are open in this
+ * browser), with each mode's roll-ups (`rollups.ts`): a roll-up holds the open items it folds, and
+ * is itself open unless it was marked (and has not changed since).
+ */
+export function roleView(
+  collected: Collected,
+  ctx: Ctx & Pick<AnalyticsContext, 'scopeLabel'>,
+  isOpen: (a: OpenAction) => boolean,
+): RoleView {
+  const lens = lensFor(ctx)
+  const split = roleItems(collected.items.filter(isOpen), lens)
+  const folded = foldRoleLists(split, lens, ctx)
+  const parked = [...folded.needs, ...folded.waiting].filter((a) => a.members && !isOpen(a))
+  const needs = folded.needs.filter((a) => !a.members || isOpen(a))
+  const waiting = folded.waiting.filter((a) => !a.members || isOpen(a))
   const lists = showsLists(ctx.access)
-  const counted = lists ? needs : open
+  const counted = countedOf({ lists, needs, open: split.listed })
   return {
     lists,
-    open,
+    open: split.listed,
     needs,
     waiting,
-    left,
+    parked,
+    left: split.left,
     count: counted.length,
     critical: counted.filter((a) => a.item.severity === 'critical').length,
   }
 }
+
+/**
+ * What a mode's counts count: Needs attention in a role mode (the masthead's number), every open
+ * item in Developer, HR and CHRO. The Scorecard's "Critical open items" tile reads it too.
+ */
+export const countedOf = (v: Pick<RoleView, 'lists' | 'needs' | 'open'>): OpenAction[] =>
+  v.lists ? v.needs : v.open
 
 /* ───────── wording ───────── */
 
@@ -84,6 +108,20 @@ export function listHeader(ctx: Ctx): string {
   const head =
     s || ctx.access.mode === 'recruiter' ? `Open items ${whereOf(ctx)}` : `Open items for ${practiceOf(ctx)}`
   return `${head}, as of ${formatDate(ctx.asOf)}`
+}
+
+/**
+ * What the two lists hold, after the header line. A regional HR business partner named in Settings
+ * also holds the region's site matters (what the surveys say about its sites, whoever holds them),
+ * so their Needs attention says so (policy/routing.ts, `REGIONAL_OWNER`).
+ */
+export function listsLine(ctx: Ctx): string {
+  const s = scopeOfAccess(ctx.access)
+  const mine =
+    s?.kind === 'region' && s.owner
+      ? "Needs attention is yours, with what the surveys say about your region's sites"
+      : 'Needs attention is yours'
+  return `${mine}; Waiting on others is in your area, with someone else.`
 }
 
 /** "Nothing is waiting on Total rewards across the company." */

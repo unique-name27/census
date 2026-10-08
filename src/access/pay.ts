@@ -8,7 +8,7 @@
  *   ctx.showPay   individual amounts may show (`pay: true` columns)
  *   ctx.showCost  cost totals may show (`cost: true` columns): showPay, or Finance
  */
-import { IMMIGRATION_OF, type Mode, PAY_OF, type PayView } from './modes'
+import { IMMIGRATION_OF, type Mode, PAY_OF, type PayView, SCOPE_OF } from './modes'
 import { type Decision, hidden, limited, SHOWN } from './policy/types'
 
 let payOverrides: ReadonlyMap<Mode, PayView> | null = null
@@ -28,9 +28,13 @@ export const payView = (mode: Mode): PayView =>
 /** Individual pay amounts may show: a switch mode with "Show pay amounts" on. */
 export const showPayIn = (mode: Mode, switchOn: boolean): boolean => payView(mode) === 'switch' && switchOn
 
-/** Cost totals may show: individual amounts may (the switch modes, switch on), or Finance always. */
+/**
+ * Cost totals may show: individual amounts may (the switch modes, switch on), or Finance always.
+ * A scoped mode never shows totals without the switch (its scope can be narrowed in ways whole
+ * business units cannot); the Security center refuses such a line first (the 'cost-totals' rail).
+ */
 export const showCostIn = (mode: Mode, switchOn: boolean): boolean =>
-  showPayIn(mode, switchOn) || payView(mode) === 'totals'
+  showPayIn(mode, switchOn) || (payView(mode) === 'totals' && !SCOPE_OF[mode])
 
 /** Work authorization types per person may show: a mode with the switch, switch on. */
 export const showImmigrationIn = (mode: Mode, switchOn: boolean): boolean => IMMIGRATION_OF[mode] && switchOn

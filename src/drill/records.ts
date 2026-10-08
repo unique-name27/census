@@ -823,6 +823,10 @@ const KINDS: { [K in DrillKind]: { columns: Column[]; row: RowFn<K>; noun: [stri
 /** Every drill kind, in the order the records panel knows them (the Developer inventory and the access matrix list them). */
 export const DRILL_KINDS = Object.keys(KINDS) as DrillKind[]
 
+/** A kind's standard column label ("Exit reason"), or null (the Security center names `column:` surfaces with it). */
+export const standardColumnLabel = (kind: string, key: string): string | null =>
+  (KINDS as Record<string, { columns: Column[] }>)[kind]?.columns.find((c) => c.key === key)?.label ?? null
+
 export function drillNoun(kind: DrillKind, n: number): string {
   const [one, many] = KINDS[kind].noun
   return `${n.toLocaleString('en-US')} ${n === 1 ? one : many}`
@@ -887,17 +891,28 @@ const FINANCE_EMPLOYEE_COLUMNS: ReadonlySet<string> = new Set([
 ])
 
 /**
- * Standard columns the mode leaves out of a kind (docs/ROLES-V2.md 3.2, 4.2): Finance's employee
- * lists keep `FINANCE_EMPLOYEE_COLUMNS`; a mode that hides exit reasons
- * (`hrbp.attrition.exitReasons`) lists no exit reason or regrettable flag; the cost center shows
- * in Finance only.
+ * Standard columns the mode leaves out of a kind (docs/ROLES-V2.md 3.2, 4.2): every column whose
+ * `column:<kind>.<key>` surface the mode hides (Manager: a leaver's exit reason and regrettable
+ * flag, a candidate's reason; the policy tables' `hiddenColumns`); Finance's employee lists keep
+ * `FINANCE_EMPLOYEE_COLUMNS`; a mode that hides exit reasons (`hrbp.attrition.exitReasons`) or
+ * regretted attrition (`hrbp.attrition.regretted`) lists no leaver's exit reason or regrettable
+ * flag either; the cost center shows in Finance only.
  */
 export function modeHiddenColumns(kind: DrillKind, access: DrillContext['access']): ReadonlySet<string> {
-  if (kind !== 'employees') return NO_KEYS
-  if (access?.mode === 'finance')
-    return new Set(EMPLOYEE_COLUMNS.map((c) => c.key).filter((k) => !FINANCE_EMPLOYEE_COLUMNS.has(k)))
-  const out = new Set(['costCenter'])
-  if (access && !access.can('metric:hrbp.attrition.exitReasons')) {
+  const keys = KINDS[kind].columns.map((c) => c.key)
+  // Only a listed kind's columns are asked: where the kind itself is hidden its records never list.
+  const out = new Set<string>()
+  if (access?.can(`drill:${kind}`)) for (const k of keys) if (!access.can(`column:${kind}.${k}`)) out.add(k)
+  if (kind !== 'employees') return out.size ? out : NO_KEYS
+  if (access?.mode === 'finance') {
+    for (const k of keys) if (!FINANCE_EMPLOYEE_COLUMNS.has(k)) out.add(k)
+    return out
+  }
+  out.add('costCenter')
+  if (
+    access &&
+    (!access.can('metric:hrbp.attrition.exitReasons') || !access.can('metric:hrbp.attrition.regretted'))
+  ) {
     out.add('terminationReason')
     out.add('regrettable')
   }

@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
+import { defaultMetrics } from '@/metrics/api'
 import { metricsWith } from '@/metrics/testing'
 import { DEFAULTS, M } from '../metrics'
-import { isShareFormat, judge, missSeverity, watchMargin, watchMargins } from './status'
+import { isShareFormat, judge, missSeverity, scorecardJudge, watchMargin, watchMargins } from './status'
 
 const m = { share: 0.05, relative: 0.1 }
 
@@ -77,5 +78,20 @@ describe('watch margins', () => {
     expect(missSeverity(far)).toBeGreaterThan(missSeverity(near))
     expect(missSeverity(noRoom)).toBe(Number.POSITIVE_INFINITY)
     expect(missSeverity(judge(0.96, { value: 0.95, comparator: '>=' }, 'pct', m))).toBe(0)
+  })
+})
+
+describe('scorecardJudge', () => {
+  it('judges a tile as the measures are: Watch inside the margin, Missed beyond it', () => {
+    const metrics = defaultMetrics()
+    // The default target: voluntary attrition at most 10.0%.
+    expect(metrics.target('hrbp.attrition.voluntary')).toEqual({ value: 0.1, comparator: '<=' })
+    const j = scorecardJudge(metrics)
+    expect(j('hrbp.attrition.voluntary', 0.09, 'pct')?.status).toBe('met')
+    // 13.1% against at most 10.0%: 3.1 pts over, inside the 5 pts margin, as the Scorecard says.
+    expect(j('hrbp.attrition.voluntary', 0.131, 'pct')?.status).toBe('watch')
+    expect(j('hrbp.attrition.voluntary', 0.16, 'pct')?.status).toBe('missed')
+    expect(j('hrbp.attrition.voluntary', 0.131, 'pct')?.target).toEqual({ value: 0.1, comparator: '<=' })
+    expect(j(null, 0.131, 'pct')).toBeNull()
   })
 })

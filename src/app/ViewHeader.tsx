@@ -139,7 +139,9 @@ export function ViewHeader({ view, tab }: { view: ViewDef; tab: string }) {
   // The mode decides the view's own controls, the quality lens and the AI agents link (docs/ROLES.md, 3.1).
   const { access } = ctx
   const Actions = access.can(`header:${view.key}`) ? view.HeaderActions : undefined
-  const lens = view.datasets.length > 0 && access.can('filter:lens')
+  // A view with no figures here (Home in Developer mode) has no quality lens and no figures to export.
+  const figureless = view.figureless?.(ctx) ?? false
+  const lens = view.datasets.length > 0 && access.can('filter:lens') && !figureless
   const narrow = useNarrow()
   const links = (
     <>
@@ -210,7 +212,7 @@ export function ViewHeader({ view, tab }: { view: ViewDef; tab: string }) {
               extra
             ))}
           {/* Hidden where a policy file hides whole-view exports for the mode (docs/SECURITY-CENTER.md). */}
-          {access.can('export:view') && <ExportMenu view={view} tab={tab} />}
+          {access.can('export:view') && <ExportMenu view={view} tab={tab} linkOnly={figureless} />}
         </div>
       </div>
       <div className={cx('mt-4 border-b border-rule', view.tabs.length < 2 && 'mt-5')}>

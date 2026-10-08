@@ -17,6 +17,8 @@ export interface DialogProps {
   onOpenChange?: (open: boolean) => void
   /** Max width in px (the dialog never exceeds the viewport minus the gutter). */
   width?: number
+  /** What takes focus on open (Base UI's `initialFocus`); default: the first focusable element. */
+  initialFocus?: BDialog.Popup.Props['initialFocus']
 }
 
 export function Dialog({
@@ -28,6 +30,7 @@ export function Dialog({
   open,
   onOpenChange,
   width = 560,
+  initialFocus,
 }: DialogProps) {
   return (
     <BDialog.Root open={open} onOpenChange={onOpenChange ? (o) => onOpenChange(o) : undefined}>
@@ -35,6 +38,7 @@ export function Dialog({
       <BDialog.Portal>
         <BDialog.Backdrop className="fixed inset-0 z-40 bg-overlay transition-opacity duration-150 data-[ending-style]:opacity-0 data-[starting-style]:opacity-0" />
         <BDialog.Popup
+          initialFocus={initialFocus}
           className="fixed top-[max(48px,12vh)] left-1/2 z-50 flex max-h-[calc(100dvh-max(48px,12vh)-24px)] w-[calc(100vw-32px)] -translate-x-1/2 flex-col rounded-sheet bg-sheet text-ink shadow-(--shadow-pop) outline-none transition-[opacity,scale] duration-150 data-[ending-style]:scale-[0.98] data-[ending-style]:opacity-0 data-[starting-style]:scale-[0.98] data-[starting-style]:opacity-0"
           style={{ maxWidth: width }}
         >

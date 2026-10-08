@@ -37,7 +37,14 @@ const KIND_WORD: Record<RibbonKind, string> = {
 
 const pct = (n: number, d: number) => (d > 0 ? fmt(n / d, 'pct') : '—')
 
-function ribbonTip(kind: RibbonKind, stage: number, flow: Flow, cohort: readonly App[]): TipContent {
+/** `reasons`: the mode shows candidates' reasons (not Manager mode), so the tip names the most common one. */
+function ribbonTip(
+  kind: RibbonKind,
+  stage: number,
+  flow: Flow,
+  cohort: readonly App[],
+  reasons: boolean,
+): TipContent {
   const s = flow.stages[stage]
   const at = STAGES[stage]
   if (kind === 'advanced') {
@@ -65,7 +72,7 @@ function ribbonTip(kind: RibbonKind, stage: number, flow: Flow, cohort: readonly
     }
   }
   const value = s[kind]
-  const reason = topReason(flowMembers(cohort, kind, stage))
+  const reason = reasons ? topReason(flowMembers(cohort, kind, stage)) : null
   return {
     title: `${KIND_WORD[kind]} at ${at.toLowerCase()}`,
     rows: [
@@ -104,6 +111,7 @@ export function RiverChart({ base: b }: { base: RecruitingBase }) {
   const [hover, setHover] = useState<string | null>(null)
   const flow = b.flow
   const cohort = b.cohort
+  const reasons = b.showCandidateReasons !== false
 
   const blue = t.series[0]
   const fadeColor = d3color(blue)?.copy({ opacity: 0.4 }).formatRgb() ?? blue
@@ -203,7 +211,7 @@ export function RiverChart({ base: b }: { base: RecruitingBase }) {
       ? nodeTip(lt.stage, flow)
       : lt.kind === 'left'
         ? null
-        : ribbonTip(lt.kind, lt.stage, flow, cohort)
+        : ribbonTip(lt.kind, lt.stage, flow, cohort, reasons)
 
   return (
     <div>
@@ -275,7 +283,7 @@ export function RiverChart({ base: b }: { base: RecruitingBase }) {
                     {...interact(
                       rb.id,
                       open(rb.kind, rb.stage),
-                      () => ribbonTip(rb.kind, rb.stage, flow, cohort),
+                      () => ribbonTip(rb.kind, rb.stage, flow, cohort, reasons),
                       `${label}. Show them.`,
                     )}
                   />

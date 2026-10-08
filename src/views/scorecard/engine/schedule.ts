@@ -8,11 +8,20 @@
 import { errorMessage, logDevError } from '@/app/devlog'
 import type { AnalyticsContext } from '@/data/context'
 import type { ViewDef } from '../../types'
-import { buildScorecard, type PracticeInput, type ScorecardModel } from './model'
+import { buildScorecard, type PracticeInput, practiceShown, type ScorecardModel } from './model'
 
-/** The views the scorecard reads: every view with a summary, in folder-tab order, but itself. */
-export function practiceViews(views: readonly ViewDef[]): ViewDef[] {
-  return views.filter((v) => v.key !== 'scorecard' && v.key !== 'ai' && typeof v.summary === 'function')
+/**
+ * The views the scorecard reads: every view with a summary, in folder-tab order, but itself; with
+ * the mode's access, only the practices it shows (a summary the mode hides is never computed).
+ */
+export function practiceViews(views: readonly ViewDef[], access?: AnalyticsContext['access']): ViewDef[] {
+  return views.filter(
+    (v) =>
+      v.key !== 'scorecard' &&
+      v.key !== 'ai' &&
+      typeof v.summary === 'function' &&
+      practiceShown(access, v.key),
+  )
 }
 
 /** One practice's summary, timed; a summary that throws is logged and comes back as an error. */
@@ -43,7 +52,7 @@ function measure(name: string, start: number): void {
 export function computeScorecard(ctx: AnalyticsContext, views: readonly ViewDef[]): ScorecardModel {
   return buildScorecard(
     ctx,
-    practiceViews(views).map((v) => runSummary(v, ctx)),
+    practiceViews(views, ctx.access).map((v) => runSummary(v, ctx)),
   )
 }
 
@@ -116,7 +125,7 @@ export function scheduleScorecard(
     try {
       await idle(FIRST_WAIT_MS)
       const inputs: PracticeInput[] = []
-      for (const [i, view] of practiceViews(views).entries()) {
+      for (const [i, view] of practiceViews(views, ctx.access).entries()) {
         if (i > 0) await idle(FIRST_WAIT_MS)
         if (latest !== ctx) throw new ScorecardSuperseded()
         const start = clock()

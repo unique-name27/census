@@ -252,7 +252,9 @@ describe('search and filters', () => {
 
   it('offers the views some metric appears in, in folder-tab order', () => {
     const views = viewOptions(rows)
-    expect(views[0]).toBe('scorecard')
+    // Home first: Finance's home shows the workforce cost metrics (the Formulas section leaves it
+    // out in the modes that hide Home).
+    expect(views.slice(0, 2)).toEqual(['home', 'scorecard'])
     expect(views).toContain('actions')
     expect(views).toContain('data')
     expect(views).toContain('ai')

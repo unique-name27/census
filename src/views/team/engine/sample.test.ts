@@ -4,6 +4,7 @@
  * null, and nothing on the page names or opens a person outside the manager's org.
  */
 import { describe, expect, it, vi } from 'vitest'
+import { HR_ACCESS } from '@/access/context'
 import { managerLock } from '@/access/lock'
 import { leaderOptions } from '@/app/filterOptions'
 import { sampleCtx } from '@/ask/engine/testkit'
@@ -11,6 +12,7 @@ import type { AnalyticsContext } from '@/data/context'
 import type { Employee, ISODate } from '@/data/schema'
 import { isActiveAt, isEmployee } from '@/data/scope'
 import { resolveDrill } from '@/drill/Drill'
+import { modeHiddenColumns } from '@/drill/records'
 import { addDays } from '@/lib/dates'
 import { snapshotDates } from '@/lib/people'
 import { median } from '@/lib/stats'
@@ -134,6 +136,25 @@ describe('key figures and the readout', () => {
       expect(f.finding.severity).not.toBe('good')
       if (f.finding.metricId) expect(ctx.access.can(`metric:${f.finding.metricId}`), f.finding.id).toBe(true)
     }
+  })
+})
+
+describe('managers see exits, not regretted exits (docs/ROLES-V2.md, Decisions made)', () => {
+  it('has no regretted tile, finding, comparison or leaver column in Manager mode', () => {
+    expect(ctx.access.mode).toBe('manager')
+    const tiles = teamKpis(s, labelOf, ctx)
+    expect(tiles.map((k) => k.id)).toEqual(TEAM_TILES.map((id) => (id === 'regretted' ? 'attrition' : id)))
+    expect(tiles.some((k) => k.metricId === 'hrbp.attrition.regretted')).toBe(false)
+    const shown = (id: string) => ctx.access.can(`metric:${id}`)
+    expect(attritionCompare(s.hrbp, shown).map((r) => r.measure)).not.toContain('Regretted attrition')
+    for (const f of teamFindings(ctx, practiceFindings(s, { hrbp, recruiting, onboarding, talent })))
+      expect(`${f.finding.title} ${f.finding.detail ?? ''}`, f.finding.id).not.toMatch(/regrett/i)
+    // Every employee list leaves out each leaver's exit reason and regrettable flag.
+    const hidden = modeHiddenColumns('employees', ctx.access)
+    expect(hidden.has('terminationReason')).toBe(true)
+    expect(hidden.has('regrettable')).toBe(true)
+    // HR keeps them.
+    expect(modeHiddenColumns('employees', HR_ACCESS).has('terminationReason')).toBe(false)
   })
 })
 
@@ -353,7 +374,8 @@ describe('an org under the anonymity minimum', () => {
     expect(orgUnderMinimum(c, t)).toBe(true)
     const labelOf = () => ''
     const tiles = teamKpis(t, labelOf, c, true)
-    for (const id of ['voluntary', 'regretted', 'talent-training-on-time']) {
+    // Manager mode: the attrition tile (every exit) in place of regretted attrition.
+    for (const id of ['voluntary', 'attrition', 'talent-training-on-time']) {
       const k = tiles.find((x) => x.id === id)!
       expect(k, id).toBeDefined()
       expect(k.value, id).toBeNull()

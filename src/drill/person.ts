@@ -14,13 +14,14 @@
  *   (`person:compa-ratio`), pay amounts (`pay:amounts`, while "Show pay amounts" is on), ratings and
  *   potential (`person:ratings`), the open HR cases count (`person:open-cases`), overdue required
  *   courses (the `learning` kind), job history (`jobChanges`), successor roles (`succession`), exit
- *   reasons (`hrbp.attrition.exitReasons`), "Focus on their org" (`person:focus`, when the mode's
- *   clamp keeps it) and "Show in org chart" (`person:org-chart`, when the Org chart shows).
+ *   reason and regrettable flag (their `column:employees.*` surfaces, `hrbp.attrition.exitReasons`
+ *   and `hrbp.attrition.regretted`), "Focus on their org" (`person:focus`, when the mode's clamp
+ *   keeps it) and "Show in org chart" (`person:org-chart`, when the Org chart shows).
  */
 import { outsideScope } from '@/access/copy'
 import { routeShown } from '@/access/policy'
 import { personInScope } from '@/access/records'
-import { clampFilters } from '@/access/scopes/clamp'
+import { byWholeUnits, clampFilters } from '@/access/scopes/clamp'
 import type { AnalyticsContext } from '@/data/context'
 import {
   type Candidate,
@@ -87,14 +88,22 @@ const NONE: Omit<PersonCardPlan, 'shape' | 'outsideLine'> = {
 /** "Recruiter mode opens only people about to start." (Every recruiter: no reqs to name.) */
 export const PREHIRE_ONLY = 'Recruiter mode opens only people about to start.'
 
-/** "Focus on their org" keeps to the mode: the clamp leaves the merged filters as they are. */
-function focusKept(ctx: PlanContext, id: string): boolean {
-  const access = ctx.access
-  if (!access || !ctx.filters) return true
-  if (!access.scope && access.mode !== 'finance') return true
-  const merged = mergeFilter(ctx.filters, { leaderId: id }, 'include')
+/**
+ * A leader filter on someone keeps to the mode: the clamp leaves the merged filters as they are
+ * ("Focus on their org", the Org chart's "Focus on this org" and "See this org elsewhere").
+ */
+export function leaderFocusKept(
+  access: Pick<AnalyticsContext['access'], 'scope' | 'mode'> | null | undefined,
+  filters: AnalyticsContext['filters'] | null | undefined,
+  id: string,
+): boolean {
+  if (!access || !filters) return true
+  if (!access.scope && !byWholeUnits(access.mode)) return true
+  const merged = mergeFilter(filters, { leaderId: id }, 'include')
   return clampFilters(merged, access.scope, access.mode) === merged
 }
+
+const focusKept = (ctx: PlanContext, id: string): boolean => leaderFocusKept(ctx.access, ctx.filters, id)
 
 /** The parts of a person's card this mode shows. */
 export function personCardPlan(ctx: PlanContext, e: Employee): PersonCardPlan {
@@ -139,7 +148,14 @@ export function personCardPlan(ctx: PlanContext, e: Employee): PersonCardPlan {
     jobHistory: full && can('drill:jobChanges'),
     succession: full && can('drill:succession'),
     team: can('drill:employees'),
-    exitDetail: full && can('metric:hrbp.attrition.exitReasons'),
+    // As in employee lists (`modeHiddenColumns`): no exit reason or regrettable flag where either
+    // column, exit reasons or regretted attrition is hidden (Manager).
+    exitDetail:
+      full &&
+      can('column:employees.terminationReason') &&
+      can('column:employees.regrettable') &&
+      can('metric:hrbp.attrition.exitReasons') &&
+      can('metric:hrbp.attrition.regretted'),
     costCenter: finance,
     focus: can('person:focus') && focusKept(ctx, e.employeeId),
     orgChart: org,

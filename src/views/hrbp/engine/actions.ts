@@ -7,15 +7,21 @@
  *    - stay conversations after a regretted-exit cluster: one item per manager with at least the
  *      cluster minimum of regretted exits in the last 12 months (the readout rule's setting),
  *      owned by that manager, or by the team's HR business partner when the manager has left;
- *      due the rule's "Stay conversations due within" days (30) after the latest exit;
+ *      due the rule's "Stay conversations due within" days (30) after the latest regretted exit
+ *      (after the team's latest exit in what a manager reads);
  *    - span outliers for the HR business partner: managers at or above the wide span or at or
  *      below the narrow span (the "Span outliers" settings). Single-report chains are left to the
  *      Org chart's list, so one manager never shows up twice.
  *
  * Wording: `what` states the facts, `note` is a polite ask; no leaver is named in either (the
- * drill lists them for HR). In Manager mode the item says "exits", never "regretted exits":
- * regretted is HR's call about named leavers (docs/ACTION-CENTER-AUDIT.md, open question 4).
- * A stay conversation item is about a team, so its subject is a group (`kind: 'none'`) and About
+ * drill lists them for HR). In Manager mode the item counts and lists every exit from the team in
+ * the 12 months, never "regretted exits" or only the regretted leavers: regretted is HR's call
+ * about named leavers (docs/ACTION-CENTER-AUDIT.md, open question 4; docs/ROLES-V2.md, Decisions
+ * made, 8 Oct 2026). It is also raised there from the exits the regretted rule could count
+ * (voluntary ones by default), with the same settings, and its severity and fingerprint follow
+ * them: raised from regretted exits, whether a manager has the item, whether it is critical and
+ * when a handled one comes back would each say which exits were regretted. Copy note is read by the manager, so the item carries `forOwner` in those
+ * words in every mode ("6 exits from your team"). A stay conversation item is about a team, so its subject is a group (`kind: 'none'`) and About
  * never opens the manager; its fingerprint is the leavers, so a handled mark reopens when another
  * exit joins the cluster. Every item carries its place for the HRBP lenses. Pure: no React.
  */
@@ -26,7 +32,7 @@ import type { ActionItem, ViewSummary } from '../../types'
 import { count, type Prep, possessive } from './base'
 import { leaversSpec, managersSpec } from './drill'
 import { hrbpModel } from './index'
-import { MANAGER, ORG } from './lineage'
+import { EXITS, MANAGER, ORG } from './lineage'
 import type { ManagerRow } from './org'
 import { firstName, hrbpOwner, ownerLookup } from './owners'
 import { fingerprintOf, placeOf } from './places'
@@ -43,11 +49,11 @@ export function hrbpSummary(ctx: AnalyticsContext): ViewSummary {
   }
 }
 
-/** Regretted exits in the last 12 months, by the manager they reported to. */
-function regrettedByManager(p: Prep): Map<string, Employee[]> {
+/** Exits in the last 12 months (only the regretted ones with `regretted`), by the manager they reported to. */
+function exitsByManager(p: Prep, regretted: boolean): Map<string, Employee[]> {
   const out = new Map<string, Employee[]>()
   for (const e of exitsIn(p.emps, p.t12, p.counts)) {
-    if (!p.isRegretted(e) || !e.managerId) continue
+    if ((regretted && !p.isRegretted(e)) || !e.managerId) continue
     const arr = out.get(e.managerId)
     if (arr) arr.push(e)
     else out.set(e.managerId, [e])
@@ -55,19 +61,40 @@ function regrettedByManager(p: Prep): Map<string, Employee[]> {
   return out
 }
 
+const latestOf = (list: readonly Employee[]): string =>
+  list.map((e) => e.terminationDate as string).sort()[list.length - 1]
+
 function stayItems(p: Prep, look: ReturnType<typeof ownerLookup>): ActionItem[] {
   if (!p.regrettedReady) return []
   const { minExits, criticalExits, stayWithinDays } = p.set.regrettedCluster
-  // A manager reads "exits": whether an exit was regretted is HR's call about named leavers.
+  // A manager reads "exits": whether an exit was regretted is HR's call about named leavers. So
+  // whatever a manager reads (Manager mode, and the note sent to them) counts and lists every exit
+  // from the team, never only the regretted ones (docs/ROLES-V2.md, Decisions made, 8 Oct 2026).
   const forManager = p.ctx.access.mode === 'manager'
-  const [one, many] = forManager ? ['exit', 'exits'] : ['regretted exit', 'regretted exits']
+  const everyExit = exitsByManager(p, false)
+  // Raised from regretted exits, the item's being there (2 by default), its severity (3) and its
+  // fingerprint (the regretted leavers, which reopens a handled item only when a regretted one
+  // leaves) would each tell a manager how many of the exits, and which, were regretted. So in
+  // Manager mode it is raised from the exits the rule could count (voluntary ones, or every exit
+  // when any flagged exit counts), with the same settings: every team HR's rule flags is flagged,
+  // and nothing about it reads the regrettable flag.
+  const couldCount =
+    p.set.regretted === 'anyFlagged' ? () => true : (e: Employee) => e.terminationType === 'Voluntary'
+  const raising = forManager
+    ? new Map([...everyExit].map(([id, list]) => [id, list.filter(couldCount)] as const))
+    : exitsByManager(p, true)
   const out: ActionItem[] = []
-  for (const [managerId, list] of regrettedByManager(p)) {
-    if (list.length < minExits) continue
+  for (const [managerId, raised] of raising) {
+    if (raised.length < minExits) continue
     const mgr = p.ctx.org.byId.get(managerId)
     const name = p.name(managerId)
     const active = !!mgr && (!mgr.terminationDate || mgr.terminationDate > p.asOf) && mgr.hireDate <= p.asOf
-    const latest = list.map((e) => e.terminationDate as string).sort()[list.length - 1]
+    // HR's list is the regretted leavers (what raised it); a manager's, every exit from the team.
+    const exits = everyExit.get(managerId) ?? raised
+    const list = forManager ? exits : raised
+    const latest = latestOf(list)
+    // What a manager reads is dated from the team's latest exit, so no date points at a regretted one.
+    const managerDue = addDays(latestOf(exits), stayWithinDays)
     const team = `${possessive(name)} team`
     const owner = active
       ? { ownerRole: 'manager' as const, ownerId: managerId, ownerName: name }
@@ -75,9 +102,21 @@ function stayItems(p: Prep, look: ReturnType<typeof ownerLookup>): ActionItem[] 
     out.push({
       id: `hrbp:stay-conversations:${managerId}`,
       ...owner,
-      due: addDays(latest, stayWithinDays),
-      severity: list.length >= criticalExits ? 'critical' : 'warning',
-      what: `${count(list.length, one, many)} from ${team} in the last 12 months, the latest on ${dateWords(latest, p.asOf)}`,
+      due: forManager ? managerDue : addDays(latest, stayWithinDays),
+      severity: raised.length >= criticalExits ? 'critical' : 'warning',
+      what: forManager
+        ? `${count(list.length, 'exit', 'exits')} from ${team} in the last 12 months, the latest on ${dateWords(latest, p.asOf)}`
+        : `${count(list.length, 'regretted exit', 'regretted exits')} from ${team} in the last 12 months, the latest on ${dateWords(latest, p.asOf)}`,
+      // The note goes to the manager: every exit (never "regretted", never the regretted count), and "your team".
+      ...(active
+        ? {
+            forOwner: {
+              what: `${count(exits.length, 'exit', 'exits')} from your team in the last 12 months, the latest on ${dateWords(latestOf(exits), p.asOf)}`,
+              subject: 'Your team',
+              due: managerDue,
+            },
+          }
+        : {}),
       // A team, not the manager: About opens the leavers, never the manager's card.
       subject: { kind: 'none', label: team },
       view: 'hrbp',
@@ -89,7 +128,9 @@ function stayItems(p: Prep, look: ReturnType<typeof ownerLookup>): ActionItem[] 
       note: active
         ? 'Could you hold stay conversations with the rest of your team this month? Your HR business partner can help you prepare.'
         : `Could you arrange stay conversations this month with the rest of the team that ${name} led?`,
-      uses: p.uses(p.lin.regrettedExits, MANAGER),
+      uses: forManager ? p.uses(EXITS, MANAGER) : p.uses(p.lin.regrettedExits, MANAGER),
+      // The leavers it lists, so a handled mark reopens when the cluster grows (in Manager mode,
+      // when anyone else leaves the team).
       fingerprint: fingerprintOf(list.map((e) => e.employeeId)),
       closesWhen: 'Mark handled once the stay conversations are held; no record in the data closes it',
       place: placeOf(p.ctx, mgr),

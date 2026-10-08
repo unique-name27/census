@@ -61,8 +61,10 @@ export {
 } from './marks'
 export { askOf, composeNote, DEFAULT_ASK, greeting, NAGGING, NOTE_MAX_ITEMS } from './note'
 export {
+  countedOf,
   lensFor,
   listHeader,
+  listsLine,
   NEEDS_SHOWN,
   nothingWaiting,
   practiceOf,
@@ -71,6 +73,18 @@ export {
   showsLists,
   whereOf,
 } from './roles'
+export {
+  countOf,
+  foldRoleLists,
+  isRollup,
+  kindsOf,
+  ownersOf,
+  QUEUE_FOLD_AT,
+  ROLLUP_PREFIX,
+  type RollupSpec,
+  rollupOf,
+  unfold,
+} from './rollups'
 export {
   drillRows,
   EXPORT_COLUMNS,
@@ -82,7 +96,7 @@ export {
   statusText,
 } from './rows'
 export { type ActionSettings, settingsOf } from './settings'
-export { BLOCKS_PERSON, blocksPerson, severityOf } from './severity'
+export { BLOCKS_PERSON, blocksPerson, isBlockedTask, severityOf } from './severity'
 export {
   type ActionCounts,
   actionKpis,

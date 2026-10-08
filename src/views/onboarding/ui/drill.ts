@@ -202,7 +202,7 @@ export function newHireSiteDrills(b: OnboardingBase) {
             transactionsDrill(
               b,
               txs(x.rows.filter((t) => t.onTime)),
-              `New hires entered by day -3, ${x.group}`,
+              `New hires entered by day −3, ${x.group}`,
               o,
             )
         : null,
@@ -213,7 +213,7 @@ export function newHireSiteDrills(b: OnboardingBase) {
       const late = x.rows.filter((t) => !t.onTime)
       return late.length
         ? () => transactionsDrill(b, txs(late), `New hires entered late, ${x.group}`, o)
-        : () => transactionsDrill(b, txs(x.rows), `New hires entered by day -3, ${x.group}`, o)
+        : () => transactionsDrill(b, txs(x.rows), `New hires entered by day −3, ${x.group}`, o)
     }),
   }
 }

@@ -11,9 +11,15 @@
  *
  * Each item is one matter per person (`matter`: 'work-auth:', 'i9:', 'license:' and the employee
  * ID), so Onboarding's I-9 Section 2 item and its export-control screening task fold into these
- * (docs/ACTION-CENTER-AUDIT.md 4.2). A legal breach (an authorization that ended, an I-9 past due,
- * an export license not in force) carries `exposure` and ranks first; a license breach is due on
- * the start date, so it reads overdue, never "Due today". Pure.
+ * (docs/ACTION-CENTER-AUDIT.md 4.2).
+ *
+ * Legal exposure is a breach in force on the as-of date, and only that: someone working without an
+ * export license in force, an I-9 Section 2 past its deadline, a work authorization that has
+ * ended. Those carry `exposure`, are Critical and rank first; a license breach is due on the start
+ * date, so it reads overdue, never "Due today". A breach still to come is not exposure: a start
+ * whose license is pending is Watch, and a reverification not started is Watch, or Critical once
+ * the authorization ends within the overdue-critical days. The day the breach begins, the item
+ * becomes exposure. Pure.
  */
 import type { AnalyticsContext } from '@/data/context'
 import { addDays } from '@/lib/dates'
@@ -144,7 +150,7 @@ export function buildActions(ctx: AnalyticsContext, m: ComplianceCore, s: DrillS
       note: `Could you confirm whether the export license for ${x.e.name} will be in force before the start on ${day(x.startDate)}?`,
       uses: USES.exportLicense,
       matter: matterOf('license', x.e.employeeId),
-      exposure: true,
+      // Not a breach yet: it becomes one (and exposure) if the start comes before the license.
       closesWhen: 'An export license status of Approved, or Not needed, on the Right to work row',
       place: placeOf(ctx, x.e),
     })

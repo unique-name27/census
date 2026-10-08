@@ -10,9 +10,18 @@ import type { Severity } from '@/components/types'
 import { collectActions, type OpenAction } from '@/views/actions/engine'
 import { KIND_LABEL } from '@/views/actions/engine/kind'
 import { everyMode } from '@/views/actions/engine/roleKit'
+import { unfold } from '@/views/actions/engine/rollups'
 import { VIEWS } from '@/views/registry'
 import { ACTION_OWNER_LABEL, type ActionItem, type ActionOwnerRole } from '@/views/types'
-import { escalationRank, isMine, isSiteMatter, type RoleLens, type RoutedItem, roleItems } from './items'
+import {
+  escalationRank,
+  isMine,
+  isSiteMatter,
+  itemInScope,
+  type RoleLens,
+  type RoutedItem,
+  roleItems,
+} from './items'
 import { MODES, type Mode } from './modes'
 import { can } from './policy'
 import { itemKindOf, kindMatches, ROUTING, routingText } from './policy/routing'
@@ -227,6 +236,50 @@ describe('roleItems', () => {
   })
 })
 
+describe('itemInScope', () => {
+  // A business unit scope holding E1 (a manager) and E9 (a recruiter who sits in the unit).
+  const unit = {
+    scope: {
+      kind: 'unit' as const,
+      label: 'Silicon Engineering',
+      size: 2,
+      unit: 'Silicon Engineering',
+      memberIds: new Set(['E1', 'E9']),
+      leaderIds: new Set(['E1']),
+      otherDepartments: [],
+    },
+    lock: null,
+  }
+  const elsewhere = {
+    id: 'recruiting:review:APP-1',
+    ownerName: 'Rita Rao',
+    due: null,
+    severity: 'warning' as const,
+    what: 'Application waiting for a first review',
+    subject: { kind: 'candidates' as const, id: 'APP-1', label: 'Ana Ruiz (REQ-1)' },
+    view: 'recruiting' as const,
+    place: { businessUnit: 'Go-to-Market' },
+  }
+
+  it("keeps a manager's items in the scope wherever they are about", () => {
+    expect(itemInScope(unit as never, { ...elsewhere, ownerRole: 'manager', ownerId: 'E1' })).toBe(true)
+  })
+
+  it("never brings in a queue owner's item about someone outside the unit or region", () => {
+    for (const role of ['recruiter', 'coordinator', 'immigration', 'hr-ops'] as const)
+      expect(itemInScope(unit as never, { ...elsewhere, ownerRole: role, ownerId: 'E9' }), role).toBe(false)
+    // About the unit, it is in, whoever holds it.
+    expect(
+      itemInScope(unit as never, {
+        ...elsewhere,
+        ownerRole: 'recruiter',
+        ownerId: 'E9',
+        place: { businessUnit: 'Silicon Engineering' },
+      }),
+    ).toBe(true)
+  })
+})
+
 describe('the routing table', () => {
   let open: OpenAction[]
   beforeAll(() => {
@@ -314,11 +367,13 @@ describe('each mode on the sample', () => {
 
   it('splits what each mode lists into its two lists and the count left, with nothing twice', () => {
     for (const { mode, collected, lists } of modes) {
-      if (lists.lists)
-        expect(lists.needs.length + lists.waiting.length + lists.left, mode).toBe(collected.items.length)
+      // A roll-up (rollups.ts) is one line for several items: count the items inside it.
+      const needs = unfold(lists.needs)
+      const waiting = unfold(lists.waiting)
+      if (lists.lists) expect(needs.length + waiting.length + lists.left, mode).toBe(collected.items.length)
       else expect(lists.open.length + lists.left, mode).toBe(collected.items.length)
-      const seen = new Set([...lists.needs, ...lists.waiting].map((a) => a.id))
-      expect(seen.size, mode).toBe(lists.needs.length + lists.waiting.length)
+      const seen = new Set([...needs, ...waiting].map((a) => a.id))
+      expect(seen.size, mode).toBe(needs.length + waiting.length)
     }
   })
 

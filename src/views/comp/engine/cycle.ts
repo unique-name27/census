@@ -99,6 +99,8 @@ export interface SpendRow extends GroupDim {
   delta: number | null
   eligibleBaseUsd: number | null
   spendUsd: number | null
+  /** The merit budget in USD (eligible base × budget %); Workforce cost's rows carry it, rounded in Finance. */
+  budgetUsd?: number | null
   overUsd: number | null
   /** The proposals in the group; empty when its spend is hidden (fewer than 5 priced). */
   members: CompPerson[]

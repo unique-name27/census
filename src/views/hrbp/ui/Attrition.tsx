@@ -12,6 +12,7 @@ import { TENURE_BANDS } from '@/lib/people'
 import { LinkedSurvey } from '@/views/listening/LinkedSurvey'
 import type { HrbpModel } from '../engine'
 import {
+  attritionSections,
   COMPANY_SERIES,
   EXIT_TYPES,
   type GroupRateRow,
@@ -78,6 +79,14 @@ export function Attrition({ m }: { m: HrbpModel }) {
   const anyRegretted = p.set.regretted === 'anyFlagged'
   // Bars this far above the company, in groups this large, are marked (the readout's voluntary attrition rule).
   const { gap, minAvgHeadcount } = p.set.voluntaryAbove
+  // Manager mode shows no exit reasons and no regretted exits: the sections say so in their words.
+  const words = attritionSections(
+    {
+      reasons: ctx.access.can(`metric:${ID.exitReasons}`),
+      regretted: ctx.access.can(`metric:${ID.regretted}`),
+    },
+    window,
+  )
 
   // Drills: each mark and count opens the leavers behind it.
   const quarterDrill = (rows: readonly QuarterExitRow[]) => drill(() => quarterExitSpec(p, rows))
@@ -245,10 +254,7 @@ export function Attrition({ m }: { m: HrbpModel }) {
         </Figure>
       </Section>
 
-      <Section
-        title="Why and where"
-        dek={`Reasons given for voluntary exits and the groups where attrition runs highest, ${window}.`}
-      >
+      <Section title={words.where.title} dek={words.where.dek}>
         <Figure
           id="hrbp-exit-reasons"
           metric={ID.exitReasons}
@@ -398,10 +404,7 @@ export function Attrition({ m }: { m: HrbpModel }) {
         dek="One number from the exit survey, sent at notice of resignation. The reasons, regretted against other leavers and whether people would return are in Listening."
       />
 
-      <Section
-        title="Who left"
-        dek={`Exits ${window} by level and last performance rating, and the regretted leavers by name.`}
-      >
+      <Section title="Who left" dek={words.whoLeft}>
         <Figure
           id="hrbp-attrition-level"
           metric={ID.attrition}

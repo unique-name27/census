@@ -197,12 +197,16 @@ export function overlayTable(base: RolePolicy, ov: ModeOverrides): RolePolicy {
   const allow = base.metrics.allow ? [...base.metrics.allow] : undefined
   const drills = new Set<string>(base.drillKinds)
   const datasets = new Set<string>(base.datasets)
+  const columns = new Set<string>(base.hiddenColumns ?? [])
   const itemPrefixes = new Set(base.hiddenItemPrefixes)
 
-  // Views and pages first, so a tab override lands on the view's rebuilt tab list.
+  // Views and pages first, so a tab override lands on the view's rebuilt tab list. A line that
+  // would show a Developer-only surface in another mode is never laid over (the guard rail; the
+  // loader and the editor refuse it first).
   for (const [s, d] of ov) {
     const kind = kindOf(s)
     if (kind !== 'view' && kind !== 'page') continue
+    if (!isHidden(d) && isGuardedDeveloperSurface(s)) continue
     const key = restOf(s)
     const was = views[key]
     views[key] = d
@@ -214,6 +218,7 @@ export function overlayTable(base: RolePolicy, ov: ModeOverrides): RolePolicy {
   }
 
   for (const [s, d] of ov) {
+    if (!isHidden(d) && isGuardedDeveloperSurface(s)) continue
     const kind = kindOf(s)
     const rest = restOf(s)
     switch (kind) {
@@ -302,6 +307,11 @@ export function overlayTable(base: RolePolicy, ov: ModeOverrides): RolePolicy {
         if (isHidden(d)) datasets.delete(rest)
         else datasets.add(rest)
         break
+      case 'column':
+        surfaces[s] = d
+        if (isHidden(d)) columns.add(rest)
+        else columns.delete(rest)
+        break
       default:
         surfaces[s] = d
     }
@@ -320,6 +330,7 @@ export function overlayTable(base: RolePolicy, ov: ModeOverrides): RolePolicy {
     metrics: { ...(allow ? { allow } : {}), hidePrefixes: [...hidePrefixes], hide: [...hide] },
     drillKinds: [...drills] as RolePolicy['drillKinds'],
     datasets: [...datasets] as RolePolicy['datasets'],
+    hiddenColumns: [...columns],
     hiddenItemPrefixes: [...itemPrefixes],
   }
 }

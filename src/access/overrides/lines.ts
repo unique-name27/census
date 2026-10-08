@@ -63,6 +63,12 @@ export function validDecision(surface: string, decision: string, cat: SurfaceCat
   return isAccess(decision)
 }
 
+/** A decision's shape when there is no catalog to check it against. */
+const roughlyValid = (surface: string, decision: string): boolean =>
+  surface === ROLE_HOME ? /^[a-z]+$/.test(decision) : validDecision(surface, decision, NO_CATALOG)
+
+const NO_CATALOG: SurfaceCatalog = { surfaces: new Set(), metrics: new Set(), figures: new Set(), views: [] }
+
 /** The policy's overrides for a list of lines (later lines win). */
 export function overridesOf(lines: readonly PolicyLine[]): PolicyOverrides {
   const out = new Map<Mode, Map<string, Decision>>()
@@ -113,11 +119,13 @@ function rawOf(v: unknown): {
 /**
  * Screen a file's lines: the ones that apply, and every one left out with why. A later line for
  * the same role and surface replaces an earlier one. Guard rails are weighed with every other
- * accepted line in place, so a pay amount shown together with its switch passes.
+ * accepted line in place, so a pay amount shown together with its switch passes. Without a
+ * catalog (a preview kept in this tab), unknown surfaces are let through, since nothing decides
+ * them, and every guard rail still applies.
  */
 export function screenLines(
   raw: readonly unknown[],
-  cat: SurfaceCatalog,
+  cat: SurfaceCatalog | null,
 ): { lines: PolicyLine[]; skipped: SkippedLine[] } {
   const skipped: SkippedLine[] = []
   const kept = new Map<string, { index: number; line: PolicyLine }>()
@@ -139,7 +147,8 @@ export function screenLines(
     }
     // A guard rail that does not depend on the other lines is named before anything else, so a
     // line that tries to show a protected characteristic says so rather than "unknown surface".
-    if (r.surface !== 'pay:amounts') {
+    // The pay lines are weighed together, below.
+    if (kindOf(r.surface) !== 'pay') {
       const one = { role: r.role, surface: r.surface, decision: r.decision, reason: '', by: '', at: '' }
       const early = guardRailFor(one, guardEnv([one]))
       if (early) {
@@ -151,11 +160,11 @@ export function screenLines(
       skip('unknown-surface', 'Minimums are set in the metric dictionary, where they can be raised.')
       continue
     }
-    if (!knownSurface(r.surface, cat)) {
+    if (cat && !knownSurface(r.surface, cat)) {
       skip('unknown-surface', 'Not a surface Census has.')
       continue
     }
-    if (!validDecision(r.surface, r.decision, cat)) {
+    if (cat ? !validDecision(r.surface, r.decision, cat) : !roughlyValid(r.surface, r.decision)) {
       skip('invalid', 'Not a decision this surface takes.')
       continue
     }

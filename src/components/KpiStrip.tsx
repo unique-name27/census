@@ -93,6 +93,24 @@ function Delta({ kpi, className }: { kpi: Kpi; className?: string }) {
   )
 }
 
+/**
+ * How a tile is judged against its metric's target: Met or Missed (`kpiTarget`), or with a strip's
+ * own `judge`, also Watch (a role home judges as the People scorecard beside it does, so a tile
+ * and a measure never give one number two verdicts).
+ */
+export type TileJudgement = { target: MetricTarget; status: 'met' | 'watch' | 'missed' }
+export type TileJudge = (
+  metricId: string | null | undefined,
+  value: number | null | undefined,
+  format: Kpi['format'],
+) => TileJudgement | null
+
+const JUDGEMENT_WORD: Record<TileJudgement['status'], string> = {
+  met: 'Met',
+  watch: 'Watch',
+  missed: 'Missed',
+}
+
 /** Met or missed against the metric's target, with the target in words: "Met · target at most 8.0%". */
 function TargetLine({
   metricId,
@@ -102,7 +120,7 @@ function TargetLine({
 }: {
   metricId: string
   target: MetricTarget
-  status: 'met' | 'missed'
+  status: TileJudgement['status']
   className?: string
 }) {
   const { metrics } = useAnalytics()
@@ -111,11 +129,7 @@ function TargetLine({
   return (
     // The target is the one number this line exists to show: it wraps, it is never cut.
     <div className={cx('mt-1 flex min-w-0 flex-wrap items-center gap-x-1 text-meta text-muted', className)}>
-      <StatusPill
-        quiet
-        severity={status === 'met' ? 'good' : 'warning'}
-        label={status === 'met' ? 'Met' : 'Missed'}
-      />
+      <StatusPill quiet severity={status === 'met' ? 'good' : 'warning'} label={JUDGEMENT_WORD[status]} />
       <span className="min-w-0">target {words}</span>
     </div>
   )
@@ -160,7 +174,17 @@ const ROW = {
   note: 'row-start-5',
 } as const
 
-function Tile({ kpi, gate, className }: { kpi: Kpi; gate: TierGate | null; className?: string }) {
+function Tile({
+  kpi,
+  gate,
+  judge,
+  className,
+}: {
+  kpi: Kpi
+  gate: TierGate | null
+  judge?: TileJudge
+  className?: string
+}) {
   const view = useCurrentView()
   const { metrics, access } = useAnalytics()
   // A tab of this view, or with `link` a tab of another view (Hires vs plan opens Onboarding);
@@ -175,7 +199,10 @@ function Tile({ kpi, gate, className }: { kpi: Kpi; gate: TierGate | null; class
   // setting it depends on (the population setting, the anonymity minimum, a quality rule).
   const changed = !!metric && metrics.changesBehind(metric).length > 0
   // The metric's target, judged on the value in force (only when the tile shows the metric's unit).
-  const goal = hidden || kpi.suppressed ? null : kpiTarget(metrics, metric, kpi.value, kpi.format)
+  const goal =
+    hidden || kpi.suppressed
+      ? null
+      : (judge ?? ((m, v, f) => kpiTarget(metrics, m, v, f)))(metric, kpi.value, kpi.format)
   const note = hidden ? (
     <GateNote gate={gate} />
   ) : kpi.suppressed ? (
@@ -349,6 +376,7 @@ export function KpiStrip({
   id = 'key-figures',
   title = 'Key figures',
   span = 12,
+  judge,
   className,
 }: {
   kpis: Kpi[]
@@ -357,6 +385,8 @@ export function KpiStrip({
   title?: string
   /** Grid columns at desktop width (default 12), so a home page can set a hero figure beside it. */
   span?: Span
+  /** How tiles are judged against their targets, when not plain Met or Missed (`TileJudge`). */
+  judge?: TileJudge
   className?: string
 }) {
   const gateOf = useGateFn()
@@ -369,11 +399,9 @@ export function KpiStrip({
   const tiered = gates.some(Boolean)
   // Each tile's target as the tile shows it, so the export carries it too.
   const targets = kpis.map((k) => {
-    const t = kpiTarget(metrics, k.metricId, k.value, k.format)
+    const t = judge ? judge(k.metricId, k.value, k.format) : kpiTarget(metrics, k.metricId, k.value, k.format)
     const def = k.metricId ? metrics.def(k.metricId) : undefined
-    return t && def
-      ? `${t.status === 'met' ? 'Met' : 'Missed'}: target ${targetText(def, t.target).toLowerCase()}`
-      : null
+    return t && def ? `${JUDGEMENT_WORD[t.status]}: target ${targetText(def, t.target).toLowerCase()}` : null
   })
   useTableFigure({
     id,
@@ -405,6 +433,7 @@ export function KpiStrip({
           key={k.id}
           kpi={k}
           gate={gates[i]}
+          judge={judge}
           className={folded && i >= PHONE_TILES ? 'max-md:hidden' : undefined}
         />
       ))}

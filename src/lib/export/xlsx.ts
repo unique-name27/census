@@ -8,6 +8,7 @@
  */
 import type { CellValue, Workbook, Worksheet } from 'exceljs'
 import type { Column, ExportMeta } from '@/charts/types'
+import { COST_STEP, UNDER_COST_STEP } from '@/lib/costRounding'
 import { excelNumFmt, type Format, fmt } from '@/lib/format'
 import {
   cellFormat,
@@ -93,7 +94,12 @@ const ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2}))?/
  */
 export function excelValue(v: unknown, format: Format | undefined): CellValue {
   if (v == null) return null
-  if (typeof v === 'number') return Number.isFinite(v) ? exportNumber(v, format) : null
+  if (typeof v === 'number') {
+    if (!Number.isFinite(v)) return null
+    // Finance's rounded cost under the step is written as the words, never as a 0.
+    if (format === 'moneyM' && Math.abs(v) < COST_STEP) return UNDER_COST_STEP
+    return exportNumber(v, format)
+  }
   if (typeof v === 'boolean') return v ? 'Yes' : 'No'
   if (v instanceof Date) return Number.isNaN(v.getTime()) ? null : v
   if (typeof v === 'string') {

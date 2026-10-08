@@ -11,7 +11,14 @@
 import { itemShown, lensOf, roleItems } from '@/access/items'
 import type { Kpi } from '@/components/types'
 import type { AnalyticsContext } from '@/data/context'
-import { actionKpis, type Collected, type OpenAction, roleView, settingsOf } from '@/views/actions/engine'
+import {
+  actionKpis,
+  type Collected,
+  foldRoleLists,
+  type OpenAction,
+  roleView,
+  settingsOf,
+} from '@/views/actions/engine'
 import { M as ACTIONS } from '@/views/actions/metrics'
 import { managerAnswers, teamLeader } from './sources'
 
@@ -43,7 +50,7 @@ export function teamLists(
     ...lensOf({ mode: 'manager', scope: null, lock: null }, ctx.asOf, settingsOf(ctx.metrics).escalationDays),
     me: leader,
   }
-  const r = roleItems(items, lens)
+  const r = foldRoleLists(roleItems(items, lens), lens, ctx)
   return { needs: r.needs, waiting: r.waiting }
 }
 

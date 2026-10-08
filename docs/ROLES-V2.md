@@ -148,7 +148,7 @@ markup as today: title, dek, a search field, an inline list, a foot line, a prim
 | Kind | Title | Dek | Rows (largest first) | Foot | Confirm |
 |---|---|---|---|---|---|
 | Business unit | "Choose a business unit" | "HRBP mode shows Census for one business unit, at every location. Pick the one you support." | Each business unit with active employees: name, "412 employees · 7 locations". Units on the official list with nobody in the data show muted and cannot be picked. | "Census lists the business units in the Employees data." | "Show this business unit" |
-| Region | "Choose a region" | "HRBP mode shows Census for every employee in one region, across business units." | Each region: name, "506 employees · Bengaluru, Hsinchu, Shanghai, Ho Chi Minh City". | "Regions come from the Region column of the Locations list in Settings, Official lists." plus, when some people work at a location with no region, "{n} people work at locations with no region." | "Show this region" |
+| Region | "Choose a region" | "HRBP mode shows Census for every employee in one region, across business units." | Each region: name, "506 employees · Bengaluru, Hsinchu, Shanghai, Ho Chi Minh City". | "Each location's region comes from the Locations list in Settings, Official lists; the Regions list names each region's HR business partner." plus, when some people work at a location with no region, "{n} people work at locations with no region." | "Show this region" |
 | Recruiter | "Choose a recruiter" | "Recruiter mode shows Census for one recruiter's reqs. Pick yourself." | First, "Every recruiter" ("For a talent acquisition lead: every req"), then each name in `requisitions.recruiter` on a req open now or opened in the last 12 months (trimmed, matched case-insensitively, matched to the roster by `ownerLookup` when possible): name, "14 open reqs · 61 active candidates". | "Census lists everyone named as the recruiter on a req that is open or was opened in the last 12 months." | "Show their reqs" ("Show every req" for the first row) |
 | Manager | unchanged (docs/ROLES.md 1.3) | | | | |
 
@@ -473,7 +473,7 @@ pure):
 | `comp.cost.openReqsAtMid` | Open reqs at range midpoint (estimate) | for each open req, the median `rangeMid × fxToUsd` of active employees at its level and location (5 or more), else its level company-wide (5 or more), else no estimate | labeled "estimate" in every title and definition; reqs without an estimate are counted in the note |
 
 Contractors and interns have no comp rows; their counts come from People stats
-(`hrbp.workforce.contingent`), shown beside the totals, never costed.
+(`hrbp.workforce.contingent`), shown beside the target cash totals, not in them (the budget comparison adds contractors at the range-midpoint estimate; interns are never costed).
 
 **Figures that show cost totals** (all `cost: true` amounts; nothing else in Census shows a
 total of pay to Finance):
@@ -502,7 +502,12 @@ total of pay to Finance):
    (2.3), "Filter to" and "Focus on" are offered only for business unit groups, and Exclude is
    off. Two Finance scopes therefore always differ by whole business units, so comparing two
    totals cannot single out a person. (Modes that show the switch keep every filter: they can see
-   amounts anyway.)
+   amounts anyway.) Because a Finance scope can be any set of business units, rule 2 runs inside
+   each business unit in Finance: a unit's groups under 5 (and, while that unit's Other is under
+   5, its smallest shown group) count in Other, a row holds its group's shown parts in each unit,
+   and a business unit with fewer than 5 costed people is left out of every total, with a note.
+   The same applies to the budget comparison. A test sweeps every set of the sample's business
+   units and checks that no shown amount can be subtracted down to 1 to 4 people.
 4. **Drills.** A cost total opens the people it counts. In Finance it opens the `employees` kind
    (ID, name, cost center, department, level, location, employment type, hire date) and never the
    `comp` kind, which Finance does not list (4.12); in the switch modes it opens the `comp` kind,
@@ -510,8 +515,8 @@ total of pay to Finance):
 5. **Exports.** Figure exports carry exactly the rows shown (cost columns kept in Finance, `pay`
    columns dropped). "Export detail rows" on a cost figure writes the people without amounts in
    Finance. Whole-view exports and the deck follow the same columns. Finance export meta adds
-   "Cost totals cover groups of 5 or more people. Individual pay is left out." in place of the
-   "Pay amounts" line.
+   "Cost totals cover groups of 5 or more people and are rounded to $0.1M in each business unit.
+   Individual pay is left out." in place of the "Pay amounts" line.
 6. **Text.** Findings never state one person's amount unless `ctx.showPay` (today's
    Compensation rule). Action items never hold an amount in `what` or `note`, in any mode: the
    audit (3.13) found "$4,008 a year in USD" written into item text, where no column rule can drop
@@ -521,6 +526,23 @@ total of pay to Finance):
 7. **Ask.** No tool returns an amount or a cost total in any mode (docs/ASK.md "pay amounts never
    do", unchanged). Finance's Ask answers headcount, plan and requisition questions and points to
    Compensation, Workforce cost for cost.
+8. **Rounding, in Finance.** Rules 2 and 3 stop one breakdown from being subtracted across
+   business unit filters, but two breakdowns of the same scope (level, site, cost center, unit,
+   merit spend) or the same scope at two dates can still be combined. So wherever cost totals show
+   without the switch (pay view 'totals': Finance), the engines round every cost amount down to a
+   whole $100,000 (`src/lib/costRounding.ts`) before any tile, chart, tooltip, table, drill,
+   export, folder headline, Action center amount, report or Ask tool reads it. It reads in
+   millions ('moneyM': "$12.3M", "$0.4M"; under $100,000, "under $0.1M"). Shares, target cash per
+   employee (to the nearest $1,000), merit spend against budget, cost against budget and the
+   budget status are computed from the rounded amounts, and rows are ranked by them. The rounding
+   is done in each business unit: a row over several units (the total, a level, a cost center,
+   Other, merit spend, the budget's total) adds each unit's part, rounded on its own, and Other
+   adds each unit's own Other and each group it folds, rounded on their own
+   (`roundedAmounts` in `src/views/comp/engine/cost.ts`). The adding puts $0.1M on top for every
+   two parts of $0.1M or more (`sumRounded`), since rounding down takes about $0.05M off each, so
+   a total over six units does not read $0.3M low. So a set of business units shows nothing its
+   units, each on its own, do not. The switch modes keep exact amounts. See "Decisions made"
+   for why the rounding is down and done in each unit.
 
 ### 3.3 Other money on screen
 
@@ -700,7 +722,12 @@ stage and the pyramid open employees without ratings. On the hide lists: Compens
     `recruiting.reqs.`, `onboarding.upcoming.`, `onboarding.plan.`, `comp.cost.`, `org.chart.`,
     `org.people.`, `org.managers.`, `org.layers.`, `org.openRoles.`, `actions.`, plus the
     Special analyses' `hrbp.stages.` and `hrbp.pyramid.`.
-- **Manager**: docs/ROLES.md 3.3, unchanged.
+- **Manager**: docs/ROLES.md 3.3, with exits and never regretted exits, and no reason
+  breakdowns ("Decisions made", 8 Oct 2026): regretted attrition, the regretted cluster finding,
+  regretted exits of high performers, the Org chart panel's regretted count, exit reasons
+  (`hrbp.attrition.exitReasons`) and why candidates left (`recruiting.flow.exitReasons`) are
+  hidden, with their figures; employee records leave out the exit reason and regrettable flag,
+  and candidate records the reason (`MANAGER_HIDDEN_COLUMNS`, 4.12).
 - **CHRO**: none beyond HR's.
 
 ### 4.3 Masthead and page frame
@@ -734,6 +761,10 @@ on the Mode button: it reads the pick. "L pin": the scope line starts with the l
 the scope. Tools, Settings and Help are limited to what 4.6 to 4.8 show. The Actions count is the
 mode's Needs attention count (`needs`, 6.1); in Developer, HR and CHRO it counts every open item,
 as today.
+
+The welcome card reads the live mode (the Mode button's): a page drawn in another mode, such as
+the Developer page's preview of a role's Home, has none. Each mode's card is its own: dismissing
+it, or finishing "Getting started with your home" in that mode, leaves the other modes' cards.
 
 ### 4.4 Action center
 
@@ -805,7 +836,7 @@ is left (Finance usually).
 | `privacy-surveys` | S | S | S | S | S | S | S | S | H | H | H |
 | `privacy-immigration` | S | S | S | S | S | H | H | S | H | H | H |
 | `shortcuts`, `report-problem`, `troubleshooting`, `faq`, `whats-new` | S | S | S | S | S | S | S | S | S | S | S |
-| `developer-tools` article and tour | S | H | H | H | H | H | H | H | H | H | H |
+| `developer-tools` article and tour, `security-center` article (docs/SECURITY-CENTER.md) | S | H | H | H | H | H | H | H | H | H | H |
 | Tour `getting-started` | S | S | S | H | H | H | H | H | H | H | H |
 | New tour `home-start` "Getting started with your home" (Mode button, hero, Needs attention, My list, Action center) | S | H | S | S | S | S | S | S | S | S | H |
 | Tours `manager-start`, `view-team` | S | H | H | H | H | H | H | H | H | H | S |
@@ -888,6 +919,14 @@ Drill kinds each mode lists (rows outside the scope left out in scoped modes):
 | Rec | requisitions, candidates, onboardingTasks, employees (matched pre-hires only), actionItems, actionOwners |
 | Fin | employees, requisitions, hiringPlan, actionItems, actionOwners |
 | Mgr | as today |
+
+**Columns a mode leaves out.** A listed kind can still leave a column out of every list of its
+records, the records exports, the person card and Ask's `query_records`: the `column:<kind>.<key>`
+surface (`S.column`), named on a table's `hiddenColumns` with its how in `surfaces`, so the
+matrix, the Security center (Data group) and a policy file see it. A column a table does not name
+follows its kind. Manager mode leaves out `employees.terminationReason`, `employees.regrettable`
+and `candidates.rejectionReason`; Finance keeps its own short list of employee columns, and the
+cost center shows in Finance only (`modeHiddenColumns` in src/drill/records.ts).
 
 **Hidden-kind numbers render as plain numbers.** A number in a shown figure whose records are a
 kind the mode does not list is not a button (no hover wash, no keyboard stop) and its table cell
@@ -977,7 +1016,11 @@ Rules for every home:
 - `home` has no `summary` (it composes other views' numbers) and no `actions`.
 - Header actions: CHRO and both HRBP homes carry "Monthly people report" (scoped for HRBPs);
   every home has the view Export menu.
-- Phones: one column in the order drawn; the KPI strip shows four tiles and "Show all".
+- Phones (under 768px): one column, with Needs attention moved up as the audit's release checklist
+  asks (docs/ACTION-CENTER-AUDIT.md part 6, Layout): the hero, then Needs attention with its list
+  before "Where your items wait", then the key figures and lead charts, then the rest in the order
+  drawn (`src/views/home/ui/HomeTop.tsx`). The KPI strip shows four tiles and "Show all". The top
+  band carries a visually hidden h2 ("Overview"), so headings run h1, h2, h3 with no skip.
 
 ### 5.2 Needs attention (shared)
 
@@ -989,7 +1032,7 @@ Rules for every home:
 - `home-attention-wait` (span 4): "Where your items wait", HBars by kind (top 6 and Other),
   stacked by due state (overdue, due in 7 days, later, no due date) in status colors with words.
   Metric `actions.items.open`; a segment opens its items (`actionItems` kind).
-- `home-attention` (span 8): table-only Figure "Needs attention", the 8 most urgent items:
+- `home-attention` (span 8): table-only Figure "Most urgent" (the section is "Needs attention"), the 8 most urgent items:
   severity (icon and word), what, about (opens the item's drill or person), waiting on, due in
   words ("4 d overdue"), from (view and tab, a `RouteLink`). Metric `actions.items.open`. Rows are
   read only; Mark handled and Snooze stay in the Action center. Section action "Open the Action
@@ -1374,6 +1417,19 @@ What each mode's Action center shows:
   each list.
 - The header line names the list: "Open items for Total rewards, as of 30 Sep 2026", "Open items
   in APAC", "Open items on Maya Chen's reqs".
+- **Roll-ups** (`src/views/actions/engine/rollups.ts`, after `roleItems`): a role reads its work,
+  not every record behind it, so items one person or queue works through fold into one line with
+  the count, who holds them and the oldest, and the line's About opens the items. HR, CHRO and
+  Developer: critical items long overdue fold into one escalation per practice (legal exposure,
+  critical roles and exit clusters stay one line each). HR ops: one agent's or queue's items of one
+  kind from three, and day-one tasks not started and not yet due per start date (never legal
+  exposure or employee relations). Recruiter: one line per req (one recruiter), or per recruiter
+  ("Every recruiter"). Manager: interview decisions per req. HRBP: Waiting on others by owner
+  group and kind, with each owner's note inside (stay conversations, probation decisions and
+  critical items one by one). A roll-up keeps its own marks (its id is stable; its fingerprint is
+  its items, so a handled roll-up opens again when one joins or leaves). On the sample every
+  mode's Needs attention is 15 lines or fewer, the escalations 10 or fewer
+  (`src/views/actions/engine/roles.test.ts`).
 - On phones and on homes the list leads and the overview charts follow (audit 3.15).
 - Marks follow the audit's marks v2 (its 4.5, and its open question 2 as recommended): per
   browser, by item id, with a fingerprint that reopens a changed roll-up and an optional "by"
@@ -1608,7 +1664,7 @@ ratios.").
 mode. Two files under `src/access/__snapshots__/`:
 
 - `access-matrix.txt`: surface, then one column per mode in the order Dev, HR, CHRO, BU, Rgn,
-  Comp, Tal, Ops, Rec, Fin, Mgr, each `S`, `L` or `H` (a one-letter grid stays readable at
+  Comp, Tal, Rec, Ops, Fin, Mgr (Developer, then the Mode menu's order), each `S`, `L` or `H` (a one-letter grid stays readable at
   eleven columns).
 - `access-how.txt`: for every surface with a limited or hidden decision, one line per mode
   that limits or hides it: `surface  mode  decision  how`.
@@ -1878,3 +1934,103 @@ Calls made here that a reviewer is most likely to revisit:
   Developer-page tab that edits overrides on this contract's policy tables, with guard rails, a
   preview-as-role, and a published `access-policy.json` that every user loads (the user chose a
   policy file for everyone). Design the policy tables so overrides can be applied on top of them.
+- **Managers see exits, not regretted exits, everywhere (decided 8 Oct 2026):** the 7 Oct decision
+  reached the Action center item only; it now covers every Manager mode surface. Whether an exit
+  was regretted is HR's call about named leavers, so Manager mode hides `hrbp.attrition.regretted`,
+  `hrbp.findings.regrettedCluster`, `talent.retention.regrettedHigh`, `talent.finding.hipoExits`
+  and the Org chart panel's `org.team.regrettedExits`, and the figures `hrbp-regretted-quarter`,
+  `hrbp-regretted-leavers` and `talent-regretted-high-performers`. My team's regretted tile
+  becomes Attrition (every exit, `hrbp.attrition.all`), its comparison chart shows voluntary and
+  first-year attrition, and People stats drops its regretted columns and toggle. People stats'
+  model holds no regretted exits or reason groups in that mode.
+- **No reason breakdowns for managers (decided 8 Oct 2026):** My team's design shows no exit
+  reasons because a small team would identify people, and the same holds on every page a manager
+  sees, at any org size: a reason group of 5 can still be one team's leavers. Manager mode hides
+  "Why people left" (`hrbp.attrition.exitReasons`, `hrbp-exit-reasons`) and "Why candidates left"
+  (`recruiting.flow.exitReasons`, `recruiting-exit-reasons`); the exit survey and decline reasons
+  stay hidden as before. Findings cite no reason ("most often ...", "Reasons given", "the top
+  reason is"), and their next steps point at stay conversations, not at exit reasons. The
+  Attrition tab's second section reads "Where attrition runs highest". The Pipeline river names no
+  most common reason, and its detail export has no reason column.
+- **Through the policy tables (decided 8 Oct 2026):** the records follow a new surface kind,
+  `column:<kind>.<key>` (4.12): Manager's table leaves out `employees.terminationReason`,
+  `employees.regrettable` and `candidates.rejectionReason` (`MANAGER_HIDDEN_COLUMNS`), so every
+  employee and candidate list, its export, the person card and Ask's `query_records` leave them
+  out, and the matrix and the Security center list the three rows. Ask's suggested questions in
+  Manager mode ask about the org, never about what it hides.
+- **The stay conversation item counts every exit for the manager (decided 8 Oct 2026):** HR's rule
+  still raises it from a cluster of regretted exits, but what a manager reads (the item in Manager
+  mode, and the note HR copies to them) counts and lists every exit from the team in the 12
+  months, and is dated from the team's latest exit, so neither the count, the list nor the due
+  date points at a regretted leaver.
+  - **Raised from exits in Manager mode (red team, 8 Oct 2026).** Raised from regretted exits,
+    the item still said which exits were regretted: a manager had it only with 2 or more regretted
+    exits, it was critical only with 3 or more, and its fingerprint (kept in a handled mark, which
+    reopens the item when it changes) was the regretted leavers. On the sample 9 of the 13 teams
+    with an item had all their voluntary exits shown as regretted by the item being there or being
+    critical, and hashing subsets of the leavers each item lists named the regretted ones for all
+    13. So in Manager mode the item is raised from the exits the regretted rule could count
+    (voluntary exits, or every exit when any flagged exit counts) with the same settings, its
+    severity follows that count, and its fingerprint is the leavers it lists. Every team HR's rule
+    flags is still flagged, never less severe; a team with 2 or more voluntary exits and none
+    regretted now gets the item too. HR's item is unchanged.
+    `src/views/hrbp/engine/stayManager.test.ts` checks that a manager's items are the same
+    whichever exits are flagged regretted.
+- **The Scorecard follows the mode (decided 8 Oct 2026):** a mode never shows numbers from a
+  practice it hides. In a role mode the People scorecard, its counts, its findings and the monthly
+  people report leave out every practice whose view the mode hides (Compensation: Recruiting,
+  Onboarding, HR ops and Compliance; Talent management: Recruiting, HR ops, Compensation and
+  Compliance; HR ops: Recruiting, Talent and Compensation), every measure and finding whose metric
+  it hides, and a practice left with no measure. Hidden practices' summaries are never computed.
+  Ask's `view_summary` for the Scorecard reads the same model, so it says the same.
+- **Finance sees cost rounded down to $0.1M (decided 8 Oct 2026):** "Finance sees cost totals,
+  never one person's pay." Folding by whole business units (3.2, rule 3) closed differencing
+  across business unit filters, but cost could still be narrowed by combining breakdowns of the
+  same scope (level, site, cost center, unit, merit spend) or the same scope at two dates. So in
+  Finance every cost amount is rounded in the engines, before anything reads it: the Workforce
+  cost tab, the Finance home, the budget comparison, merit spend by unit, the folder headline,
+  tiles, tooltips, table views, drills, every export format, the monthly report, the Action
+  center's amounts and anything Ask reads. It shows as "$12.3M" or "$0.4M", and a total under
+  $100,000 that is still shown reads "under $0.1M". The group minimum and the folds stay.
+  Percentages and ratios built from cost (share of target cash, target cash per employee, merit
+  spend against budget, cost against budget and its status) are computed from the rounded
+  amounts, so they cannot undo the rounding. Compensation, HR, CHRO and Developer with "Show pay
+  amounts" on keep exact amounts. Rule 8 in 3.2 has the details.
+  - **Down, not to the nearest.** The decision said "to the nearest $100,000"; the build rounds
+    down to a whole $100,000 ($12,345,678 reads "$12.3M"), because nearest rounding does not hold
+    on the sample. Each amount rounded to the nearest stands for a step half a step off the
+    $100,000 grid, so a difference of three amounts lands half a step off a difference of two, and
+    laid over each other they pinned some people's target cash to $50,000 (for example, a person
+    paid about $26,000 to between $0 and $50,000). Rounded down, every amount, and so every sum or
+    difference of amounts, is bounded by points of one $100,000 grid, so no interval any of them
+    gives is narrower than $100,000.
+  - **The test** (`src/views/comp/engine/costRounding.test.ts`) plays the attacker on the sample:
+    every amount Finance can see, read from the exports (CSV, checked against the clipboard, Excel
+    and the slide text) with the people the drills list, over every set of business units, every
+    period preset and twelve dates; every difference of two or three amounts, and swaps, across
+    breakdowns, scopes and dates; target cash = base + bonus. No person's pay, and no group of 2
+    to 4, is pinned closer than $50,000 either side. On exact amounts the same attacks pin groups
+    of 3 or 4 from one scope's breakdowns and more than 100 people to the dollar across dates; on
+    amounts rounded to the nearest $100,000 they pin some pay to $50,000.
+  - **In each business unit (red team, 8 Oct 2026).** An attacker who solves every amount at once
+    as one linear program can take halves and thirds of amounts, not only whole sums and
+    differences, and the business unit filter takes any of the 63 sets of the sample's 6 units.
+    With each set's total rounded in one step, the 63 totals at one date pinned each unit's total
+    to $17,000 to $67,000, and two month ends pinned an amount (target cash, base, bonus or
+    equity) of every one of the 32 hires of 1 to 4 people between them to under $100,000, and of
+    11 of them to under $50,000 (for example, one Corporate hire's target cash to $25,000 to
+    $66,667; with the reporting date moved a day at a time, 38 single hires). So in
+    Finance a row over several units adds each unit's part, rounded on its own, and Other adds
+    each unit's own Other and each group it folds, rounded on their own: a set of units then shows
+    nothing its units, each on its own, do not. The plain sum of six units rounded down read about
+    $0.3M low (the Finance home's monthly cost read $19.5M, under budget, against $19.8M, over
+    budget), so the adding puts $0.1M on top for every two parts of $0.1M or more (`sumRounded`);
+    it reads the rounded parts only. `src/views/comp/engine/costLp.test.ts` checks that every
+    set of units adds up its units at 13 dates, runs the program over the 63 sets and over every
+    breakdown of one unit at two month ends, and pins no hire closer than $50,000 either side;
+    its control shows the one-step rounding failing.
+  - Still not covered: a single hire between two data refreshes is pinned to a $100,000 range
+    (for example "$100,000 to $200,000 target cash"), the rounding step itself. Side knowledge
+    also narrows further: knowing a person's target bonus percentage (it follows level and
+    department) ties base to target cash, so the two ranges laid over each other can be narrower
+    than $100,000. A firm guarantee would need noise or fewer breakdowns, not rounding.

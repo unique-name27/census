@@ -5,11 +5,12 @@
  * by month (or plan against actual) and cost by business unit; Needs attention (Finance's plan
  * items); My list, the plan lines behind (or cost centers); open reqs against the plan, the
  * workforce mix and cost by cost center. Every amount is a total over 5 or more people (the cost
- * guard); every drill lists people without amounts, and no row is about one person's pay.
+ * guard), rounded down in Finance to a whole $100,000 by the engines (`src/lib/costRounding.ts`);
+ * every drill lists people without amounts, and no row is about one person's pay.
  */
 import { useState } from 'react'
 import { BulletList, type Column, Figure, HBars, Lines } from '@/charts'
-import { Grid, goTo, KpiStrip, Section } from '@/components'
+import { goTo, KpiStrip, Section } from '@/components'
 import type { Kpi } from '@/components/types'
 import { Button } from '@/components/ui'
 import { useAnalytics } from '@/data/context'
@@ -17,12 +18,19 @@ import { effectiveLists, useLists } from '@/data/lists'
 import { drill } from '@/drill/Drill'
 import { drillSpec } from '@/drill/types'
 import { BUDGET_STATUS_LABEL, type BudgetMonthRow, type BudgetRow } from '@/lib/budget'
-import { addDays, formatDate, formatMonth } from '@/lib/dates'
+import { formatDate, formatMonth } from '@/lib/dates'
 import { fmt, plural } from '@/lib/format'
-import { isActiveAt } from '@/lib/people'
 import { COST_BY_CENTER_COLUMNS, COST_BY_UNIT_COLUMNS, type CostCenterRow } from '@/views/comp/columns'
 import { costTableColumns } from '@/views/comp/drillColumns'
-import { type CostModel, costPeopleDrill, drawable, topCostCenters } from '@/views/comp/engine/cost'
+import {
+  type CostModel,
+  costColumnsFor,
+  costFormat,
+  costMoney,
+  costPeopleDrill,
+  drawable,
+  topCostCenters,
+} from '@/views/comp/engine/cost'
 import { FIGURE_METRIC as COMP_FIGURE } from '@/views/comp/engine/definitions'
 import { type CompModel, compModel } from '@/views/comp/engine/model'
 import { M as COMP } from '@/views/comp/metrics'
@@ -34,6 +42,7 @@ import { CONTINGENT } from '@/views/hrbp/engine/workforce'
 import { ID } from '@/views/hrbp/metrics'
 import { mixDrill } from '@/views/hrbp/ui/drill'
 import { computeOnboarding, type OnboardingModel } from '@/views/onboarding/engine'
+import { isBehindCritical } from '@/views/onboarding/engine/actions'
 import { employeesDrill, planDrill, reqsDrill, startsDrill } from '@/views/onboarding/engine/drills'
 import { ACTUAL, OPEN_REQS, PLAN, PLAN_REQ, UPCOMING, union } from '@/views/onboarding/engine/lineage'
 import { cumulative, type PlanModel } from '@/views/onboarding/engine/plan'
@@ -56,9 +65,9 @@ import {
 import { tile } from '../engine/kpis'
 import { AttentionSection } from './Attention'
 import { Hero, ListFigure, ListSwitch } from './Frames'
+import { HomeTop } from './HomeTop'
 import { useHomeItems } from './useHomeItems'
 
-const money = (v: number | null) => fmt(v, 'money')
 const planUses = union(PLAN, PLAN_REQ)
 
 /** Cost center names from the Cost centers list in force (official, else proposed from the data). */
@@ -78,6 +87,53 @@ function useCenterNames(): ReadonlyMap<string, string> {
 function budgetEmployees(title: string, row: Pick<BudgetRow, 'employees'>, note?: string) {
   if (!row.employees.length) return null
   return drillSpec({ kind: 'employees', title, rows: row.employees.slice(), note })
+}
+
+/* ───────── the cost tile ───────── */
+
+/**
+ * "Monthly cost against budget": employees' target cash plus the contractor estimate for the
+ * compared month, against the budget's cost, with the contractors' part said. The value opens the
+ * employees counted, never an amount.
+ */
+function budgetCostTile(m: CompModel): Kpi[] {
+  const b = m.cost.budget
+  if (!comparable(b)) return []
+  const t = b.total
+  const month = b.month ? formatMonth(`${b.month}-01`) : 'the compared month'
+  const shown = m.cost.shown && t.costUsd != null && t.budgetCostUsd != null
+  const status = t.costStatus ? BUDGET_STATUS_LABEL[t.costStatus].toLowerCase() : null
+  const pct = t.costVariancePct != null ? fmt(t.costVariancePct, 'deltaPct') : null
+  const money = (v: number | null) => costMoney(m.cost, v)
+  return [
+    {
+      id: 'cost-vs-budget',
+      metricId: COMP.costVsBudget,
+      label: 'Monthly cost against budget',
+      value: shown ? t.costUsd : null,
+      format: costFormat(m.cost),
+      delta: shown ? t.costVarianceUsd : null,
+      deltaLabel: shown ? `vs ${money(t.budgetCostUsd)} budget` : undefined,
+      goodDirection: 'down',
+      note: shown
+        ? [
+            [pct, status].filter(Boolean).join(', '),
+            t.contractorCostUsd != null ? `contractors ${money(t.contractorCostUsd)} of it, an estimate` : '',
+          ]
+            .filter(Boolean)
+            .join(' · ')
+        : m.cost.shown
+          ? `No budget cost to compare in ${month}`
+          : 'Cost totals show in Finance mode, or with Show pay amounts on',
+      drill: budgetEmployees(
+        `Workforce cost, ${month}`,
+        t,
+        'Employees whose target cash the cost counts; contractors are added at an estimate. No amounts are listed.',
+      ),
+      uses: m.uses['comp-cost-budget-cost'],
+      link: { view: 'comp', tab: 'cost', label: 'Compensation, Workforce cost' },
+    },
+  ]
 }
 
 /* ───────── the hero ───────── */
@@ -338,9 +394,16 @@ function PlanByMonth({ o }: { o: OnboardingModel }) {
 
 /* ───────── cost by business unit ───────── */
 
+/** "Totals cover groups of 5 or more people", and in Finance that they are rounded. */
+const totalsLine = (c: Pick<CostModel, 'rounded'>) =>
+  c.rounded
+    ? 'Totals cover groups of 5 or more people, rounded to $0.1M in each business unit'
+    : 'Totals cover groups of 5 or more people'
+
 function CostByUnit({ m }: { m: CompModel }) {
   const c = m.cost
   const b = c.budget
+  const money = (v: number | null) => costMoney(c, v)
   if (comparable(b)) {
     const units = b.byUnit.filter((r) => r.costUsd != null)
     const status = (s: BudgetRow['costStatus']) =>
@@ -356,24 +419,56 @@ function CostByUnit({ m }: { m: CompModel }) {
         r,
         'Employees whose target cash the cost counts; no amounts are listed.',
       )
+    const contractorsOf = (r: BudgetRow) =>
+      drillSpec({
+        kind: 'employees',
+        title: `Contractors, ${r.label}`,
+        rows: r.contingent.slice(),
+        note: 'Contractors in the cost against budget at the range midpoint of their level and location, an estimate; no amounts are listed.',
+      })
     return (
       <Figure
         id="home-fin-cost-unit"
         uses={m.uses['comp-cost-budget-cost']}
         metric={COMP.costVsBudget}
         title="Monthly cost against budget"
-        subtitle="Employees' target cash and the contractor estimate, USD a month, by business unit"
+        subtitle="Employees' target cash plus contractors at a range-midpoint estimate, USD a month, by business unit"
         data={b.byUnit}
-        columns={[
-          { key: 'label', label: 'Business unit' },
-          { key: 'costed', label: 'People costed', format: 'int', drill: (r) => () => people(r) },
-          { key: 'budgetCostUsd', label: 'Budget cost a month (USD)', format: 'moneyFull', cost: true },
-          { key: 'costUsd', label: 'Cost a month (USD)', format: 'moneyFull', cost: true },
-          { key: 'costVarianceUsd', label: 'Cost vs budget (USD)', format: 'moneyFull', cost: true },
-          { key: 'costVariancePct', label: 'Cost vs budget (%)', format: 'deltaPct' },
-        ]}
+        columns={costColumnsFor<BudgetRow>(
+          [
+            { key: 'label', label: 'Business unit' },
+            { key: 'costed', label: 'People costed', format: 'int', drill: (r) => () => people(r) },
+            { key: 'budgetCostUsd', label: 'Budget cost a month (USD)', format: 'moneyFull', cost: true },
+            { key: 'employeeCostUsd', label: 'Employees a month (USD)', format: 'moneyFull', cost: true },
+            {
+              key: 'contractors',
+              label: 'Contractors',
+              format: 'int',
+              drill: (r) => (r.contingent.length ? () => contractorsOf(r) : null),
+            },
+            {
+              key: 'contractorCostUsd',
+              label: 'Contractors, estimate a month (USD)',
+              format: 'moneyFull',
+              cost: true,
+            },
+            { key: 'costUsd', label: 'Cost a month (USD)', format: 'moneyFull', cost: true },
+            { key: 'costVarianceUsd', label: 'Cost vs budget (USD)', format: 'moneyFull', cost: true },
+            { key: 'costVariancePct', label: 'Cost vs budget (%)', format: 'deltaPct' },
+          ],
+          c,
+        )}
         definitions={m.definitions['comp-cost-budget-cost']}
-        note={`Totals cover groups of 5 or more people · ${[b.version, ...b.notes].filter(Boolean).join(' · ')}`}
+        note={[
+          totalsLine(c),
+          ...(b.total.contractorCostUsd != null && c.shown
+            ? [`contractors ${money(b.total.contractorCostUsd)} a month of it, an estimate`]
+            : []),
+          b.version,
+          ...b.notes,
+        ]
+          .filter(Boolean)
+          .join(' · ')}
         span={4}
         empty={
           !c.shown
@@ -405,7 +500,7 @@ function CostByUnit({ m }: { m: CompModel }) {
       data={c.byUnit}
       columns={costTableColumns(c, COST_BY_UNIT_COLUMNS)}
       definitions={m.definitions['comp-cost-by-unit']}
-      note={`Totals cover groups of 5 or more people · ${plural(c.total.people, 'person', 'people')} costed`}
+      note={`${totalsLine(c)} · ${plural(c.total.people, 'person', 'people')} costed`}
       span={4}
       empty={
         !c.shown
@@ -469,7 +564,7 @@ function MyList({ m, o }: { m: CompModel; o: OnboardingModel }) {
       { key: 'forecast', label: 'Forecast', format: 'num1', drill: (r) => d(r).forecast },
       { key: 'gap', label: 'Full-year gap', format: 'int', drill: (r) => d(r).gap },
       { key: 'planFull', label: 'Full-year plan', format: 'int', drill: (r) => d(r).planFull },
-      { key: 'status', label: 'Status' },
+      // Every row is behind the plan; the list's own Status column says how far (critical or watch).
     ]
     return (
       <ListFigure<BehindRow>
@@ -481,9 +576,7 @@ function MyList({ m, o }: { m: CompModel; o: OnboardingModel }) {
         columns={columns}
         note={`${plural(behind.length, 'department')} behind · as of ${formatDate(b.asOf)} · a row opens its plan lines`}
         actions={actions}
-        rowTone={(r) =>
-          r.planFull && r.gap / r.planFull >= b.settings.behindCritical ? 'critical' : 'warning'
-        }
+        rowTone={(r) => (isBehindCritical(r.row, b.settings) ? 'critical' : 'warning')}
         onRowClick={(r) => drill(d(r).planFull)}
         empty="No department is behind the plan to date."
       />
@@ -498,7 +591,7 @@ function MyList({ m, o }: { m: CompModel; o: OnboardingModel }) {
       rows={centers}
       columns={costTableColumns(c, COST_BY_CENTER_COLUMNS)}
       definitions={m.definitions['comp-cost-by-cost-center']}
-      note={`Totals cover groups of 5 or more people · ${ctx.scopeLabel} · as of ${formatDate(c.asOf)}`}
+      note={`${totalsLine(c)} · ${ctx.scopeLabel} · as of ${formatDate(c.asOf)}`}
       actions={actions}
       onRowClick={(r) => drill(costPeopleDrill(c, `Workforce cost, ${r.group}`, r.members ?? []))}
       empty={
@@ -535,7 +628,7 @@ function ReqsAgainstPlan({ o }: { o: OnboardingModel }) {
       uses={union(OPEN_REQS, planUses)}
       metric={ONBOARDING.notInPlan}
       title="Open reqs against the plan by business unit"
-      subtitle="Open reqs on a plan line, on none (new roles, backfills apart), and planned roles with no open req"
+      subtitle="Open reqs on a plan line, on none (new roles, not counting backfills), and planned roles with no open req"
       data={rows}
       columns={[
         { key: 'group', label: 'Business unit' },
@@ -604,7 +697,7 @@ function WorkerMix() {
         { key: 'share', label: 'Share of unit', format: 'pct', drill: cell },
       ]}
       definitions={p.defs(ID.contingent)}
-      note={`${fmt(contingent, 'int')} contractors and interns, never costed · as of ${formatDate(ctx.asOf)}`}
+      note={`${fmt(contingent, 'int')} contractors and interns, not in target cash cost · against the budget, contractors are estimated at the range midpoint and interns are never costed · as of ${formatDate(ctx.asOf)}`}
       span={6}
       empty={rows.length ? null : 'No active workers in this scope.'}
     >
@@ -637,7 +730,7 @@ function CostByCenter({ m }: { m: CompModel }) {
       data={top}
       columns={costTableColumns(c, COST_BY_CENTER_COLUMNS)}
       definitions={m.definitions['comp-cost-by-cost-center']}
-      note={`Totals cover groups of 5 or more people · as of ${formatDate(c.asOf)}`}
+      note={`${totalsLine(c)} · as of ${formatDate(c.asOf)}`}
       span={12}
       empty={
         !c.shown
@@ -663,23 +756,27 @@ export function FinHome() {
   const p: PlanModel | null = o.plan
   const budget = comparable(m.cost.budget)
   const prep = h.prep
-  // Net change over 12 months: who joined and who left, as People stats counts them.
-  const yearAgo = addDays(prep.t12.start, -1)
-  const joined = prep.emps.filter((e) => isActiveAt(e, prep.asOf) && !isActiveAt(e, yearAgo))
-  const left = prep.emps.filter((e) => !isActiveAt(e, prep.asOf) && isActiveAt(e, yearAgo))
-  const net: Kpi = {
-    id: 'net-change',
-    metricId: ID.netChange,
-    label: 'Net change, 12 months',
-    value: prep.has.terminationDate ? joined.length - left.length : null,
+  // Hires and exits over 12 months, in People stats' words (the Scorecard's "269 hires, 166
+  // exits, net +103"); the net is the headcount tile's change, so it is said, not repeated.
+  const bridge = h.workforce.bridge
+  const hired = bridge.find((r) => r.key === 'hires')?.records ?? []
+  const exited = bridge.find((r) => r.key === 'exits')?.records ?? []
+  const net = hired.length - exited.length
+  const flow: Kpi = {
+    id: 'hires-exits',
+    metricId: ID.hires,
+    label: 'Hires, 12 months',
+    value: hired.length,
     format: 'int',
-    note: `${fmt(joined.length, 'int')} joined, ${fmt(left.length, 'int')} left`,
+    note: prep.has.terminationDate
+      ? `${fmt(exited.length, 'int')} exits, net ${net > 0 ? '+' : ''}${fmt(net, 'int')}`
+      : undefined,
     drill:
-      joined.length || left.length
+      hired.length || exited.length
         ? () =>
-            joinedLeftSpec(prep, 'Joined and left, last 12 months', joined, left, { when: prep.t12.label })
+            joinedLeftSpec(prep, 'Hires and exits, last 12 months', hired, exited, { when: prep.t12.label })
         : undefined,
-    uses: prep.uses(FIGURE.headcountTrend),
+    uses: prep.uses(FIGURE.hiresExits),
     link: { view: 'hrbp', tab: 'workforce', label: 'People stats, Workforce' },
   }
   const notInPlan: Kpi[] = p
@@ -690,7 +787,7 @@ export function FinHome() {
           label: 'Open reqs not in the plan',
           value: p.notInPlan.added.length,
           format: 'int',
-          note: `${fmt(p.notInPlan.backfills.length, 'int')} backfills apart`,
+          note: `not counting ${plural(p.notInPlan.backfills.length, 'backfill')}`,
           drill: p.notInPlan.added.length
             ? () => reqsDrill(o.base, p.notInPlan.added, 'Open reqs not in the plan', { uses: OPEN_REQS })
             : undefined,
@@ -701,7 +798,7 @@ export function FinHome() {
     : []
   const kpis: Kpi[] = [
     ...tile(h.kpi.kpis, 'headcount', { view: 'hrbp', tab: 'workforce', label: 'People stats, Workforce' }),
-    net,
+    flow,
     ...tile(computeRecruiting(ctx).kpis, 'open-reqs', {
       view: 'recruiting',
       tab: 'requisitions',
@@ -713,24 +810,33 @@ export function FinHome() {
       tab: 'workforce',
       label: 'People stats, Workforce',
     }),
-    ...tile(m.cost.kpis, 'cost-target-cash', {
-      view: 'comp',
-      tab: 'cost',
-      label: 'Compensation, Workforce cost',
-    }),
+    // With a budget, the month's cost against it (the decided story); without one, a year's target cash.
+    ...(budget
+      ? budgetCostTile(m)
+      : tile(m.cost.kpis, 'cost-target-cash', {
+          view: 'comp',
+          tab: 'cost',
+          label: 'Compensation, Workforce cost',
+        })),
   ]
   return (
     <>
-      <Grid>
-        {budget ? <VsBudget m={m} /> : <VsPlan o={o} />}
-        <KpiStrip id="home-fin-kpis" title="Key figures" kpis={kpis} span={8} />
-        {budget ? <BudgetByMonth m={m} /> : p ? <PlanByMonth o={o} /> : null}
-        <CostByUnit m={m} />
-      </Grid>
-      <AttentionSection
-        items={items}
-        shown={HOME_SHOWN}
-        dek="Finance's open items: reqs not in the hiring plan, hiring behind plan by department, and planned roles with no open req."
+      <HomeTop
+        hero={budget ? <VsBudget m={m} /> : <VsPlan o={o} />}
+        overview={
+          <>
+            <KpiStrip id="home-fin-kpis" title="Key figures" kpis={kpis} span={8} />
+            {budget ? <BudgetByMonth m={m} /> : p ? <PlanByMonth o={o} /> : null}
+            <CostByUnit m={m} />
+          </>
+        }
+        attention={
+          <AttentionSection
+            items={items}
+            shown={HOME_SHOWN}
+            dek="Finance's open items: reqs not in the hiring plan, hiring behind plan by department, and planned roles with no open req."
+          />
+        }
       />
       <Section
         title="My list"

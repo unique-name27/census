@@ -3,7 +3,8 @@
  * over groups of 5 or more people (the cost guard in `engine/cost.ts`), actual against the
  * headcount and cost budget when one is loaded (the hiring plan otherwise), merit spend against
  * budget and open reqs at range midpoint. In the switch modes the figures wait for "Show pay
- * amounts"; in Finance they always show and every drill lists employees, never their pay.
+ * amounts"; in Finance they always show, every amount is rounded down to a whole $100,000 in the
+ * engine (read in millions, `costFormat`), and every drill lists employees, never their pay.
  */
 import { BarList, BulletList, type Column, Columns, Figure, HBars, Lines } from '@/charts'
 import { KpiStrip, RouteLink, Section } from '@/components'
@@ -34,12 +35,16 @@ import { costTableColumns, meritCostColumns, openReqColumns, withDrill } from '.
 import {
   type CostModel,
   type CostRow,
+  costColumnsFor,
+  costFormat,
+  costMoney,
   costPeopleDrill,
   costRowDrill,
   drawable,
   isCosted,
   type OpenReqRow,
   openReqDrill,
+  otherCentersNote,
 } from '../engine/cost'
 import type { SpendRow } from '../engine/cycle'
 import { FIGURE_METRIC } from '../engine/definitions'
@@ -48,7 +53,6 @@ import type { CompModel } from '../engine/model'
 import type { CompPerson } from '../engine/population'
 import { COST_OFF, note, PaySwitch } from '../shared'
 
-const money = (v: number | null) => fmt(v, 'money')
 const PARTS = ['Base', 'Bonus at target', 'Equity'] as const
 /** Over budget is the one to look at; under is said in words without a status color. */
 const STATUS_TONE: Record<BudgetStatus, 'warning' | 'good' | 'none'> = {
@@ -95,7 +99,7 @@ export function CostByUnitChart({ c }: { c: CostModel }) {
       stack
       seriesOrder={[...PARTS]}
       yOrder={drawable(c.byUnit).map((r) => r.group)}
-      format="money"
+      format={costFormat(c)}
       onSelect={open}
       onSelectSegment={open}
     />
@@ -113,18 +117,12 @@ export function CostByCenterChart({ c, rows }: { c: CostModel; rows: readonly Co
       data={drawable(rows).filter((r) => !r.isOther) as CostCenterRow[]}
       label="group"
       value="targetCashUsd"
-      format="money"
+      format={costFormat(c)}
       sort="none"
       secondary={(d) => d.name ?? d.department ?? null}
       onSelect={(d) => drill(costRowDrill(c, d, 'Workforce cost'))}
     />
   )
-}
-
-/** "Other (80 cost centers): $141.2M": the folded cost centers the chart leaves to the table. */
-export function otherCentersNote(rows: readonly CostRow[]): string | null {
-  const other = rows.find((r) => r.isOther && r.targetCashUsd != null)
-  return other ? `Other (${fmt(other.folded, 'int')} cost centers): ${money(other.targetCashUsd)}` : null
 }
 
 /** Merit spend against the budget in USD by business unit. */
@@ -142,7 +140,7 @@ function MeritCostChart({
       label="group"
       value="spendUsd"
       target="budgetUsd"
-      format={(_, v) => money(v)}
+      format={(_, v) => costMoney(m.cost, v)}
       scale="row"
       status={(r) =>
         r.delta == null
@@ -213,7 +211,10 @@ function budgetLinesDrill(m: CompModel, title: string, lines: BudgetRow['lines']
   })
 }
 
-/** A budget table: headcount opens the employees, budget columns open the lines, cost the people costed. */
+/**
+ * A budget table: headcount opens the employees, budget columns open the lines, cost the people
+ * costed. Cost columns read in millions where the amounts are rounded (Finance).
+ */
 function budgetColumns<T extends BudgetRow>(m: CompModel, cols: readonly Column<T>[]): Column<T>[] {
   const people = (r: T): DrillSource =>
     r.employees.length ? () => budgetPeopleDrill(m, `Headcount, ${r.label}`, r) : null
@@ -221,7 +222,7 @@ function budgetColumns<T extends BudgetRow>(m: CompModel, cols: readonly Column<
     r.lines.length ? () => budgetLinesDrill(m, `Budget, ${r.label}`, r.lines) : null
   const cost = (r: T): DrillSource =>
     r.costUsd != null ? () => budgetPeopleDrill(m, `Workforce cost, ${r.label}`, r) : null
-  return withDrill(cols, {
+  return withDrill(costColumnsFor(cols, m.cost), {
     headcount: people,
     headcountVariance: people,
     costed: cost,
@@ -255,9 +256,10 @@ export function Cost({ m }: { m: CompModel }) {
   const centers: CostCenterRow[] = c.byCostCenter.map((r) => ({ ...r, name: names.get(r.key) ?? null }))
   const levelRows = drawable(c.byLevel)
   const siteRows = drawable(c.bySite)
+  // The engine's budget (rounded in Finance), else eligible base × the budget %.
   const merit = c.merit.rows.map((r) => ({
     ...r,
-    budgetUsd: r.eligibleBaseUsd == null ? null : r.eligibleBaseUsd * r.budgetPct,
+    budgetUsd: r.budgetUsd ?? (r.eligibleBaseUsd == null ? null : r.eligibleBaseUsd * r.budgetPct),
   }))
   const reqs = c.openReqs
   const b = c.budget
@@ -299,7 +301,7 @@ export function Cost({ m }: { m: CompModel }) {
     (noCost ? 'No one in this scope has a comp record with an exchange rate.' : rows.length ? null : text)
   const centerRows = (r: BudgetCenterRow) => drill(budgetPeopleDrill(m, `Budget, ${r.label}`, r))
   const totalText =
-    c.shown && c.total.targetCashUsd != null ? ` · ${money(c.total.targetCashUsd)} target cash` : ''
+    c.shown && c.total.targetCashUsd != null ? ` · ${costMoney(c, c.total.targetCashUsd)} target cash` : ''
 
   return (
     <div>
@@ -307,7 +309,11 @@ export function Cost({ m }: { m: CompModel }) {
 
       <Section
         title="Where the cost sits"
-        dek={`Annual base, bonus at target and equity in US dollars for active employees, as of ${asOf}. Totals cover groups of 5 or more people; a smaller group folds into Other.`}
+        dek={
+          c.totals
+            ? `Annual base, bonus at target and equity in US dollars for active employees, as of ${asOf}. Totals cover groups of 5 or more people in each business unit; a smaller group counts in Other, and a business unit under 5 is left out. Every amount is rounded down to $0.1M in each business unit, and a total over several units adds them with $0.1M for every two units, so no comparison of totals narrows one person's pay to less than a $100,000 range.`
+            : `Annual base, bonus at target and equity in US dollars for active employees, as of ${asOf}. Totals cover groups of 5 or more people; a smaller group folds into Other.`
+        }
       >
         <Figure
           id="comp-cost-by-unit"
@@ -334,7 +340,7 @@ export function Cost({ m }: { m: CompModel }) {
           data={centers}
           columns={costTableColumns(c, COST_BY_CENTER_COLUMNS)}
           definitions={m.definitions['comp-cost-by-cost-center']}
-          note={[otherCentersNote(centers), note(m, costed, 'people', true)].filter(Boolean).join(' · ')}
+          note={[otherCentersNote(c, centers), note(m, costed, 'people', true)].filter(Boolean).join(' · ')}
           span={5}
           empty={none(drawable(centers), 'No cost centers on the roster in this scope.')}
           emptyAction={offAction}
@@ -363,7 +369,7 @@ export function Cost({ m }: { m: CompModel }) {
               ...LEVELS,
               ...levelRows.map((r) => r.group).filter((g) => !(LEVELS as readonly string[]).includes(g)),
             ]}
-            format="money"
+            format={costFormat(c)}
             secondary={(d) => `${fmt(d.people, 'int')} people`}
             onSelect={(d) => drill(costRowDrill(c, d, 'Workforce cost'))}
           />
@@ -386,7 +392,7 @@ export function Cost({ m }: { m: CompModel }) {
             data={siteRows}
             label="group"
             value="targetCashUsd"
-            format="money"
+            format={costFormat(c)}
             sort="none"
             secondary={(d) => `${fmt(d.people, 'int')} people`}
             onSelect={(d) => drill(costRowDrill(c, d, 'Workforce cost'))}
@@ -398,7 +404,7 @@ export function Cost({ m }: { m: CompModel }) {
         title="Against the budget"
         dek={
           compared
-            ? `Headcount at each month end and the monthly cost run rate at ${asOf}, against the budget${compared.version ? ` (${compared.version})` : ''}. Contractors are costed at the range midpoint of their level and location, an estimate.`
+            ? `Headcount at each month end and the monthly cost run rate at ${asOf}, against the budget${compared.version ? ` (${compared.version})` : ''}. Monthly cost adds an estimate for contractors at the range midpoint of their level and location; interns are never costed.`
             : 'The headcount and cost budget, when one is loaded in the Data room.'
         }
       >
@@ -450,7 +456,7 @@ export function Cost({ m }: { m: CompModel }) {
                 label="label"
                 value="costUsd"
                 target="budgetCostUsd"
-                format={(_, v) => money(v)}
+                format={(_, v) => costMoney(c, v)}
                 status={(r) => budgetStatus(r.costStatus)}
                 onSelect={(r) => drill(budgetPeopleDrill(m, `Workforce cost, ${r.label}`, r))}
               />
@@ -549,7 +555,7 @@ export function Cost({ m }: { m: CompModel }) {
             data={reqs.rows.filter((r) => r.estimateUsd != null)}
             label="group"
             value="estimateUsd"
-            format="money"
+            format={costFormat(c)}
             sort="none"
             secondary={(d) => `${fmt(d.reqs, 'int')} ${d.reqs === 1 ? 'req' : 'reqs'}`}
             onSelect={(d) => drill(openReqDrill(c, d))}

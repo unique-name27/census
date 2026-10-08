@@ -57,7 +57,7 @@ describe('item wording on the sample', () => {
   it('gives every item a due date, or says what would close it', () => {
     for (const { mode, collected } of modes)
       for (const a of collected.items) {
-        const reason = a.item.closesWhen || /no cycle close date set/.test(a.item.what)
+        const reason = !!a.item.closesWhen
         expect(!!a.item.due || !!reason, `${mode} ${a.id}`).toBe(true)
       }
   })

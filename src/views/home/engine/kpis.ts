@@ -5,6 +5,8 @@
 import type { Kpi } from '@/components/types'
 import type { RouteView } from '@/data/store'
 
+export { scorecardJudge } from '@/views/scorecard/engine/status'
+
 /** The tile with this id, linked to a view's tab unless it carries its own link; none when missing. */
 export function tile(
   list: readonly Kpi[],

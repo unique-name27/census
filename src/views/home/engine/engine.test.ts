@@ -17,14 +17,14 @@ import { computeCached } from '@/views/services/engine'
 import { slaStateOf } from '@/views/services/engine/cases'
 import { talentModel } from '@/views/talent/engine'
 import { attentionRows, belowLine, OTHER, waitRows } from './attention'
-import { leaderRows, practiceStatus, topLeader, withCritical } from './chro'
+import { aboutOrg, leaderRows, practiceStatus, topLeader, withCritical } from './chro'
 import { outsideList, positionParts } from './comp'
 import { budgetParts, comparable, planParts, reqsAgainstPlan } from './fin'
-import { groupAttrition, LEADER_MIN_ORG, leaderList } from './hrbp'
+import { groupAttrition, hrbpLists, LEADER_MIN_ORG, leaderList } from './hrbp'
 import { returnsSoon, slaParts, txInFlight } from './ops'
-import { lackingParts, queueRows } from './rec'
+import { healthWithAge, lackingParts, onOpenReqs, queueRows } from './rec'
 import { coverageParts, highPotentials } from './talent'
-import { homeTitle } from './title'
+import { homeTitle, recHomeCopy } from './title'
 
 describe('Needs attention rows', () => {
   const ctx = ctxOf()
@@ -98,6 +98,28 @@ describe('page titles', () => {
     expect(homeTitle(modeCtx('recruiter'))).toMatch(/'s reqs$/)
     expect(homeTitle(modeCtx('finance'))).toBe('Finance')
   })
+
+  it('speaks to one recruiter, and names every recruiter’s reqs plainly', () => {
+    const one = recHomeCopy(modeCtx('recruiter'))
+    expect(one.reqs('20')).toBe('My open reqs (20)')
+    expect(one.attentionDek).toMatch(/^Your own steps: /)
+    expect(one.startsSubtitle('30 d')).toMatch(/^Your starts in the next 30 d /)
+    // "Every recruiter" holds no scope.
+    const every = recHomeCopy({ access: { ...modeCtx('recruiter').access, scope: null } })
+    expect(every.reqs('114')).toBe('Open reqs (114)')
+    expect(every.queue('172')).toBe('Candidates in the queue (172)')
+    expect(every.reqsTitle).toBe('Open reqs')
+    expect(every.attentionDek).toMatch(/^Every recruiter's steps: /)
+    expect(every.startsSubtitle('30 d')).toMatch(/^Starts in the next 30 d /)
+    for (const text of [
+      every.reqsTitle,
+      every.queueTitle,
+      every.attentionDek,
+      every.listDek,
+      every.startsSubtitle('30 d'),
+    ])
+      expect(text).not.toMatch(/\b(My|my|Your|your)\b/)
+  })
 })
 
 describe('the CHRO home', () => {
@@ -129,13 +151,42 @@ describe('the CHRO home', () => {
     }
     // Open reqs in leaders' orgs never exceed the company's.
     expect(leaders.rows.reduce((n, x) => n + x.openReqs, 0)).toBeLessThanOrEqual(r.base.req.open.length)
-    const critical = open({ severity: 'critical' }, { ownerId: leaders.rows[0].id })
+    const critical = open({ severity: 'critical' }, { ownerId: leaders.rows[0].id, role: 'manager' })
     const counted = withCritical(leaders.rows, [
       critical,
-      open({ severity: 'warning' }, { ownerId: leaders.rows[0].id }),
+      open({ severity: 'warning' }, { ownerId: leaders.rows[0].id, role: 'manager' }),
     ])
     expect(counted[0].critical).toBe(1)
     expect(withCritical(leaders.rows, null)[0].critical).toBeNull()
+  })
+
+  it("counts a critical item for the org it is about, never for the HR queue's own org", () => {
+    const ctx = modeCtx('chro')
+    const leaders = leaderRows(ctx, {
+      roles: talentModel(ctx).succession.roles,
+      openReqs: computeRecruiting(ctx).base.req.open,
+    })
+    const items = collectActions(ctx, VIEWS).items
+    const rows = withCritical(leaders.rows, items)
+    // The Chief People Officer's org holds the HR queues (recruiters, coordinators, Global
+    // mobility): their casework about other orgs never counts toward it.
+    const cpo = rows.find((r) => /people/i.test(r.title))
+    expect(cpo).toBeTruthy()
+    const heldOnly = items.filter(
+      (a) =>
+        a.item.severity === 'critical' &&
+        a.role !== 'manager' &&
+        !!a.ownerId &&
+        cpo?.ids.has(a.ownerId) &&
+        !aboutOrg(a, cpo),
+    )
+    expect(heldOnly.length).toBeGreaterThan(10)
+    for (const a of heldOnly) expect(cpo?.criticalItems.includes(a), a.id).toBe(false)
+    // The org with the most critical items about it is a business unit's, not the CPO's.
+    const most = [...rows].sort((a, b) => (b.critical ?? 0) - (a.critical ?? 0))[0]
+    expect(most.id).not.toBe(cpo?.id)
+    for (const r of rows)
+      for (const a of r.criticalItems) expect(aboutOrg(a, r), `${r.leader} ${a.id}`).toBe(true)
   })
 })
 
@@ -156,6 +207,15 @@ describe('the HRBP homes', () => {
     // Largest org first.
     for (let i = 1; i < rows.length; i++)
       expect(rows[i - 1].headcount).toBeGreaterThanOrEqual(rows[i].headcount)
+  })
+
+  it('marks which sites are in the US, where I-9 Section 2 applies', () => {
+    // The sample's APAC region: Bengaluru, Ho Chi Minh City, Hsinchu, Shanghai. No US site, so the
+    // Sites list leaves its I-9 column out.
+    const { sites } = hrbpLists(modeCtx('hrbp-region'))
+    expect(sites.length).toBeGreaterThan(0)
+    expect(sites.some((r) => r.usSite)).toBe(false)
+    expect(sites.every((r) => r.i9.length === 0)).toBe(true)
   })
 
   it('marks departments well above the company, the highest rate first', () => {
@@ -235,6 +295,29 @@ describe('the Recruiter home', () => {
     for (const p of parts) expect(p.red + p.amber).toBe(p.count)
     const q = queueRows(b.actives, String)
     for (let i = 1; i < q.length; i++) expect(q[i - 1].days).toBeGreaterThanOrEqual(q[i].days)
+  })
+
+  it('counts candidates on open reqs only, as Needs attention does, and says the held ones', () => {
+    const ctx = modeCtx('recruiter')
+    const b = computeRecruiting(ctx).base
+    const { open, held } = onOpenReqs(b.actives, b.asOf)
+    expect(open.length + held.length).toBe(b.actives.length)
+    for (const x of held) expect(x.app.req?.status, x.app.id).not.toBe('Open')
+    // Every candidate step in Needs attention sits on an open req.
+    const ids = new Set(open.map((x) => x.app.id))
+    const needs = roleView(collectActions(ctx, VIEWS), ctx, () => true).needs
+    for (const a of needs.flatMap((x) => x.members ?? [x]))
+      if (a.item.subject.kind === 'candidates') expect(ids.has(a.item.subject.id ?? ''), a.id).toBe(true)
+  })
+
+  it("says a req's age against its bar in Health once it is past it", () => {
+    const bar = { past: 45, critical: 112.5, words: 'the target is 45 d' }
+    expect(healthWithAge('1 lacks a next step', 165, bar)).toBe(
+      '1 lacks a next step; open 165 d against a target of 45 d',
+    )
+    expect(healthWithAge('On track', 30, bar)).toBe('On track')
+    expect(healthWithAge('On track', 72, bar)).toBe('Open 72 d against a target of 45 d')
+    expect(healthWithAge('On track', 90, null)).toBe('On track')
   })
 })
 

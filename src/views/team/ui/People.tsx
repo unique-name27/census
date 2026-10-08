@@ -49,11 +49,14 @@ export function PeopleSection({ s, className }: { s: TeamSources; className?: st
   const firstMonth = wf.flows[0] ? formatDate(`${wf.flows[0].month}-01`) : ''
 
   /* Attrition against the company. */
-  const compare = attritionCompare(m)
+  // Manager mode hides regretted attrition: managers see exits, not regretted exits.
+  const shownMetric = (id: string) => ctx.access.can(`metric:${id}`)
+  const regretted = shownMetric(ID.regretted)
+  const compare = attritionCompare(m, shownMetric)
   const compareUses = [
     ...new Set(
       m.kpi.kpis
-        .filter((k) => ['voluntary', 'regretted', 'first-year'].includes(k.id))
+        .filter((k) => ['voluntary', ...(regretted ? ['regretted'] : []), 'first-year'].includes(k.id))
         .flatMap((k) => k.uses ?? []),
     ),
   ]
@@ -110,7 +113,7 @@ export function PeopleSection({ s, className }: { s: TeamSources; className?: st
         metric={ID.voluntary}
         uses={compareUses}
         title="Attrition against the company"
-        subtitle={`Voluntary, regretted and first-year attrition, ${ctx.window.label}`}
+        subtitle={`${regretted ? 'Voluntary, regretted and first-year' : 'Voluntary and first-year'} attrition, ${ctx.window.label}`}
         data={compare}
         columns={[
           { key: 'measure', label: 'Measure', format: 'text' },
@@ -118,7 +121,7 @@ export function PeopleSection({ s, className }: { s: TeamSources; className?: st
           { key: 'rate', label: 'Rate', format: 'pct', drill: (r: CompareRow) => r.drill },
           { key: 'note', label: 'Note', format: 'text' },
         ]}
-        definitions={p.defs(ID.voluntary, ID.regretted, ID.firstYear, ANONYMITY_ID)}
+        definitions={p.defs(ID.voluntary, ...(regretted ? [ID.regretted] : []), ID.firstYear, ANONYMITY_ID)}
         note={`Annualized rates; first-year attrition is the share of a hire cohort · company figures are comparisons and open no records`}
         span={6}
         empty={

@@ -149,6 +149,15 @@ function startItems(b: OnboardingBase, u: UpcomingModel): ActionItem[] {
         ...(t.name === SCREENING ? { matter: `license:${personKey(start)}` } : {}),
         closesWhen: 'A completed date on the task, or the status Not needed',
         place: placeOfStart(b, start),
+        // Not started and not yet due is the normal run-up to a start: HR ops reads it per start date.
+        ...(t.state === 'Not started' && !t.pastDue
+          ? {
+              batch: {
+                key: `start:${start.startDate}`,
+                label: `the starts on ${dateWords(start.startDate, b.asOf)}`,
+              },
+            }
+          : {}),
       })
     }
   }
@@ -274,10 +283,22 @@ function notInPlanItems(b: OnboardingBase, p: PlanModel): ActionItem[] {
 }
 
 /**
+ * A department behind plan is critical when its full-year gap is the critical share of its
+ * full-year plan or more and at least the critical number of starts: one start short of a plan of
+ * three is a gap to watch, not a crisis. Finance's home rates My list's rows the same way.
+ */
+export function isBehindCritical(
+  r: Pick<CoverageRow, 'gap' | 'planFull'>,
+  s: Pick<OnboardingBase['settings'], 'behindCritical' | 'behindCriticalMin'>,
+): boolean {
+  const gap = Math.max(0, Math.round(r.gap))
+  return r.planFull > 0 && gap / r.planFull >= s.behindCritical && gap >= s.behindCriticalMin
+}
+
+/**
  * Departments behind plan to date (the coverage rows with status Behind, by the on-plan band):
- * one roll-up per business unit and department, critical when the full-year gap is the critical
- * share of the full-year plan or more. The fingerprint is starts and plan to date, so a handled
- * mark reopens when either moves.
+ * one roll-up per business unit and department, critical by `isBehindCritical`. The fingerprint is
+ * starts and plan to date, so a handled mark reopens when either moves.
  */
 function behindItems(b: OnboardingBase, p: PlanModel): ActionItem[] {
   const uses = union(PLAN, ['employees.hireDate', 'employees.businessUnit', 'employees.department'])
@@ -285,7 +306,7 @@ function behindItems(b: OnboardingBase, p: PlanModel): ActionItem[] {
   for (const r of p.byDepartment) {
     if (r.status !== 'Behind') continue
     const where = `${r.department}, ${r.businessUnit}`
-    const gapShare = r.planFull > 0 ? Math.max(0, r.gap) / r.planFull : 0
+    const gap = Math.max(0, Math.round(r.gap))
     out.push({
       id: `onboarding:plan-behind:${r.businessUnit}:${r.department}`,
       kind: 'Hiring behind plan',
@@ -293,7 +314,7 @@ function behindItems(b: OnboardingBase, p: PlanModel): ActionItem[] {
       ownerId: null,
       ownerName: FINANCE,
       due: null,
-      severity: gapShare >= b.settings.behindCritical ? 'critical' : 'warning',
+      severity: isBehindCritical(r, b.settings) ? 'critical' : 'warning',
       // The share only over 5 or more planned starts (a rate over a smaller group is hidden).
       what: `${where} has ${plural(r.actualYtd, 'start')} against ${fmt(r.planYtd, 'int')} planned to date${r.vsPlan != null && r.planYtd >= b.settings.minGroup ? ` (${fmt(r.vsPlan, 'pct0')})` : ''}; the full-year gap is ${fmt(Math.max(0, Math.round(r.gap)), 'int')} of ${plural(r.planFull, 'planned start')}`,
       subject: { kind: 'none', label: where },
@@ -303,6 +324,8 @@ function behindItems(b: OnboardingBase, p: PlanModel): ActionItem[] {
       note: `Could we review the hiring forecast for ${r.department} with its leader this month?`,
       uses,
       fingerprint: `${r.actualYtd}/${r.planYtd}`,
+      // Undated: the larger full-year gap lists first within a severity.
+      size: gap,
       closesWhen: 'Starts to date reaching the plan within the on-plan band',
       place: { businessUnit: r.businessUnit, region: null, location: null },
     })

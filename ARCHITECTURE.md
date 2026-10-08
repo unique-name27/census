@@ -166,6 +166,11 @@ Copy (the user's writing rules):
   bring to minimum) are only shown and exported when `ctx.showPay` is true. Mark such columns
   `pay: true` and the Figure/table/export layer drops them automatically. Ratios (compa-ratio, range
   penetration, merit %) are always fine.
+- Manager mode shows exits, never regretted exits, and no breakdown of why people left (docs/ROLES-V2.md,
+  "Decisions made", 8 Oct 2026): engines cite no exit or candidate reason there and People stats' model holds
+  no regretted exits, and records leave the reason and regrettable columns out (`column:` surfaces). A new
+  number, finding or column that says either goes on the Manager hide lists in the same change;
+  `src/access/managerExits.test.ts` crawls every surface Manager mode shows for both.
 - Employee relations cases: show counts and timeliness only, never subcategory text below the
   category level. Never tie one to a named person: a person card's open case count leaves ER cases
   out, so neither the count nor a note can reveal that someone has an open ER case.
@@ -229,8 +234,9 @@ surface; read the declaration guide at the top of `src/access/index.ts`. In shor
 ### The Developer page (`#dev`, `src/dev/`, docs/ROLES.md part 5)
 
 Lazy-loaded, Developer mode only. Tabs: Overview (the Developer home, docs/DESIGN-REFRESH.md 4.3), Inventory,
-Access, Ask tools, State, Timings; sub-addresses use the colon form (`#dev.inventory:figures`, `#dev.ask:query_records`,
-`src/dev/tabs.ts`). Its figures describe the app, not people: ids `dev-…`, `gate={false}`, no metric dictionary entry
+Access, Security center (docs/SECURITY-CENTER.md), Ask tools, State, Timings; sub-addresses use the colon form
+(`#dev.inventory:figures`, `#dev.inventory:homes/finance`, `#dev.security:role:finance`, `#dev.ask:query_records`,
+`src/dev/tabs.ts`); the address keeps everything after its first "." as the tab. Its figures describe the app, not people: ids `dev-…`, `gate={false}`, no metric dictionary entry
 unless one already exists (`quality.rules.*`), and numbers open inventory rows, Data room entries or data records.
 
 - **What a figure declares is tracked, rows or not:** the figure registry has `track(facts)` / `tracked()` beside

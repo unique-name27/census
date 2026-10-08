@@ -6,24 +6,29 @@
  *     collections and Ask's `open_items` all come from `roleView` over the same collection, and agree.
  *  2. Mode and scope: every listed item's view, tab and kinds are shown in the mode, and every item
  *     is inside the scope or owned by someone in it.
- *  3. Homes and exports: each mode's Needs attention holds 1 to 15 items before "Show all", every
+ *  3. Homes and exports: each mode's Needs attention holds 1 to 15 items (HR's and the CHRO's
+ *     escalations at most 10), roll-ups included, every
  *     item has a due date or a stated reason for none, and an export carries the mode and scope line.
  *  4. The routing snapshot is `src/access/roleItems.test.ts` (`access-routing.txt`).
  */
 import { beforeAll, describe, expect, it } from 'vitest'
-import { itemInScope, itemShown } from '@/access/items'
+import { itemInScope, itemShown, roleItems } from '@/access/items'
+import { EVERY_RECRUITER } from '@/access/modes'
 import { isTableMode } from '@/access/policy'
 import { ESCALATIONS_SHOWN } from '@/access/policy/routing'
 import { scopeOfAccess } from '@/access/scopes/records'
 import { Conversation } from '@/ask/engine/conversation'
-import { call, envOf } from '@/ask/engine/testkit'
+import { call, envOf, sampleCtx } from '@/ask/engine/testkit'
 import { modeMeta } from '@/lib/export/modeMeta'
 import { VIEWS } from '@/views/registry'
 import { OTHER_VIEWS } from '@/views/scorecard/views'
 import { ITEM_SOURCES } from '@/views/team/ui/views'
+import { M as ACTIONS } from '../metrics'
 import { collectActions } from './collect'
-import { everyMode } from './roleKit'
-import { NEEDS_SHOWN, roleView, showsLists } from './roles'
+import { everyMode, samplePicks } from './roleKit'
+import { countedOf, lensFor, NEEDS_SHOWN, roleView, showsLists } from './roles'
+import { unfold } from './rollups'
+import { actionKpis } from './summary'
 
 let modes: ReturnType<typeof everyMode>
 beforeAll(() => {
@@ -37,6 +42,11 @@ describe('1. one count', () => {
     for (const { mode, ctx, collected, lists } of modes) {
       // The masthead counts Needs attention in a role mode, every open item in Developer, HR and CHRO.
       expect(lists.count, mode).toBe(lists.lists ? lists.needs.length : lists.open.length)
+      // The Scorecard's "Critical open items" tile counts the same items as the masthead.
+      const counted = countedOf(lists)
+      expect(counted.length, mode).toBe(lists.count)
+      const tile = actionKpis(counted, ctx).find((k) => k.metricId === ACTIONS.critical)
+      expect(tile?.value, mode).toBe(lists.critical)
       expect(lists.lists, mode).toBe(isTableMode(mode))
       // The Scorecard reads the same collection (its views array differs, the collection does not).
       expect(collectActions(ctx, OTHER_VIEWS), mode).toBe(collected)
@@ -98,22 +108,59 @@ describe('2. mode and scope', () => {
 })
 
 describe('3. homes and exports', () => {
-  it("holds 1 to 15 items in each mode's Needs attention before Show all, CHRO's escalations at most 10", () => {
+  it("holds 1 to 15 items in each mode's Needs attention, HR's and the CHRO's escalations at most 10", () => {
+    // The whole list, not the part shown before "Show all": roll-ups keep it short (rollups.ts).
     const counts: Record<string, number> = {}
-    for (const { mode, lists } of modes) {
+    const every = sampleCtx({
+      access: {
+        mode: 'recruiter',
+        picks: { ...samplePicks(), recruiter: { name: EVERY_RECRUITER, id: null } },
+      },
+    })
+    const all = [
+      ...modes.map((m) => ({ mode: m.mode as string, lists: m.lists })),
+      {
+        mode: 'recruiter (every recruiter)',
+        lists: roleView(collectActions(every, VIEWS), every, () => true),
+      },
+    ]
+    for (const { mode, lists } of all) {
       counts[mode] = lists.needs.length
-      const shown = lists.needs.slice(0, mode === 'chro' || mode === 'hr' ? ESCALATIONS_SHOWN : NEEDS_SHOWN)
-      expect(shown.length, `${mode}: ${lists.needs.length}`).toBeGreaterThanOrEqual(1)
-      expect(shown.length, mode).toBeLessThanOrEqual(NEEDS_SHOWN)
+      const cap = ['hr', 'chro', 'developer'].includes(mode) ? ESCALATIONS_SHOWN : NEEDS_SHOWN
+      expect(lists.needs.length, `${mode}: ${lists.needs.length}`).toBeGreaterThanOrEqual(1)
+      expect(lists.needs.length, `${mode}: ${lists.needs.length}`).toBeLessThanOrEqual(cap)
     }
-    // A record of the volume per mode on the sample (the report quotes it).
-    expect(Object.keys(counts)).toHaveLength(11)
+    expect(Object.keys(counts)).toHaveLength(12)
+  })
+
+  it('folds rather than drops: every item of a list is in it, alone or inside one roll-up', () => {
+    for (const { mode, ctx, collected } of modes) {
+      const lens = lensFor(ctx)
+      const split = roleItems(collected.items, lens)
+      const lists = roleView(collected, ctx, () => true)
+      for (const [name, before, after] of [
+        ['needs', split.needs, lists.needs],
+        ['waiting', split.waiting, lists.waiting],
+      ] as const) {
+        const ids = (xs: readonly { id: string }[]) => xs.map((x) => x.id).sort()
+        expect(ids(unfold(after)), `${mode} ${name}`).toEqual(ids(before))
+        for (const a of after.filter((x) => x.members)) {
+          expect(a.members?.length, `${mode} ${a.id}`).toBeGreaterThanOrEqual(2)
+          // A roll-up is as pressing as its most pressing item, and carries its legal exposure.
+          const rank = { critical: 0, warning: 1, info: 2, good: 3 } as const
+          const worst = Math.min(...(a.members ?? []).map((m) => rank[m.item.severity]))
+          expect(rank[a.item.severity], a.id).toBe(worst)
+          expect(!!a.item.exposure, a.id).toBe((a.members ?? []).some((m) => m.item.exposure))
+          expect(a.item.what, a.id).not.toMatch(/\.$/)
+        }
+      }
+    }
   })
 
   it('gives every listed item a due date or a stated reason for none', () => {
     for (const { mode, lists } of modes)
       for (const a of [...lists.needs, ...lists.waiting]) {
-        const reason = a.item.closesWhen || /no cycle close date set/.test(a.item.what)
+        const reason = !!a.item.closesWhen
         expect(!!a.item.due || !!reason, `${mode} ${a.id}`).toBe(true)
       }
   })

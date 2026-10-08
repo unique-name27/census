@@ -14,6 +14,7 @@ import { resolveDrill } from '@/drill/Drill'
 import type { DrillKind } from '@/drill/types'
 import { type Collected, collectActions, type RoleView, roleView } from '@/views/actions/engine'
 import { modeCtx } from '@/views/actions/engine/roleKit'
+import { unfold } from '@/views/actions/engine/rollups'
 import { hrbpModel } from '@/views/hrbp/engine'
 import { attritionTrailing, COMPANY_LINE } from '@/views/hrbp/engine/trends'
 import { computeOnboarding } from '@/views/onboarding/engine'
@@ -63,7 +64,8 @@ describe('test 4: homes never show out-of-scope rows', () => {
       const s = ctx.access.scope!
       expect(lists.lists, mode).toBe(true)
       expect(lists.needs.length + lists.waiting.length, mode).toBeGreaterThan(0)
-      for (const a of [...lists.needs, ...lists.waiting]) {
+      // A roll-up is one line for several items; each item inside it keeps the rule.
+      for (const a of unfold([...lists.needs, ...lists.waiting])) {
         const about = itemInScope(ctx.access, { ...a.item, ownerId: null })
         const owned =
           (!!a.ownerId && personInScope(a.ownerId, ctx.access)) ||

@@ -344,7 +344,8 @@ export function employeeMatcher(filters: Filters, index: OrgIndex): (e: Employee
   }
 }
 
-function reqMatcher(filters: Filters, index: OrgIndex): (r: Requisition | undefined) => boolean {
+/** Requisitions in scope: by their own org fields, and the leader filter by the hiring manager. */
+export function reqMatcher(filters: Filters, index: OrgIndex): (r: Requisition | undefined) => boolean {
   const leader = leaderTest(filters, index)
   const bu = listTest(filters, 'businessUnit')
   const dept = listTest(filters, 'department')

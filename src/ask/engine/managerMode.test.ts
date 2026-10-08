@@ -162,7 +162,7 @@ describe('Ask in Manager mode', () => {
     expect(enumOf).toContain('employees')
   })
 
-  it('does not read the fields of the analyses Manager mode hides (education, offer details, decline reasons)', () => {
+  it('does not read the fields of the analyses Manager mode hides (education, offer details, reasons)', () => {
     // Quality of hire and Offer declines are hidden in Manager mode (docs/ANALYSES.md, 1.7).
     const m = managerCtx('E10427')
     const conv = new Conversation()
@@ -193,9 +193,22 @@ describe('Ask in Manager mode', () => {
       'offerRevised',
       'offerPositionInRange',
     ])
-      expect(q.description).not.toMatch(new RegExp(`\b${f}\b`))
-    // A cut by rejection reason leaves declined offers out; rejections still count.
-    const reasons = call(conv, envOf(m), 'query_records', {
+      expect(q.description).not.toMatch(new RegExp(`\\b${f}\\b`))
+    // Candidates' reasons, leavers' exit reasons and the regrettable flag are not read at all
+    // (docs/ROLES-V2.md, Decisions made, 8 Oct 2026: the records leave those columns out).
+    refused('candidates', { group_by: [{ field: 'rejectionReason' }, { field: 'status' }] })
+    refused('candidates', {
+      where: [{ field: 'status', op: 'eq', value: 'Declined' }],
+      group_by: [{ field: 'rejectionReason' }],
+    })
+    refused('employees', { group_by: [{ field: 'terminationReason' }] })
+    refused('employees', { where: [{ field: 'regrettable', op: 'eq', value: true }] })
+    for (const f of ['rejectionReason', 'terminationReason', 'regrettable'])
+      expect(q.description).not.toMatch(new RegExp(`\\b${f}\\b`))
+    // Where a mode reads the reason but hides decline reasons (HR ops), a cut by it leaves declined
+    // offers out; rejections still count.
+    const ops = sampleCtx({ access: { mode: 'hr-ops' } })
+    const reasons = call(new Conversation(), envOf(ops), 'query_records', {
       dataset: 'candidates',
       group_by: [{ field: 'rejectionReason' }, { field: 'status' }],
     })
@@ -206,12 +219,6 @@ describe('Ask in Manager mode', () => {
     expect(String(reasons.json.notes ?? reasons.json.note ?? JSON.stringify(reasons.json))).toMatch(
       /Declined offers are left out/,
     )
-    const declined = call(conv, envOf(m), 'query_records', {
-      dataset: 'candidates',
-      where: [{ field: 'status', op: 'eq', value: 'Declined' }],
-      group_by: [{ field: 'rejectionReason' }],
-    })
-    expect(declined.json.rows).toEqual([])
     // HR mode reads them, with small groups hidden (one candidate's answer).
     const hr = call(new Conversation(), envOf(company), 'query_records', {
       dataset: 'candidates',

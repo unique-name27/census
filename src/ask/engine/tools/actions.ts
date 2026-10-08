@@ -49,9 +49,10 @@ export function openItems(rt: ToolRuntime, raw: unknown): ToolOutput {
   const lists = roleView(collected, ctx, (a) => isOpen(a, marks, now))
   // What the page lists: a role mode's two lists, else every open item.
   let open: OpenAction[] = lists.lists ? [...lists.needs, ...lists.waiting] : lists.open
+  // A roll-up (one line for several items, as the page shows it) counts when any of its items does.
   const inOpen = (xs: readonly OpenAction[]) => {
     const keep = new Set(open)
-    return xs.filter((a) => keep.has(a))
+    return xs.filter((a) => keep.has(a) || !!a.members?.some((m) => keep.has(m)))
   }
   if (group) open = open.filter((a) => a.role === group)
   if (input.overdue_only)

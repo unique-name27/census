@@ -134,7 +134,7 @@ export interface LeaderRow {
   regretted: number | null
   regrettedVsCompany: number | null
   openReqs: number
-  /** Open critical items about or owned by someone in the org; null until the items are collected. */
+  /** Open critical items about the org (`aboutOrg`); null until the items are collected. */
   critical: number | null
   criticalRoles: number
   covered: number
@@ -176,7 +176,7 @@ const gap = (v: number | null, company: number | null) => (v == null || company 
 /**
  * One row per direct report of the top leader (or of the leader the filters focus on): People
  * stats' sub-org scorecard for that scope, with open reqs whose hiring manager is in the org,
- * open critical items about or owned by someone in it, critical roles held in it and how many have
+ * open critical items about it, critical roles held in it and how many have
  * a ready-now successor, and the HR business partner most of its people name. Orgs under the
  * anonymity minimum fold into Other and are not listed.
  */
@@ -232,15 +232,33 @@ export function leaderRows(
   return { top, prep, rows, company, folded: other ? Number(/\((\d+)\)/.exec(other.label)?.[1] ?? 0) : 0 }
 }
 
-/** The rows with their open critical items: about someone in the org, or owned by someone in it. */
+/**
+ * Whether an item is about a leader's org: its person is in the org, its req's hiring manager is
+ * (a candidate step or a req), its critical role's incumbent is, or a manager in the org holds it
+ * (an interview decision, stay conversations). An item an HR queue holds (a recruiter, an agent,
+ * Global mobility, an HR business partner) counts for the org it is about, never for the org the
+ * queue sits in, so the Chief People Officer's org is not charged with the company's casework.
+ */
+export function aboutOrg(a: OpenAction, r: Pick<LeaderRow, 'ids' | 'reqs' | 'roles'>): boolean {
+  if (a.personId && r.ids.has(a.personId)) return true
+  const s = a.item.subject
+  if (s.id && (s.kind === 'employees' || s.kind === 'rightToWork' || s.kind === 'transactions'))
+    if (r.ids.has(s.id)) return true
+  const req = a.item.batch?.key.startsWith('req:')
+    ? a.item.batch.key.slice(4)
+    : s.kind === 'requisitions'
+      ? s.id
+      : null
+  if (req && r.reqs.some((q) => q.reqId === req)) return true
+  if (s.kind === 'succession' && s.id && r.roles.some((x) => x.roleId === s.id)) return true
+  return a.role === 'manager' && !!a.ownerId && r.ids.has(a.ownerId)
+}
+
+/** The rows with their open critical items about the org (`aboutOrg`). */
 export function withCritical(rows: readonly LeaderRow[], open: readonly OpenAction[] | null): LeaderRow[] {
   if (!open) return [...rows]
   return rows.map((r) => {
-    const criticalItems = open.filter(
-      (a) =>
-        a.item.severity === 'critical' &&
-        ((!!a.ownerId && r.ids.has(a.ownerId)) || (!!a.personId && r.ids.has(a.personId))),
-    )
+    const criticalItems = open.filter((a) => a.item.severity === 'critical' && aboutOrg(a, r))
     return { ...r, critical: criticalItems.length, criticalItems }
   })
 }

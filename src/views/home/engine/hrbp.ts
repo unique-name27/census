@@ -20,6 +20,7 @@ import { subtreeIds } from '@/data/scope'
 import { addDays } from '@/lib/dates'
 import { inWindow, isActiveAt } from '@/lib/people'
 import { compute as complianceModel } from '@/views/compliance/engine'
+import { isUsPerson } from '@/views/compliance/engine/base'
 import type { I9Row } from '@/views/compliance/engine/i9'
 import type { ExpiryRow } from '@/views/compliance/engine/work'
 import { type HrbpModel, hrbpModel } from '@/views/hrbp/engine'
@@ -213,6 +214,8 @@ export interface SiteListRow {
   privateCases: number
   reverifications: number
   i9OnTime: number | null
+  /** A US site, where I-9 Section 2 applies (Compliance's own rule, `isUsPerson`). */
+  usSite: boolean
   active: Employee[]
   group: GroupRateRow | null
   startIds: string[]
@@ -262,6 +265,7 @@ export function siteList(m: HrbpModel, input: SiteInputs): SiteListRow[] {
         privateCases: cases.filter(isRowPrivate).length,
         reverifications: input.expiring.filter((x) => x.e.location === site).length,
         i9OnTime: judged >= p.set.minGroup ? onTime / judged : null,
+        usSite: isUsPerson({ location: site, country: active[0]?.country ?? '' }),
         active,
         group,
         startIds: input.starts.filter((s) => s.location === site).map((s) => s.id),

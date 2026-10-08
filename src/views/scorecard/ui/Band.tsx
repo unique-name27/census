@@ -24,7 +24,7 @@ import { Drill, drill } from '@/drill/Drill'
 import { formatDate } from '@/lib/dates'
 import { fmt, plural } from '@/lib/format'
 import { definitionOf } from '@/metrics/api'
-import { actionKpis } from '@/views/actions/engine'
+import { actionKpis, countedOf } from '@/views/actions/engine'
 import { M as ACTIONS } from '@/views/actions/metrics'
 import { hrbpModel } from '@/views/hrbp/engine'
 import { computeRecruiting } from '@/views/recruiting/engine'
@@ -40,7 +40,7 @@ import {
 } from '../engine/band'
 import type { ScorecardModel } from '../engine/model'
 import { standingLine } from '../engine/report'
-import type { ScoreStatus } from '../engine/status'
+import { type ScoreStatus, scorecardJudge } from '../engine/status'
 import { M } from '../metrics'
 import type { ScorecardItems } from './useScorecardItems'
 
@@ -185,9 +185,14 @@ export function KeyFigures({ items, className }: { items: ScorecardItems | null;
   const ctx = useAnalytics()
   const h = hrbpModel(ctx).kpi.kpis
   const r = computeRecruiting(ctx).kpis
-  const critical = items
-    ? actionKpis(items.open, ctx).find((k) => k.metricId === ACTIONS.critical)
-    : undefined
+  // In a role mode the tile counts the mode's Needs attention (the masthead's and the Action
+  // center's number); in HR and the CHRO, every open item.
+  const counted = items ? countedOf(items) : null
+  const tile = counted ? actionKpis(counted, ctx).find((k) => k.metricId === ACTIONS.critical) : undefined
+  const critical =
+    tile && items?.lists && counted
+      ? { ...tile, note: `${fmt(tile.value ?? 0, 'int')} of your ${plural(counted.length, 'open item')}` }
+      : tile
   const pendingCritical: Kpi = {
     id: 'critical',
     metricId: ACTIONS.critical,
@@ -218,7 +223,8 @@ export function KeyFigures({ items, className }: { items: ScorecardItems | null;
       link: { view: 'actions', label: 'Action center' },
     },
   ]
-  return <KpiStrip kpis={kpis} span={8} className={className} />
+  // Judged as the measures below are (the watch margin), so a rate reads one verdict on the page.
+  return <KpiStrip kpis={kpis} span={8} className={className} judge={scorecardJudge(ctx.metrics)} />
 }
 
 /* ───────── measures against target ───────── */

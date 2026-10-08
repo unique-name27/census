@@ -2,6 +2,7 @@
  * Number formatting shared by charts, tables, tiles and exports.
  * Missing or suppressed values always render as "—", never as 0.
  */
+import { COST_STEP, UNDER_COST_STEP } from './costRounding'
 import { formatDate } from './dates'
 
 export type Format =
@@ -18,6 +19,7 @@ export type Format =
   | 'deltaPct' // relative change as a fraction -> +103%, −47.6%, ±0%
   | 'money' // USD compact, $1.2M
   | 'moneyFull' // USD, $123,456
+  | 'moneyM' // USD in millions, one decimal: $12.3M, $0.4M; under $100,000 reads "under $0.1M" (Finance's rounded cost, src/lib/costRounding.ts)
   | 'days' // 12 d
   | 'hours' // 6.5 h
   | 'years' // 4.2 yrs
@@ -35,6 +37,12 @@ const nf0 = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 })
 const nf1 = new Intl.NumberFormat('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 })
 const nf2 = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const compactNf = new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 })
+/** Compact money keeps one decimal, so the values in one figure line up: $7.3M, $3.0M, $207.6K. */
+const compactMoneyNf = new Intl.NumberFormat('en-US', {
+  notation: 'compact',
+  minimumFractionDigits: 1,
+  maximumFractionDigits: 1,
+})
 const usd = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
 
 export const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v)
@@ -95,9 +103,11 @@ export function fmt(v: unknown, format: Format = 'int'): string {
       return /[1-9]/.test(body) ? withSign(v, `${body}%`) : '±0%'
     }
     case 'money':
-      return signed(v, (a) => (a < 10_000 ? usd.format(a) : `$${compactNf.format(a)}`))
+      return signed(v, (a) => (a < 10_000 ? usd.format(a) : `$${compactMoneyNf.format(a)}`))
     case 'moneyFull':
       return signed(v, (a) => usd.format(a))
+    case 'moneyM':
+      return Math.abs(v) < COST_STEP ? UNDER_COST_STEP : signed(v, (a) => `$${nf1.format(a / 1_000_000)}M`)
     case 'days':
       return signed(v, (a) => `${a < 10 && !Number.isInteger(a) ? nf1.format(a) : nf0.format(a)} d`)
     case 'hours':
@@ -126,6 +136,9 @@ export function fmtDelta(d: number | null | undefined, format: Format): string {
       return fmt(d, 'pts2')
     case 'deltaDays':
       return fmt(d, 'deltaDays')
+    case 'moneyM':
+      // A difference of rounded amounts under the step says only that it is under $0.1M.
+      return Math.abs(d) < COST_STEP ? UNDER_COST_STEP : withSign(d, fmt(Math.abs(d), 'moneyM'))
   }
   return withSign(d, fmt(Math.abs(d), format))
 }
@@ -166,6 +179,9 @@ export function excelNumFmt(format: Format | undefined): string | undefined {
     case 'money':
     case 'moneyFull':
       return '"$"#,##0'
+    case 'moneyM':
+      // In millions to one decimal; an amount under the step is written as the words, not 0.
+      return '"$"#,##0.0,,"M";"−$"#,##0.0,,"M"'
     case 'days':
       return '#,##0'
     case 'date':

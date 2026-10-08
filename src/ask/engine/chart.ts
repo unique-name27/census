@@ -659,7 +659,7 @@ export interface FigureSourceHelpers {
   ref(source: DrillSource, label: string): string | null
 }
 
-const PAY_FORMATS: ReadonlySet<string> = new Set(['money', 'moneyFull'])
+const PAY_FORMATS: ReadonlySet<string> = new Set(['money', 'moneyFull', 'moneyM'])
 
 const isPayColumn = (c: Column): boolean => {
   const fmt = typeof c.format === 'function' ? null : (c.format ?? null)

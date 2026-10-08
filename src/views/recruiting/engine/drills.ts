@@ -559,7 +559,7 @@ export function activeKpiDrill(b: RecruitingBase): DrillSpec<'candidates'> | nul
   const lacking = b.actives.filter((x) => x.tier).length
   return activeDrill(b, b.actives, {
     title: 'Active candidates',
-    note: `${fmt(lacking, 'int')} of the ${plural(b.actives.length, 'active candidate')} lack a next step. Longest wait first.`,
+    note: `${fmt(lacking, 'int')} of the ${plural(b.actives.length, 'active candidate')} ${lacking === 1 ? 'lacks' : 'lack'} a next step. Longest wait first.`,
   })
 }
 

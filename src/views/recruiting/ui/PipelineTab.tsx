@@ -119,6 +119,9 @@ export function PipelineTab() {
     },
   ]
 
+  // Manager mode lists no candidate's reason for leaving the process (`column:candidates.rejectionReason`).
+  const reasons = b.showCandidateReasons !== false
+  const memberColumns = reasons ? MEMBER_COLUMNS : MEMBER_COLUMNS.filter((c) => c.key !== 'reason')
   const memberRow = (a: (typeof b.cohort)[number]) => ({
     candidate: a.name,
     applicationId: a.id,
@@ -130,7 +133,7 @@ export function PipelineTab() {
     stage: STAGES[a.furthest],
     outcome: a.outcome,
     exitDate: a.exitDate,
-    reason: a.reason ?? '',
+    ...(reasons ? { reason: a.reason ?? '' } : {}),
   })
 
   const conversion = [
@@ -228,7 +231,7 @@ export function PipelineTab() {
           empty={b.apps.length ? (flow.total ? null : 'No applications in this period.') : NEED_CANDIDATES}
           detail={{
             label: 'Applications',
-            columns: MEMBER_COLUMNS,
+            columns: memberColumns,
             rows: () => b.cohort.map(memberRow),
           }}
           definitions={[
@@ -329,7 +332,7 @@ export function PipelineTab() {
             },
             { term: 'Gray', text: 'Scheduled: in motion.' },
           ]}
-          note={`${plural(m.waiting.length, 'active candidate')} · ${fmt(lacking, 'int')} lack a next step · ticks mark each stage’s median`}
+          note={`${plural(m.waiting.length, 'active candidate')} · ${plural(lacking, 'lacks a next step', 'lack a next step')} · ticks mark each stage’s median`}
         >
           <DotStrip
             data={m.waiting}

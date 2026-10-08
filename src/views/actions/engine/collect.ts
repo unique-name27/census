@@ -28,7 +28,13 @@ import { gateFor, subjectOf } from '@/components/tier/tierModel'
 import type { AnalyticsContext } from '@/data/context'
 import type { FieldRef } from '@/data/quality/fieldRef'
 import type { Tier } from '@/data/quality/tier'
-import { CASE_CATEGORIES, type DatasetKey, ONBOARDING_OWNERS, type ViewKey } from '@/data/schema'
+import {
+  CASE_CATEGORIES,
+  type DatasetKey,
+  type ISODate,
+  ONBOARDING_OWNERS,
+  type ViewKey,
+} from '@/data/schema'
 import {
   type Filters,
   focusLeader,
@@ -42,6 +48,7 @@ import { headcountAt } from '@/lib/people'
 import { minGroupOf } from '@/metrics/privacy'
 import { ownerLookup } from '@/views/hrbp/engine/owners'
 import { ACTION_OWNER_LABEL, ACTION_OWNER_ROLES, type ActionItem, type ActionOwnerRole } from '@/views/types'
+import { daysToDue } from './due'
 import { markKeyOf } from './marks'
 import { settingsOf } from './settings'
 import { severityOf } from './severity'
@@ -94,6 +101,11 @@ export interface OpenAction {
   below: BelowStandard | null
   /** Other views that raised the same matter, folded into this item ("Onboarding · Upcoming"). */
   alsoFrom: readonly string[]
+  /**
+   * A roll-up's items (`rollups.ts`): a role's list shows one line for them ("Amanda Wright: 15
+   * cases past target"), and its About opens them. Absent on an item a view raised.
+   */
+  members?: readonly OpenAction[]
 }
 
 /** Items from data below the standard, by what holds them back. */
@@ -287,12 +299,19 @@ export function collectPlan(
 
 /* ───────────── order ───────────── */
 
-/** Legal exposure first, then severity, then the most overdue (earliest due), then owner. */
+/** How many people or records an item is about (`ActionItem.size`), for the order of undated items. */
+export const sizeOf = (i: Pick<ActionItem, 'size'>): number => i.size ?? 0
+
+/**
+ * Legal exposure first, then severity, then the most overdue (earliest due); among items with no
+ * due date, the one about more people first; then owner.
+ */
 export function compareActions(a: OpenAction, b: OpenAction): number {
   return (
     (b.item.exposure ? 1 : 0) - (a.item.exposure ? 1 : 0) ||
     SEVERITY_RANK[a.item.severity] - SEVERITY_RANK[b.item.severity] ||
     (a.item.due ?? '9999').localeCompare(b.item.due ?? '9999') ||
+    (!a.item.due && !b.item.due ? sizeOf(b.item) - sizeOf(a.item) : 0) ||
     a.ownerName.localeCompare(b.ownerName) ||
     a.id.localeCompare(b.id)
   )
@@ -454,7 +473,7 @@ export function collectUncached(ctx: AnalyticsContext, views: readonly ViewSourc
   let belowCount = 0
   for (const i0 of one) {
     const severity = severityOf(i0, ctx.asOf, settings.blockedDays)
-    const i = severity === i0.severity ? i0 : { ...i0, severity }
+    const i = weekly(severity === i0.severity ? i0 : { ...i0, severity }, ctx.asOf)
     const view = byKey.get(i.view)
     // Workflow is not a statistic: an item below the standard is listed, tagged with its tier.
     const gate = gateFor(ctx.quality, ctx.standard, i.uses, view?.datasets ?? [])
@@ -483,6 +502,17 @@ export function collectUncached(ctx: AnalyticsContext, views: readonly ViewSourc
     leader,
     sources: sources.length,
   }
+}
+
+/**
+ * A breach still in force changes every week: its fingerprint carries the weeks overdue, so an
+ * item marked handled comes back while the breach goes on (marks reopen on a new fingerprint).
+ */
+function weekly(i: ActionItem, asOf: ISODate): ActionItem {
+  if (!i.exposure) return i
+  const d = daysToDue(i.due, asOf)
+  if (d == null || d >= 0) return i
+  return { ...i, fingerprint: `${i.fingerprint ? `${i.fingerprint}|` : ''}week ${Math.floor(-d / 7)}` }
 }
 
 function fromOf(i: ActionItem, view: ViewSource | undefined): string {

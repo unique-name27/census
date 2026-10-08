@@ -36,11 +36,23 @@ export function scrollDelta(
   return 0
 }
 
-/** Scroll a horizontal strip (never the page) so the child is visible. */
-export function revealInStrip(strip: HTMLElement | null, item: HTMLElement | null): void {
+/**
+ * Scroll a horizontal strip (never the page) so the child is visible, `pad` px clear of its edges
+ * (the folder tabs pass their side gutter, where the edge buttons sit).
+ */
+export function revealInStrip(strip: HTMLElement | null, item: HTMLElement | null, pad = 16): void {
   if (!strip || !item) return
   const s = strip.getBoundingClientRect()
   const r = item.getBoundingClientRect()
-  const dx = scrollDelta(r.left, r.right, s.left, s.right)
+  const dx = scrollDelta(r.left, r.right, s.left, s.right, pad)
   if (dx) strip.scrollLeft += dx
+}
+
+/** Whether a horizontal strip has content past its left and right edges (1px of slack for rounding). */
+export function stripEdges(
+  scrollLeft: number,
+  clientWidth: number,
+  scrollWidth: number,
+): { left: boolean; right: boolean } {
+  return { left: scrollLeft > 1, right: scrollLeft + clientWidth < scrollWidth - 1 }
 }

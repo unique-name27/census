@@ -40,6 +40,8 @@ export interface RecruitingBase {
    * `words` goes in a sentence ("vs 45 d for the company", "vs 45 d for all reqs").
    */
   bench: { label: string; words: string; note: string }
+  /** The reader in Manager mode (the manager), so findings say "you" rather than their name. */
+  me?: string | null
   /** The unscoped roster, to link hires to the employee they became (drill person cards). */
   roster: readonly Employee[]
   reqs: Requisition[]
@@ -75,6 +77,11 @@ export interface RecruitingBase {
    * not, so findings leave the reasons out. Missing means shown.
    */
   showDeclineReasons?: boolean
+  /**
+   * The mode shows why a candidate left the process (`column:candidates.rejectionReason`). Manager
+   * mode does not, so the withdrawals finding names no reason. Missing means shown.
+   */
+  showCandidateReasons?: boolean
 }
 
 const COMPARE: Record<string, [string, string]> = {
@@ -118,6 +125,7 @@ export function computeBase(ctx: AnalyticsContext): RecruitingBase {
   return {
     metrics: ctx.metrics,
     showDeclineReasons: ctx.access.can('metric:recruiting.offers.declineReasons'),
+    showCandidateReasons: ctx.access.can('column:candidates.rejectionReason'),
     settings,
     ttf: ttfClock(settings.ttfEnd, companyApps, ctx.all.employees, asOf),
     asOf,
@@ -131,6 +139,8 @@ export function computeBase(ctx: AnalyticsContext): RecruitingBase {
       ctx.access.scope?.kind === 'reqs'
         ? { label: 'All reqs', words: 'all reqs', note: 'all reqs' }
         : { label: 'Company', words: 'the company', note: 'company' },
+    me:
+      ctx.access.scope?.kind === 'org' && ctx.access.mode === 'manager' ? ctx.access.scope.managerName : null,
     roster: ctx.all.employees,
     reqs,
     apps,

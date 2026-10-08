@@ -19,6 +19,7 @@ import { scorecardIfReady } from '../scorecard/ui/useScorecard'
 import { view as services } from '../services'
 import { view as talent } from '../talent'
 import type { Headline, ViewDef } from '../types'
+import { SLUG_OF } from './engine/figures'
 import { homeTitle } from './engine/title'
 import { HomeActions } from './ui/HomeActions'
 import { HomePage } from './ui/HomePage'
@@ -69,6 +70,8 @@ export const view: ViewDef = {
   key: 'home',
   label: 'Home',
   title: homeTitle,
+  // A mode with no home of its own (the Developer page previews each role's) draws no figures here.
+  figureless: (ctx) => !SLUG_OF[ctx.access.mode],
   tabs: [{ key: 'overview', label: 'Overview' }],
   View,
   headline,

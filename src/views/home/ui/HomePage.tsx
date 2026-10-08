@@ -2,16 +2,19 @@
  * The Home view's body (docs/ROLES-V2.md 5.1): the home of the mode on screen. A scoped mode
  * waiting for its pick shows only the empty state with its picker (4.13); a scope under the
  * anonymity minimum says that rates are hidden and lists still show (1.3). In Developer mode the
- * page says how to see a role's home (the Developer page previews each one in its own mode).
+ * page links to the Developer page's preview of each role's home, in that role's own mode, and the
+ * welcome line shows only when the mode on screen is the live one (5.13).
  */
 import { PICKER_COPY, smallScopeNote } from '@/access/copy'
 import { PICK_OF } from '@/access/modes'
 import { openPicker, useMode } from '@/access/store'
 import { Button, EmptyState, Grid, Pending } from '@/components'
+import { RouteLink } from '@/components/RouteLink'
 import { useAnalytics, useAnalyticsPending } from '@/data/context'
 import { WelcomeCard } from '@/help/ui/WelcomeCard'
 import { minGroupOf } from '@/metrics/privacy'
 import { SLUG_OF } from '../engine/figures'
+import { homePreviewLinks, ROLE_HOMES_TAB } from '../engine/previews'
 import { ChroHome } from './ChroHome'
 import { CompHome } from './CompHome'
 import { FinHome } from './FinHome'
@@ -34,6 +37,7 @@ export function HomePage() {
       </Grid>
     )
   const slug = SLUG_OF[access.mode]
+  if (!slug && access.mode === 'developer') return <DeveloperHome />
   if (!slug)
     return (
       <EmptyState
@@ -75,5 +79,42 @@ export function HomePage() {
       {slug === 'rec' && <RecHome />}
       {slug === 'fin' && <FinHome />}
     </>
+  )
+}
+
+const LINK = 'rounded-mark font-medium text-link underline-offset-2 hover:underline'
+
+/**
+ * Developer mode has no home of its own: a link to the Developer page's preview of each role's
+ * home, laid out there with that role's numbers and pick while Census stays in Developer mode.
+ */
+function DeveloperHome() {
+  return (
+    <EmptyState
+      title="Home is each role's first page"
+      body={
+        <>
+          <p>
+            The CHRO, the HR business partners, Compensation, Talent management, HR ops, Recruiter and Finance
+            modes open here, each on its own home. Preview one on the Developer page, with that role's numbers
+            and pick, while Census stays in Developer mode.
+          </p>
+          <ul aria-label="Preview a role's home" className="mt-3 flex flex-wrap gap-x-4 gap-y-1.5">
+            {homePreviewLinks().map((l) => (
+              <li key={l.mode}>
+                <RouteLink view="dev" tab={l.tab} className={LINK}>
+                  {l.label}
+                </RouteLink>
+              </li>
+            ))}
+          </ul>
+        </>
+      }
+      action={
+        <RouteLink view="dev" tab={ROLE_HOMES_TAB} className={LINK}>
+          All role homes in Inventory
+        </RouteLink>
+      }
+    />
   )
 }

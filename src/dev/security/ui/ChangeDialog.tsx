@@ -53,6 +53,8 @@ export function ChangeDialog({ spec, onClose }: { spec: ChangeSpec | null; onClo
       title={spec?.title ?? ''}
       description={spec?.description}
       width={560}
+      // Focus opens on the decision in force, not on Close.
+      initialFocus={() => document.querySelector<HTMLInputElement>('[data-change-decision] input:checked')}
     >
       {spec && <ChangeForm key={`${spec.role}|${spec.title}`} spec={spec} onClose={onClose} />}
     </Dialog>
@@ -90,6 +92,7 @@ function ChangeForm({ spec, onClose }: { spec: ChangeSpec; onClose: () => void }
       }}
     >
       <fieldset
+        data-change-decision=""
         className="m-0 flex flex-col gap-1 border-0 p-0"
         aria-describedby={refused ? ids.refused : undefined}
       >
@@ -127,7 +130,7 @@ function ChangeForm({ spec, onClose }: { spec: ChangeSpec; onClose: () => void }
         <label htmlFor={ids.how} className="flex flex-col gap-1 text-small font-semibold text-ink">
           What the limit is
           <span className="text-meta font-normal text-muted">
-            One sentence the Developer page shows, such as "Requisitions only, no candidates."
+            One sentence the Developer page shows, for example "Requisitions only, no candidates".
           </span>
           <input id={ids.how} className={INPUT} value={how} onChange={(e) => setHow(e.target.value)} />
         </label>

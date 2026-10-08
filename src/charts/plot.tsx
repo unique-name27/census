@@ -87,6 +87,8 @@ export function tickFormat(format: Format): (v: number) => string {
       return fmt(v, 'pct0')
     if (format === 'pct2' && Math.abs(v * 1000 - Math.round(v * 1000)) < 1e-9) return fmt(v, 'pct')
     if (format === 'moneyFull') return fmt(v, 'money')
+    // Finance's rounded cost: "$0" at the baseline, then millions ("$0.5M", "$12.0M").
+    if (format === 'moneyM') return Math.abs(v) < 100_000 ? fmt(v, 'money') : fmt(v, 'moneyM')
     if (format === 'int' && Math.abs(v) >= 10_000) return fmt(v, 'compact')
     // Two-decimal scores tick at tenths ("3.5", not "3.50").
     if (format === 'num2' && Math.abs(v * 10 - Math.round(v * 10)) < 1e-9) return fmt(v, 'num1')

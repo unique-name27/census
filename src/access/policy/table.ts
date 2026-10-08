@@ -11,6 +11,8 @@
  *   when none of the views it is listed on is shown.
  * - Drill kinds, datasets, help articles and tours from their lists; Action center items by
  *   `hiddenItemPrefixes`; a view's header actions follow the view.
+ * - A column of a drill kind's records (`column:employees.regrettable`) follows its kind, and is
+ *   hidden when on `hiddenColumns` (its how is the `surfaces` entry).
  *
  * Every limited or hidden default says how, worded for the mode. Pure; the per-table sets are
  * built once per table object.
@@ -42,6 +44,8 @@ interface Compiled {
   figures: ReadonlySet<string>
   metrics: ReadonlySet<string>
   drills: ReadonlySet<string>
+  /** Columns left out of their records (`'employees.regrettable'`). */
+  columns: ReadonlySet<string>
   datasets: ReadonlySet<string>
   /** Hidden views' figure prefixes ("comp-"), with the Data room's and the Developer page's when hidden. */
   placePrefixes: readonly string[]
@@ -60,6 +64,7 @@ function compile(p: RolePolicy): Compiled {
     figures: new Set(p.hiddenFigures),
     metrics: new Set(p.metrics.hide),
     drills: new Set(p.drillKinds),
+    columns: new Set(p.hiddenColumns ?? []),
     datasets: new Set(p.datasets),
     placePrefixes: Object.entries(p.views)
       .filter(([, d]) => d.access === 'hidden')
@@ -156,6 +161,12 @@ export function decideTable(p: RolePolicy, s: string, at?: At, info?: DecideInfo
         : SHOWN
     case 'drill':
       return c.drills.has(rest) ? p.drillListed : hidden(`These records are not shown in ${c.name}.`)
+    case 'column': {
+      // A column follows its records; a listed column is left out of them.
+      const kind = rest.slice(0, rest.indexOf('.'))
+      if (!c.drills.has(kind)) return hidden(`These records are not shown in ${c.name}.`)
+      return c.columns.has(rest) ? hidden(`Left out of these records in ${c.name}.`) : SHOWN
+    }
     case 'dataset':
       return c.datasets.has(rest) ? SHOWN : hidden(`Not one of the datasets ${c.name} reads.`)
     case 'help': {

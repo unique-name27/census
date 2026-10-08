@@ -48,7 +48,7 @@ const tabs = tabTable(views, {
   onboarding: {
     upcoming: hidden('Upcoming starts are for HR ops, recruiters and managers.'),
     first90: limited(
-      'I-9 Section 2 on time and new hires entered by day -3 are hidden: they are HR ops and Compliance measures.',
+      'I-9 Section 2 on time and new hires entered by day −3 are hidden: they are HR ops and Compliance measures.',
     ),
     plan: hidden('The hiring plan is a Finance and talent acquisition artifact.'),
   },

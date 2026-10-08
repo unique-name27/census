@@ -48,7 +48,8 @@
  *   scopeFor(mode, picks, { org, asOf, all, regions?, departmentParents?, dedupDays? })
  *     → { scope, unset }   (a missing or gone pick: an empty scope of its kind, unset true)
  *   clampFilters(filters, scope, mode?)   the one clamp; same object when nothing changes. Finance
- *     (no scope) keeps the business unit and period only. FILTER_DIMS_OF[mode] lists the row's dims.
+ *     (no scope) keeps the business unit and period only, as does any unscoped mode whose pay view
+ *     is 'totals' (`byWholeUnits`). FILTER_DIMS_OF[mode] lists the row's dims.
  *   clampReason(mode, scope, asked, kept, 'link' | 'view')   the one toast for a changed link
  *   applyScope(data, scope)   after the filters; only 'reqs' narrows (and empties what Recruiter
  *     never reads)
@@ -77,7 +78,7 @@
  *     any other page; `ROUTING[mode]` (policy/routing.ts) says whose each item kind is.
  *   ROLE_POLICY: Record<TableMode, RolePolicy>; RolePolicy is plain data (views, tabs, hiddenParts,
  *     metrics { allow?, hidePrefixes, hide }, hiddenFigures, hiddenFigurePrefixes, drillKinds,
- *     drillListed, datasets, hiddenItemPrefixes, articles, tours, surfaces). Manager's is
+ *     hiddenColumns?, drillListed, datasets, hiddenItemPrefixes, articles, tours, surfaces). Manager's is
  *     `MANAGER_POLICY` (policy/manager.ts, moved unchanged); the six role tables (policy/hrbp.ts
  *     for both HRBP modes, compensation.ts, talent.ts, hrOps.ts, recruiter.ts, finance.ts) are
  *     filled from part 4 with the shared building blocks in policy/kit.ts (`VIEW_TABS`,
@@ -116,6 +117,11 @@
  *   ctx.showCost   cost totals may show (`cost: true` columns): showPay, or Finance always
  *   payView(mode), showPayIn(mode, switchOn), showCostIn(mode, switchOn), showImmigrationIn(…)
  *   payDecisions(mode): the `pay:switch`, `pay:amounts`, `pay:totals` decisions every table carries
+ *   ctx.access.pay === 'totals' (Finance): every cost amount is rounded down to a whole $100,000 in
+ *     the engine (`src/lib/costRounding.ts`, 3.2 rule 8), in each business unit and then added
+ *     (`roundedAmounts` in the cost engine), and reads with the 'moneyM' format; a new cost amount
+ *     rounds the same way (`roundCost` per unit, `costIn`) and builds its ratios from the rounded
+ *     amounts, and `costColumnsFor` gives its columns the format
  *
  *   // A cost figure's columns:
  *   { key: 'targetCash', label: 'Target cash (USD)', format: 'usd', cost: true }
@@ -156,7 +162,11 @@
  *  - A link to another view or tab: `<RouteLink view tab>` from '@/components/RouteLink' renders
  *    plain text when the target is hidden; `goTo` refuses a hidden route as the safety net.
  *  - Records: drill specs need nothing; the records panel keeps only rows inside the scope
- *    (`inScope`) and hides the kinds the mode does not list (`drillKinds`).
+ *    (`inScope`), hides the kinds the mode does not list (`drillKinds`) and leaves out the columns
+ *    a table names on `hiddenColumns` (`column:<kind>.<key>`, `S.column`; Manager: a leaver's
+ *    exit reason and regrettable flag, a candidate's reason), in the panel, its exports, the
+ *    person card and Ask's `query_records` alike. A new standard column with the same kind of
+ *    detail goes on the same lists in the same change.
  *
  * Example: a component that shows an optional control and a figure.
  *

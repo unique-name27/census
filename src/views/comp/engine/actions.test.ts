@@ -22,6 +22,7 @@ import {
   compSummary,
   fingerprintOf,
   NO_CLOSE_DATE,
+  NO_CLOSE_REASON,
   SUMMARY_KPIS,
   TOTAL_REWARDS,
 } from './actions'
@@ -76,9 +77,7 @@ describe('action items on hand-built data', () => {
       due: null,
       subject: { kind: 'none' },
     })
-    expect(x.what).toBe(
-      `1 person is paid below their range minimum; plan moves before the cycle closes; ${NO_CLOSE_DATE}`,
-    )
+    expect(x.what).toBe('1 person is paid below their range minimum; plan moves before the cycle closes')
     expect(x.note).toBe(
       'Could we plan these moves to the range minimum in this cycle, or confirm why they wait?',
     )
@@ -109,15 +108,17 @@ describe('action items on hand-built data', () => {
     expect(u.what).toContain('6 people are paid below their range minimum in Operations')
   })
 
-  it('is due on the cycle close date when one is set, and says so when not', () => {
+  it('is due on the cycle close date when one is set; without one it says why once, never in every item', () => {
     const items = compActions(context(data, { metrics: closeOn('2026-10-30') }))
     for (const i of items) {
       expect(i.due, i.id).toBe('2026-10-30')
       expect(i.what, i.id).not.toContain(NO_CLOSE_DATE)
+      expect(i.closesWhen, i.id).toBeUndefined()
     }
     for (const i of compActions(context(data))) {
       expect(i.due, i.id).toBeNull()
-      expect(i.what, i.id).toContain(NO_CLOSE_DATE)
+      expect(i.what, i.id).not.toContain(NO_CLOSE_DATE)
+      expect(i.closesWhen, i.id).toBe(NO_CLOSE_REASON)
     }
   })
 
@@ -163,7 +164,7 @@ describe('merit spend over budget, by business unit', () => {
       place: { businessUnit: 'Go-to-Market' },
     })
     expect(x.what).toBe(
-      `Merit proposals in Go-to-Market cost 6.00% of eligible base, 2.50 pts over the 3.50% budget; ${NO_CLOSE_DATE}`,
+      'Merit proposals in Go-to-Market cost 6.00% of eligible base, 2.50 pts over the 3.50% budget',
     )
     expect(x.amount?.usd).toBeCloseTo(6 * 100_000 * 0.025, 6)
     expect(items.some((i) => i.id === 'comp:over-budget:Operations')).toBe(false)
@@ -174,12 +175,28 @@ describe('merit spend over budget, by business unit', () => {
   })
 
   it('in Finance: no item about one person, and drills that list employees only', () => {
-    const items = compActions(context(d, { access: { mode: 'finance' } }))
+    // Finance rounds to $100,000, so the teams are paid enough for the overrun to show.
+    const big = (n: number, bu: string, merit: number) =>
+      team(n, { businessUnit: bu, department: 'Sales' }, () => ({ baseSalary: 400_000, meritPct: merit }))
+    const hotF = big(6, 'Go-to-Market', 0.06)
+    const calmF = big(6, 'Operations', 0.03)
+    const fin = dataset({
+      employees: [...hotF.employees, ...calmF.employees],
+      comp: [...hotF.comp, ...calmF.comp],
+    })
+    const items = compActions(context(fin, { access: { mode: 'finance' } }))
     expect(items.map((i) => i.id)).toEqual(['comp:over-budget:Go-to-Market'])
     for (const i of items) {
       expect(i.subject.kind, i.id).toBe('none')
       expect(resolveDrill(i.drill)?.kind, i.id).toBe('employees')
     }
+    // Base $2.4M, spend $144,000 → $0.1M, budget $84,000 → under $0.1M: the text and the amount
+    // come from the rounded amounts, never the exact ones.
+    const x = items[0]
+    expect(x.what).toBe(
+      'Merit proposals in Go-to-Market cost 4.17% of eligible base, 0.67 pts over the 3.50% budget',
+    )
+    expect(x.amount).toEqual({ usd: 100_000, label: 'Over merit budget', rounded: true })
   })
 })
 
@@ -199,7 +216,7 @@ describe('high performers paid low in range, by business unit', () => {
     const x = byId(items, 'comp:high-rated-low-compa:Corporate')
     expect(x).toMatchObject({ kind: COMP_KIND.highRatedLow, tab: 'performance', severity: 'warning' })
     expect(x.what).toBe(
-      `5 people in Corporate rated 4 or 5 in the 2025 Annual cycle have a compa-ratio under 0.90; ${NO_CLOSE_DATE}`,
+      '5 people in Corporate rated 4 or 5 in the 2025 Annual cycle have a compa-ratio under 0.90',
     )
     expect(rows(x)).toHaveLength(5)
     expect(x.fingerprint).toBe(fingerprintOf(lowPaid.employees.map((e) => e.employeeId)))
@@ -224,7 +241,7 @@ describe('merit proposals missing, while the cycle is open', () => {
     expect(corp).toMatchObject({ eligible: 6, proposed: 0, missing: 6, share: 0 })
     const x = byId(compActions(context(d)), 'comp:no-proposal:Corporate')
     expect(x).toMatchObject({ kind: COMP_KIND.noProposal, tab: 'cycle', severity: 'info' })
-    expect(x.what).toBe(`6 eligible people in Corporate have no merit proposal; ${NO_CLOSE_DATE}`)
+    expect(x.what).toBe('6 eligible people in Corporate have no merit proposal')
     expect(rows(x)).toHaveLength(6)
   })
 

@@ -5,7 +5,17 @@
  * a centered card. Tests check every target exists in the source and every route is real.
  */
 import type { RouteView } from '@/data/store'
-import { EVERY_ITEM, FINANCE, HRBP, NO_DATA_ROOM, NO_PAY, RECRUITER, ROLE_LISTS } from './articles/when'
+import {
+  ALL_RECRUITERS,
+  EVERY_ITEM,
+  FINANCE,
+  HRBP,
+  NO_DATA_ROOM,
+  NO_PAY,
+  ONE_RECRUITER,
+  RECRUITER,
+  ROLE_LISTS,
+} from './articles/when'
 import type { Condition, Tour, TourStep } from './types'
 
 /** The selector for a `data-tour` name. */
@@ -327,8 +337,12 @@ const RECRUITING: Tour = {
       placement: 'bottom',
       wording: [
         {
-          ...RECRUITER,
+          ...ONE_RECRUITER,
           body: 'Your open reqs, offers accepted, time to fill and to hire, offer acceptance and candidates lacking a next step. Time to fill and offer acceptance compare with all reqs.',
+        },
+        {
+          ...ALL_RECRUITERS,
+          body: 'Open reqs, offers accepted, time to fill and to hire, offer acceptance and candidates lacking a next step, over every req.',
         },
         {
           unless: 'tab:onboarding.plan',
@@ -396,7 +410,7 @@ const ONBOARDING: Tour = {
       ...at('onboarding', 'upcoming'),
       target: tourTarget('kpi-strip'),
       title: 'Who starts soon',
-      body: 'Starts in the next 30, 60 and 90 days, day -3 tasks not done, open contingencies, notice periods and reneges.',
+      body: 'Starts in the next 30, 60 and 90 days, day −3 tasks not done, open contingencies, notice periods and reneges.',
       placement: 'bottom',
     },
     {
@@ -480,6 +494,10 @@ const PEOPLE_STATS: Tour = {
       placement: 'bottom',
       wording: [
         {
+          unless: 'metric:hrbp.attrition.regretted',
+          body: 'Headcount, hires, attrition (all, voluntary and first-year, annualized) and promotion rate.',
+        },
+        {
           unless: 'metric:hrbp.movement.promotionRate',
           body: 'Headcount, hires and attrition: all, voluntary, regretted and first-year, annualized.',
         },
@@ -515,6 +533,12 @@ const PEOPLE_STATS: Tour = {
       title: 'Why people left',
       body: 'Voluntary exit reasons, then attrition by tenure, level and last rating, and the regretted leavers by name.',
       placement: 'top',
+      wording: [
+        {
+          unless: 'metric:hrbp.attrition.regretted',
+          body: 'Voluntary exit reasons, then attrition by tenure, level and last rating.',
+        },
+      ],
     },
     {
       ...at('hrbp', 'analyses'),
@@ -1101,6 +1125,12 @@ const HERO_STEP: TourStep = {
     },
     {
       ...role('rec'),
+      scoped: false,
+      title: 'Lacking a next step',
+      body: 'Candidates on every req with nothing pending, split by what they wait on: a review, scheduling, a decision or an offer. Each part opens its candidates.',
+    },
+    {
+      ...role('rec'),
       title: 'Lacking a next step',
       body: 'Your candidates with nothing pending, split by what they wait on: a review, scheduling, a decision or an offer. Each part opens its candidates.',
     },
@@ -1180,6 +1210,11 @@ const LIST_STEP: TourStep = {
     {
       ...role('ops'),
       body: 'The open case queue, oldest first, transactions in flight, or returns from leave. Employee relations cases are counted under the table, never listed.',
+    },
+    {
+      ...role('rec'),
+      scoped: false,
+      body: "Every recruiter's open reqs with their pipeline, or the candidates in the queue. A row opens its records.",
     },
     {
       ...role('rec'),
@@ -1311,6 +1346,13 @@ const HOME: Tour = {
           target: figureTarget('home-ops-backlog'),
           title: 'Open backlog by age',
           body: 'Open cases by how long they have waited, stacked by status. A segment opens its cases.',
+        },
+        {
+          ...role('rec'),
+          scoped: false,
+          target: figureTarget('home-rec-pipeline'),
+          title: 'Pipeline today',
+          body: 'Active candidates on every req at each stage by their next-step state. A bar opens its candidates.',
         },
         {
           ...role('rec'),

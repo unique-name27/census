@@ -143,7 +143,11 @@ export type PayLevel = 'none' | 'ratios' | 'totals' | 'switch'
 export const PAY_LEVELS: readonly { value: PayLevel; label: string; hint: string }[] = [
   { value: 'none', label: 'None', hint: 'No pay at all: no amounts, totals or ratios.' },
   { value: 'ratios', label: 'Ratios', hint: 'Compa-ratio, range position and merit %, never an amount.' },
-  { value: 'totals', label: 'Totals', hint: 'Cost totals over 5 or more people, never one person’s pay.' },
+  {
+    value: 'totals',
+    label: 'Totals',
+    hint: 'Cost totals over 5 or more people by whole business units, never one person’s pay. Finance only.',
+  },
   {
     value: 'switch',
     label: 'Per person, behind the switch',

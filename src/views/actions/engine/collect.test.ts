@@ -40,6 +40,28 @@ describe('collectActions', () => {
     })
   })
 
+  it('lists undated items of one severity about more people first', () => {
+    const small = item({ id: 'comp:a:1', due: null, size: 5 })
+    const large = item({ id: 'comp:b:1', due: null, size: 41 })
+    const none = item({ id: 'comp:c:1', due: null })
+    const c = collectUncached(ctxOf(), [source('comp', 'Compensation', [none, small, large])])
+    expect(c.items.map((a) => a.id)).toEqual(['comp:b:1', 'comp:a:1', 'comp:c:1'])
+  })
+
+  it('gives a breach in force a fingerprint that changes each week, so a handled mark comes back', () => {
+    const breach = (due: string) =>
+      collectUncached(ctxOf(), [
+        source('compliance', 'Compliance', [
+          item({ id: 'compliance:license:E3', view: 'compliance', exposure: true, due }),
+        ]),
+      ]).items[0].item.fingerprint
+    // 30 Sep 2026: 20 d overdue is week 2, 27 d still week 3, 28 d week 4; not yet due has none.
+    expect(breach('2026-09-10')).toBe('week 2')
+    expect(breach('2026-09-03')).toBe('week 3')
+    expect(breach('2026-09-02')).toBe('week 4')
+    expect(breach('2026-10-12')).toBeUndefined()
+  })
+
   it('is cached per context', () => {
     const views = [source('talent', 'Talent', [item()])]
     const ctx = ctxOf()

@@ -39,6 +39,7 @@ import {
   type KindTableRow,
   kindRows,
   OTHER,
+  ownersNote,
   type TopOwnerRow,
   topOwners,
 } from '../engine/charts'
@@ -179,7 +180,7 @@ export function TopOwners({ open, status }: Props) {
           text: 'Items waiting on a team or a queue (IT, People operations) count under the team. Employee relations items always wait on a team and never name the person.',
         },
       ]}
-      note={`${plural(rows.length, 'owner')} · ${fmt(rows.filter((r) => r.isTeam).length, 'int')} of them teams`}
+      note={ownersNote(rows.length, rows.filter((r) => r.isTeam).length)}
       empty={open.length ? null : EMPTY}
       emptyHeight={240}
     >

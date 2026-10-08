@@ -46,7 +46,10 @@ function cellTip(c: PipelineCell, total: number): TipContent {
     title: `${c.stage} · ${c.label}`,
     rows: [
       { value: fmt(c.candidates, 'int'), label: `of ${fmt(total, 'int')} active at this stage` },
-      { value: fmt(c.lacking, 'int'), label: 'lack a next step (past the usual time)' },
+      {
+        value: fmt(c.lacking, 'int'),
+        label: `${c.lacking === 1 ? 'lacks' : 'lack'} a next step (past the usual time)`,
+      },
       {
         value: c.medianDaysWaiting != null ? fmt(Math.round(c.medianDaysWaiting), 'days') : '—',
         label: c.state === 'scheduled' ? 'median days in stage' : 'median days waiting',
@@ -132,7 +135,7 @@ export function PipelineBars({ stages, cellDrill, stageDrill, stateDrill, lackin
     ) + 16
   const tail = (s: PipelineStage) => {
     const count = fmt(s.active, 'int')
-    const long = s.lacking ? `${fmt(s.lacking, 'int')} lack a next step` : ''
+    const long = s.lacking ? plural(s.lacking, 'lacks a next step', 'lack a next step') : ''
     return { count, long, short: s.lacking ? fmt(s.lacking, 'int') : '' }
   }
   const tailW = (s: PipelineStage, useLong: boolean) => {
@@ -261,7 +264,7 @@ export function PipelineBars({ stages, cellDrill, stageDrill, stateDrill, lackin
                           opacity={hoverSeg && hoverSeg !== id ? 0.5 : 1}
                           role="button"
                           tabIndex={0}
-                          aria-label={`${c.stage}, ${c.label}: ${c.candidates} candidates, ${c.lacking} lack a next step. Show them.`}
+                          aria-label={`${c.stage}, ${c.label}: ${plural(c.candidates, 'candidate')}, ${plural(c.lacking, 'lacks a next step', 'lack a next step')}. Show them.`}
                           style={{ cursor: 'pointer', outline: 'none' }}
                           onPointerEnter={(e: PointerEvent) => {
                             setHover(id)

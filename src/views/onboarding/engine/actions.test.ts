@@ -12,6 +12,7 @@ import { DEFAULT_FILTERS } from '@/data/scope'
 import type { SourceMeta } from '@/data/store'
 import { resolveDrill } from '@/drill/Drill'
 import type { ActionItem } from '../../types'
+import { isBehindCritical } from './actions'
 import { onboardingBase } from './base'
 import { actions, computeOnboarding } from './index'
 import { AS_OF, cand, emp, fixtureContext, line, req, sampleContext, task } from './testkit'
@@ -155,6 +156,18 @@ describe('the hiring plan, for Finance', () => {
     const spec = resolveDrill(x.drill)!
     expect(spec.kind).toBe('hiringPlan')
     expect(spec.filter?.businessUnit).toEqual(['Silicon Engineering'])
+  })
+
+  it('rates a gap critical only from the share and the number of starts, and sizes it by the gap', () => {
+    const s = { behindCritical: 0.25, behindCriticalMin: 3 }
+    // One start short of three planned is a third of the plan, but not a crisis.
+    expect(isBehindCritical({ gap: 1, planFull: 3 }, s)).toBe(false)
+    expect(isBehindCritical({ gap: 7, planFull: 21 }, s)).toBe(true)
+    expect(isBehindCritical({ gap: 3, planFull: 30 }, s)).toBe(false)
+    expect(isBehindCritical({ gap: 3, planFull: 12 }, s)).toBe(true)
+    expect(isBehindCritical({ gap: 5, planFull: 0 }, s)).toBe(false)
+    const x = byId(items, 'onboarding:plan-behind:Silicon Engineering:Digital Design')
+    expect(x.size).toBe(9)
   })
 
   it('rolls future roles with no open req up per business unit, a warning within 60 days of the first start', () => {

@@ -4,9 +4,10 @@
  * margin, Missed beyond it, "No target" when the metric has none, and unknown ("—") when the
  * value is missing, hidden by the data standard or hidden to protect anonymity. Pure.
  */
+import type { TileJudge } from '@/components/KpiStrip'
 import type { Severity } from '@/components/types'
 import type { Format } from '@/lib/format'
-import { targetStatus } from '@/metrics/api'
+import { kpiTarget, targetStatus } from '@/metrics/api'
 import type { MetricsApi, MetricTarget } from '@/metrics/types'
 import { P } from '../metrics'
 
@@ -85,4 +86,19 @@ export function judge(
 export function missSeverity(j: Judgement): number {
   if (j.status !== 'missed' || j.gap == null) return 0
   return j.margin ? j.gap / j.margin : Number.POSITIVE_INFINITY
+}
+
+/**
+ * Tiles judged as the People scorecard judges its measures: Met, Watch inside the watch margin,
+ * Missed beyond it. The Scorecard and the homes that show its measures beside their tiles use it,
+ * so one number never reads Missed on a tile and Watch in the measures next to it.
+ */
+export function scorecardJudge(metrics: Pick<MetricsApi, 'def' | 'target' | 'num'>): TileJudge {
+  const margins = watchMargins(metrics)
+  return (metricId, value, format) => {
+    const t = kpiTarget(metrics, metricId, value, format)
+    if (!t) return null
+    const watch = judge(value, t.target, format, margins).status === 'watch'
+    return { target: t.target, status: watch ? 'watch' : t.status }
+  }
 }

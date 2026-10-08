@@ -7,10 +7,9 @@
  */
 import { MotionConfig, motion } from 'motion/react'
 import { type CSSProperties, lazy, Suspense, useEffect, useRef } from 'react'
-import { baseTab } from '@/access/policy'
 import { connectAccessUi } from '@/access/ui/connectUi'
 import { ScopePicker } from '@/access/ui/ScopePicker'
-import { AskPanel } from '@/ask/ui/AskPanel'
+import { AskGate } from '@/ask/ui/AskGate'
 import { AskScreenBridge } from '@/ask/ui/AskScreenBridge'
 import { useDock } from '@/ask/ui/useDock'
 import { FigureRegistryProvider } from '@/charts/registry'
@@ -41,6 +40,7 @@ import { Masthead } from './Masthead'
 import { SettingsSheet } from './settings/SettingsSheet'
 import { useDisplaySettings, useHashRouting } from './useShell'
 import { VIEW_BODY_ID, ViewHeader } from './ViewHeader'
+import { viewTabOf } from './viewTab'
 
 const PAGE = 'mx-auto w-full max-w-[1440px] px-(--gutter)'
 
@@ -61,21 +61,15 @@ function ViewPage({ view: registered, requestedTab }: { view: ViewDef; requested
   const { access } = useAnalytics()
   const view = withAccessTabs(withFeatureTabs(registered, { engagementSurveys }), access)
   // A part of a tab picked in the address ("analyses:quality") belongs to its tab: the shell
-  // works with the tab, and the view gets the whole address to pick the part.
-  const requestedBase = baseTab(requestedTab)
-  const tab = resolveTab(view.tabs, requestedBase)
-  const viewTab = requestedBase === tab && requestedTab ? requestedTab : tab
+  // works with the tab, and only a tab with parts gets the whole address (`viewTabOf`). A tab the
+  // mode or a feature switch hides, or "<tab>:<anything>" on a tab without parts, rewrites the
+  // address to the tab shown.
+  const { tab, viewTab, rewrite } = viewTabOf(view.tabs, registered.tabs, requestedTab)
   const hasSubTabs = view.tabs.length > 1
-  // A feature tab switched off while open (Engagement), or a tab the mode hides, shows the first
-  // tab: the address follows, so a reload or a shared link doesn't name a tab that isn't there.
-  const dropped =
-    !!requestedTab &&
-    registered.tabs.some((t) => t.key === requestedBase) &&
-    !view.tabs.some((t) => t.key === requestedBase)
   const navigate = useCensus((s) => s.navigate)
   useEffect(() => {
-    if (dropped) navigate(view.key, tab, { scroll: false })
-  }, [dropped, navigate, view.key, tab])
+    if (rewrite) navigate(view.key, tab, { scroll: false })
+  }, [rewrite, navigate, view.key, tab])
   return (
     <div id={VIEW_PANEL_ID} role="tabpanel" aria-labelledby={`tab-${view.key}`}>
       {/* The org, period and data-standard filters change nothing on a view that reads no datasets. */}
@@ -295,8 +289,8 @@ export function App() {
         {ready && policyReady ? (
           <AnalyticsProvider key={policyKey}>
             <Shell />
-            {/* Ask Census beside the page: docked on wide screens, a bottom sheet on phones. */}
-            <AskPanel />
+            {/* Ask Census beside the page: docked on wide screens, a bottom sheet on phones; none while Ask is off. */}
+            <AskGate />
             {/* Inside the provider: the panels read the analytics context (names, as-of, tiers, pay setting). */}
             <DrillPanel />
             <SettingsSheet />

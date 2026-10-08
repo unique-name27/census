@@ -41,31 +41,57 @@ const sentence = (s: string) => {
 
 /** "Due 3 Oct 2026." unless the item already says its date. */
 function duePhrase(a: OpenAction): string {
-  const due = a.item.due
+  const own = a.item.forOwner
+  // The owner's wording carries its own due date when HR's would say more than the owner reads.
+  const due = own?.due !== undefined ? own.due : a.item.due
   if (!due) return ''
-  const text = `${a.item.what} ${a.item.note ?? ''}`
+  const text = `${own?.what ?? a.item.what} ${a.item.note ?? ''}`
   if (text.includes(formatDate(due)) || text.includes(shortDate(due))) return ''
   return ` Due ${formatDate(due)}.`
 }
 
-/** The item's polite ask, or a neutral one when it has none or it breaks the tone rules. */
-export function askOf(a: OpenAction): string {
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+/**
+ * The item's polite ask, or a neutral one when it has none or it breaks the tone rules. `me` is
+ * who sends the note (the manager in Manager mode): an ask to review something "with" them reads
+ * "together", never their own name in the third person.
+ */
+export function askOf(a: OpenAction, me?: string | null): string {
   const note = a.item.note?.trim()
   if (!note || NAGGING.test(note)) return DEFAULT_ASK
-  return sentence(note)
+  let out = note
+  const name = me?.trim()
+  if (name)
+    for (const n of new Set([name, firstName(name)]))
+      out = out.replace(new RegExp(` with ${escapeRe(n)}(?=[\\s,.?!]|$)`, 'g'), ' together')
+  return sentence(out)
 }
 
-/** One numbered entry: what it is about, what is open (and when it is due), and the ask. */
-function entry(a: OpenAction, n: number): string {
+/**
+ * One numbered entry: what it is about, what is open (and when it is due), and the ask. A note
+ * goes to the item's owner, so an item worded for them (`forOwner`) reads that way: a manager
+ * reads "4 exits from your team", never HR's "regretted exits" about their team by name.
+ */
+function entry(a: OpenAction, n: number, me?: string | null): string {
+  const own = a.item.forOwner
   return [
-    `${n}. ${a.item.subject.label}`,
-    `   ${sentence(a.item.what)}${duePhrase(a)}`,
-    `   ${askOf(a)}`,
+    `${n}. ${own?.subject ?? a.item.subject.label}`,
+    `   ${sentence(own?.what ?? a.item.what)}${duePhrase(a)}`,
+    `   ${askOf(a, me)}`,
   ].join('\n')
 }
 
-/** The note for one owner's items, in the order given. Empty when there are none. */
-export function composeNote(owner: NoteOwner, items: readonly OpenAction[], asOf: ISODate): string {
+/**
+ * The note for one owner's items, in the order given. Empty when there are none. `opts.me` is
+ * the sender when the mode names one (Manager, Recruiter): asks that name them read "together".
+ */
+export function composeNote(
+  owner: NoteOwner,
+  items: readonly OpenAction[],
+  asOf: ISODate,
+  opts: { me?: string | null } = {},
+): string {
   if (!items.length) return ''
   const n = items.length
   const whom = owner.isTeam ? 'your team' : 'you'
@@ -75,7 +101,7 @@ export function composeNote(owner: NoteOwner, items: readonly OpenAction[], asOf
       : `Here are ${n} open items for ${whom}, as of ${formatDate(asOf)}.`
   const listed = items.slice(0, NOTE_MAX_ITEMS)
   const rest = n - listed.length
-  const blocks = [greeting(owner), intro, listed.map((a, i) => entry(a, i + 1)).join('\n\n')]
+  const blocks = [greeting(owner), intro, listed.map((a, i) => entry(a, i + 1, opts.me)).join('\n\n')]
   if (rest > 0)
     blocks.push(`There ${rest === 1 ? 'is 1 more' : `are ${rest} more`}; I can send the full list.`)
   blocks.push(

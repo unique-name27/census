@@ -30,7 +30,7 @@ unit, HRBP region, Manager; Developer always sees everything and cannot be edite
 | Role | Offered in the Mode menu or not; home view |
 | Views and sub-tabs | Shown or hidden (including each Special analyses analysis) |
 | Figures and metrics | Hidden per role, found by id, title or metric |
-| Data | Datasets the role reads; drill kinds; person card (full, limited, none) |
+| Data | Datasets the role reads; drill kinds; columns left out of their records (`column:<kind>.<key>`, such as Manager's exit reason, regrettable flag and candidate reason); person card (full, limited, none) |
 | Pay | None, ratios, totals, or per person behind the session switch |
 | Ask | On or off; each data tool; the screen action tools; make_chart |
 | Exports | Figure exports, whole-view exports, records exports, the monthly report |
@@ -47,7 +47,13 @@ that tries is rejected line by line):
 - anonymity minimums can only be raised, never lowered;
 - pay and immigration details per person only ever behind their session switches;
 - the Security center, debug overlays and the Ask tools console stay Developer-only;
-- a role can never see outside its scope.
+- a role can never see outside its scope: a scoped role never shows the Data room or anything
+  else that reads every record (its tabs and panels, its export, Explain quality, the reporting
+  date, official lists, settings files), and a recruiter never shows a view, tab or dataset
+  beyond their reqs (tabs can only be narrowed);
+- cost totals without the pay switch are for Finance only, over whole business units at the
+  reporting date HR sets: any other role's `pay:totals`, or hiding `pay:amounts` while the totals
+  stay shown, is refused, and Finance cannot show the reporting date or settings files.
 
 ## The editor
 
@@ -64,6 +70,22 @@ that tries is rejected line by line):
 - **In force:** which policy file is loaded (version, published by, date, notes, checksum), or
   "Built-in defaults" when none is.
 
+## Addresses
+
+Each part of the editor has its own address, in the Developer page's colon form, so a link or a
+reload opens the same page:
+
+| Address | Opens |
+|---|---|
+| `#dev.security` | the matrix |
+| `#dev.security:role:finance` | the role page, on Finance (any role: `role:hr-ops`, `role:hrbp-unit`, ...) |
+| `#dev.security:changes` | Changes |
+| `#dev.security:in-force` | In force |
+| `#dev.security:publish` | Publish and import |
+
+The address keeps everything after its first "." as the tab, so a role written after a "/" or a
+"." (`role/finance`, `role.finance`) opens the same role page.
+
 ## Publish and load
 
 - **Publish** validates the draft, then downloads `access-policy.json`:
@@ -71,6 +93,10 @@ that tries is rejected line by line):
   checksum }`, with each override `{ role, surface, decision, reason, by, at }`.
 - The page shows the steps to put it in force: place the file at `public/access-policy.json` in the
   Census repository and redeploy (`npm run deploy`). Census then loads it for everyone.
+- `npm run deploy` (`scripts/deploy-pages.mjs`, file list in `scripts/pagesFiles.mjs`) builds the
+  one-file `census.html`, which embeds the file, and publishes it as `index.html` with
+  `access-policy.json` beside it. It stops without publishing when the file is not a policy file
+  with a checksum (Census would ignore it) or when `census.html` does not carry that checksum.
 - **At startup** Census fetches `access-policy.json` from its own site (same origin, no cache by
   version). A missing file means the built-in defaults. An invalid file, an unknown format version
   or a checksum mismatch is ignored as a whole, with a Developer-mode warning naming why; unknown

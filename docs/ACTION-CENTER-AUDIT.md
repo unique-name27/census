@@ -736,7 +736,8 @@ Vitest, node environment, on the sample unless said.
 **Layout and accessibility**
 - [ ] On role homes and on the Action center under 768 px, the list comes before the overview
       figures (QA crawl at 375 px: first item within the first two screens).
-- [ ] Heading order h1, h2, h3 with no skip; no horizontal scroll at 375 px (QA crawl).
+- [ ] Heading order h1, h2, h3 with no skip; no horizontal scroll at 375 px on `#actions` and `#home` in
+      every role mode, with each list picked (QA crawl: `documentElement.scrollWidth` is 375).
 - [ ] The tier badge's long sentence is in its tooltip, not read on every figure.
 
 **Help, tours, exports**

@@ -249,6 +249,12 @@ describe('store', () => {
     expect(S.parseHash('#onboarding.plan')).toEqual({ view: 'onboarding', tab: 'plan' })
     expect(S.parseHash('#recruiting.pipeline')).toEqual({ view: 'recruiting', tab: 'pipeline' })
     expect(S.parseHash('#nowhere')).toBeNull()
+    // The tab is everything after the first dot: a sub-address with a dot survives a reload.
+    expect(S.parseHash('#dev.security:role:hr-ops')).toEqual({ view: 'dev', tab: 'security:role:hr-ops' })
+    expect(S.parseHash('#dev.security:role.finance?bu=X')).toEqual({
+      view: 'dev',
+      tab: 'security:role.finance',
+    })
     expect(S.HOME_VIEW).toBe('scorecard')
     expect(S.PAGE_VIEWS).toEqual(['data', 'actions', 'dev'])
     // Every folder tab is a route.

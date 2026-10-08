@@ -119,6 +119,10 @@ export const PRIVACY_ARTICLES: readonly HelpArticle[] = [
         p: "Finance mode sees the totals at all times and never one person's pay. It filters by business unit and period only, so two totals always differ by whole business units. A total opens the people it counts, without amounts, and every export says that individual pay is left out.",
         ...PAY_TOTALS,
       },
+      {
+        p: 'Every amount Finance mode sees is rounded down to the nearest $0.1M ($12,345,678 reads "$12.3M"; a total under $100,000 reads "under $0.1M"), on screen, in tooltips and tables, and in every export. A total over several business units adds each unit’s rounded amount, plus $0.1M for every two units, since rounding down takes about $0.05M off each. Percentages and amounts against budget are worked out from the rounded amounts, so comparing one breakdown with another, one set of business units with another, or one date with another never narrows one person’s pay to less than a $100,000 range.',
+        ...PAY_TOTALS,
+      },
       { h: 'In this mode', ...NO_PAY },
       {
         p: 'This mode shows pay as ratios only. No figure, table, record list or export holds a pay amount or a cost total; those stay with Total rewards.',

@@ -2,7 +2,9 @@
  * "Copy note": one polite, plain-text message per owner, following the recruiting tone rules.
  */
 import { describe, expect, it } from 'vitest'
+import { groupByOwner } from './group'
 import { askOf, composeNote, DEFAULT_ASK, greeting, NAGGING, NOTE_MAX_ITEMS } from './note'
+import { everyMode } from './roleKit'
 import { AS_OF, open } from './testkit'
 
 describe('greeting', () => {
@@ -78,4 +80,23 @@ describe('composeNote', () => {
     expect(text).toContain('There are 3 more; I can send the full list.')
     expect(composeNote({ name: 'Sam Lee', isTeam: false }, [], AS_OF)).toBe('')
   })
+})
+
+describe('on the sample, every note a manager reads', () => {
+  it('says "exits", never "regretted exits", in every mode that copies a note to a manager', () => {
+    let notes = 0
+    for (const { mode, collected } of everyMode()) {
+      // Every item a manager holds, grouped by manager, as Copy note groups them.
+      const byOwner = groupByOwner(
+        collected.items.filter((a) => a.role === 'manager' && !a.isTeam),
+        AS_OF,
+      ).flatMap((g) => g.owners)
+      for (const b of byOwner) {
+        const text = composeNote({ name: b.name, isTeam: false }, b.items, AS_OF)
+        notes++
+        expect(text, `${mode} ${b.name}`).not.toMatch(/regretted/i)
+      }
+    }
+    expect(notes).toBeGreaterThan(0)
+  }, 300_000)
 })

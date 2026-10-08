@@ -29,9 +29,11 @@ import {
   dueText,
   EXPORT_COLUMNS,
   exportRows,
+  groupByOwner,
   hashKey,
   type ItemStatus,
   itemsDrill,
+  lensFor,
   type OpenAction,
   type OwnerBlock,
   type OwnerGroup,
@@ -124,7 +126,8 @@ export function useItemActions() {
       undoable(
         a,
         `Snoozed for ${snoozeDays} d: ${a.item.subject.label}`,
-        `It comes back on its own, or sooner if it changes. ${savedNote()}`,
+        // Only an item with a fingerprint (a roll-up, a breach in force) can come back early.
+        `It comes back on its own${a.item.fingerprint ? ', or sooner if it changes' : ''}. ${savedNote()}`,
         snooze([a], snoozeDays),
       ),
     reopen: (a: OpenAction) => undoable(a, `Reopened: ${a.item.subject.label}`, savedNote(), reopen([a])),
@@ -227,8 +230,69 @@ function AmountText({ a }: { a: OpenAction }) {
   if (group ? !ctx.showCost : !ctx.showPay) return null
   return (
     <span className="tnum text-meta text-ink-2">
-      {amount.label}: {fmt(amount.usd, 'moneyFull')}
+      {amount.label}: {fmt(amount.usd, amount.rounded ? 'moneyM' : 'moneyFull')}
     </span>
+  )
+}
+
+/**
+ * Who an item waits on, in the row: the team's name, "Waiting on you" when it is the mode's own
+ * person (the manager, the recruiter), else "Waiting on Maya Chen".
+ */
+export function waitingOn(
+  a: Pick<OpenAction, 'isTeam' | 'ownerName' | 'ownerId'>,
+  me: { id: string | null; name: string } | null,
+): string {
+  if (a.isTeam) return a.ownerName
+  const mine = !!me && (me.id && a.ownerId ? me.id === a.ownerId : sameName(me.name, a.ownerName))
+  return mine ? 'Waiting on you' : `Waiting on ${a.ownerName}`
+}
+
+const sameName = (x: string, y: string) => x.trim().toLowerCase() === y.trim().toLowerCase()
+
+/**
+ * A roll-up held by several people (HRBP's "Managers: 26 interview decisions"): who holds its
+ * items, each with their count and a note to copy with their own items only.
+ */
+function RollupOwners({ a }: { a: OpenAction }) {
+  const ctx = useAnalytics()
+  const [open, setOpen] = useState(false)
+  const blocks = groupByOwner(a.members ?? [], ctx.asOf).flatMap((g) => g.owners)
+  if (blocks.length < 2) return null
+  const id = `rollup-owners-${rowKeyOf(a)}`
+  return (
+    <div className="mt-1">
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls={id}
+        onClick={() => setOpen(!open)}
+        className="inline-flex items-center gap-1 rounded-mark text-meta font-medium text-link hover:underline"
+      >
+        <IconChevronRight className={cx('size-3.5 transition-transform duration-100', open && 'rotate-90')} />
+        {open ? 'Hide owners' : `By owner (${fmt(blocks.length, 'int')})`}
+      </button>
+      {open && (
+        <ul id={id} aria-label={`Who holds ${a.item.subject.label}`} className="mt-1 border-t border-rule">
+          {blocks.map((b) => (
+            <li
+              key={b.key}
+              className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-rule py-1 text-meta text-ink-2"
+            >
+              <span className="min-w-0 flex-1 basis-40 truncate font-medium text-ink">{b.name}</span>
+              <Drill
+                spec={() => itemsDrill(ctx, `${a.item.subject.label}: ${b.name}`, b.items)}
+                label={`Show the ${plural(b.items.length, 'item')} ${b.name} holds`}
+                className="tnum"
+              >
+                {plural(b.items.length, 'item')}
+              </Drill>
+              <CopyNoteButton block={b} />
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   )
 }
 
@@ -247,6 +311,7 @@ export function ItemRow({
 }) {
   const ctx = useAnalytics()
   const { asOf } = ctx
+  const me = lensFor(ctx).me
   const act = useItemActions()
   const days = daysToDue(a.item.due, asOf)
   const overdue = days != null && days < 0
@@ -273,16 +338,19 @@ export function ItemRow({
             </span>
             <FromLink a={a} />
           </span>
+          {/* A space between the two unbreakable parts, so the owner wraps to its own line on a phone. */}
+          {showOwner && ' '}
           {showOwner && (
             <span className="whitespace-nowrap">
-              <span aria-hidden="true" className="pr-1.5 pl-1.5 text-muted">
+              <span aria-hidden="true" className="pr-1.5 pl-0.5 text-muted">
                 ·
               </span>
-              {a.isTeam ? a.ownerName : `Waiting on ${a.ownerName}`}
+              {waitingOn(a, me)}
             </span>
           )}
         </p>
         {a.item.note && <p className="mt-1 text-meta leading-snug text-muted">{a.item.note}</p>}
+        {!parked && a.members && <RollupOwners a={a} />}
         {(a.alsoFrom.length > 0 || a.below || amountShown || changed) && (
           <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-meta leading-snug text-muted">
             {changed && <span>Changed since it was marked on {formatDate(changed.slice(0, 10))}</span>}
@@ -359,10 +427,15 @@ export function ItemRow({
 /* ───────── one owner ───────── */
 
 function CopyNoteButton({ block }: { block: OwnerBlock }) {
-  const { asOf } = useAnalytics()
+  const ctx = useAnalytics()
+  const { asOf } = ctx
   const [fallback, setFallback] = useState<string | null>(null)
   const copy = async () => {
-    const text = composeNote({ name: block.name, isTeam: block.isTeam }, block.items, asOf)
+    // A roll-up's items each go in the note, so the owner reads every record by name.
+    const items = block.items.flatMap((a) => (a.members ? [...a.members] : [a]))
+    const text = composeNote({ name: block.name, isTeam: block.isTeam }, items, asOf, {
+      me: lensFor(ctx).me?.name,
+    })
     if (!text) return
     try {
       await writeClipboard(text)
@@ -482,7 +555,8 @@ function OwnerRow({
             </>
           )}
         </span>
-        {!parked && <CopyNoteButton block={block} />}
+        {/* An owner group's roll-ups carry a note per owner inside them, not one for the group. */}
+        {!parked && !block.ownerKey.startsWith('group:') && <CopyNoteButton block={block} />}
       </div>
       {open && (
         <ul id={listId} aria-label={`Items waiting on ${block.name}`}>

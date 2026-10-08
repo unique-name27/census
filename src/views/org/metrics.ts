@@ -59,6 +59,19 @@ export const ORG_METRIC = {
 
 export type OrgMetricId = (typeof ORG_METRIC)[keyof typeof ORG_METRIC]
 
+/**
+ * The details panel's team figures (and Open roles), each shown only where the mode shows its
+ * metric: Finance's allowlist shows none of these (docs/ROLES-V2.md 4.2).
+ */
+export const ORG_TEAM_METRICS = [
+  ORG_METRIC.directReports,
+  ORG_METRIC.totalOrg,
+  ORG_METRIC.teamTenure,
+  ORG_METRIC.teamContingent,
+  ORG_METRIC.teamExits,
+  ORG_METRIC.teamRegretted,
+] as const
+
 /** Each setting the engine reads: the metric that holds it and its key. */
 export const ORG_PARAM = {
   wideSpan: { metricId: ORG_METRIC.wideSpan, key: 'minDirects' },
@@ -429,7 +442,7 @@ export const metrics: MetricDef[] = defineMetrics('org', [
       {
         key: ORG_PARAM.exitMonths.key,
         label: 'Exits window',
-        description: 'How far back the detail panel counts exits and regretted exits.',
+        description: 'How far back the detail panel counts exits.',
         type: 'months',
         default: 12,
         min: 1,

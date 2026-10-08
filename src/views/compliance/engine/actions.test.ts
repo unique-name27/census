@@ -37,6 +37,22 @@ describe('Compliance items on the sample', () => {
       expect(!!x.exposure, x.id).toBe(x.what.startsWith('Work authorization ended'))
   })
 
+  it('calls exposure a breach in force on the as-of date, never one still to come', () => {
+    // One rule: working without a license, an I-9 past due, an authorization that ended.
+    for (const x of of('license'))
+      expect(!!x.exposure, x.id).toBe(x.what.startsWith('Working since') && !!x.due && x.due < ctx.asOf)
+    const pending = of('license').filter((i) => i.what.startsWith('Starts '))
+    expect(pending.length).toBeGreaterThan(0)
+    for (const x of pending) {
+      expect(x.exposure, x.id).toBeUndefined()
+      expect(x.severity, x.id).not.toBe('critical')
+      expect(x.due && x.due >= ctx.asOf, x.id).toBe(true)
+    }
+    // An overdue reverification whose authorization has not ended is not exposure either.
+    for (const x of of('reverification').filter((i) => /reverification has not started/.test(i.what)))
+      expect(x.exposure, x.id).toBeUndefined()
+  })
+
   it('never names an authorization type in the words', () => {
     for (const x of items) expect(`${x.what} ${x.note}`, x.id).not.toMatch(/\b(H-1B|L-1|O-1|TN|visa)\b/i)
   })

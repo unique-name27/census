@@ -7,7 +7,7 @@
  */
 import { type ReactNode, useState } from 'react'
 import { BarList, type Column, Figure } from '@/charts'
-import { Grid, goTo, KpiStrip, Pending, Readout, Section } from '@/components'
+import { goTo, KpiStrip, Pending, Readout, Section } from '@/components'
 import type { FindingSource } from '@/components/Readout'
 import type { Finding, Kpi } from '@/components/types'
 import { cx } from '@/components/ui'
@@ -52,10 +52,11 @@ import {
   type LeaderListRow,
   type SiteListRow,
 } from '../engine/hrbp'
-import { tile } from '../engine/kpis'
+import { scorecardJudge, tile } from '../engine/kpis'
 import { AttentionSection } from './Attention'
 import { ReqRisk, TrailingAttrition } from './Figures'
 import { ListFigure, ListSwitch } from './Frames'
+import { HomeTop } from './HomeTop'
 import { type HomeItems, useHomeItems } from './useHomeItems'
 import { useIdleModel } from './useIdleModel'
 
@@ -77,7 +78,16 @@ function KeyFigures() {
     ...tile(r, 'open-reqs', { view: 'recruiting', tab: 'requisitions', label: 'Recruiting, Requisitions' }),
     ...tile(o, 'starts-30', { view: 'onboarding', tab: 'upcoming', label: 'Onboarding, Upcoming starts' }),
   ]
-  return <KpiStrip id="home-hrbp-kpis" title="Key figures" kpis={kpis} span={8} />
+  // Judged as the measures beside it are, so a rate never reads Missed here and Watch there.
+  return (
+    <KpiStrip
+      id="home-hrbp-kpis"
+      title="Key figures"
+      kpis={kpis}
+      span={8}
+      judge={scorecardJudge(ctx.metrics)}
+    />
+  )
 }
 
 /* ───────── what to raise ───────── */
@@ -351,15 +361,20 @@ function SitesTable({ rows, actions }: { rows: SiteListRow[]; actions: ReactNode
               })
           : null,
     },
-    {
-      key: 'i9OnTime',
-      label: 'I-9 Section 2 on time',
-      format: 'pct',
-      drill: (r) =>
-        r.i9OnTime != null
-          ? () => i9Drill(scope, r.i9, { title: `I-9 Section 2, ${r.site}`, uses: [] })
-          : null,
-    },
+    // I-9 Section 2 is a US rule: a region with no US site leaves the column out.
+    ...(rows.some((r) => r.usSite || r.i9.length > 0)
+      ? [
+          {
+            key: 'i9OnTime' as const,
+            label: 'I-9 Section 2 on time',
+            format: 'pct' as const,
+            drill: (r: SiteListRow) =>
+              r.i9OnTime != null
+                ? () => i9Drill(scope, r.i9, { title: `I-9 Section 2, ${r.site}`, uses: [] })
+                : null,
+          },
+        ]
+      : []),
   ]
   return (
     <ListFigure<SiteListRow>
@@ -464,35 +479,52 @@ export function HrbpHome() {
   const region = ctx.access.scope?.kind === 'region'
   return (
     <>
-      <Grid>
-        {model ? (
-          <>
+      <HomeTop
+        hero={
+          model ? (
             <Standing id="home-hrbp-standing" model={model} className={fade} />
-            <KeyFigures />
-            <Measures id="home-hrbp-measures" model={model} className={fade} />
-            <Readout
-              id="home-hrbp-findings"
-              title="What to raise"
-              findings={raise.slice(0, 6).map((s) => s.finding)}
-              sourceOf={sourcesOf(raise)}
-              emptyText="No critical or watch findings in People stats, Recruiting, Onboarding or Talent for this scope."
-              span={12}
-              limit={6}
-              variant="compact"
-              className={cx('lg:col-span-4 lg:sticky lg:top-4', fade)}
+          ) : (
+            <Pending
+              message="Reading each practice's measures and findings for this scope."
+              frames={BAND_FRAMES.slice(0, 1)}
             />
-          </>
-        ) : (
-          <Pending
-            message="Reading each practice's measures and findings for this scope."
-            frames={BAND_FRAMES}
+          )
+        }
+        overview={
+          model ? (
+            <>
+              <KeyFigures />
+              <Measures id="home-hrbp-measures" model={model} className={fade} />
+              <Readout
+                id="home-hrbp-findings"
+                title="What to raise"
+                findings={raise.slice(0, 6).map((s) => s.finding)}
+                sourceOf={sourcesOf(raise)}
+                emptyText="No critical or watch findings in People stats, Recruiting, Onboarding or Talent for this scope."
+                span={12}
+                limit={6}
+                variant="compact"
+                className={cx('lg:col-span-4 lg:sticky lg:top-4', fade)}
+              />
+            </>
+          ) : (
+            <Pending
+              message="Reading each practice's measures and findings for this scope."
+              frames={BAND_FRAMES.slice(1)}
+            />
+          )
+        }
+        attention={
+          <AttentionSection
+            items={items}
+            shown={HOME_SHOWN}
+            dek={
+              ctx.access.scope?.kind === 'region' && ctx.access.scope.owner
+                ? "Your open items in this scope: span of control, single-report chains, new managers with a large team, promotions to review, what the surveys say about managers and exits, and what they say about your region's sites."
+                : 'Your open items in this scope: span of control, single-report chains, new managers with a large team, promotions to review and what the surveys say about managers and exits.'
+            }
           />
-        )}
-      </Grid>
-      <AttentionSection
-        items={items}
-        shown={HOME_SHOWN}
-        dek="Your open items in this scope: span of control, single-report chains, new managers with a large team, promotions to review and what the surveys say about managers and exits."
+        }
       />
       <Section
         title="My list"

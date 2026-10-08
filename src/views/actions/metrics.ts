@@ -256,7 +256,7 @@ export const metrics: MetricDef[] = defineMetrics('actions', [
         key: P.escalationDays.key,
         label: 'Escalation after',
         description:
-          'A critical item overdue more than this many days is an escalation: it joins legal exposure, critical roles at high risk of loss and regretted exit clusters on the CHRO and HR homes.',
+          'A critical item overdue more than this many days is an escalation: it joins the other escalations on the CHRO and HR homes.',
         type: 'days',
         default: DEFAULTS.escalationDays,
         min: 1,

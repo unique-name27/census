@@ -99,7 +99,7 @@ export function upcomingKpis(b: OnboardingBase, u: UpcomingModel, hasStartData: 
   out.push({
     id: 'day-minus-3',
     metricId: M.dayMinus3,
-    label: 'Day -3 tasks not done',
+    label: 'Day −3 tasks not done',
     value: b.hasTasks ? u.dayMinus3.length : null,
     format: 'int',
     goodDirection: 'down',
@@ -109,7 +109,7 @@ export function upcomingKpis(b: OnboardingBase, u: UpcomingModel, hasStartData: 
       startsDrill(
         b,
         u.dayMinus3.map((x) => x.start),
-        'Starts with day -3 tasks not done',
+        'Starts with day −3 tasks not done',
         {
           subtitle: asOfLine(b.asOf, b.scopeLabel, `starts by ${formatDate(u.dayMinus3End)}`),
           uses: taskUses,
@@ -119,7 +119,7 @@ export function upcomingKpis(b: OnboardingBase, u: UpcomingModel, hasStartData: 
       tasksDrill(
         b,
         u.dayMinus3.flatMap((x) => x.tasks),
-        'Open tasks due by day -3',
+        'Open tasks due by day −3',
         { uses: taskUses },
       ),
     uses: taskUses,

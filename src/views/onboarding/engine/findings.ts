@@ -213,11 +213,17 @@ function renegeFinding(b: OnboardingBase, u: UpcomingModel): Ranked | null {
   if (!top || top.reneged.length < 2) return null
   const all = top.reneged.length === r.reneged.length
   const target = b.settings.targets.renege
-  const reasons = [
-    ...new Set(
-      top.reneged.map((c) => (c.rejectionReason ?? '').replace(/^reneged:\s*/i, '').trim()).filter(Boolean),
-    ),
-  ]
+  // Why someone reneged is cited only where the mode shows candidates' reasons (not Manager mode).
+  const reasons =
+    b.showsReasons === false
+      ? []
+      : [
+          ...new Set(
+            top.reneged
+              .map((c) => (c.rejectionReason ?? '').replace(/^reneged:\s*/i, '').trim())
+              .filter(Boolean),
+          ),
+        ]
   const lead = all
     ? r.reneged.length === 2
       ? 'Both reneges'
@@ -551,7 +557,10 @@ function attritionFinding(b: OnboardingBase, f: First90Model): Ranked | null {
     detail: worst
       ? `The highest rate is in ${worst.group}: ${fmt(worst.met, 'int')} of ${fmt(worst.n, 'int')}.`
       : undefined,
-    action: 'Review the exit reasons of early leavers with their hiring managers.',
+    action:
+      b.showsReasons === false
+        ? 'Check in with new starters during their first weeks, and talk with your HR business partner about early exits.'
+        : 'Review the exit reasons of early leavers with their hiring managers.',
     tab: 'first90',
     drill: () => employeesDrill(b, a.leavers, 'Resigned in the early exit window', { uses }),
     uses,

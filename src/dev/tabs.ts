@@ -8,6 +8,7 @@
  *   #dev.inventory:homes/finance Inventory, Role homes, with the Finance home previewed
  *   #dev.access                  Access
  *   #dev.security                Security center (docs/SECURITY-CENTER.md)
+ *   #dev.security:role:finance   Security center, the role page on Finance
  *   #dev.ask:query_records       Ask tools, with query_records picked
  *   #dev.state  #dev.timings
  *
@@ -61,6 +62,13 @@ export function devTab(tab: DevTab, sub?: string | null): string {
   if (tab === 'overview' && !sub) return ''
   return sub ? `${tab}:${sub}` : tab
 }
+
+/**
+ * The route tab of Inventory's Role homes list, with one role's Home previewed when a mode is
+ * given: "inventory:homes/finance" (Home in Developer mode links to each one).
+ */
+export const homePreviewTab = (mode?: string | null): string =>
+  devTab('inventory', mode ? `homes/${mode}` : 'homes')
 
 /** Whether a route tab names a real Developer tab (Help's link check). */
 export const isDevRouteTab = (tab: string): boolean => {

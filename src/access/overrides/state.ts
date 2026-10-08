@@ -10,8 +10,15 @@
 import { createStore } from 'zustand/vanilla'
 import type { Mode } from '../modes'
 import { setPolicyOverrides } from '../policy'
-import { overridesOf } from './lines'
-import { DEFAULTS_IN_FORCE, type InForce, isPolicyRole, type PolicyLine, type PolicyRole } from './types'
+import { overridesOf, screenLines } from './lines'
+import {
+  DEFAULTS_IN_FORCE,
+  type InForce,
+  isPolicyRole,
+  type PolicyLine,
+  type PolicyRole,
+  type SkippedLine,
+} from './types'
 
 export const PREVIEW_KEY = 'census:access-preview'
 
@@ -24,6 +31,17 @@ export interface PreviewSession {
   /** The Security center's route tab to return to ("security:matrix"). */
   returnTo: string
   startedAt: string
+  /** Lines the guard rails left out before the preview was laid over (`screenPreview`). */
+  skipped?: readonly SkippedLine[]
+}
+
+/**
+ * A preview's lines through the guard rails, the way the loader screens a file: a draft the
+ * editor wrote never crosses one, but a preview kept in this tab's storage can be written by hand.
+ */
+export function screenPreview(p: PreviewSession): PreviewSession {
+  const { lines, skipped } = screenLines(p.lines, null)
+  return skipped.length ? { ...p, lines, skipped: [...(p.skipped ?? []), ...skipped] } : p
 }
 
 export interface PolicyState {
@@ -87,7 +105,8 @@ export function parsePreview(raw: string | null): PreviewSession | null {
 }
 
 /** Start previewing: the draft's lines over this tab, until `endPreview`. */
-export function startPreview(p: PreviewSession, storage: StorageLike | null = session()): void {
+export function startPreview(start: PreviewSession, storage: StorageLike | null = session()): void {
+  const p = screenPreview(start)
   try {
     storage?.setItem(PREVIEW_KEY, JSON.stringify(p))
   } catch {
@@ -119,8 +138,9 @@ export function resumePreview(storage: StorageLike | null = session()): PreviewS
   } catch {
     raw = null
   }
-  const p = parsePreview(raw)
-  if (!p) return null
+  const read = parsePreview(raw)
+  if (!read) return null
+  const p = screenPreview(read)
   lay(p.lines)
   policyStore.setState((s) => ({ preview: p, key: s.key + 1 }))
   return p

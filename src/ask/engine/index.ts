@@ -94,7 +94,7 @@ export {
   loadSdk,
 } from './client'
 export { Conversation, createConversation } from './conversation'
-export { ASK_INTRO, PRIVACY_LINE, suggestionsFor, WHAT_IS_SENT } from './copy'
+export { ASK_INTRO, noKeyQuestions, PRIVACY_LINE, suggestionsFor, WHAT_IS_SENT } from './copy'
 export {
   type AskError,
   type AskErrorKind,

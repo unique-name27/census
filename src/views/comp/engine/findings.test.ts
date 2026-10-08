@@ -70,7 +70,7 @@ describe('compensation findings', () => {
     const shown = computeComp(context(data, { showPay: true }), DEFAULT_SETTINGS)
     const text = (fs: typeof hidden.findings) => fs.map((f) => `${f.title} ${f.detail ?? ''}`).join(' ')
     expect(text(hidden.findings)).not.toMatch(/\$/)
-    expect(text(shown.findings)).toMatch(/Bringing them to minimum costs \$30K a year/)
+    expect(text(shown.findings)).toMatch(/Bringing them to minimum costs \$30.0K a year/)
     const below = shown.findings.find((f) => f.id === 'comp-below-min')!
     expect(below.title).toBe('3 people are paid below range minimum, 15.0% of 20.')
   })

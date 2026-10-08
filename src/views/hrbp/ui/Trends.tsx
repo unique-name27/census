@@ -44,7 +44,10 @@ const KIND_WORD: Record<TrailingKind, string> = { voluntary: 'Voluntary', regret
 export function AttritionTrailing({ m, span }: { m: HrbpModel; span: 6 | 12 }) {
   const ctx = useAnalytics()
   const p = m.prep
-  const [kind, setKind] = useState<TrailingKind>('voluntary')
+  const [picked, setKind] = useState<TrailingKind>('voluntary')
+  // Manager mode hides regretted attrition (HR's call about named leavers): voluntary only.
+  const withRegretted = ctx.access.can(`metric:${ID.regretted}`)
+  const kind: TrailingKind = withRegretted ? picked : 'voluntary'
   const t = useMemo(() => attritionTrailing(p), [p])
   const points = t[kind]
   const scope = points.filter((x) => x.series === t.scopeLine)
@@ -85,15 +88,17 @@ export function AttritionTrailing({ m, span }: { m: HrbpModel; span: 6 | 12 }) {
       }`}
       span={span}
       actions={
-        <Segmented<TrailingKind>
-          label="Exits"
-          value={kind}
-          onChange={setKind}
-          options={[
-            { value: 'voluntary', label: 'Voluntary' },
-            { value: 'regretted', label: 'Regretted' },
-          ]}
-        />
+        withRegretted ? (
+          <Segmented<TrailingKind>
+            label="Exits"
+            value={kind}
+            onChange={setKind}
+            options={[
+              { value: 'voluntary', label: 'Voluntary' },
+              { value: 'regretted', label: 'Regretted' },
+            ]}
+          />
+        ) : undefined
       }
       empty={
         !p.has.terminationDate

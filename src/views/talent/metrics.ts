@@ -137,7 +137,7 @@ export const metrics: MetricDef[] = defineMetrics('talent', [
         key: P.highRating.key,
         label: 'High performer rating',
         description:
-          'The lowest rating that counts as a high performer: at 4, people rated 4 or 5 count. The 9-box, key talent, regretted exits, promotion readiness, the flight-risk factor for a high rating and the Org chart exit simulation use it too.',
+          'The lowest rating that counts as a high performer: at 4, people rated 4 or 5 count. The 9-box, key talent, promotion readiness, the flight-risk factor for a high rating, the Org chart exit simulation and the other high performer measures use it too.',
         type: 'number',
         default: DEFAULTS.highRating,
         min: 3,

@@ -36,6 +36,7 @@ import {
   guardGroups,
   OTHER,
   openReqDrill,
+  otherCentersNote,
   TOP_CENTERS,
   topCostCenters,
 } from './cost'
@@ -45,8 +46,12 @@ import { comp, context, dataset, emp, team } from './test-fixtures'
 const cost = (d: Datasets, opts: Parameters<typeof context>[1] = {}): CostModel =>
   computeComp(context(d, { showPay: true, ...opts })).cost
 
-/** Shown rows plus Other cover the total exactly, Other holds 5 or more, and nothing shown is under 5. */
-function expectGuarded(rows: readonly CostRow[], total: CostRow, min = 5, label = '') {
+/**
+ * Shown rows plus Other cover the total exactly (in Finance, where each amount is rounded to
+ * $100,000 on its own, within the rounding of each), Other holds 5 or more, and nothing shown is
+ * under 5.
+ */
+function expectGuarded(rows: readonly CostRow[], total: CostRow, min = 5, label = '', rounded = false) {
   expect(
     rows.reduce((a, r) => a + r.people, 0),
     `${label} people`,
@@ -57,7 +62,12 @@ function expectGuarded(rows: readonly CostRow[], total: CostRow, min = 5, label 
   }
   const sum = (k: keyof CostRow) => rows.reduce((a, r) => a + ((r[k] as number | null) ?? 0), 0)
   for (const k of ['baseUsd', 'bonusUsd', 'targetCashUsd', 'equityUsd'] as const)
-    expect(sum(k), `${label} ${k}`).toBeCloseTo(total[k] as number, 2)
+    if (rounded) {
+      expect(Math.abs(sum(k) - (total[k] as number)), `${label} ${k}`).toBeLessThanOrEqual(
+        (rows.length + 1) * 100_000,
+      )
+      for (const r of [...rows, total]) expect((r[k] as number) % 100_000, `${label} ${r.group} ${k}`).toBe(0)
+    } else expect(sum(k), `${label} ${k}`).toBeCloseTo(total[k] as number, 2)
   for (const r of rows) {
     expect(r.people, `${label} ${r.group}`).toBeGreaterThanOrEqual(min)
     expect(r.targetCashUsd, `${label} ${r.group}`).not.toBeNull()
@@ -179,7 +189,10 @@ describe('Finance: totals without anyone’s pay', () => {
     const c = cost(d, { showPay: false, access: { mode: 'finance' } })
     expect(c).toMatchObject({ totals: true, shown: true })
     const tile = c.kpis.find((k) => k.id === 'cost-target-cash')!
-    expect(tile.value).toBeCloseTo(6 * 110_000, 6)
+    // $660,000 of target cash, rounded down to a whole $100,000 and read in millions.
+    expect(tile.value).toBe(600_000)
+    expect(tile.format).toBe('moneyM')
+    expect(c.rounded).toBe(true)
     const spec = resolveDrill(tile.drill) as DrillSpec<'employees'>
     expect(spec.kind).toBe('employees')
     expect(spec.rows).toHaveLength(6)
@@ -212,7 +225,9 @@ describe('Finance: totals without anyone’s pay', () => {
   it('reads the target cash cost on the folder tab, never a ratio', () => {
     const ctx = context(d, { access: { mode: 'finance' } })
     expect(view.headline(ctx).metricId).toBe('comp.cost.targetCash')
-    expect(costHeadline(ctx).value).toBe('$660K')
+    expect(costHeadline(ctx).value).toBe('$0.6M')
+    // The switch modes keep the exact amount.
+    expect(costHeadline(context(d, { showPay: true })).value).toBe('$660.0K')
     expect(view.headline(context(d)).metricId).toBe('comp.compa.median')
   })
 })
@@ -278,6 +293,20 @@ describe('on the sample company', () => {
     expect(topCostCenters(c, 8).filter((r) => !r.isOther)).toHaveLength(8)
   })
 
+  it('names the folded cost centers’ total only while cost totals may show', () => {
+    expect(otherCentersNote(c, c.byCostCenter)).toMatch(/^Other \(\d+ cost centers\): \$/)
+    // Compensation and HR with the switch off: no amount in the note, as on the tiles and charts.
+    for (const access of [{ mode: 'compensation' }, { mode: 'hr' }, { mode: 'chro' }] as AccessInput[]) {
+      const off = compModel(sampleContext({}, access, false)).cost
+      expect(off.shown, access.mode).toBe(false)
+      expect(otherCentersNote(off, off.byCostCenter), access.mode).toBeNull()
+      for (const k of off.kpis) expect(`${k.note ?? ''}`, `${access.mode} ${k.id}`).not.toContain('$')
+    }
+    // Finance sees totals without the switch.
+    const fin = compModel(sampleContext({}, { mode: 'finance' }, false)).cost
+    expect(otherCentersNote(fin, fin.byCostCenter)).toContain('$')
+  })
+
   it('every breakdown is guarded, in many scopes and with a raised minimum', () => {
     const scopes: [string, AnalyticsContext][] = [
       ['company', sampleContext()],
@@ -296,14 +325,16 @@ describe('on the sample company', () => {
         ['level', m.byLevel],
         ['site', m.bySite],
       ] as const)
-        expectGuarded(rows, m.total, 5, `${label} ${name}`)
+        expectGuarded(rows, m.total, 5, `${label} ${name}`, m.rounded)
       // Merit spend and open reqs fold the same way.
       if (m.merit.total.priced >= 5) {
         const shown = m.merit.rows.filter((r) => r.eligibleBaseUsd != null)
-        expect(
-          shown.reduce((a, r) => a + (r.eligibleBaseUsd ?? 0), 0),
-          label,
-        ).toBeCloseTo(m.merit.total.eligibleBaseUsd, 2)
+        const sum = shown.reduce((a, r) => a + (r.eligibleBaseUsd ?? 0), 0)
+        if (m.rounded)
+          expect(Math.abs(sum - m.merit.total.eligibleBaseUsd), label).toBeLessThanOrEqual(
+            (shown.length + 1) * 100_000,
+          )
+        else expect(sum, label).toBeCloseTo(m.merit.total.eligibleBaseUsd, 2)
         for (const r of m.merit.rows)
           expect(r.members.length >= 5 || r.eligibleBaseUsd == null, label).toBe(true)
       }

@@ -86,8 +86,37 @@ a summary (`errorLog`: status, error type, request ID and message, any workspace
 filters, period and data standard unless a tool call gives its own `filters`. A tool builds the
 context for another scope with a pure helper that reuses the live context's applied data, org
 index, quality and metrics (`buildContext` in `src/data/context.tsx` is pure; scope with
-`scopeDatasets`). The chat context always has `showPay: false` and `showImmigration: false`,
-whatever the session switches say.
+`scopeDatasets`). The chat context always has `showPay: false`, `showCost: false` and
+`showImmigration: false`, whatever the session switches and the mode say, so neither a pay amount
+nor a cost total reaches Claude.
+
+**Ask in each mode** (docs/ROLES-V2.md part 7; `engine/roles.ts`, `engine/tools.ts`,
+`engine/prompt.ts`). Ask follows the mode on screen, all eleven of them:
+- **Tools.** `toolDefinitionsFor(access)` is cached per mode, scope kind and policy file version
+  (Security center overrides are followed). A mode is offered only the tools its policy shows
+  (`explain_quality`: Developer, HR, CHRO and HR ops), `view_summary` and `compare_groups` list
+  only the mode's views, and `query_records` only the datasets the mode reads, with field help for
+  those alone. One cache breakpoint stays on the last tool.
+- **Scope.** A scoped mode's tools run inside its scope: Manager's org, an HRBP's business unit or
+  region, a recruiter's reqs (Recruiter with "Every recruiter" picked holds none). A filter outside
+  the scope is refused with the reason, never dropped quietly; `reset_filters` returns to the
+  mode's own scope. Finance's filters are business unit and period only, with no exclude, and it
+  compares by business unit only. `get_context` names the scope ("Silicon Engineering", "APAC",
+  "{{P7}}'s reqs"; a manager or recruiter is a token) and lists only its vocabularies.
+- **Refusals** name the mode in words ("compare_groups is not available in Recruiter mode."): a
+  hidden view, dataset, analysis, figure, metric, drill kind or field.
+- **Off.** Ask is off, with a plain reason and nothing sent, when the scope has fewer people than
+  the anonymity minimum (employees for an org, business unit or region; candidates for a
+  recruiter's reqs) or when a scoped mode has no pick ("Ask needs a region picked in HRBP mode.
+  Choose one with Mode.").
+- **System prompt.** `rolePromptLine(mode, scope, tokens)` adds one block after the cached prompt
+  for the mode: the CHRO, both HRBP modes and Finance in the contract's words; Compensation, Talent
+  management and HR ops list what their policy shows and hides; a recruiter or manager as a token.
+- **`open_items`** returns the mode's Needs attention and Waiting on others from the Action
+  center's own split, so the counts match the page. Each role home has its own four suggested
+  questions.
+- **A mode or pick change** starts a new chat, and a tool call from an answer asked under another
+  mode or pick is refused with nothing done.
 
 **Tools** (names and JSON schemas in `engine/tools.ts`; every result is JSON built from allowlisted
 fields, then passed through the privacy pass):
@@ -119,7 +148,7 @@ manager, HRBP, assignee or manager is allowed and returns person tokens.
 Education (`university`, `degreeLevel`, `fieldOfStudy`) and a candidate's offer details
 (`competingOffer`, `offerRevised`, `offerPositionInRange`) are one person's facts: means and
 medians only, and small counts hidden whenever a filter or grouping uses them. Where a mode hides
-the analysis they feed (Manager mode hides Quality of hire and Offer declines), `query_records`
+the analysis they feed (Manager mode, for one, hides Quality of hire and Offer declines), `query_records`
 does not read them at all: they leave the field list Claude is sent, a call that names one is
 refused with the reason, and a cut by `rejectionReason` leaves declined offers out.
 
@@ -186,6 +215,9 @@ Ask button. Help content tests must pass.
 
 ## Tests
 
+- Every mode (`engine/modes.test.ts`, `engine/modeMatrix.test.ts`): the tools offered and their
+  enums, refusals worded for the mode, each scope kind's filter rules, Ask off for a small scope or
+  a missing pick, the prompt block, and the privacy matrix run in all eleven modes.
 - Tools on the sample: `view_summary` values equal the view's own `summary(ctx)`; `compare_groups`
   equals rescoped summaries; `query_records` aggregates equal a recount from raw rows; refs open the
   same rows; suppression and data-standard hiding.

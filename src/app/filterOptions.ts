@@ -9,7 +9,14 @@ import type { AccessContext } from '@/access/context'
 import type { Mode } from '@/access/modes'
 import { clampFilters, FILTER_DIMS_OF } from '@/access/scopes/clamp'
 import { type FilterControl, S } from '@/access/surfaces'
-import { type Employee, type ISODate, LEVEL_LABELS, type Level, levelIndex } from '@/data/schema'
+import {
+  type Employee,
+  type ISODate,
+  LEVEL_LABELS,
+  type Level,
+  levelIndex,
+  type Requisition,
+} from '@/data/schema'
 import {
   DEFAULT_FILTERS,
   employeeMatcher,
@@ -247,6 +254,69 @@ export function scopedLeaderOptions(
     })
   }
   return out.sort((a, b) => b.size - a.size || a.name.localeCompare(b.name))
+}
+
+/**
+ * Recruiter mode (docs/ROLES-V2.md 2.5): the leader filter keeps reqs whose hiring manager is in
+ * the leader's org, so its options are the hiring managers of the recruiter's reqs and everyone
+ * above them, each sized by the open reqs in their org (as the row's "open reqs" count), never by
+ * headcount (People stats and the Org chart are not part of Recruiter mode). With `within` (the
+ * rest of the filter row), a size counts the open reqs it lets through. Most open reqs first.
+ */
+export function reqsLeaderOptions<R extends Pick<Requisition, 'hiringManagerId' | 'status'>>(
+  index: OrgIndex,
+  asOf: ISODate,
+  reqs: readonly R[],
+  within?: (r: R) => boolean,
+): LeaderOption[] {
+  const sizes = new Map<string, number>()
+  const seen = new Set<string>()
+  for (const r of reqs) {
+    seen.clear()
+    const open = r.status === 'Open' && (!within || within(r)) ? 1 : 0
+    let cur = r.hiringManagerId ? index.byId.get(r.hiringManagerId) : undefined
+    while (cur && !seen.has(cur.employeeId)) {
+      seen.add(cur.employeeId)
+      sizes.set(cur.employeeId, (sizes.get(cur.employeeId) ?? 0) + open)
+      cur = cur.managerId && cur.managerId !== cur.employeeId ? index.byId.get(cur.managerId) : undefined
+    }
+  }
+  const out: LeaderOption[] = []
+  for (const [id, size] of sizes) {
+    const e = index.byId.get(id)
+    if (!e || !isActiveAt(e, asOf)) continue
+    out.push({ id, name: e.name || id, title: e.jobTitle ?? '', size })
+  }
+  return out.sort((a, b) => b.size - a.size || a.name.localeCompare(b.name))
+}
+
+/**
+ * Recruiter mode: a list filter's values on the recruiter's reqs (the req's own business unit,
+ * department, location and level), each counted in open reqs, never in headcount; with `within`
+ * (the rest of the filter row), the open reqs it lets through. Values that are selected but on no
+ * req stay listed with 0, so they can be cleared.
+ */
+export function reqDimensionOptions<R extends Pick<Requisition, DimensionKey | 'status'>>(
+  reqs: readonly R[],
+  key: DimensionKey,
+  selected: readonly string[] = [],
+  within?: (r: R) => boolean,
+): DimensionOption[] {
+  const counts = new Map<string, number>()
+  for (const r of reqs) {
+    const v = r[key]
+    const n = r.status === 'Open' && (!within || within(r)) ? 1 : 0
+    if (typeof v === 'string' && v) counts.set(v, (counts.get(v) ?? 0) + n)
+  }
+  for (const v of selected) if (!counts.has(v)) counts.set(v, 0)
+  const out = [...counts].map(([value, count]) => ({ value, label: dimensionValueLabel(key, value), count }))
+  const rank = (v: string) => {
+    const i = levelIndex(v)
+    return i < 0 ? Number.MAX_SAFE_INTEGER : i
+  }
+  return key === 'level'
+    ? out.sort((a, b) => rank(a.value) - rank(b.value) || a.label.localeCompare(b.label))
+    : out.sort((a, b) => a.label.localeCompare(b.label))
 }
 
 /** The management chain from the top of the org down to the leader (inclusive); cycle-safe. */

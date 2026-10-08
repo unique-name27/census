@@ -7,6 +7,7 @@ import type { ReactNode, Ref } from 'react'
 import { routeShown } from '@/access/policy'
 import { Button, cx } from '@/components/ui'
 import { useAnalytics, useAnalyticsIfAny } from '@/data/context'
+import { DEV_TABS, parseDevTab } from '@/dev/tabs'
 import { formatDate } from '@/lib/dates'
 import { METRICS } from '@/metrics/catalog'
 import { DATA_TABS } from '@/views/data/links'
@@ -190,9 +191,13 @@ function WhatsNew() {
   )
 }
 
-/** "Recruiting", or a Data room tab by its own name ("Data quality"). */
+/** "Recruiting", or a Data room or Developer page tab by its own name ("Data quality", "Security center"). */
 function pageName(view: string, tab?: string): string {
   if (view === 'data' && tab) return DATA_TABS.find((t) => t.route === tab)?.label ?? PAGE_LABEL.data
+  if (view === 'dev' && tab) {
+    const dev = parseDevTab(tab).tab
+    if (dev !== 'overview') return DEV_TABS.find((t) => t.key === dev)?.label ?? 'Developer'
+  }
   return (PAGE_LABEL as Readonly<Record<string, string>>)[view] ?? (view === 'dev' ? 'Developer' : view)
 }
 

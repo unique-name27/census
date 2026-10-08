@@ -4,6 +4,7 @@
  * view on screen (on Home, the mode's own four: docs/ROLES-V2.md 7).
  */
 import type { Mode } from '@/access/modes'
+import { isTableMode } from '@/access/policy'
 import type { RouteView } from '@/data/store'
 import { type AnalysisKey, parseAnalysesTab } from '@/views/hrbp/analyses/tab'
 
@@ -171,6 +172,38 @@ const HOME_SUGGESTIONS: Partial<Record<Mode, readonly string[]>> = {
   ],
 }
 
+/**
+ * Manager mode's questions on the views it shows in part (docs/ROLES-V2.md, Decisions made, 8 Oct
+ * 2026): about the manager's org, and never about what the mode hides (regretted exits, why people
+ * left, sources, the hiring plan, surveys or key talent at risk).
+ */
+const MANAGER_SUGGESTIONS: Partial<Record<RouteView, readonly string[]>> = {
+  recruiting: [
+    'Where is time to fill longest in my org, and what is driving it?',
+    'Which open reqs in my org have been open longest?',
+    'Which candidates have waited longest for a decision?',
+    'How many offers are out in my org, and how long have they waited?',
+  ],
+  onboarding: [
+    'How many starts in the next two weeks are not ready for day one?',
+    'Which onboarding tasks for my new starters are late, and who owns them?',
+    'Who starts in the next 30 days?',
+    'How many new starters finished their required training on time?',
+  ],
+  hrbp: [
+    'How has voluntary attrition in my org changed over the last 12 months?',
+    'How has headcount in my org changed by department?',
+    'Which teams in my org had the most exits this year?',
+    'How does first-year attrition in my org compare with the company?',
+  ],
+  talent: [
+    'How does the rating distribution in my org compare with the guideline?',
+    'Which critical roles in my org have no ready-now successor?',
+    'Who in my org has gone longest without a promotion?',
+    'How many required trainings are overdue in my org, and where?',
+  ],
+}
+
 /** People stats > Special analyses (docs/ANALYSES.md, 1.8): one question per analysis, in picker order. */
 const ANALYSIS_SUGGESTIONS: Record<AnalysisKey, string> = {
   quality: 'What drives quality of hire here?',
@@ -181,7 +214,8 @@ const ANALYSIS_SUGGESTIONS: Record<AnalysisKey, string> = {
 
 /**
  * Four suggested questions for the view on screen. On People stats > Special analyses, one per
- * analysis the mode shows (`shown`), the one on screen first; on Home, the mode's own four.
+ * analysis the mode shows (`shown`), the one on screen first; on Home, the mode's own four; in
+ * Manager mode, its own four where the view shows less (`MANAGER_SUGGESTIONS`).
  */
 export function suggestionsFor(
   view: RouteView,
@@ -199,5 +233,39 @@ export function suggestionsFor(
     const first = route.key && keys.includes(route.key) ? [route.key] : []
     return [...first, ...keys.filter((k) => !first.includes(k))].map((k) => ANALYSIS_SUGGESTIONS[k])
   }
+  if (mode === 'manager') {
+    const own = MANAGER_SUGGESTIONS[view]
+    if (own) return own
+  }
   return SUGGESTIONS[view] ?? SUGGESTIONS.scorecard
+}
+
+/**
+ * What Ask can do across Census, shown (not yet askable) before a key is added: a trend, a filter, a
+ * chart and a list. Each names the view it reads.
+ */
+const NO_KEY_EXAMPLES: readonly { q: string; view: RouteView }[] = [
+  { q: 'How has voluntary attrition in Bengaluru changed this year?', view: 'hrbp' },
+  { q: 'Filter to Bengaluru and show me where attrition is highest.', view: 'hrbp' },
+  { q: 'Draw a chart of headcount by business unit.', view: 'org' },
+  { q: 'Which critical roles have no ready-now successor?', view: 'talent' },
+]
+
+/**
+ * The four questions before a key is added. HR, CHRO and Developer (the modes with no policy table:
+ * every view, no scope) get the examples while every view they read is shown; every other mode gets
+ * the same four the keyed panel would offer (`suggestionsFor`: the mode's home four on Home, else the
+ * view's), so no question is about a view the mode hides or a place outside its scope.
+ */
+export function noKeyQuestions(o: {
+  mode: Mode
+  scoped: boolean
+  viewShown: (view: RouteView) => boolean
+  view: RouteView
+  tab?: string | null
+  shown?: (key: AnalysisKey) => boolean
+}): readonly string[] {
+  const whole = !isTableMode(o.mode) && !o.scoped
+  if (whole && NO_KEY_EXAMPLES.every((e) => o.viewShown(e.view))) return NO_KEY_EXAMPLES.map((e) => e.q)
+  return suggestionsFor(o.view, o.tab, o.shown, o.mode)
 }

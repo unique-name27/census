@@ -18,6 +18,7 @@ export const DEVELOPER_ONLY: readonly string[] = [
   'header:team',
   'help:article:view-team',
   'help:article:developer-tools',
+  'help:article:security-center',
   'help:tour:view-team',
   'help:tour:manager-start',
   'help:tour:developer-tools',
@@ -45,8 +46,8 @@ export const DEV_PAGES: ReadonlySet<string> = new Set(['team', 'dev'])
 
 /**
  * Surfaces that stay Developer-only whatever an override says (docs/SECURITY-CENTER.md): the
- * Developer page and its tabs, the debug overlays and the Ask tools console. My team is not one:
- * Manager mode shows it.
+ * Developer page and its tabs, the Security center's help article, the debug overlays and the Ask
+ * tools console. My team is not one: Manager mode shows it.
  */
 export const isGuardedDeveloperSurface = (s: string): boolean =>
   s === 'page:dev' ||
@@ -55,6 +56,7 @@ export const isGuardedDeveloperSurface = (s: string): boolean =>
   s === 'ask:console' ||
   s === 'ui:error-details' ||
   s === 'export:drill-spec' ||
+  s === 'help:article:security-center' ||
   s.startsWith('overlay:') ||
   s.startsWith('tab:dev.') ||
   s.startsWith('figure:dev-')

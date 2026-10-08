@@ -13,6 +13,7 @@ import { HOME_LABEL } from '@/access/modes'
 import { showImmigrationIn } from '@/access/pay'
 import { ModeButton } from '@/access/ui/ModeButton'
 import { AskButton } from '@/ask/ui/AskButton'
+import { useAskOn } from '@/ask/ui/askOn'
 import { IconAsk } from '@/ask/ui/icons'
 import { openAsk } from '@/ask/ui/store'
 import {
@@ -177,8 +178,18 @@ function MoreMenu({ uploaded, total }: { uploaded: number; total: number }) {
   const toolsShown = access.can('masthead:tools')
   const canEditTools = toolsShown && access.can('tools:edit')
   const tools = useTools().filter((t) => toolsShown && access.can(`tools:${t.id}`) && !!t.url)
+  const askOn = useAskOn()
   const items: MenuItem[] = [
-    { label: 'Ask Census', icon: <IconAsk />, hint: 'Alt+A', onSelect: () => openAsk() },
+    ...(askOn
+      ? [
+          {
+            label: 'Ask Census',
+            icon: <IconAsk />,
+            hint: 'Alt+A',
+            onSelect: () => openAsk(),
+          } satisfies MenuItem,
+        ]
+      : []),
     { label: 'Help', icon: <IconHelp />, hint: '?', onSelect: () => openHelp() },
   ]
   if (access.can('masthead:data'))
@@ -236,6 +247,7 @@ export function Masthead() {
   // immigration: HR, CHRO, HR ops, Developer). The switches are read from the store, so "Hide"
   // takes the tag away at once.
   const { access } = ctx
+  const askOn = useAskOn()
   const showPayTag = useCensus((s) => s.showPay) && access.can('pay:switch')
   const showImmigrationTag = useCensus((s) => s.showImmigration) && showImmigrationIn(access.mode, true)
   const settingsOpen = useCensus((s) => s.settingsOpen.open)
@@ -317,7 +329,8 @@ export function Masthead() {
           <span className="hidden sm:inline">Settings</span>
         </Button>
         <span className={WIDE_ONLY}>
-          <AskButton />
+          {/* With Ask off, no button and no Alt+A (the button binds it). */}
+          {askOn && <AskButton />}
           <HelpButton />
         </span>
         <MoreMenu uploaded={uploaded} total={total} />

@@ -135,7 +135,7 @@ const DEPENDS_ON: Readonly<Record<string, readonly string[]>> = {
 /* ───────── workforce cost ───────── */
 
 const COSTED =
-  'Active employees on the as-of date with a comp record and an exchange rate to USD. Contractors and interns are counted beside the totals, never costed.'
+  'Active employees on the as-of date with a comp record and an exchange rate to USD. Contractors and interns are counted beside the totals, not in them. The budget comparison adds an estimate for contractors at the range midpoint; interns are never costed.'
 const GUARD =
   'Totals only, over groups of 5 or more people. A smaller group folds into Other, and Other takes the smallest group until it reaches 5, so no group is the total less the others.'
 const COST_OWNER = 'Total rewards'
@@ -828,6 +828,8 @@ export const metrics: MetricDef[] = defineMetrics('comp', [
   {
     id: M.costTargetCash,
     name: 'Target cash cost',
+    // Finance's home shows it too (`home-fin-kpis`, `home-fin-cost-center`).
+    views: ['home'],
     definition:
       'Annual base salary plus the bonus at target of the people costed, in US dollars. A missing target bonus counts as none, and the note says how many.',
     formula: 'Σ baseSalary × (1 + targetBonusPct) × fxToUsd',

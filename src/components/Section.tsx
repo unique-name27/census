@@ -52,7 +52,8 @@ export function Section({
           <h2 className="cut-head text-section font-semibold">{title}</h2>
           {dek && <p className="mt-1 max-w-[70ch] text-small text-ink-2">{dek}</p>}
         </div>
-        {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
+        {/* The controls may shrink and wrap: a fixed width would push a phone-width page sideways. */}
+        {actions && <div className="flex max-w-full min-w-0 flex-wrap items-center gap-2">{actions}</div>}
       </header>
       <Grid className={align === 'start' ? 'items-start' : undefined}>{children}</Grid>
     </section>

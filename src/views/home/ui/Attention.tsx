@@ -9,7 +9,7 @@ import { type ReactNode, useState } from 'react'
 import { type Column, Figure, HBars, useChartTheme } from '@/charts'
 import { goTo, Pending, RouteLink, Section } from '@/components'
 import { TierBadge } from '@/components/tier/TierBadge'
-import { Button, StatusPill } from '@/components/ui'
+import { Button, cx, StatusPill } from '@/components/ui'
 import { useAnalytics } from '@/data/context'
 import { Drill, drill } from '@/drill/Drill'
 import { openPerson } from '@/drill/store'
@@ -23,6 +23,7 @@ import {
   dueText,
   EXPORT_COLUMNS,
   itemsDrill,
+  lensFor,
   nothingWaiting,
   type OpenAction,
   SEVERITY_WORD,
@@ -30,6 +31,7 @@ import {
   usesOf,
 } from '@/views/actions/engine'
 import { M as ACTIONS } from '@/views/actions/metrics'
+import { waitingOn } from '@/views/actions/ui/Sheets'
 import { useActionFilters } from '@/views/actions/ui/store'
 import {
   type AttentionRow,
@@ -195,7 +197,8 @@ function About({ a }: { a: OpenAction }) {
 }
 
 function ItemLine({ a }: { a: OpenAction }) {
-  const { asOf } = useAnalytics()
+  const ctx = useAnalytics()
+  const { asOf } = ctx
   const days = daysToDue(a.item.due, asOf)
   const overdue = days != null && days < 0
   return (
@@ -211,7 +214,7 @@ function ItemLine({ a }: { a: OpenAction }) {
           <span aria-hidden="true" className="px-1.5 text-muted">
             ·
           </span>
-          <span>{a.isTeam ? a.ownerName : `Waiting on ${a.ownerName}`}</span>
+          <span>{waitingOn(a, lensFor(ctx).me)}</span>
           <span aria-hidden="true" className="px-1.5 text-muted">
             ·
           </span>
@@ -274,7 +277,8 @@ export function AttentionList({
       id={id}
       metric={escalations ? ACTIONS.critical : ACTIONS.open}
       uses={usesOf(items)}
-      title={escalations ? 'Escalations' : 'Needs attention'}
+      // Not the section's own title again: the section is "Needs attention" (or "Top risks").
+      title={escalations ? 'Escalations' : 'Most urgent'}
       subtitle={
         escalations
           ? 'Legal exposure, critical roles at high risk of loss, exit clusters and critical items long overdue, each with its owner'
@@ -292,7 +296,8 @@ export function AttentionList({
       span={8}
       image={false}
       tableToggle={false}
-      className={stale ? 'opacity-60 transition-opacity' : undefined}
+      // On a phone the list leads its section; the chart of where items wait follows it.
+      className={cx('max-md:-order-1', stale && 'opacity-60 transition-opacity')}
       empty={items.length ? null : empty}
       emptyHeight={200}
     >
@@ -336,7 +341,7 @@ export function AttentionSection({
   /** Items listed before "Show all". */
   shown: number
   title?: string
-  dek?: string
+  dek?: ReactNode
   /** More figures in the section (the CHRO's top risks in the data). */
   children?: ReactNode
 }) {
@@ -345,11 +350,15 @@ export function AttentionSection({
   const waiting = items?.lists ? items.waiting.length : 0
   const actions = canOpen ? (
     <span className="flex flex-wrap items-center gap-x-4 gap-y-1">
-      {!!items?.lists && (
-        <button type="button" className={LINK} onClick={() => openList('waiting')}>
-          Waiting on others ({fmt(waiting, 'int')})
-        </button>
-      )}
+      {/* A link that would open an empty list is plain text instead. */}
+      {!!items?.lists &&
+        (waiting > 0 ? (
+          <button type="button" className={LINK} onClick={() => openList('waiting')}>
+            Waiting on others ({fmt(waiting, 'int')})
+          </button>
+        ) : (
+          <span className="text-meta text-muted">Nothing waiting on others</span>
+        ))}
       <button type="button" className={LINK} onClick={() => openList(items?.lists ? 'needs' : null)}>
         Open the Action center
       </button>
@@ -387,7 +396,7 @@ export function AttentionSection({
               span: 4,
               height: 240,
             },
-            { title: escalations ? 'Escalations' : 'Needs attention', span: 8, height: 240 },
+            { title: escalations ? 'Escalations' : 'Most urgent', span: 8, height: 240 },
           ]}
         />
       )}

@@ -27,6 +27,7 @@ import {
   scopeTip,
   WHOLE_ORG,
   WHOLE_REGION,
+  WHOLE_REQS,
   WHOLE_UNIT,
 } from '@/access/copy'
 import { PICK_OF } from '@/access/modes'
@@ -44,7 +45,7 @@ import { Button } from '@/components/ui'
 import { useMinWidth, useNarrow } from '@/components/useNarrow'
 import { useAnalytics } from '@/data/context'
 import type { Employee } from '@/data/schema'
-import { dropIdleModes, type FilterMode, hasOrgFilter, isExcluded, withMode } from '@/data/scope'
+import { dropIdleModes, type FilterMode, hasOrgFilter, isExcluded, reqMatcher, withMode } from '@/data/scope'
 import { useCensus } from '@/data/store'
 import { fmt, plural } from '@/lib/format'
 import { headcountAt } from '@/lib/people'
@@ -60,6 +61,8 @@ import {
   leaderOptions,
   offersExclude,
   otherFilters,
+  reqDimensionOptions,
+  reqsLeaderOptions,
   scopedLeaderOptions,
   tooFewToLeaveOut,
 } from './filterOptions'
@@ -191,6 +194,14 @@ export function FilterBar() {
     const members = scopeMembers(scope)
     return members ? all.filter((e) => members.has(e.employeeId)) : all
   }, [all, scope])
+  // Recruiter mode reads reqs, not people (docs/ROLES-V2.md 2.5): the menus list what is on the
+  // recruiter's reqs (every req with "every recruiter") and count open reqs, never headcount.
+  const byReqs = mode === 'recruiter'
+  const reqs = useMemo(() => {
+    if (!byReqs) return []
+    const ids = scope?.kind === 'reqs' ? scope.reqIds : null
+    return ids ? ctx.all.requisitions.filter((r) => ids.has(r.reqId)) : ctx.all.requisitions
+  }, [byReqs, scope, ctx.all.requisitions])
   // What this mode's row offers, each part by its `filter:*` decision (Finance: the saved views,
   // the period and the business unit, include only).
   const parts = filterRowParts(ctx.access)
@@ -203,19 +214,24 @@ export function FilterBar() {
       Object.fromEntries(
         DIMENSIONS.map((k) => [
           k,
-          dimensionOptions(
-            employees,
-            ctx.asOf,
-            k,
-            filters[k],
-            hasOrgFilter(filters) ? otherFilters(filters, ctx.org, k) : undefined,
-          ),
+          byReqs
+            ? reqDimensionOptions(reqs, k, filters[k], reqMatcher({ ...filters, [k]: [] }, ctx.org))
+            : dimensionOptions(
+                employees,
+                ctx.asOf,
+                k,
+                filters[k],
+                hasOrgFilter(filters) ? otherFilters(filters, ctx.org, k) : undefined,
+              ),
         ]),
       ) as Record<DimensionKey, DimensionOption[]>,
-    [employees, ctx.asOf, ctx.org, filters],
+    [byReqs, reqs, employees, ctx.asOf, ctx.org, filters],
   )
   // Leader sizes count within the other filters (exclusions included): who would be in scope.
   const leaders = useMemo(() => {
+    // Recruiter mode: the hiring managers of the reqs and those above them, counted in open reqs.
+    if (byReqs)
+      return reqsLeaderOptions(ctx.org, ctx.asOf, reqs, reqMatcher({ ...filters, leaderId: null }, ctx.org))
     const within = hasOrgFilter({ ...filters, leaderId: null })
       ? otherFilters(filters, ctx.org, 'leaderId')
       : undefined
@@ -227,7 +243,7 @@ export function FilterBar() {
     const list = leaderOptions(ctx.org, ctx.asOf, 3, within)
     // Manager mode: the manager and the leaders inside their org.
     return lock ? list.filter((o) => lock.orgIds.has(o.id) || o.id === lock.managerId) : list
-  }, [ctx.org, ctx.asOf, filters, lock, scope])
+  }, [byReqs, reqs, ctx.org, ctx.asOf, filters, lock, scope])
   // Excluding, a choice that would leave out 1 to min - 1 people can't be picked (the anonymity
   // rule Ask and the records panel apply); one already picked stays, so it can be taken off.
   const min = minGroupOf(ctx.metrics)
@@ -341,6 +357,11 @@ export function FilterBar() {
         emptyText: 'Nobody in this org leads 3 or more employees.',
       })}
       {...((scope?.kind === 'unit' || scope?.kind === 'region') && SCOPED_LEADER[scope.kind])}
+      {...(byReqs && {
+        unit: 'open req' as const,
+        emptyText: 'None of these reqs has a hiring manager on the roster.',
+        ...(scope?.kind === 'reqs' && { clearLabel: WHOLE_REQS }),
+      })}
       note={leaderChoices.some((o) => o.disabled) ? tooFewNote('Orgs', min) : undefined}
     />
   )

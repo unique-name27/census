@@ -55,6 +55,13 @@ export interface OnboardingBase {
    * readiness by task.
    */
   hideI9: boolean
+  /**
+   * The mode shows why people left: a candidate's reason (`column:candidates.rejectionReason`) and
+   * leavers' exit reasons (`hrbp.attrition.exitReasons`). Manager mode does not (docs/ROLES-V2.md,
+   * Decisions made, 8 Oct 2026), so the renege finding cites no reasons and the early-exit finding
+   * points at no exit reasons. Missing means shown.
+   */
+  showsReasons?: boolean
   /** The one region index (`ctx.regions`). */
   regions: RegionIndex
 }
@@ -111,6 +118,9 @@ export function onboardingBase(ctx: AnalyticsContext): OnboardingBase {
     hasSurveys: ctx.all.surveyResponses.length > 0,
     masked: mode === 'manager' || mode === 'finance',
     hideI9: mode === 'manager' || mode === 'recruiter',
+    showsReasons:
+      ctx.access.can('column:candidates.rejectionReason') &&
+      ctx.access.can('metric:hrbp.attrition.exitReasons'),
     regions,
   }
   cache.set(ctx, base)

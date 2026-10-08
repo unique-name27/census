@@ -210,8 +210,9 @@ views' numbers; the Scorecard and Ask must not count them twice) and no `actions
 Layout, top to bottom:
 
 1. **KPI strip** `team-kpis`: Headcount (`hrbp.headcount.employees`, change vs 12 months
-   earlier), Voluntary attrition (`hrbp.attrition.voluntary`, vs company), Regretted attrition
-   (`hrbp.attrition.regretted`, vs company), Open reqs (`recruiting.reqs.open`, link Recruiting,
+   earlier), Voluntary attrition (`hrbp.attrition.voluntary`, vs company), Attrition
+   (`hrbp.attrition.all`, every exit, vs company; regretted attrition until 8 Oct 2026, see
+   ROLES-V2.md "Decisions made"), Open reqs (`recruiting.reqs.open`, link Recruiting,
    Requisitions), Starts in 30 days (`onboarding.upcoming.starts`, link Onboarding, Upcoming
    starts), Required training on time (`talent.learning.requiredOnTime`, link Talent, Learning),
    Owned by people in this org (`actions.items.open`, link Action center: the open items the
@@ -227,7 +228,7 @@ Layout, top to bottom:
    year before dashed on the same months; points drill to the month-end employees.
 3. **Section "People"** (dek: "Who is in your org and how it is changing."):
    `team-hires-exits` (span 6, Columns grouped, hires and exits by month, 12 months),
-   `team-attrition-vs-company` (span 6, HBars grouped: voluntary, regretted and first-year
+   `team-attrition-vs-company` (span 6, HBars grouped: voluntary and first-year
    attrition, series "This org" in `--s1` and "Company" in `--deemph`; each org bar drills to its
    leavers, the company bars open nothing), `team-tenure` (span 6, Columns by tenure band),
    `team-levels` (span 6, Columns, people by level, with "Filter to"), `team-span` (span 12,
@@ -397,19 +398,28 @@ source).
     `recruiting.offers.declineReasons`, `recruiting.offers.acceptanceByLocation`,
     `recruiting.data.reqMatch`, `talent.retention.flightRisk`, `talent.retention.keyTalent`,
     `talent.retention.riskBands`, `talent.retention.backTest`, `talent.retention.riskDrivers`,
-    `talent.finding.keyTalent`, `hrbp.stages.planned`
+    `talent.finding.keyTalent`, `hrbp.stages.planned`, and since 8 Oct 2026 (exits, never
+    regretted exits, and no reason breakdowns: ROLES-V2.md "Decisions made")
+    `hrbp.attrition.regretted`, `hrbp.findings.regrettedCluster`, `talent.retention.regrettedHigh`,
+    `talent.finding.hipoExits`, `org.team.regrettedExits`, `hrbp.attrition.exitReasons`,
+    `recruiting.flow.exitReasons`
 - **Figure ids** (belt and braces for figures that also carry a hidden metric):
   `recruiting-recruiter-load`, `recruiting-candidate-survey`, `recruiting-hiring-manager-survey`,
   `onboarding-new-hire-entered`, `onboarding-pulse`, `hrbp-exit-survey`, `hrbp-manager-feedback`,
   `talent-key-talent-top`, `talent-key-talent-at-risk`, `talent-stay-interviews`,
-  `talent-training-evaluation`, `hrbp-declines-candidate-survey`, plus every figure on a hidden
+  `talent-training-evaluation`, `hrbp-declines-candidate-survey`, `hrbp-regretted-quarter`,
+  `hrbp-regretted-leavers`, `talent-regretted-high-performers`, `hrbp-exit-reasons`,
+  `recruiting-exit-reasons`, plus every figure on a hidden
   tab or a hidden part of one (`tab:hrbp.analyses:quality`), and by id prefix
   (`MANAGER_HIDDEN_FIGURE_PREFIXES`) every `hrbp-quality-` and `hrbp-declines-` figure, wherever it
   is drawn.
 - **Ask fields** of the hidden analyses: `query_records` does not read employees' `university`,
   `degreeLevel` and `fieldOfStudy` or candidates' `competingOffer`, `offerRevised` and
-  `offerPositionInRange` (`NEEDS` in `src/ask/engine/allowlist.ts`), and a cut by
-  `rejectionReason` leaves declined offers out.
+  `offerPositionInRange` (`NEEDS` in `src/ask/engine/allowlist.ts`), nor a column the records
+  leave out (below).
+- **Columns of records** (`MANAGER_HIDDEN_COLUMNS`, `column:<kind>.<key>`): employees'
+  `terminationReason` and `regrettable`, candidates' `rejectionReason`. Every list of those
+  records, its export, the person card and Ask's `query_records` leave them out.
 - **`LinkedSurvey`** (`src/views/listening/LinkedSurvey.tsx`) renders nothing while Listening is
   hidden, section and all.
 - **Drill kinds hidden:** `cases`, `transactions`, `comp`, `rightToWork`, `hiringPlan`,
@@ -788,7 +798,7 @@ the decision in each mode (from the policy), so the inventory and the Access tab
 |---|---|---|
 | Views | key, label, route, tabs, datasets, headline, summary, actions, header actions (yes or no) | `VIEWS` (`src/views/registry.ts`) |
 | Tabs | view, tab key, label, route `#view.tab`, feature switch | `VIEWS[].tabs` |
-| Figures | id, title, view, tab, metric, rows, tier, held back, image | A scan: "Scan figures" renders every view's tabs off screen with `renderWholeView` (`src/app/wholeView.tsx`) and reads each tab's figure registry; "Scan as Manager" runs the same render with a Manager access override, to list what a manager gets. Results kept in memory until reload. |
+| Figures | id, title, view, tab, metric, rows, tier, held back, image | A scan: "Scan figures" renders every view's tabs off screen with `renderWholeView` (`src/app/wholeView.tsx`) and reads each tab's figure registry; "Scan as role" runs the same render in another mode (with its pick), to list what that role gets. Results kept in memory until reload. |
 | Metrics | id, name, views, unit, target, good direction, changed from default, settings, fields it reads | `ctx.metrics.list` and `formulaRows` (`src/app/settings/formulaIndex.ts`) |
 | Engine functions | view, function (`headline`, `summary`, `actions`), last ms, KPIs / findings / items returned, "Run" | `VIEWS`; "Run" calls the function on the live context through `timed` and shows the result as JSON in a side sheet (functions dropped by the replacer) |
 | Ask tools | name, description, input schema, access per mode, "Open in console" | `TOOL_DEFINITIONS`, `TOOL_NAMES` (`src/ask/engine/tools.ts`) |

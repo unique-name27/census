@@ -18,11 +18,13 @@
  */
 import { type PointerEvent as ReactPointerEvent, type RefObject, useEffect, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
+import { S } from '@/access/surfaces'
 import {
   ASK_INTRO,
   answerText,
   askOffReason,
   NO_KEY,
+  noKeyQuestions,
   onScreenEvent,
   PRIVACY_LINE,
   parseAnswer,
@@ -85,19 +87,22 @@ function PrivacyNote() {
 /** Settings opens above the panel and hands focus back to the button when it closes. */
 const goToSettings = () => openSettings('ask')
 
-/** What a reader could ask, shown (not yet askable) before a key is added. */
-const NO_KEY_EXAMPLES: readonly string[] = [
-  'How has voluntary attrition in Bengaluru changed this year?',
-  'Filter to Bengaluru and show me where attrition is highest.',
-  'Draw a chart of headcount by business unit.',
-  'Which critical roles have no ready-now successor?',
-]
-
 /**
  * Before a key is added: what Ask does, said once, four questions it would answer (disabled
  * until there is a key), and the way to add one. One surface, divided by hairlines.
  */
 function NoKey({ buttonRef }: { buttonRef: RefObject<HTMLButtonElement | null> }) {
+  const view = useCensus((s) => s.route.view)
+  const tab = useCensus((s) => s.route.tab)
+  const access = useAnalytics().access
+  const questions = noKeyQuestions({
+    mode: access.mode,
+    scoped: access.scope != null,
+    viewShown: (v) => access.can(S.view(v)),
+    view,
+    tab,
+    shown: (k) => access.can(analysisSurface(k)),
+  })
   return (
     <div className="flex flex-col gap-4 px-5 pt-1 pb-6">
       <p className="max-w-[60ch] text-body text-ink">{ASK_INTRO}</p>
@@ -106,7 +111,7 @@ function NoKey({ buttonRef }: { buttonRef: RefObject<HTMLButtonElement | null> }
           Questions you could ask
         </h3>
         <ul className="mt-1.5 flex flex-col">
-          {NO_KEY_EXAMPLES.map((q) => (
+          {questions.map((q) => (
             <li key={q}>
               <button
                 type="button"

@@ -216,6 +216,7 @@ export function articlesFor(s: HelpSpec): Record<string, Decision> {
   out['privacy-surveys'] = s.privacy.surveys ? SHOWN : hidden(PRIVACY_HOW.surveys)
   out['privacy-immigration'] = s.privacy.immigration ? SHOWN : hidden(PRIVACY_HOW.immigration)
   out['developer-tools'] = hidden(DEV_ONLY)
+  out['security-center'] = hidden(DEV_ONLY)
   return out
 }
 

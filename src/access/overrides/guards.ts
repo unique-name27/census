@@ -9,6 +9,7 @@
 import { IMMIGRATION_OF, type Mode, SCOPE_OF } from '../modes'
 import { isGuardedDeveloperSurface } from '../policy/developer'
 import type { Access } from '../policy/types'
+import type { ScopeKind } from '../scopes/types'
 import { kindOf, restOf } from '../surfaces'
 import { isAccess } from './types'
 
@@ -21,6 +22,7 @@ export type GuardId =
   | 'switches'
   | 'developer-only'
   | 'scope'
+  | 'cost-totals'
 
 /** Each guard rail as one sentence: the reason the editor and the loader give. */
 export const GUARD_RAILS: Readonly<Record<GuardId, string>> = {
@@ -33,6 +35,8 @@ export const GUARD_RAILS: Readonly<Record<GuardId, string>> = {
   'developer-only': 'The Security center, debug overlays and the Ask tools console stay Developer-only.',
   scope:
     'A role never sees outside its scope. The scope kind stays fixed, and what sits on its edge can only be narrowed.',
+  'cost-totals':
+    'Cost totals without the pay switch are for Finance mode only, over whole business units at the reporting date HR sets, so no two totals differ by one person’s pay.',
 }
 
 /** The rails in the order the Security center lists them. */
@@ -44,6 +48,7 @@ export const GUARD_ORDER: readonly GuardId[] = [
   'switches',
   'developer-only',
   'scope',
+  'cost-totals',
 ]
 
 /** What a guard rail check needs about the policy around the line. */
@@ -124,14 +129,66 @@ const RANK: Record<Access, number> = { hidden: 0, limited: 1, shown: 2 }
 const SCOPE_EDGE_KINDS = new Set(['filter', 'focus', 'person', 'drill', 'scope'])
 const SCOPE_EDGE = new Set(['export:records', 'export:link', 'ui:kpi-delta-company'])
 
+/**
+ * What reads the whole company's records whatever the scope (the Data room's grids, panels and
+ * export, quality across every dataset, the reporting date and official lists): never shown to a
+ * scoped role.
+ */
+const UNSCOPED_KINDS = new Set(['data', 'data-panel'])
+const UNSCOPED = new Set([
+  'page:data',
+  'export:data-room',
+  'ask:explain_quality',
+  'settings:data',
+  'settings:lists',
+  'settings:device-files',
+])
+
+/**
+ * The reqs scope (Recruiter) keeps the whole roster for names only, so only the places and the
+ * datasets the scope narrows may show (docs/ROLES-V2.md 2.4); drill kinds are on every scope's edge.
+ */
+const REQS_PLACES = new Set(['recruiting', 'onboarding', 'ai', 'home', 'actions'])
+const REQS_DATASETS = new Set(['requisitions', 'candidates', 'onboardingTasks'])
+
 /** Whether a surface sits on the edge of a role's scope (Finance: its filter row). */
 export function onScopeEdge(mode: Mode, surface: string): boolean {
   const kind = kindOf(surface)
   if (kind === 'scope') return true
   if (mode === 'finance') return kind === 'filter'
-  if (!SCOPE_OF[mode]) return false
-  return SCOPE_EDGE_KINDS.has(kind) || SCOPE_EDGE.has(surface)
+  const scope = SCOPE_OF[mode]
+  if (!scope) return false
+  if (SCOPE_EDGE_KINDS.has(kind) || SCOPE_EDGE.has(surface)) return true
+  return beyondScope(scope, surface)
 }
+
+/**
+ * Whether a surface shows records a scope kind does not narrow (`onScopeEdge` for a scoped role):
+ * the Data room and its kin for every scope; for Recruiter's reqs also every other view and page,
+ * every tab (they can only be narrowed), and every dataset outside the reqs.
+ */
+export function beyondScope(scope: ScopeKind, surface: string): boolean {
+  const kind = kindOf(surface)
+  if (UNSCOPED_KINDS.has(kind) || UNSCOPED.has(surface)) return true
+  if (scope !== 'reqs') return false
+  const rest = restOf(surface)
+  if (kind === 'view' || kind === 'page' || kind === 'header') return !REQS_PLACES.has(rest)
+  // Every tab: a hidden one (Onboarding's first 90 days) would read the roster kept for names.
+  if (kind === 'tab') return true
+  if (kind === 'dataset') return !REQS_DATASETS.has(rest)
+  return false
+}
+
+/** Surfaces that would let a totals role move the reporting date. */
+const DATE_SURFACES = new Set(['settings:data', 'settings:device-files'])
+
+/**
+ * Whether a role would show cost totals without the pay switch: `pay:totals` shown or limited,
+ * and not both `pay:amounts` and `pay:switch` (the switch view).
+ */
+const totalsWithoutSwitch = (mode: Mode, env: GuardEnv): boolean =>
+  env.effective(mode, 'pay:totals') !== 'hidden' &&
+  !(env.effective(mode, 'pay:amounts') !== 'hidden' && env.effective(mode, 'pay:switch') !== 'hidden')
 
 /**
  * The guard rail a line crosses, or null. `env.effective` should include the line, so a pay
@@ -150,7 +207,19 @@ export function guardRailFor(line: GuardLine, env: GuardEnv): GuardId | null {
   }
   const mode = role as Mode
   if (kind === 'scope') return 'scope'
+  // The switch hidden under shown amounts would leave amounts with no switch.
+  if (surface === 'pay:switch' && decision === 'hidden' && env.effective(mode, 'pay:amounts') !== 'hidden')
+    return 'switches'
+  // Cost totals without the switch, for any role but Finance: weighed with every other line, so
+  // hiding the amounts while the totals stay shown is refused too.
+  if (kind === 'pay' && mode !== 'finance' && totalsWithoutSwitch(mode, env)) return 'cost-totals'
   if (decision === 'hidden') return null
+  if (
+    DATE_SURFACES.has(surface) &&
+    totalsWithoutSwitch(mode, env) &&
+    RANK[decision as Access] > RANK[env.base(mode, surface)]
+  )
+    return 'cost-totals'
   if (isGuardedDeveloperSurface(surface)) return 'developer-only'
   const words = surfaceWords(surface)
   if (words.some((w) => PROTECTED.has(w))) return 'protected'

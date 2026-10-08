@@ -32,6 +32,7 @@ export function LeaderPicker({
   note,
   pinned,
   youId,
+  unit = 'employee',
 }: {
   options: LeaderOption[]
   value: string | null
@@ -60,6 +61,8 @@ export function LeaderPicker({
   pinned?: string
   /** The option tagged "You" (Manager mode's manager). */
   youId?: string
+  /** What each option's size counts: employees, or in Recruiter mode open reqs. */
+  unit?: 'employee' | 'open req'
 }) {
   const items = useMemo(
     () => Combobox.createItems(options, { getValue: (o) => o.id, getLabel: (o) => o.name }),
@@ -155,7 +158,7 @@ export function LeaderPicker({
                       chart's own counts include contractors and interns and say "people". Excluding,
                       the org is who would be left out. */}
                   <span className="tnum mt-0.5 shrink-0 text-meta text-muted">
-                    {excluded ? `leaves out ${fmt(o.size, 'int')}` : plural(o.size, 'employee')}
+                    {excluded ? `leaves out ${fmt(o.size, 'int')}` : plural(o.size, unit)}
                   </span>
                 </Combobox.Item>
               )}

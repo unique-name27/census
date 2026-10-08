@@ -7,7 +7,7 @@
  */
 import { useState } from 'react'
 import { type Column, DotStrip, Figure, Heatmap } from '@/charts'
-import { Grid, KpiStrip, Section } from '@/components'
+import { KpiStrip, Section } from '@/components'
 import type { Kpi } from '@/components/types'
 import { type AnalyticsContext, useAnalytics } from '@/data/context'
 import { ONBOARDING_OWNERS, STAGES } from '@/data/schema'
@@ -27,13 +27,8 @@ import {
 } from '@/views/onboarding/engine/upcoming'
 import { M as ONBOARDING } from '@/views/onboarding/metrics'
 import { computeRecruiting, type RecruitingModel } from '@/views/recruiting/engine'
-import {
-  activeDrill,
-  activeKpiDrill,
-  candidateDrill,
-  lackingKpiDrill,
-  reqRowDrill,
-} from '@/views/recruiting/engine/drills'
+import { ageBars } from '@/views/recruiting/engine/actions'
+import { activeDrill, activeKpiDrill, candidateDrill, reqRowDrill } from '@/views/recruiting/engine/drills'
 import { FIGURE_USES } from '@/views/recruiting/engine/lineage'
 import { FIGURE_METRICS } from '@/views/recruiting/engine/metricLinks'
 import type { WaitDot } from '@/views/recruiting/engine/pipeline'
@@ -42,19 +37,23 @@ import { LAST_OPEN_STAGE } from '@/views/recruiting/engine/types'
 import { RM } from '@/views/recruiting/metrics'
 import { defOf } from '@/views/recruiting/ui/common'
 import { PipelineToday } from '@/views/scorecard/ui/Sections'
-import { HOME_SHOWN } from '../engine/attention'
+import { HOME_SHOWN, reqOfItem, severityByRecord } from '../engine/attention'
 import { tile } from '../engine/kpis'
-import { lackingParts, type QueueRow, queueRows } from '../engine/rec'
+import { healthWithAge, lackingParts, onOpenReqs, type QueueRow, queueRows } from '../engine/rec'
+import { recHomeCopy } from '../engine/title'
 import { AttentionSection } from './Attention'
 import { ReqRisk } from './Figures'
 import { Hero, ListFigure, ListSwitch } from './Frames'
-import { useHomeItems } from './useHomeItems'
+import { HomeTop } from './HomeTop'
+import { type HomeItems, useHomeItems } from './useHomeItems'
 
 /* ───────── lacking a next step ───────── */
 
 function NextStep({ m }: { m: RecruitingModel }) {
   const b = m.base
-  const parts = lackingParts(b.actives)
+  // Candidates on a held req wait on nobody: counted apart, as Needs attention leaves them out.
+  const { open: actives, held } = onOpenReqs(b.actives, b.asOf)
+  const parts = lackingParts(actives)
   const lacking = parts.reduce((n, p) => n + p.count, 0)
   const seg = (key: string) => {
     const p = parts.find((x) => x.key === key)
@@ -70,16 +69,31 @@ function NextStep({ m }: { m: RecruitingModel }) {
       title="Lacking a next step"
       subtitle="Active candidates past the usual time for their step, by what they wait on"
       value={b.actives.length ? fmt(lacking, 'int') : '—'}
-      valueDrill={lacking ? () => lackingKpiDrill(b) : null}
+      valueDrill={
+        lacking
+          ? () =>
+              activeDrill(
+                b,
+                actives.filter((x) => x.tier),
+                { title: 'Lacking a next step' },
+              )
+          : null
+      }
       valueLabel="Show the candidates lacking a next step"
-      label={`of ${plural(b.actives.length, 'active candidate')}`}
-      line={`${fmt(
-        parts.reduce((n, p) => n + p.red, 0),
-        'int',
-      )} overdue, ${fmt(
-        parts.reduce((n, p) => n + p.amber, 0),
-        'int',
-      )} to watch · as of ${formatDate(b.asOf)}`}
+      label={`of ${plural(actives.length, 'active candidate')} on open reqs`}
+      line={[
+        `${fmt(
+          parts.reduce((n, p) => n + p.red, 0),
+          'int',
+        )} overdue, ${fmt(
+          parts.reduce((n, p) => n + p.amber, 0),
+          'int',
+        )} to watch`,
+        held.length ? `${plural(held.length, 'candidate')} on a req on hold, not counted` : '',
+        `as of ${formatDate(b.asOf)}`,
+      ]
+        .filter(Boolean)
+        .join(' · ')}
       parts={parts}
       unit="candidates"
       onSegment={(key) => drill(seg(key))}
@@ -92,7 +106,7 @@ function NextStep({ m }: { m: RecruitingModel }) {
         { key: 'amber', label: 'Watch', format: 'int' },
       ]}
       definitions={[defOf(b, RM.lackingNextStep)]}
-      note={`${plural(b.actives.length, 'active candidate')} · as of ${formatDate(b.asOf)}`}
+      note={`${plural(actives.length, 'active candidate')} on open reqs · as of ${formatDate(b.asOf)}`}
       empty={b.apps.length ? null : 'Upload Candidates to see this.'}
     />
   )
@@ -121,7 +135,7 @@ function Waiting({ m }: { m: RecruitingModel }) {
         { key: 'tier', label: 'Aging' },
       ]}
       definitions={[defOf(b, RM.daysWaiting)]}
-      note={`${plural(m.waiting.length, 'active candidate')} · ${fmt(lacking, 'int')} lack a next step`}
+      note={`${plural(m.waiting.length, 'active candidate')} · ${plural(lacking, 'lacks a next step', 'lack a next step')}`}
       span={4}
       empty={
         b.apps.length
@@ -152,19 +166,24 @@ function Waiting({ m }: { m: RecruitingModel }) {
 
 type ListKey = 'reqs' | 'queue'
 
-function MyList({ m }: { m: RecruitingModel }) {
+function MyList({ m, items }: { m: RecruitingModel; items: HomeItems | null }) {
   const ctx = useAnalytics()
+  const say = recHomeCopy(ctx)
   const b = m.base
   const [list, setList] = useState<ListKey>('reqs')
-  const reqs = b.req.rows
-  const queue = queueRows(b.actives, (i) => STAGES[i])
+  // A req reads with the worst severity Needs attention gives it, and says its age past target.
+  const severity = severityByRecord(items?.collected.items ?? [], reqOfItem)
+  const barOf = ageBars(b)
+  const reqs = b.req.rows.map((r) => ({ ...r, health: healthWithAge(r.health, r.daysOpen, barOf(r.level)) }))
+  const { open, held } = onOpenReqs(b.actives, b.asOf)
+  const queue = queueRows(open, (i) => STAGES[i])
   const actions = (
     <ListSwitch<ListKey>
       value={list}
       onChange={setList}
       options={[
-        { value: 'reqs', label: `My open reqs (${fmt(reqs.length, 'int')})` },
-        { value: 'queue', label: `My candidates in the queue (${fmt(queue.length, 'int')})` },
+        { value: 'reqs', label: say.reqs(fmt(reqs.length, 'int')) },
+        { value: 'queue', label: say.queue(fmt(queue.length, 'int')) },
       ]}
     />
   )
@@ -185,12 +204,19 @@ function MyList({ m }: { m: RecruitingModel }) {
       <ListFigure<QueueRow>
         metric={RM.lackingNextStep}
         uses={FIGURE_USES['recruiting-pipeline-today']}
-        title="My candidates in the queue"
+        title={say.queueTitle}
         subtitle="Candidates whose next step someone owns and is past the usual time, the longest wait first"
         rows={queue}
         columns={columns}
         definitions={[defOf(b, RM.lackingNextStep)]}
-        note={`${plural(queue.length, 'candidate')} · as of ${formatDate(b.asOf)} · a row opens the application`}
+        note={[
+          plural(queue.length, 'candidate'),
+          held.length ? `${plural(held.length, 'candidate')} on a req on hold not listed` : '',
+          `as of ${formatDate(b.asOf)}`,
+          'a row opens the application',
+        ]
+          .filter(Boolean)
+          .join(' · ')}
         actions={actions}
         rowTone={(r) => (r.aging === 'Overdue' ? 'critical' : r.aging === 'Watch' ? 'warning' : null)}
         onRowClick={(r) => drill(one(r))}
@@ -236,14 +262,14 @@ function MyList({ m }: { m: RecruitingModel }) {
     <ListFigure<OpenReqRow>
       metric={RM.openReqs}
       uses={FIGURE_USES['recruiting-req-age-vs-pipeline']}
-      title="My open reqs"
+      title={say.reqsTitle}
       subtitle={`Each open req with its active candidates by stage, the oldest first, as of ${formatDate(b.asOf)}`}
       rows={[...reqs].sort((a, x) => x.daysOpen - a.daysOpen || a.reqId.localeCompare(x.reqId))}
       columns={columns}
       definitions={[defOf(b, RM.openReqs), defOf(b, RM.emptyFunnel)]}
       note={`${plural(reqs.length, 'open req')}${b.req.onHold.length ? ` · ${plural(b.req.onHold.length, 'req')} on hold not listed` : ''} · ${ctx.scopeLabel}`}
       actions={actions}
-      rowTone={(r) => r.severity}
+      rowTone={(r) => severity.get(r.reqId) ?? r.severity}
       onRowClick={(r) => drill(cell('req')(r))}
       empty={b.reqs.length ? 'No open reqs on the as-of date.' : 'Upload Requisitions to see this.'}
     />
@@ -282,7 +308,7 @@ function Starts({ ctx }: { ctx: AnalyticsContext }) {
       uses={uses}
       metric={ONBOARDING.readiness}
       title="Countdown to day one"
-      subtitle={`Your starts in the next ${fmt(horizon, 'days')} by start week and the team holding the open day-one task due first; I-9 tasks are HR ops'`}
+      subtitle={recHomeCopy(ctx).startsSubtitle(fmt(horizon, 'days'))}
       data={rows}
       columns={[
         { key: 'name', label: 'Person', drill: (r) => (r.row.readiness.total ? open(r) : null) },
@@ -319,10 +345,14 @@ function Starts({ ctx }: { ctx: AnalyticsContext }) {
 
 export function RecHome() {
   const ctx = useAnalytics()
+  const say = recHomeCopy(ctx)
   const m = computeRecruiting(ctx)
   const b = m.base
   const items = useHomeItems()
   const offersOut = b.actives.filter((x) => x.state === 'offer-out')
+  // The pipeline counts every active candidate, as Recruiting's Pipeline tab does, and says which wait on a held req.
+  const heldCount = onOpenReqs(b.actives, b.asOf).held.length
+  const heldNote = heldCount ? plural(heldCount, 'on a req on hold', 'on reqs on hold') : undefined
   const kpis: Kpi[] = [
     ...tile(m.kpis, 'open-reqs', {
       view: 'recruiting',
@@ -335,7 +365,7 @@ export function RecHome() {
       label: 'Active candidates',
       value: b.apps.length ? b.actives.length : null,
       format: 'int',
-      note: `${fmt(b.actives.filter((x) => x.tier).length, 'int')} lack a next step`,
+      note: plural(b.actives.filter((x) => x.tier).length, 'lacks a next step', 'lack a next step'),
       drill: b.actives.length ? () => activeKpiDrill(b) : undefined,
       uses: FIGURE_USES['recruiting-pipeline-today'],
       link: { view: 'recruiting', tab: 'pipeline', label: 'Recruiting, Pipeline' },
@@ -367,19 +397,19 @@ export function RecHome() {
   ]
   return (
     <>
-      <Grid>
-        <NextStep m={m} />
-        <KpiStrip id="home-rec-kpis" title="Key figures" kpis={kpis} span={8} />
-        <PipelineToday id="home-rec-pipeline" span={8} />
-        <Waiting m={m} />
-      </Grid>
-      <AttentionSection
-        items={items}
-        shown={HOME_SHOWN}
-        dek="Your own steps: applications to review, interviews to schedule, offers to send or waiting on an answer, empty funnels and reqs past their target."
+      <HomeTop
+        hero={<NextStep m={m} />}
+        overview={
+          <>
+            <KpiStrip id="home-rec-kpis" title="Key figures" kpis={kpis} span={8} />
+            <PipelineToday id="home-rec-pipeline" span={8} extraNote={heldNote} />
+            <Waiting m={m} />
+          </>
+        }
+        attention={<AttentionSection items={items} shown={HOME_SHOWN} dek={say.attentionDek} />}
       />
-      <Section title="My list" dek="Your open reqs with their pipeline, or the candidates waiting on a step.">
-        <MyList m={m} />
+      <Section title="My list" dek={say.listDek}>
+        <MyList m={m} items={items} />
       </Section>
       <Section title="Reqs and starts" dek="Which reqs are stuck, and who starts soon.">
         <ReqRisk id="home-rec-req-age" span={6} />

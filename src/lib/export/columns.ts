@@ -3,6 +3,7 @@
  * and the plain-text form of a value used by CSV and the clipboard.
  */
 import type { Column } from '@/charts/types'
+import { COST_STEP, UNDER_COST_STEP } from '@/lib/costRounding'
 import { type Format, isNum } from '@/lib/format'
 
 /**
@@ -186,6 +187,7 @@ export const EXPORT_DIGITS: Readonly<Partial<Record<Format, number>>> = {
   deltaPct: 4,
   money: 2,
   moneyFull: 2,
+  moneyM: 0,
 }
 
 /** Unformatted numbers keep 6 places (enough for any measure, no float noise). */
@@ -222,6 +224,9 @@ export function plainText(v: unknown, spec: Format | FormatSpec | undefined, row
       case 'pts':
       case 'pts2':
         return clean(n * 100, 2)
+      case 'moneyM':
+        // Finance's rounded cost: under the step is the words, never a 0 that reads as no cost.
+        return Math.abs(n) < COST_STEP ? UNDER_COST_STEP : String(n)
       default:
         return String(n)
     }

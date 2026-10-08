@@ -12,7 +12,13 @@
  */
 import { useEffect, useId, useMemo, useState } from 'react'
 import { MODE_LABEL } from '@/access/modes'
-import { draftChanges, isPolicyRole, POLICY_ROLES, type PolicyRole } from '@/access/overrides'
+import {
+  draftChanges,
+  isPolicyRole,
+  POLICY_ROLES,
+  type PolicyRole,
+  type SkippedLine,
+} from '@/access/overrides'
 import { IconEye, IconWarning } from '@/components/icons'
 import { goTo } from '@/components/navigation'
 import { Button } from '@/components/ui'
@@ -21,7 +27,7 @@ import { useDev } from '../store'
 import { devTab } from '../tabs'
 import { ListPicker } from '../ui/shared'
 import { SECURITY_BANNER } from './copy'
-import { editRows, surfaceLabel } from './inventory'
+import { editRows, surfaceCatalog, surfaceLabel } from './inventory'
 import { previewAs } from './preview'
 import { useDraft, usePolicy } from './store'
 import { Changes } from './ui/Changes'
@@ -40,9 +46,12 @@ const SECTIONS: readonly { value: Section; label: string }[] = [
   { value: 'publish', label: 'Publish and import' },
 ]
 
-/** Read the sub-address: "role:finance" is the role page on Finance. */
+/**
+ * Read the sub-address: "role:finance" is the role page on Finance. A "/" or "." before the role
+ * reads the same ("role/finance", "role.finance"), so a link written either way keeps its role.
+ */
 export function parseSecuritySub(sub: string): { section: Section; role: PolicyRole } {
-  const [head, rest] = sub.split(':')
+  const [head, rest] = sub.split(/[:/.]/)
   const section = (SECTIONS.some((s) => s.value === head) ? head : 'matrix') as Section
   return { section, role: isPolicyRole(rest) ? rest : 'finance' }
 }
@@ -86,18 +95,42 @@ function PreviewControl({ lines }: { lines: Parameters<typeof previewAs>[1] }) {
   )
 }
 
+/** Lines the draft lost when it was read from this browser or a settings file, and why. */
+function SkippedDraftLines({ skipped }: { skipped: readonly SkippedLine[] }) {
+  return (
+    <div role="status" className="text-small text-ink">
+      <p className="flex items-start gap-2">
+        <IconWarning className="mt-0.5 size-4 shrink-0 text-warning" />
+        {skipped.length === 1
+          ? 'One line of the draft was left out when it was read, as the loader would leave it out:'
+          : `${skipped.length} lines of the draft were left out when it was read, as the loader would leave them out:`}
+      </p>
+      <ul className="mt-1 ml-6 list-disc text-meta text-ink-2">
+        {skipped.map((s) => (
+          <li key={`${s.index}-${s.role}-${s.surface}`}>
+            {isPolicyRole(s.role) ? MODE_LABEL[s.role] : s.role}: {surfaceLabel(s.surface)} {s.decision}.{' '}
+            {s.why}
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
 export function SecurityTab({ sub }: { sub: string }) {
   const { section, role } = parseSecuritySub(sub)
   const draft = useDraft((s) => s.draft)
   const open = useDraft((s) => s.open)
   const restart = useDraft((s) => s.restart)
   const kept = useDraft((s) => s.kept)
+  const skipped = useDraft((s) => s.skipped)
   const inForce = usePolicy((s) => s.inForce)
   const scan = useDev((s) => s.scans.developer)
   const rows = useMemo(() => editRows(scan?.figures ?? []), [scan])
   useEffect(() => {
-    open()
-  }, [open])
+    // The draft kept in this browser goes through the loader's screening first.
+    open(surfaceCatalog(scan?.figures ?? []))
+  }, [open, scan])
   if (!draft) return <Banner />
   const pending = draftChanges(draft.lines, inForce.lines, (s) => surfaceLabel(s))
   const stale = draft.base !== (inForce.file?.checksum ?? '') && draft.lines.length > 0
@@ -134,6 +167,7 @@ export function SecurityTab({ sub }: { sub: string }) {
           ? 'It is kept in this browser and in the settings file; nothing is in force until it is published.'
           : 'This browser would not keep it: it lasts until the page is closed.'}
       </p>
+      {skipped.length > 0 && <SkippedDraftLines skipped={skipped} />}
       {stale && (
         <p role="status" className="flex flex-wrap items-center gap-x-3 gap-y-1 text-small text-ink">
           The policy in force changed after this draft started.

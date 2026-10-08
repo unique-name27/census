@@ -91,6 +91,7 @@ export function unitOf(format: Format): string {
       return 'yrs'
     case 'money':
     case 'moneyFull':
+    case 'moneyM':
       return 'USD'
     case 'times':
       return '×'

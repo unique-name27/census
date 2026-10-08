@@ -179,7 +179,7 @@ export async function renderWholeView<T>(
     whileMounted: (groups: FigureGroup[]) => Promise<T>
     /**
      * The mode to render in (the one on screen when not given). Pass the view with the mode's tabs
-     * only (`withAccessTabs`); the Developer page's "Scan as Manager" passes Manager mode.
+     * only (`withAccessTabs`); the Developer page's "Scan as role" passes the mode and pick it lays out.
      */
     access?: AccessInput
     /** The User Timing name recorded in Developer mode (default `census:export:<view>`). */

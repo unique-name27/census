@@ -10,14 +10,16 @@
  *    mode?" and "Getting started with your home" (`home-start`).
  *  - Developer mode: none.
  *
- * Dismissing it (or finishing its tour) is remembered in this browser, each mode's line on its
- * own. It never opens on its own as a modal. "Not now" moves focus to the Help button, where the
- * tour can be taken later.
+ * It reads the live mode (the Mode button's): a page drawn in another mode, such as the Developer
+ * page's preview of a role's Home, has none. Dismissing it (or finishing its tour) is remembered in
+ * this browser, each mode's line on its own. It never opens on its own as a modal. "Not now" moves
+ * focus to the Help button, where the tour can be taken later.
  */
+import { useMode } from '@/access/store'
 import { Button, cx } from '@/components/ui'
 import { useAnalyticsIfAny } from '@/data/context'
 import { startTour, useHelp, welcomeDismissed } from '../store'
-import { type WelcomeVariant, welcomeCopy } from '../welcome'
+import { type WelcomeVariant, welcomeFor } from '../welcome'
 import { IconHelp } from './IconHelp'
 import { helpTrigger } from './refs'
 
@@ -29,9 +31,11 @@ export function WelcomeCard({
   /** Whose home it sits on: HR mode's Scorecard (default), Manager mode's My team, or a role's Home. */
   variant?: WelcomeVariant
 }) {
-  // Each line shows in its own mode only (Developer mode has none).
-  const mode = useAnalyticsIfAny()?.access.mode
-  const copy = welcomeCopy(variant, mode)
+  // Each line shows in its own mode only (Developer mode has none), and only where the page is
+  // drawn in the live mode.
+  const pageMode = useAnalyticsIfAny()?.access.mode
+  const liveMode = useMode((s) => s.mode)
+  const copy = welcomeFor(variant, pageMode, liveMode)
   const dismissed = useHelp((s) => (copy ? welcomeDismissed(s.prefs, copy.line) : true))
   const dismiss = useHelp((s) => s.dismissWelcome)
   if (!copy || dismissed) return null

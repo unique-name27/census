@@ -25,7 +25,13 @@
  *  - cost centers fold inside their business unit, and the cost centers of business units folded
  *    into Other by unit fold into one Other, so a unit's total less its shown cost centers is
  *    always a group of the minimum or more (no subtraction across the two breakdowns either);
- *  - rows hold totals, counts and the records behind them, never one person's amount.
+ *  - in Finance (`wholeUnits`), whose scopes are any set of whole business units, units under the
+ *    minimum are left out and units are never folded together, so no two scopes differ by a
+ *    small group;
+ *  - rows hold totals, counts and the records behind them, never one person's amount;
+ *  - in Finance (`round`), every cost is rounded down to a whole $100,000 (`./costRounding.ts`) in
+ *    each business unit, the total adding the units' rounded costs, and the variance, its
+ *    percentage and the status are computed from the rounded amounts.
  *
  * The budget is set by business unit, department and cost center, so it is compared only for a
  * scope made of whole lines (`budgetFit`): a location, level or leader filter, or a department
@@ -36,6 +42,7 @@ import { type BudgetLine, type CompRecord, type Employee, type ISODate, MIN_GROU
 import { dimensionSet, type Filters, isActiveAt, isEmployee } from '@/data/scope'
 import { ANONYMITY } from '@/metrics/privacy'
 import type { MetricsApi } from '@/metrics/types'
+import { roundCost, sumRounded } from './costRounding'
 import { formatMonth, monthEnd, monthKey } from './dates'
 import { median } from './stats'
 
@@ -88,6 +95,19 @@ export interface BudgetInput {
 export interface BudgetOptions {
   /** The plan version to read; the latest loaded (natural order) when omitted. */
   version?: string | null
+  /**
+   * Finance (pay view 'totals', docs/ROLES-V2.md 3.2): its scopes are any set of whole business
+   * units, so a business unit under the minimum, of costed employees or of budgeted heads, is left
+   * out of everything (`smallUnitsIn`), and every unit has its own row (no fold across units).
+   * Two scopes then never differ by a small unit's cost.
+   */
+  wholeUnits?: boolean
+  /**
+   * Finance (pay view 'totals', docs/ROLES-V2.md 3.2 rule 8): every cost rounded down to a whole
+   * $100,000 in each business unit (the total adds the units' rounded costs), with the variance,
+   * its percentage and the status from the rounded amounts.
+   */
+  round?: boolean
 }
 
 /** One group of a breakdown, or the scope's total, in the compared month. */
@@ -211,6 +231,8 @@ export interface BudgetModel {
     noRate: number
   }
   minGroup: number
+  /** Every cost here is rounded down to a whole $100,000 (Finance); read it with the 'moneyM' format. */
+  rounded: boolean
 }
 
 /* ───────── versions and months ───────── */
@@ -468,15 +490,33 @@ interface Bands {
   cost: number
 }
 
-function rowOf(a: Acc, minGroup: number, bands: Bands, costMeasured: boolean): BudgetRow {
+function rowOf(
+  a: Acc,
+  minGroup: number,
+  bands: Bands,
+  costMeasured: boolean,
+  round = false,
+  parts?: readonly Acc[],
+): BudgetRow {
   const hasLine = a.lines.length > 0
   const budgetHeadcount = hasLine ? a.budgetHeadcount : null
   const hidden = guardSize(a) < minGroup
   const budgetKnown = hasLine && a.costLines === a.lines.length && Number.isFinite(a.budgetCost)
-  const budgetCostUsd = !hidden && budgetKnown ? a.budgetCost : null
-  const employeeCostUsd = !hidden && costMeasured ? a.employeeCost : null
-  const contractorCostUsd = !hidden && costMeasured ? a.contractorCost : null
-  const costUsd = employeeCostUsd == null ? null : employeeCostUsd + (contractorCostUsd ?? 0)
+  // Finance: each cost rounded on its own; the rest from these. A row over several business units
+  // (`parts`, the total) adds each unit's rounded cost (`sumRounded`), so it says nothing the
+  // units do not.
+  const r = (v: number) => (round ? roundCost(v) : v)
+  const over = (f: (x: Acc) => number) =>
+    round && parts?.length ? sumRounded(parts.map((x) => roundCost(f(x)))) : r(f(a))
+  const budgetCostUsd = !hidden && budgetKnown ? r(a.budgetCost) : null
+  const employeeCostUsd = !hidden && costMeasured ? over((x) => x.employeeCost) : null
+  const contractorCostUsd = !hidden && costMeasured ? over((x) => x.contractorCost) : null
+  const costUsd =
+    employeeCostUsd == null
+      ? null
+      : round
+        ? over((x) => x.employeeCost + x.contractorCost)
+        : employeeCostUsd + (contractorCostUsd ?? 0)
   const costVarianceUsd = costUsd != null && budgetCostUsd != null ? costUsd - budgetCostUsd : null
   return {
     key: a.key,
@@ -546,7 +586,7 @@ export function computeBudget(input: BudgetInput, opts: BudgetOptions = {}): Bud
   const { versions, latest } = budgetVersions(input.all.budget)
   const version = opts.version !== undefined && opts.version !== null ? opts.version : latest
   const allLines = budgetLinesOf(input.all.budget, version)
-  const lines = budgetLinesOf(input.data.budget, version)
+  let lines = budgetLinesOf(input.data.budget, version)
   const months = [...new Set(allLines.map((l) => monthKey(l.period)))].sort()
   const month = comparedMonth(months, input.asOf)
   const date = month ? measuredAt(month, input.asOf) : null
@@ -570,6 +610,7 @@ export function computeBudget(input: BudgetInput, opts: BudgetOptions = {}): Bud
     notes: [],
     counts,
     minGroup,
+    rounded: !!opts.round,
   }
 
   const scopedUnits = new Set(input.data.employees.map((e) => e.businessUnit))
@@ -589,6 +630,14 @@ export function computeBudget(input: BudgetInput, opts: BudgetOptions = {}): Bud
   const compById = new Map(input.data.comp.map((c) => [c.employeeId, c]))
   // Pay is a snapshot: the run rate is measured in the month of the as-of date only.
   const costMeasured = month === monthKey(input.asOf)
+  let roster = input.data.employees
+  const small = opts.wholeUnits
+    ? smallUnitsIn(lines, roster, compById, month, date, minGroup)
+    : new Set<string>()
+  if (small.size) {
+    lines = lines.filter((l) => !small.has(l.businessUnit))
+    roster = roster.filter((e) => !small.has(e.businessUnit))
+  }
 
   /* The compared month: groups by business unit and cost center, and the total. */
   const total = newAcc('total', 'Total')
@@ -635,7 +684,7 @@ export function computeBudget(input: BudgetInput, opts: BudgetOptions = {}): Bud
   }
   const budgetedCenters = new Set(lines.filter((l) => !!l.costCenter).map((l) => l.costCenter as string))
   const deptVotes = new Map<string, Map<string, number>>()
-  for (const e of input.data.employees) {
+  for (const e of roster) {
     if (!isActiveAt(e, date)) continue
     const accs = [total, unitAcc(e.businessUnit)]
     if (hasCostCenters) accs.push(centerAcc(e.costCenter || null, e.businessUnit))
@@ -670,7 +719,9 @@ export function computeBudget(input: BudgetInput, opts: BudgetOptions = {}): Bud
     if (votes) a.department = [...votes].sort((x, y) => y[1] - x[1] || x[0].localeCompare(y[0]))[0][0]
   }
 
-  const totalRow = rowOf(total, minGroup, bands, costMeasured)
+  const round = !!opts.round
+  // Finance: the total adds each business unit's rounded cost (`rowOf`).
+  const totalRow = rowOf(total, minGroup, bands, costMeasured, round, [...units.values()])
   const totalShown = !totalRow.hidden
   const unitGroups = [...units.values()].sort(
     (a, b) =>
@@ -678,8 +729,11 @@ export function computeBudget(input: BudgetInput, opts: BudgetOptions = {}): Bud
       b.employees.length - a.employees.length ||
       a.label.localeCompare(b.label),
   )
-  const unitFold = foldGroups(unitGroups, guardSize, minGroup, totalShown)
-  const row = (a: Acc) => rowOf(a, minGroup, bands, costMeasured)
+  // By whole units (Finance) every unit keeps its own row: a fold across units would change with the scope.
+  const unitFold = opts.wholeUnits
+    ? { shown: unitGroups, folded: [] as Acc[] }
+    : foldGroups(unitGroups, guardSize, minGroup, totalShown)
+  const row = (a: Acc) => rowOf(a, minGroup, bands, costMeasured, round)
   const byUnit = unitFold.shown.map(row)
   if (unitFold.folded.length) byUnit.push(row(otherOf(OTHER_KEY, unitFold.folded, null)))
 
@@ -717,7 +771,7 @@ export function computeBudget(input: BudgetInput, opts: BudgetOptions = {}): Bud
       (s, l) => s + (Number.isFinite(l.budgetHeadcount) ? l.budgetHeadcount : 0),
       0,
     )
-    const staff = at ? input.data.employees.filter((e) => isEmployee(e) && isActiveAt(e, at)) : []
+    const staff = at ? roster.filter((e) => isEmployee(e) && isActiveAt(e, at)) : []
     let costKnown = monthLines.length > 0
     let budgetCost = 0
     for (const l of monthLines) {
@@ -728,7 +782,7 @@ export function computeBudget(input: BudgetInput, opts: BudgetOptions = {}): Bud
     const isCompared = m === month
     // The month's cost is over the scope's costed people (and its budgeted heads).
     const size = Math.min(isCompared ? total.costed : costedAt(staff, compById), budgetHeadcount)
-    const budgetCostUsd = costKnown && size >= minGroup ? budgetCost : null
+    const budgetCostUsd = costKnown && size >= minGroup ? (round ? roundCost(budgetCost) : budgetCost) : null
     const costUsd = isCompared && costMeasured ? totalRow.costUsd : null
     const headcount = at ? staff.length : null
     byMonth.push({
@@ -768,6 +822,10 @@ export function computeBudget(input: BudgetInput, opts: BudgetOptions = {}): Bud
   }
 
   const notes: string[] = []
+  if (small.size)
+    notes.push(
+      `${[...small].sort(byName).join(', ')} ${small.size === 1 ? 'has' : 'have'} fewer than ${minGroup.toLocaleString('en-US')} costed employees or budgeted heads, so ${small.size === 1 ? 'it is' : 'they are'} left out of the comparison in Finance mode.`,
+    )
   if (!costMeasured) {
     const asOfMonth = monthKey(input.asOf)
     notes.push(
@@ -803,6 +861,34 @@ export function computeBudget(input: BudgetInput, opts: BudgetOptions = {}): Bud
     unitMonths,
     notes,
   }
+}
+
+/**
+ * Business units under the minimum in the compared month: 1 to min - 1 costed employees, or 1 to
+ * min - 1 budgeted heads (`BudgetOptions.wholeUnits`).
+ */
+export function smallUnitsIn(
+  lines: readonly BudgetLine[],
+  employees: readonly Employee[],
+  compById: ReadonlyMap<string, CompRecord>,
+  month: string,
+  date: ISODate,
+  minGroup: number,
+): Set<string> {
+  const costed = new Map<string, number>()
+  for (const e of employees) {
+    if (!isEmployee(e) || !isActiveAt(e, date)) continue
+    const c = compById.get(e.employeeId)
+    if (c && annualTargetCashUsd(c) != null) costed.set(e.businessUnit, (costed.get(e.businessUnit) ?? 0) + 1)
+  }
+  const heads = new Map<string, number>()
+  for (const l of lines)
+    if (monthKey(l.period) === month && Number.isFinite(l.budgetHeadcount))
+      heads.set(l.businessUnit, (heads.get(l.businessUnit) ?? 0) + l.budgetHeadcount)
+  const under = (n: number | undefined) => n != null && n > 0 && n < minGroup
+  return new Set(
+    [...costed.keys(), ...heads.keys()].filter((u) => under(costed.get(u)) || under(heads.get(u))),
+  )
 }
 
 function costedAt(staff: readonly Employee[], compById: ReadonlyMap<string, CompRecord>): number {

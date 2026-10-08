@@ -14,6 +14,11 @@ export interface ViewTab {
    * tab, its link and its share of the whole-view export while the switch is off.
    */
   feature?: keyof Features
+  /**
+   * The tab has parts named in the address after a colon ("analyses:quality"), and the view gets
+   * the whole address to pick one. Any other tab gets its own key only (`viewTabOf`).
+   */
+  parts?: true
 }
 
 /** The view with only the tabs whose feature switch is on (the same object when none is gated). */
@@ -162,16 +167,37 @@ export interface ActionItem {
   /** Changes when the item's content changes (a count, the latest date): a handled mark with another fingerprint reopens. Roll-ups set it. */
   fingerprint?: string
   /**
+   * How many people or records the item is about (a roll-up's count, a plan line's full-year gap),
+   * so undated items of one severity list the larger first.
+   */
+  size?: number
+  /**
    * A money amount for this item, shown only where the mode and the "Show pay amounts" switch allow
    * (an `Amount (USD)` pay column); never in `what` or `note`, in any mode (docs/ROLES-V2.md 3.2).
+   * `rounded`: a total rounded down to a whole $100,000 (Finance, `src/lib/costRounding.ts`), read
+   * in millions ('moneyM').
    */
-  amount?: { usd: number; label: string }
+  amount?: { usd: number; label: string; rounded?: boolean }
   /** Legal or regulatory exposure (I-9, export license, work authorization, final pay). Ranks first. */
   exposure?: boolean
   /** The record that would close it, for "why is this still open": "No completed date on the course". */
   closesWhen?: string
   /** Business unit, region and location of the person or req it is about, for the HRBP lenses. */
   place?: { businessUnit?: string | null; region?: string | null; location?: string | null }
+  /**
+   * Items a role's list may fold into one line (docs/ACTION-CENTER-AUDIT.md 4.3), keyed alike:
+   * the req a candidate step is on ('req:REQ-4515'), the start date of day-one tasks not started
+   * yet ('start:2026-10-05'). `label` names the batch in a sentence ("REQ-4515 Formal
+   * Verification Engineer II", "the starts on 5 Oct"). Never set on an employee relations case.
+   */
+  batch?: { key: string; label: string }
+  /**
+   * The item worded for the person it waits on, for Copy note: "6 exits from your team" where
+   * `what` says "4 regretted exits from Aishwarya Krishnan's team" for HR. Without it the note
+   * uses `what` and the subject's label. `due`, when given, is the due date the note states
+   * (null: none), so a manager's note never dates HR's call about named leavers.
+   */
+  forOwner?: { what: string; subject?: string; due?: ISODate | null }
 }
 
 export interface ViewDef {
@@ -183,6 +209,11 @@ export interface ViewDef {
    * home", "Silicon Engineering", "Maya Chen's reqs"; docs/ROLES-V2.md 5.1). Default: `label`.
    */
   title?: (ctx: AnalyticsContext) => string
+  /**
+   * The view draws no figures in this context (Home in Developer mode: links to the role previews).
+   * The header then leaves out the quality switch and the figure exports, and keeps Copy link.
+   */
+  figureless?: (ctx: AnalyticsContext) => boolean
   /** Sub-tabs; the first one is the default. */
   tabs: ViewTab[]
   View: ComponentType<{ tab: string }>

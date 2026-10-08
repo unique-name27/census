@@ -109,7 +109,7 @@ export function Menu({
     <BMenu.Root>
       <BMenu.Trigger render={trigger} />
       <BMenu.Portal>
-        <BMenu.Positioner sideOffset={6} align={align} className="z-50 outline-none">
+        <BMenu.Positioner sideOffset={6} align={align} collisionPadding={16} className="z-50 outline-none">
           <BMenu.Popup className={cx(POPUP, 'py-1')} style={{ width }}>
             {items.map((it, i) => {
               if ('separator' in it) return <BMenu.Separator key={i} className="my-1 h-px bg-rule" />
@@ -164,7 +164,14 @@ export function Popover({
     <BPopover.Root open={open} onOpenChange={onOpenChange ? (o) => onOpenChange(o) : undefined}>
       <BPopover.Trigger render={trigger} />
       <BPopover.Portal>
-        <BPopover.Positioner sideOffset={6} side={side} align={align} className="z-50 outline-none">
+        {/* 16px from the window's edges, the side gutter on a phone (Base UI's default is 5px). */}
+        <BPopover.Positioner
+          sideOffset={6}
+          side={side}
+          align={align}
+          collisionPadding={16}
+          className="z-50 outline-none"
+        >
           <BPopover.Popup
             className={cx(POPUP, 'p-3 text-small')}
             style={{ width, maxWidth: 'calc(100vw - 32px)' }}

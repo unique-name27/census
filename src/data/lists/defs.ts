@@ -149,7 +149,7 @@ export const LIST_DEFS: readonly ListDef[] = [
     sheet: 'Regions',
     name: 'Regions',
     about:
-      'The regions locations roll up to, each with its regional HR business partner: a name or employee ID from Employees. Census reads these exact regions.',
+      "The regions that locations roll up to, each with its regional HR business partner: a name or employee ID from Employees. Each location's region is set in the Locations list; this list names who partners each region.",
   },
   {
     id: 'costCenter',

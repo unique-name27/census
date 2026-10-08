@@ -48,7 +48,7 @@ import {
 
 export const PAY_HIDDEN = 'Pay amounts are never sent to Claude.'
 
-const isMoney = (k: Kpi): boolean => k.format === 'money' || k.format === 'moneyFull'
+const isMoney = (k: Kpi): boolean => k.format === 'money' || k.format === 'moneyFull' || k.format === 'moneyM'
 
 /**
  * One key figure as tool output. `status` is the tile's judgement (Met or Missed against the target
@@ -419,10 +419,12 @@ export function compareGroups(rt: ToolRuntime, raw: unknown): ToolOutput {
   const baseCtx = s.ctx
   const overall = view.summary(baseCtx)
   const want = typeof input.kpi === 'string' ? input.kpi : ''
-  const kpi = kpisInMode(baseCtx.access, overall.kpis).find((k) => k.id === want || k.metricId === want)
+  // The refusal names only the key figures the mode shows, never one it hides.
+  const shownKpis = kpisInMode(baseCtx.access, overall.kpis)
+  const kpi = shownKpis.find((k) => k.id === want || k.metricId === want)
   if (!kpi)
     return fail(
-      `No key figure "${want}" in ${view.label}. Key figures: ${overall.kpis.map((k) => `${k.id} (${k.label})`).join(', ')}.`,
+      `No key figure "${want}" in ${view.label}. Key figures: ${shownKpis.map((k) => `${k.id} (${k.label})`).join(', ')}.`,
     )
 
   // The groups: named values, or the largest in the scope.

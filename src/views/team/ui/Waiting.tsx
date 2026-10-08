@@ -12,8 +12,9 @@ import { Pending, RouteLink, Section, Segmented } from '@/components'
 import { useAnalytics } from '@/data/context'
 import { drill } from '@/drill'
 import { fmt, plural } from '@/lib/format'
-import { dueText, type OpenAction, SEVERITY_WORD, usesOf } from '@/views/actions/engine'
+import { dueText, lensFor, type OpenAction, SEVERITY_WORD, usesOf } from '@/views/actions/engine'
 import { M as ACTIONS } from '@/views/actions/metrics'
+import { waitingOn } from '@/views/actions/ui/Sheets'
 import { WAITING_SHOWN } from '../engine'
 import type { TeamItems } from './useTeamItems'
 
@@ -33,7 +34,7 @@ type List = 'needs' | 'waiting'
 
 export function WaitingSection({ items }: { items: TeamItems | null }) {
   const ctx = useAnalytics()
-  const [list, setList] = useState<List>('needs')
+  const [picked, setList] = useState<List>('needs')
   // Where a mode hides the Action center, its items stay off My team too.
   if (!ctx.access.can('page:actions')) return null
   const actions = (
@@ -46,19 +47,20 @@ export function WaitingSection({ items }: { items: TeamItems | null }) {
   if (!items)
     return (
       <Section title="Needs attention" dek={dek} actions={actions}>
-        <Pending
-          title="Needs attention"
-          span={12}
-          height={200}
-          message="Collecting open items from each view."
-        />
+        <Pending title="Your items" span={12} height={200} message="Collecting open items from each view." />
       </Section>
     )
+  // With nothing waiting on others there is one list, and no switch to an empty one.
+  const list: List = items.waiting.length ? picked : 'needs'
   const shown = list === 'needs' ? items.needs : items.waiting
+  // The manager reads "You" for their own items, never their own name.
+  const me = lensFor(ctx).me
   const rows: Row[] = shown.map((a) => ({
     severity: SEVERITY_WORD[a.item.severity],
     what: a.item.what,
-    owner: a.ownerName,
+    owner: waitingOn(a, me)
+      .replace(/^Waiting on /, '')
+      .replace(/^you$/, 'You'),
     about: a.item.subject.label,
     due: dueText(a.item.due, ctx.asOf),
     from: a.from,
@@ -83,7 +85,8 @@ export function WaitingSection({ items }: { items: TeamItems | null }) {
         id="team-waiting"
         metric={ACTIONS.open}
         uses={usesOf(shown)}
-        title={list === 'needs' ? 'Needs attention' : 'Waiting on others'}
+        // Not the section's title again: the section is "Needs attention".
+        title={list === 'needs' ? 'Your items' : 'Waiting on others'}
         subtitle={
           list === 'needs'
             ? 'Your own open items: severity, then the due date'
@@ -95,15 +98,19 @@ export function WaitingSection({ items }: { items: TeamItems | null }) {
         span={12}
         tableOnly
         actions={
-          <Segmented<List>
-            label="List"
-            value={list}
-            onChange={setList}
-            options={[
-              { value: 'needs', label: `Needs attention (${fmt(items.needs.length, 'int')})` },
-              { value: 'waiting', label: `Waiting on others (${fmt(items.waiting.length, 'int')})` },
-            ]}
-          />
+          items.waiting.length ? (
+            <Segmented<List>
+              label="List"
+              value={list}
+              onChange={setList}
+              options={[
+                { value: 'needs', label: `Needs attention (${fmt(items.needs.length, 'int')})` },
+                { value: 'waiting', label: `Waiting on others (${fmt(items.waiting.length, 'int')})` },
+              ]}
+            />
+          ) : (
+            <span className="text-meta text-muted">Nothing waiting on others</span>
+          )
         }
         table={{
           onRowClick: (r) => drill(open(r)),

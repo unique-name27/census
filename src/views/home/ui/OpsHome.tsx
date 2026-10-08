@@ -8,7 +8,7 @@
  */
 import { useState } from 'react'
 import { BarList, type Column, Columns, Figure, Lines } from '@/charts'
-import { Grid, KpiStrip, Section } from '@/components'
+import { KpiStrip, Section } from '@/components'
 import type { Kpi, Severity } from '@/components/types'
 import { useAnalytics } from '@/data/context'
 import { drill } from '@/drill/Drill'
@@ -38,15 +38,17 @@ import type { TypeRow } from '@/views/services/engine/transactions'
 import { FIGURE_METRIC, M as SERVICES } from '@/views/services/metrics'
 import { onTimeCells } from '@/views/services/ui/drill'
 import { rateTone } from '@/views/services/ui/shared'
-import { HOME_SHOWN } from '../engine/attention'
-import { tile } from '../engine/kpis'
+import { caseOf, HOME_SHOWN, severityByRecord } from '../engine/attention'
+import { scorecardJudge, tile } from '../engine/kpis'
 import { type ReturnRow, returnsSoon, slaParts, type TxRow, txInFlight } from '../engine/ops'
 import { AttentionSection } from './Attention'
 import { Hero, ListFigure, ListSwitch } from './Frames'
-import { useHomeItems } from './useHomeItems'
+import { HomeTop } from './HomeTop'
+import { type HomeItems, useHomeItems } from './useHomeItems'
 
+/** Until the open items are collected; then a case reads as its Action center item does. */
 const SLA_TONE: Record<string, Severity | null> = {
-  'Past target': 'critical',
+  'Past target': 'warning',
   'Due within 24 h': 'warning',
   'Within target': null,
   'No target': null,
@@ -59,6 +61,7 @@ function Sla({ m }: { m: ServicesModel }) {
   const sla = m.kpis.find((k) => k.id === 'resolution-sla')
   const parts = slaParts(m.cases, m.asOf, !m.smallScope)
   const open = parts.reduce((n, p) => n + p.count, 0)
+  const past = parts.find((p) => p.key === 'Past target')?.count ?? 0
   const privates = parts.reduce((n, p) => n + p.private, 0)
   const target = m.settings.resolutionTarget
   const D = servicesDefinitions(ctx.metrics, m.settings)
@@ -74,16 +77,18 @@ function Sla({ m }: { m: ServicesModel }) {
       metric={SERVICES.resolutionSla}
       uses={sla?.uses ?? m.uses['services-backlog-by-age']}
       title="Resolution SLA met"
-      subtitle="Cases resolved within target, and where every open case stands against its target"
+      subtitle="Cases resolved within target in the period; the bar is the open cases now, against their target"
       value={sla?.value == null ? '—' : fmt(sla.value, 'pct')}
       valueDrill={sla?.drill}
       valueLabel="Show the cases judged on the resolution SLA"
-      label={`met, target ${pctWords(target)}`}
-      line={
-        privates
-          ? `${plural(privates, 'employee relations case')} counted in the bar, never listed`
-          : `Resolution SLA over cases resolved in the period`
-      }
+      label={`met in the period, target ${pctWords(target)}`}
+      // The rate is the period's; the bar is today's backlog. The line says so, with its own count.
+      line={[
+        `Open cases now: ${fmt(past, 'int')} of ${fmt(open, 'int')} past target`,
+        privates ? `${plural(privates, 'employee relations case')} counted, never listed` : '',
+      ]
+        .filter(Boolean)
+        .join(' · ')}
       parts={parts}
       unit="open cases"
       onSegment={(key) => drill(seg(key))}
@@ -209,7 +214,9 @@ function SlaTrend({ m }: { m: ServicesModel }) {
 
 type ListKey = 'cases' | 'tx' | 'returns'
 
-function MyList({ m }: { m: ServicesModel }) {
+function MyList({ m, items }: { m: ServicesModel; items: HomeItems | null }) {
+  // A case past target reads with its item's severity (Watch, or Critical once aged), as in Needs attention.
+  const severity = severityByRecord(items?.collected.items ?? [], caseOf)
   const [list, setList] = useState<ListKey>('cases')
   const s = m.scope
   const cases = openCaseRows({ cases: m.cases, asOf: m.asOf, small: m.small, smallScope: m.smallScope })
@@ -323,7 +330,7 @@ function MyList({ m }: { m: ServicesModel }) {
       columns={columns}
       note={[cases.privateNote, `as of ${formatDate(m.asOf)}`].filter(Boolean).join(' · ')}
       actions={actions}
-      rowTone={(r) => SLA_TONE[r.sla] ?? null}
+      rowTone={(r) => severity.get(r.caseId) ?? SLA_TONE[r.sla] ?? null}
       onRowClick={(r) => drill(() => oneCaseDrill(s, r.fact))}
       empty={
         m.small
@@ -455,22 +462,34 @@ export function OpsHome() {
   ]
   return (
     <>
-      <Grid>
-        <Sla m={m} />
-        <KpiStrip id="home-ops-kpis" title="Key figures" kpis={kpis} span={8} />
-        <Backlog m={m} />
-        <SlaTrend m={m} />
-      </Grid>
-      <AttentionSection
-        items={items}
-        shown={HOME_SHOWN}
-        dek="HR ops' queues: cases past target, transactions past due, returns from leave without systems ready, I-9s, reverifications, export licenses and day-one tasks."
+      <HomeTop
+        hero={<Sla m={m} />}
+        overview={
+          <>
+            <KpiStrip
+              id="home-ops-kpis"
+              title="Key figures"
+              kpis={kpis}
+              span={8}
+              judge={scorecardJudge(ctx.metrics)}
+            />
+            <Backlog m={m} />
+            <SlaTrend m={m} />
+          </>
+        }
+        attention={
+          <AttentionSection
+            items={items}
+            shown={HOME_SHOWN}
+            dek="HR ops' queues: cases past target, transactions past due, returns from leave without systems ready, I-9s, reverifications, export licenses and day-one tasks."
+          />
+        }
       />
       <Section
         title="My list"
         dek="The open case queue, the transactions in flight and the returns from leave coming up."
       >
-        <MyList m={m} />
+        <MyList m={m} items={items} />
       </Section>
       <Section
         title="Processing and day one"

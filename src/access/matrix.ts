@@ -4,7 +4,7 @@
  * imports the view registry). The matrix test renders it as two text files and compares them with
  * snapshots, so every change to who sees what shows in review:
  *
- *  - `matrixText`: a one-letter grid, surface then Dev, HR, CHRO, BU, Rgn, Comp, Tal, Ops, Rec,
+ *  - `matrixText`: a one-letter grid, surface then Dev, HR, CHRO, BU, Rgn, Comp, Tal, Rec, Ops,
  *    Fin, Mgr, each S (shown), L (limited) or H (hidden);
  *  - `howText`: for every limited or hidden decision, one line per mode: surface, mode, decision, how.
  *
@@ -133,20 +133,11 @@ export const PERSON_PARTS: readonly PersonPart[] = [
 ]
 export const PAY_PARTS: readonly PayPart[] = ['switch', 'amounts', 'totals']
 
-/** The matrix's column order (docs/ROLES-V2.md 4): Dev, HR, CHRO, BU, Rgn, Comp, Tal, Ops, Rec, Fin, Mgr. */
-export const MATRIX_MODES: readonly Mode[] = [
-  'developer',
-  'hr',
-  'chro',
-  'hrbp-unit',
-  'hrbp-region',
-  'compensation',
-  'talent-management',
-  'hr-ops',
-  'recruiter',
-  'finance',
-  'manager',
-]
+/**
+ * The matrix's column order: Developer (the baseline), then the Mode menu's order (`MODES`): HR, CHRO,
+ * BU, Rgn, Comp, Tal, Rec, Ops, Fin, Mgr. Every list of modes in the Developer page follows it.
+ */
+export const MATRIX_MODES: readonly Mode[] = ['developer', ...MODES.filter((m) => m !== 'developer')]
 
 /** Each mode's column head in the grid. */
 export const MODE_COLUMN: Readonly<Record<Mode, string>> = {
@@ -235,6 +226,7 @@ export function accessMatrix(inv: AccessInventory): MatrixRow[] {
   for (const t of tables) for (const p of t.metrics.hidePrefixes) add('metric', `metric:${p}*`)
   for (const p of MANAGER_HIDDEN_ITEM_PREFIXES) add('item', `item:${p}`)
   for (const t of tables) for (const p of t.hiddenItemPrefixes) add('item', `item:${p}`)
+  for (const t of tables) for (const c of t.hiddenColumns ?? []) add('column', `column:${c}`)
   // Everything else a policy names, so no explicit decision is left out of review.
   for (const s of [...DEVELOPER_ONLY, ...Object.keys(MANAGER_SURFACES)]) add(s.split(':')[0], s)
   for (const t of tables) for (const s of Object.keys(t.surfaces)) add(s.split(':')[0], s)

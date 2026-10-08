@@ -6,6 +6,7 @@
  */
 import type { Severity } from '@/components/types'
 import type { AnalyticsContext } from '@/data/context'
+import { fmt, plural } from '@/lib/format'
 import type { OpenAction } from './collect'
 import {
   DUE_BAND_LABEL,
@@ -264,4 +265,13 @@ export function kindRows(open: readonly OpenAction[], ctx: Ctx, top = 12): KindR
     table,
     buckets: DUE_BUCKETS.map((b) => dueBucketLabel(b, dueSoonDays)),
   }
+}
+
+/** "Who has the most waiting": "12 owners, 3 of them teams", "1 owner, a team", "2 owners, both teams". */
+export function ownersNote(owners: number, teams: number): string {
+  const head = plural(owners, 'owner')
+  if (!teams) return head
+  if (owners === 1) return `${head}, a team`
+  if (teams === owners) return `${head}, ${owners === 2 ? 'both' : 'all'} teams`
+  return `${head}, ${fmt(teams, 'int')} of them ${teams === 1 ? 'a team' : 'teams'}`
 }

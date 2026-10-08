@@ -8,6 +8,7 @@
  * replace the entry on screen.
  */
 import { create } from 'zustand'
+import { useMode } from '@/access/store'
 import type { Filters } from '@/data/scope'
 import { closeSettings, type Route, useCensus } from '@/data/store'
 import { useDrillStore } from '@/drill/store'
@@ -75,6 +76,8 @@ export interface TourRun {
   filters: Filters
   /** What had focus when the tour started; focus returns there. */
   opener: HTMLElement | null
+  /** The live mode when the tour started: finishing "Getting started with your home" ends that mode's welcome line. */
+  mode?: string
 }
 
 export type TourEnd = 'done' | 'skip'
@@ -144,6 +147,7 @@ export const useHelp = create<HelpState>((set, get) => ({
         from: { ...route },
         filters: { ...filters },
         opener: active instanceof HTMLElement && active !== document.body ? active : null,
+        mode: useMode.getState().mode,
       },
     })
   },
@@ -160,7 +164,7 @@ export const useHelp = create<HelpState>((set, get) => ({
     const r = census.route
     if (r.view !== t.from.view || r.tab !== t.from.tab)
       census.navigate(t.from.view, t.from.tab, { history: 'replace', scroll: r.view !== t.from.view })
-    const prefs = how === 'done' ? withCompleted(get().prefs, t.id) : get().prefs
+    const prefs = how === 'done' ? withTourDone(get().prefs, t.id, t.mode) : get().prefs
     if (prefs !== get().prefs) savePrefs(prefs)
     set((s) => ({
       tour: null,
@@ -188,14 +192,22 @@ export function withDismissed(p: HelpPrefs, which: WelcomeLine): HelpPrefs {
 }
 
 /**
- * Whether a welcome line is gone: dismissed, or its tour finished. A role's Home line is its own
- * (dismissing it as CHRO leaves Compensation's), and finishing "Getting started with your home" in
- * any mode ends them all.
+ * Whether a welcome line is gone: dismissed, or its tour finished. A role's Home line is its own:
+ * dismissing it, or finishing "Getting started with your home", as CHRO leaves Compensation's.
  */
 export function welcomeDismissed(p: HelpPrefs, which: WelcomeLine): boolean {
   if (which === 'manager') return p.managerWelcomeDismissed === true || p.completed.includes('manager-start')
   if (which === 'hr') return p.welcomeDismissed || p.completed.includes('getting-started')
-  return (p.homeWelcomeDismissed ?? []).includes(which.home) || p.completed.includes('home-start')
+  return (p.homeWelcomeDismissed ?? []).includes(which.home)
+}
+
+/**
+ * The prefs with a tour finished in a mode: marked finished, and "Getting started with your home"
+ * also ends the welcome line of the mode it was taken in (and no other mode's).
+ */
+export function withTourDone(p: HelpPrefs, id: string, mode?: string): HelpPrefs {
+  const done = withCompleted(p, id)
+  return id === 'home-start' && mode ? withDismissed(done, { home: mode }) : done
 }
 
 /** The prefs with a tour marked finished (the same object when it already was). */

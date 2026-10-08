@@ -64,13 +64,36 @@ const PERSON_KINDS: ReadonlySet<string> = new Set([
 ])
 
 /**
+ * Owner groups that work a queue for the whole company: a recruiter, a coordinator or an HR agent
+ * who sits in a business unit or a region still works items about people anywhere. In those
+ * scopes their items count only when the item is about the scope.
+ */
+const QUEUE_OWNERS: ReadonlySet<ActionOwnerRole> = new Set([
+  'recruiter',
+  'coordinator',
+  'hr-ops',
+  'payroll',
+  'benefits',
+  'immigration',
+  'trade-compliance',
+  'talent',
+  'total-rewards',
+  'it',
+  'facilities',
+  'finance',
+])
+
+/**
  * Whether an item is inside the scope: about someone or something in it (its subject, or its
- * `place`), or owned by someone in it. Always true without a scope.
+ * `place`), or owned by someone in it. In a business unit or region scope an owner in a queue
+ * group (`QUEUE_OWNERS`) does not bring an item in on their own: its drill would open nothing in
+ * the scope. Always true without a scope.
  */
 export function itemInScope(access: Pick<AccessContext, 'scope' | 'lock'>, item: ActionItem): boolean {
   const s = scopeOfAccess(access)
   if (!s) return true
-  if (item.ownerId && personInScope(item.ownerId, access)) return true
+  const queue = (s.kind === 'unit' || s.kind === 'region') && QUEUE_OWNERS.has(item.ownerRole)
+  if (!queue && item.ownerId && personInScope(item.ownerId, access)) return true
   const { kind, id } = item.subject
   switch (s.kind) {
     case 'org':

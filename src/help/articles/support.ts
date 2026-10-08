@@ -1,6 +1,14 @@
 /** Help articles, Help and support: shortcuts, reporting a problem, troubleshooting and the FAQ. */
 import type { HelpArticle } from '../types'
-import { DATA_ROOM, NO_DATA_ROOM, NO_PAY, PAY_SWITCH, PAY_TOTALS, RECRUITER } from './when'
+import {
+  ALL_RECRUITERS,
+  DATA_ROOM,
+  NO_DATA_ROOM,
+  NO_PAY,
+  ONE_RECRUITER,
+  PAY_SWITCH,
+  PAY_TOTALS,
+} from './when'
 
 export const SUPPORT_ARTICLES: readonly HelpArticle[] = [
   {
@@ -178,7 +186,11 @@ export const SUPPORT_ARTICLES: readonly HelpArticle[] = [
       },
       {
         p: 'Pick them in the Leader filter: your reqs then keep to the ones whose hiring manager is in their org. [Moving around](article:moving-around)',
-        ...RECRUITER,
+        ...ONE_RECRUITER,
+      },
+      {
+        p: 'Pick them in the Leader filter: the reqs then keep to the ones whose hiring manager is in their org. [Moving around](article:moving-around)',
+        ...ALL_RECRUITERS,
       },
       { h: 'Why can I not see salaries?' },
       {
@@ -230,22 +242,41 @@ export const SUPPORT_ARTICLES: readonly HelpArticle[] = [
       'console',
       'state',
       'overlay',
+      'scan as role',
+      'role homes',
+      'preview a role',
     ],
     route: { view: 'dev' },
     tour: 'developer-tools',
     body: [
       {
-        p: 'Developer mode shows everything HR mode shows, plus the Developer page and three debug overlays. Switch to it with the Mode button. Nothing on the Developer page is sent anywhere.',
+        p: "Developer mode shows everything HR mode shows, plus every role's home, My team, the Developer page and three debug overlays. Switch to it with the Mode button. Nothing on the Developer page is sent anywhere.",
       },
       { h: 'The Developer page' },
       {
         ul: [
-          'Overview: whether the data, the metric dictionary, the view contracts and the runtime are healthy. Run contract checks lays out every view off screen and lists each figure, key figure or finding that lacks a metric id, the fields it reads or its records.',
-          'Inventory: every view, tab, figure, metric, engine function, Ask tool, drill kind, dataset field, storage key, route, setting, shortcut and help article, each with what every mode shows. Search a list, or export it like any table.',
-          'Access: every surface and its decision in Developer, HR and Manager mode, the same rows the access matrix test checks.',
+          "Overview: whether the data, the metric dictionary, the view contracts and the runtime are healthy. Run contract checks lays out every view off screen, and each role's Home in that role's mode, and lists each figure, key figure or finding that lacks a metric id, the fields it reads or its records.",
+          'Inventory: every view, tab, figure, metric, engine function, Ask tool, drill kind, dataset field, storage key, route, setting, shortcut and help article, each with what all eleven modes show. Search a list, or export it like any table.',
+          'Access: every surface and its decision in each of the eleven modes, the same rows the access matrix test checks. Pick one mode, or show only the surfaces where modes differ.',
+          'Security center: what each role sees and can do, edited as a draft and published as a policy file. [Security center](article:security-center)',
           'Ask tools: run one Ask tool in this browser and see exactly what Claude would get. Nothing is sent to Anthropic.',
-          'State: the route, scope, mode, switches, quality index, saved views, panels and storage, each copyable as JSON. The Ask key and the workspace ID are never copied.',
+          'State: the route, the mode with the scope it holds and the picks remembered, switches, quality index, saved views, panels and storage, each copyable as JSON. The Ask key and the workspace ID are never copied.',
           'Timings: how long the engines, records lists, exports and Ask tools took. Timings record in Developer mode only.',
+        ],
+      },
+      { h: 'Scan as role' },
+      {
+        ul: [
+          'Inventory, Figures: "Scan figures" lays out every view as Developer mode sees it and lists every figure it registers.',
+          'Pick another mode in Mode, and its pick where it needs one (a manager, a business unit, a region or a recruiter), then "Scan as role" lists what that role gets. The result line names the mode and the pick.',
+          'A pick made on this page lasts until reload. It never changes your mode or the pick Census remembers.',
+        ],
+      },
+      { h: 'Role homes' },
+      {
+        ul: [
+          "Inventory, Role homes lists each role's Home: how many figures it has, the pick it needs and the one in use, its scope and its pay view.",
+          '"Preview a role" lays out that role\'s Home on this page, with the role\'s own numbers, lists and exports, while the rest of Census stays in Developer mode. Home in Developer mode links to each preview. [Role homes](route:dev.inventory:homes)',
         ],
       },
       { h: 'Debug overlays' },
@@ -259,6 +290,94 @@ export const SUPPORT_ARTICLES: readonly HelpArticle[] = [
       },
       {
         note: 'Errors caught this session are listed on the Overview. A tab that could not be drawn shows Details with the message and the component stack in this mode.',
+      },
+    ],
+  },
+  {
+    id: 'security-center',
+    group: 'support',
+    title: 'Security center',
+    summary:
+      'Decide what each role sees and can do in Census, as a draft in this browser, and publish it as a policy file for everyone.',
+    keywords: [
+      'access',
+      'policy',
+      'access-policy.json',
+      'roles',
+      'permissions',
+      'override',
+      'guard rails',
+      'publish',
+      'preview as role',
+      'draft',
+    ],
+    route: { view: 'dev', tab: 'security' },
+    body: [
+      {
+        p: 'The Security center is a tab of the Developer page. It changes what each role (HR, CHRO, both HRBP modes, Compensation, Talent management, HR ops, Recruiter, Finance and Manager) sees and can do. Developer mode always shows everything and cannot be changed.',
+      },
+      {
+        note: "Census runs in the browser with no sign-in. Anyone can still switch roles, and data already on a computer can be read with the browser's own tools. Keep sensitive data off computers that should not have it.",
+      },
+      { h: 'What you can change' },
+      {
+        ul: [
+          'Role: whether the Mode menu offers it, and the page it opens on.',
+          'Views and tabs, each Special analysis among them.',
+          'Figures and metrics, found by id, title or metric.',
+          'Data: the datasets a role reads, the records it opens and its person card (full, limited or none).',
+          'Pay: none, ratios, totals, or amounts per person behind the session switch.',
+          'Ask: on or off, each data tool, the screen tools and charts.',
+          'Exports, the Action center, the Data room, Settings sections, Tools, and help articles and tours.',
+        ],
+      },
+      {
+        p: 'The scope stays fixed by the role: a manager keeps to an org, an HR business partner to a business unit or region, and a recruiter to their reqs. Only what shows inside the scope can change.',
+      },
+      { h: 'Sections' },
+      {
+        ul: [
+          'Matrix: roles as columns and surfaces as rows, grouped by kind, with search and "Changed only". Each cell says whether its decision is built in, set by the file in force, or changed in the draft. Click a cell to change it; a reason and your name are needed, and the dialog says what else the change carries along.',
+          'Role: one role at a time as a checklist by area, with its own controls and "Reset this role to defaults".',
+          'Changes: the draft against what is in force, and what is in force against the defaults, with Undo on each change and a change log you can export.',
+          'In force: the policy file loaded (published by, date, notes, format version and checksum), or "Built-in defaults", and every line that was left out and why.',
+          'Publish and import: Publish checks the draft and downloads access-policy.json. Import shows what a file would change before it goes into the draft.',
+        ],
+      },
+      {
+        p: 'Each section has its own address, such as #dev.security:role:finance for the role page on Finance, so a link or a reload opens the same place.',
+      },
+      { h: 'Preview as role' },
+      {
+        p: 'Preview lays the draft over this tab only and switches to the role, asking for its pick where it needs one. A bar says which role you are previewing, with "Back to the Security center". Nothing is in force for anyone else.',
+      },
+      { h: 'Putting a policy in force' },
+      {
+        ol: [
+          'Publish downloads access-policy.json.',
+          'Put it at public/access-policy.json in the Census repository.',
+          'Run npm run deploy. The one-file build embeds the file, and the site gets a copy beside its page.',
+          'Census loads it for everyone when it starts. In force says which file is loaded.',
+        ],
+      },
+      {
+        p: 'A file that is not valid, has another format version or a checksum that does not match is ignored as a whole, and Developer mode says why. Unknown roles or surfaces, and lines that cross a guard rail, are skipped one by one and listed under In force.',
+      },
+      { h: 'Guard rails' },
+      {
+        ul: [
+          'Protected characteristics are never shown.',
+          'Employee relations items never name a person.',
+          'Survey answers are never shown per person, and manager cuts keep their minimum.',
+          'Anonymity minimums can only be raised, never lowered.',
+          'Pay amounts and immigration details per person only ever show behind their session switches.',
+          'The Security center, debug overlays and the Ask tools console stay Developer-only.',
+          'A role never sees outside its scope: a scoped role never gets the Data room, and a recruiter never gets views or datasets beyond their reqs.',
+          'Cost totals without the pay switch are for Finance mode only, over whole business units at the reporting date HR sets.',
+        ],
+      },
+      {
+        note: 'The draft is kept in this browser and in the settings file. It changes nothing in force until it is published and deployed.',
       },
     ],
   },

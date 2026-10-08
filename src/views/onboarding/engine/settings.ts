@@ -31,6 +31,8 @@ export interface OnboardingSettings {
   onPlanBand: number
   /** Hiring behind plan is critical from this full-year gap, as a share of the full-year plan. */
   behindCritical: number
+  /** … and only from this many starts short over the full year. */
+  behindCriticalMin: number
   /** A planned role with no open req is a warning when its month starts within this many days. */
   noReqSoonDays: number
   minBehind: number
@@ -79,6 +81,7 @@ export function onboardingSettings(m: MetricsApi): OnboardingSettings {
     attritionDays: m.num(M.attrition90, 'days'),
     onPlanBand: m.num(M.vsPlan, 'onPlanBand'),
     behindCritical: m.num(M.gap, 'behindCritical'),
+    behindCriticalMin: m.num(M.gap, 'behindCriticalMin'),
     noReqSoonDays: m.num(M.noReq, 'soonDays'),
     minBehind: m.num(M.quarter, 'minBehind'),
     lateMinGap: m.num(M.lateTask, 'minGap'),

@@ -7,13 +7,14 @@
  */
 import { useState } from 'react'
 import { type Column, Figure, HBars, Heatmap, Histogram, type RefLine } from '@/charts'
-import { Grid, KpiStrip, Section } from '@/components'
+import { KpiStrip, Section } from '@/components'
 import type { Kpi } from '@/components/types'
 import { useAnalytics } from '@/data/context'
 import { drill } from '@/drill/Drill'
 import { openPerson } from '@/drill/store'
 import { formatDate } from '@/lib/dates'
 import { fmt, plural } from '@/lib/format'
+import { CloseDateNote } from '@/views/actions/ui/CloseDateNote'
 import { PROGRESS_COLUMNS } from '@/views/comp/columns'
 import { binColumns, binItems, progressColumns } from '@/views/comp/drillColumns'
 import {
@@ -35,6 +36,7 @@ import { type OutsideListRow, outsideList, positionParts } from '../engine/comp'
 import { tile } from '../engine/kpis'
 import { AttentionSection } from './Attention'
 import { Hero, ListFigure, ListSwitch } from './Frames'
+import { HomeTop } from './HomeTop'
 import { useHomeItems } from './useHomeItems'
 
 /* ───────── in the healthy band ───────── */
@@ -180,13 +182,14 @@ function OutsideList({ m }: { m: CompModel }) {
       ? [{ key: 'promoted', label: 'Promoted, last 12 months' } as Column<OutsideListRow>]
       : []),
     { key: 'rating', label: 'Latest rating', format: 'num1' },
-    { key: 'baseUsd', label: 'Base (USD)', format: 'money', pay: true },
-    { key: 'minUsd', label: 'Range minimum (USD)', format: 'money', pay: true },
-    { key: 'maxUsd', label: 'Range maximum (USD)', format: 'money', pay: true },
+    // One person's amounts: whole dollars across the row, as the Ranges tab lists them.
+    { key: 'baseUsd', label: 'Base (USD)', format: 'moneyFull', pay: true },
+    { key: 'minUsd', label: 'Range minimum (USD)', format: 'moneyFull', pay: true },
+    { key: 'maxUsd', label: 'Range maximum (USD)', format: 'moneyFull', pay: true },
     {
       key: 'gapUsd',
       label: side === 'below' ? 'Gap to minimum (USD)' : 'Over maximum (USD)',
-      format: 'money',
+      format: 'moneyFull',
       pay: true,
     },
   ]
@@ -330,16 +333,28 @@ export function CompHome() {
   ]
   return (
     <>
-      <Grid>
-        <InBand m={m} />
-        <KpiStrip id="home-comp-kpis" title="Key figures" kpis={kpis} span={8} />
-        <Distribution m={m} />
-        <CycleProgress m={m} />
-      </Grid>
-      <AttentionSection
-        items={items}
-        shown={HOME_SHOWN}
-        dek="Total rewards' open items: pay below range minimum, merit spend over budget, high performers paid low in range, proposals outside the guideline or missing."
+      <HomeTop
+        hero={<InBand m={m} />}
+        overview={
+          <>
+            <KpiStrip id="home-comp-kpis" title="Key figures" kpis={kpis} span={8} />
+            <Distribution m={m} />
+            <CycleProgress m={m} />
+          </>
+        }
+        attention={
+          <AttentionSection
+            items={items}
+            shown={HOME_SHOWN}
+            dek={
+              <>
+                Total rewards' open items: pay below range minimum, merit spend over budget, high performers
+                paid low in range, proposals outside the guideline or missing.{' '}
+                {items && <CloseDateNote items={items.needs} />}
+              </>
+            }
+          />
+        }
       />
       <Section
         title="My list"

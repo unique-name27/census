@@ -15,7 +15,7 @@ import { SCREEN_TOOL_NAMES } from '@/ask/engine/screenTools'
 import { ALL_TOOL_NAMES } from '@/ask/engine/tools'
 import { DATASET_KEYS, DATASETS, VIEW_LABEL } from '@/data/schema'
 import { SECTION_LABEL, SETTINGS_SECTIONS } from '@/data/settings'
-import { DRILL_KINDS } from '@/drill/records'
+import { DRILL_KINDS, standardColumnLabel } from '@/drill/records'
 import { ARTICLES } from '@/help/articles'
 import { TOURS } from '@/help/tours'
 import { METRICS } from '@/metrics/catalog'
@@ -44,7 +44,11 @@ export const GROUPS: readonly { key: GroupKey; label: string; hint: string }[] =
   { key: 'tabs', label: 'Tabs', hint: 'Sub-tabs, and each Special analysis.' },
   { key: 'figures', label: 'Figures', hint: 'Charts and tables, found by id, title or metric.' },
   { key: 'metrics', label: 'Metrics', hint: 'Measures in the dictionary, and whole families of them.' },
-  { key: 'data', label: 'Data', hint: 'Datasets a role reads, records it opens, the person card.' },
+  {
+    key: 'data',
+    label: 'Data',
+    hint: 'Datasets a role reads, records it opens, the columns it leaves out of them, the person card.',
+  },
   { key: 'pay', label: 'Pay', hint: 'The pay switch, amounts per person and cost totals.' },
   { key: 'ask', label: 'Ask', hint: 'Ask itself, each data tool, the screen tools and make_chart.' },
   { key: 'exports', label: 'Exports', hint: 'Figure, view and records exports, the monthly report.' },
@@ -202,6 +206,11 @@ export function surfaceLabel(s: string, figures?: ReadonlyMap<string, ScannedFig
       return `Dataset: ${datasetLabel.get(rest) ?? rest}`
     case 'drill':
       return `Records: ${GROUPED_KINDS[rest] ?? datasetLabel.get(rest) ?? rest}`
+    case 'column': {
+      const kind = rest.slice(0, rest.indexOf('.'))
+      const key = rest.slice(rest.indexOf('.') + 1)
+      return `Column in ${GROUPED_KINDS[kind] ?? datasetLabel.get(kind) ?? kind}: ${standardColumnLabel(kind, key) ?? key}`
+    }
     case 'focus':
       return FOCUS_LABEL[rest] ?? s
     case 'data':
@@ -237,6 +246,7 @@ export function groupOf(surface: string): GroupKey {
       return 'metrics'
     case 'dataset':
     case 'drill':
+    case 'column':
     case 'person':
     case 'focus':
       return 'data'

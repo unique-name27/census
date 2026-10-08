@@ -3,6 +3,7 @@ import { NOT_SECURITY_LONG } from '@/access/copy'
 import type { HelpArticle } from '../types'
 import {
   ALL_PRACTICES,
+  ALL_RECRUITERS,
   DATA_ROOM,
   DEVELOPER,
   EVERY_ITEM,
@@ -12,9 +13,9 @@ import {
   MANAGER,
   NO_DATA_ROOM,
   NO_PAY,
+  ONE_RECRUITER,
   PAY_SWITCH,
   PAY_TOTALS,
-  RECRUITER,
   ROLE_HOME,
   ROLE_LISTS,
   SCOPED,
@@ -228,7 +229,13 @@ export const START_ARTICLES: readonly HelpArticle[] = [
         ul: [
           "Every filter works inside your reqs. A leader keeps the reqs whose hiring manager is in that leader's org.",
         ],
-        ...RECRUITER,
+        ...ONE_RECRUITER,
+      },
+      {
+        ul: [
+          "With Every recruiter picked, the filters cover every req. A leader keeps the reqs whose hiring manager is in that leader's org.",
+        ],
+        ...ALL_RECRUITERS,
       },
       {
         p: 'Filters apply to every view and are remembered in this browser. Remove one with the cross on its chip, or use Reset to clear them all. The view header always says the scope, the window and the as-of date.',
@@ -250,7 +257,7 @@ export const START_ARTICLES: readonly HelpArticle[] = [
       },
       {
         p: "In Recruiter mode a link carries the filters but not your reqs, so someone who opens it in another mode sees every recruiter's reqs.",
-        ...RECRUITER,
+        ...ONE_RECRUITER,
       },
       {
         p: "The browser's Back and Forward buttons move between views and tabs and also undo and redo filter changes. Several quick changes, such as ticking three values in one open menu, are one step. Opening the records panel, Settings, Help or Ask is not a step.",
@@ -372,7 +379,7 @@ export const START_ARTICLES: readonly HelpArticle[] = [
       },
       {
         p: 'Time to fill, offer acceptance and days waiting compare your reqs with all reqs and say so ("vs all reqs"). That comparison opens no records.',
-        ...RECRUITER,
+        ...ONE_RECRUITER,
       },
       { h: 'When a number shows "—"' },
       {
@@ -462,7 +469,11 @@ export const START_ARTICLES: readonly HelpArticle[] = [
       },
       {
         p: 'A person opens on a card when they are about to start on one of your reqs: their role, start date, hiring manager and how ready day one is.',
-        ...RECRUITER,
+        ...ONE_RECRUITER,
+      },
+      {
+        p: 'A person opens on a card when they are about to start on a req: their role, start date, hiring manager and how ready day one is.',
+        ...ALL_RECRUITERS,
       },
       { p: 'From there:', surface: 'person:org-chart' },
       {
@@ -528,7 +539,7 @@ export const START_ARTICLES: readonly HelpArticle[] = [
       },
       {
         p: "In Recruiter mode the link carries the filters but not your reqs, so someone who opens it in another mode sees every recruiter's reqs.",
-        ...RECRUITER,
+        ...ONE_RECRUITER,
       },
       { h: 'The monthly people report', surface: 'export:monthly-report' },
       {
@@ -817,7 +828,7 @@ export const START_ARTICLES: readonly HelpArticle[] = [
       {
         ul: [
           'HRBP for a business unit: the business unit you support, from the business units in the Employees data.',
-          'HRBP for a region: the region, from the Region column of the Locations list.',
+          "HRBP for a region: the region. Each location's region comes from the Locations list; the Regions list names each region's HR business partner.",
           'Recruiter: yourself, from everyone named as the recruiter on a req open now or opened in the last 12 months. "Every recruiter" shows every req, for a talent acquisition lead.',
           'Manager: the manager, from the people who lead 3 or more employees, the same list as the leader filter. Pick yourself.',
         ],
@@ -846,7 +857,9 @@ export const START_ARTICLES: readonly HelpArticle[] = [
           'Every other mode: ratios such as compa-ratio where its views show them, and never an amount.',
         ],
       },
-      { p: 'Ask never sends a pay amount or a cost total, in any mode. [Pay amounts](article:privacy-pay)' },
+      {
+        p: 'Ask never sends a pay amount or a cost total, in any mode (see [Pay amounts](article:privacy-pay)).',
+      },
       { h: 'What switching does' },
       {
         ul: [

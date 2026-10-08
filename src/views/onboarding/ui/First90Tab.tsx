@@ -125,7 +125,7 @@ export function First90Tab() {
   const nhColumns: Column<NhRow>[] = [
     { key: 'site', label: 'Site' },
     { key: 'due', label: 'New hires due', format: 'int', drill: (r) => nhDrills.due(r.g) },
-    { key: 'onTime', label: 'Entered by day -3', format: 'int', drill: (r) => nhDrills.onTime(r.g) },
+    { key: 'onTime', label: 'Entered by day −3', format: 'int', drill: (r) => nhDrills.onTime(r.g) },
     { key: 'rate', label: 'On time', format: 'pct' },
   ]
 
@@ -349,7 +349,7 @@ export function First90Tab() {
           id="onboarding-new-hire-entered"
           uses={NEW_HIRE_TX}
           metric={M.newHireEntered}
-          title="New hires entered by day -3, by site"
+          title="New hires entered by day −3, by site"
           subtitle={`New hire transactions completed by their due date, starts ${b.windowWords}`}
           data={nhRows}
           columns={nhColumns}

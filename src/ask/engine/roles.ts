@@ -34,7 +34,17 @@ const PICK_WORDS: Readonly<Record<PickKind, string>> = {
 }
 
 /** What an access answer is read for here. */
-type ModeAccess = { mode: Mode; scope?: ScopeLock | null; lock?: OrgScope | null; unset?: boolean }
+type ModeAccess = {
+  mode: Mode
+  scope?: ScopeLock | null
+  lock?: OrgScope | null
+  unset?: boolean
+  /** The policy in force (`ctx.access.can`): Ask itself hidden turns it off. */
+  can?: (surface: string) => boolean
+}
+
+/** Ask hidden for a mode (the Security center's "Ask: on or off"). */
+export const askHidden = (mode: Mode): string => `Ask is not part of ${modeName(mode)}.`
 
 /** Ask in a scoped mode without its pick: "Ask needs a business unit picked in HRBP mode. Choose one with Mode." */
 export function askNeedsPick(kind: PickKind, mode: Mode): string {
@@ -42,7 +52,8 @@ export function askNeedsPick(kind: PickKind, mode: Mode): string {
 }
 
 /**
- * Why Ask is off for a context, or null. Every scoped mode needs a scope of the anonymity minimum
+ * Why Ask is off for a context, or null: Ask hidden by the policy in force, or a scoped mode whose
+ * scope is too small. Every scoped mode needs a scope of the anonymity minimum
  * (employees in an org, a business unit or a region; candidates on a recruiter's reqs), so that no
  * answer is about one person; a mode whose pick is missing or gone holds nobody.
  */
@@ -51,6 +62,8 @@ export function askOff(ctx: {
   metrics: AnalyticsContext['metrics']
 }): string | null {
   const access = ctx.access
+  // Hidden means not rendered and nothing sent (docs/SECURITY-CENTER.md).
+  if (access?.can && !access.can('ask')) return askHidden(access.mode)
   const scope = scopeOfAccess(access)
   if (!access || !scope) return null
   const kind = PICK_OF_SCOPE[scope.kind]

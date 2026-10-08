@@ -71,7 +71,11 @@ export function Overview({ m }: { m: HrbpModel }) {
   // Promotion rate comes from Job changes. Below the data standard its column drops out, so the
   // scorecard still shows in a meeting held to that standard.
   const withPromotions = p.meets(PROMOTION_RATE)
-  const metrics = SCORE_METRICS.filter((k) => withPromotions || k !== 'promotionRate')
+  // Manager mode hides regretted attrition (HR's call about named leavers): its column drops out.
+  const withRegretted = ctx.access.can(`metric:${ID.regretted}`)
+  const metrics = SCORE_METRICS.filter(
+    (k) => (withPromotions || k !== 'promotionRate') && (withRegretted || k !== 'regretted'),
+  )
 
   const scorecard = (
     <Figure
@@ -88,7 +92,7 @@ export function Overview({ m }: { m: HrbpModel }) {
         headcount: r.headcount,
         netChange: r.netChange,
         voluntary: r.voluntary,
-        regretted: r.regretted,
+        regretted: withRegretted ? r.regretted : null,
         firstYear: r.firstYear,
         promotionRate: withPromotions ? r.promotionRate : null,
         avgSpan: r.avgSpan,
@@ -105,7 +109,16 @@ export function Overview({ m }: { m: HrbpModel }) {
         { key: 'headcount', label: 'Headcount', format: 'int', drill: scoreCol('headcount') },
         { key: 'netChange', label: 'Net change, 12 mo', format: 'int', drill: scoreCol('netChange') },
         { key: 'voluntary', label: 'Voluntary attrition', format: 'pct', drill: scoreCol('voluntary') },
-        { key: 'regretted', label: 'Regretted attrition', format: 'pct', drill: scoreCol('regretted') },
+        ...(withRegretted
+          ? [
+              {
+                key: 'regretted' as const,
+                label: 'Regretted attrition',
+                format: 'pct' as const,
+                drill: scoreCol('regretted'),
+              },
+            ]
+          : []),
         { key: 'firstYear', label: 'First-year attrition', format: 'pct', drill: scoreCol('firstYear') },
         ...(withPromotions
           ? [
@@ -124,7 +137,7 @@ export function Overview({ m }: { m: HrbpModel }) {
         ID.headcount,
         ID.netChange,
         ID.voluntary,
-        ID.regretted,
+        ...(withRegretted ? [ID.regretted] : []),
         ID.firstYear,
         ...(withPromotions ? [ID.promotionRate] : []),
         ID.meanSpan,
@@ -147,7 +160,10 @@ export function Overview({ m }: { m: HrbpModel }) {
           if (row.filter) rescope(ctx, row.filter)
         }}
         drillFor={scoreDrill}
-        hide={withPromotions ? [] : ['promotionRate']}
+        hide={[
+          ...(withPromotions ? [] : ['promotionRate' as const]),
+          ...(withRegretted ? [] : ['regretted' as const]),
+        ]}
       />
     </Figure>
   )

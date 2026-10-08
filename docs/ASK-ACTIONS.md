@@ -14,7 +14,8 @@ Two parts:
    and draw a chart of its own from numbers Census calculates.
 
 Everything in docs/ASK.md still holds: numbers only go to Claude, names and IDs as tokens, pay
-never sent, small groups hidden, Manager mode locked to the org (docs/ROLES.md), and the
+never sent, small groups hidden, each scoped mode kept to its scope (Manager's org, an HRBP's
+business unit or region, a recruiter's reqs; docs/ROLES-V2.md part 7), and the
 Action center follows the mode: `open_items` returns what the mode's Action center lists, its
 Needs attention and Waiting on others in a role mode, every item with the escalations counted in
 HR, CHRO and Developer (docs/ROLES-V2.md 6.3).
@@ -61,8 +62,8 @@ one history entry, so Back undoes it too.
 
 | Tool | Does | Through |
 |---|---|---|
-| `set_filters` | Sets period (or custom dates), leader, business unit, department, location, level, include or exclude per filter; `merge` (default) changes only what it names, `replace` starts from the whole company | the store's `setFilters` with the filter clamp (Manager mode stays in the org) |
-| `reset_filters` | Back to the whole company, last 12 months (in Manager mode: the manager's whole org) | `resetFilters` with the clamp |
+| `set_filters` | Sets period (or custom dates), leader, business unit, department, location, level, include or exclude per filter; `merge` (default) changes only what it names, `replace` starts from the whole company | the store's `setFilters` with the filter clamp (a scoped mode stays in its scope; Finance keeps business unit and period) |
+| `reset_filters` | Back to the whole company, last 12 months (in a scoped mode, its own scope: the manager's whole org, the business unit, the region, or all the recruiter's reqs) | `resetFilters` with the clamp |
 | `open_view` | Opens a view and tab (and a Data room panel or metric definition where that view allows) | `goTo` and the route guard (hidden routes are refused with the mode's reason) |
 | `show_figure` | Scrolls to a figure on the current tab, highlights it for a few seconds, optionally switches it to table view | the figure registry |
 | `open_records` | Opens the records panel for a `ref` from an earlier result (or a figure's headline drill) | `openDrill` with the mode's drill rules |
@@ -83,11 +84,14 @@ Rules:
   Census, "Let Ask change the screen" (on by default), turns the action tools off; Claude is then
   told they are unavailable and links instead.
 - Actions never change data, settings, the mode, metric definitions, mappings or official lists.
-- In Manager mode every action passes the same clamp and route guard as a click: Ask cannot leave
-  the org or open a hidden view, and says why when asked to.
+- In every mode every action passes the same clamp and route guard as a click: Ask cannot leave
+  the mode's scope (the org, the business unit, the region or the recruiter's reqs; Finance's
+  business unit and period only) or open a view the mode hides, and says why when asked to. Saved
+  views say what the clamp left out.
 - Changing the mode stops the answer in flight before the chat is cleared (`src/ask/ui/inflight.ts`),
-  and any tool call from an answer asked in another mode, or for another manager, is refused with
-  nothing done (`modeMoved`, checked in `runTool` and `runScreenTool`).
+  and any tool call from an answer asked in another mode, or under another pick (another manager,
+  business unit, region or recruiter), is refused with nothing done (`modeMoved`, checked in
+  `runTool` and `runScreenTool`).
 - `open_view` keeps a sub-address after a tab key only for a view that defines one, read by that
   view's own parser (AI in HR's `agents:<areas>`, the Developer page's tabs); anything else after
   the key is dropped, and a tab with a query or path is refused, so nothing unchecked rides into
@@ -151,16 +155,19 @@ Rules:
 - The system prompt adds: use the action tools when the person asks to see, show, filter, open or
   compare on screen; say what changed; prefer an existing figure over a new chart; draw a chart
   when no figure shows what was asked; never claim an action happened unless its tool succeeded.
-- Tool definitions follow the mode (Manager mode: the enums only list what it shows; HR: no
-  Developer-only views; Developer: everything). Prompt caching stays on the system prompt and tools.
+- Tool definitions follow the mode (docs/ASK.md, "Ask in each mode"): in every mode the enums list
+  only what it shows and the tools its policy hides are left out; HR and CHRO have no
+  Developer-only views; Developer has everything. Prompt caching stays on the system prompt and
+  tools.
 - The DEV fake client ("sk-ant-test-fake-0000") gains scripted flows that call `set_filters`,
   `open_view`, `show_figure` and `make_chart`, so the whole thing can be demoed and tested without a
   key.
 
 ## 6. Tests
 
-- Every action tool in every mode: what it changes, one history entry, Undo, Manager clamp and
-  route guard, refusals worded for the mode, nothing changes when "Let Ask change the screen" is off.
+- Every action tool in every mode: what it changes, one history entry, Undo, the mode's scope
+  clamp and route guard, refusals worded for the mode, nothing changes when "Let Ask change the
+  screen" is off.
 - `make_chart`: every form validates; data equals the source tool's rows; refs open the counted
   records; suppression carried over; bad specs come back as errors Claude can act on.
 - Privacy matrix extended to the new tools (no names, IDs, emails or pay in any result or in the

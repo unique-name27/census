@@ -306,10 +306,13 @@ function lacksNextStep(b: RecruitingBase): Scored | null {
     ? `${plural(n, 'candidate')} ${n === 1 ? 'lacks' : 'lack'} a next step, ${n0(decisions)} of them waiting on an interview decision.`
     : `${plural(n, 'candidate')} ${n === 1 ? 'lacks' : 'lack'} a next step.`
   const parts = `${cap(joinAnd(breakdownParts(lacking)))}.`
+  // In Manager mode the reader is one of the names: "you", never their own name.
+  const isMe = (name: string) => !!b.me && name.trim().toLowerCase() === b.me.trim().toLowerCase()
+  const has = (name: string) => (isMe(name) ? 'You have' : `${name} has`)
   const conc = concentrated
     ? top.length === 2
-      ? `${top[0][0]} has ${n0(top[0][1])} of the ${n0(decisions)} decisions and ${top[1][0]} ${n0(top[1][1])}, ${pct0(topShare)} together.`
-      : `${top[0][0]} has ${n0(top[0][1])} of the ${n0(decisions)} decisions.`
+      ? `${has(top[0][0])} ${n0(top[0][1])} of the ${n0(decisions)} decisions and ${isMe(top[1][0]) ? 'you' : top[1][0]} ${n0(top[1][1])}, ${pct0(topShare)} together.`
+      : `${has(top[0][0])} ${n0(top[0][1])} of the ${n0(decisions)} decisions.`
     : seg
       ? `${cap(where(seg).replace(/^in |^at |^on |^among /, ''))} has ${n0(seg.affected)} of them, ${pct0(seg.segValue)} of its active candidates vs ${pct0(seg.compValue)} elsewhere.`
       : ''
@@ -318,10 +321,10 @@ function lacksNextStep(b: RecruitingBase): Scored | null {
   const topOwner = [...groups].sort((a, c) => c[1] - a[1])[0]
   const others = lacking.length - decisions
   const action = concentrated
-    ? `Ask the panels to submit scorecards and make a decision this week, starting with ${joinAnd(top.map(([name]) => name))}.`
+    ? `Ask the panels to submit scorecards and make a decision this week, starting with ${joinAnd(top.map(([name]) => (isMe(name) ? 'your own' : name)))}.`
     : decisions >= others
       ? 'Ask the panels to submit scorecards and make a decision this week, then work through the action queue.'
-      : `Work through the action queue on the Pipeline tab${topOwner ? `, starting with ${topOwner[0]}` : ''}.`
+      : `Work through the action queue on the Pipeline tab${topOwner ? `, starting with ${isMe(topOwner[0]) ? 'yours' : topOwner[0]}` : ''}.`
   const ordered = lacking
     .slice()
     .sort((x, y) => (x.tier === y.tier ? y.days - x.days : x.tier === 'red' ? -1 : 1))
@@ -742,7 +745,9 @@ function withdrawalsRising(b: RecruitingBase): Scored | null {
   for (const a of wd) byStage.set(a.furthest, (byStage.get(a.furthest) ?? 0) + 1)
   const topStage = [...byStage].sort((a, c) => c[1] - a[1])[0]
   const reasons = new Map<string, number>()
-  for (const a of wd) if (a.reason) reasons.set(a.reason, (reasons.get(a.reason) ?? 0) + 1)
+  // Why candidates withdrew is named only where the mode shows candidates' reasons.
+  if (b.showCandidateReasons !== false)
+    for (const a of wd) if (a.reason) reasons.set(a.reason, (reasons.get(a.reason) ?? 0) + 1)
   const topReason = [...reasons].sort((a, c) => c[1] - a[1])[0]
   const stageName = topStage ? (STAGE_AT[topStage[0]] ?? null) : null
   const staged = !!(topStage && stageName)

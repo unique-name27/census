@@ -29,8 +29,17 @@ export const FINANCE: Condition = { unless: 'filter:leader' }
 /** Recruiter mode: Recruiting without People stats. */
 export const RECRUITER: Condition = { surface: 'view:recruiting', unless: 'view:hrbp' }
 
-/** The modes that keep to a scope: Manager, both HRBP modes, Recruiter (company comparisons open nothing). */
-export const SCOPED: Condition = { unless: 'ui:kpi-delta-company' }
+/** Recruiter mode on one recruiter's reqs. */
+export const ONE_RECRUITER: Condition = { ...RECRUITER, scoped: true }
+
+/** Recruiter mode with "Every recruiter" picked: every req, nothing outside. */
+export const ALL_RECRUITERS: Condition = { ...RECRUITER, scoped: false }
+
+/**
+ * The modes that keep to a scope: Manager, both HRBP modes, Recruiter (company comparisons open
+ * nothing), while they hold one. Recruiter mode with "Every recruiter" picked holds none.
+ */
+export const SCOPED: Condition = { unless: 'ui:kpi-delta-company', scoped: true }
 
 /** Both HRBP modes. */
 export const HRBP: Condition = { surface: 'header:hrbp', unless: 'ui:kpi-delta-company' }

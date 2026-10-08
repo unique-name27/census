@@ -28,6 +28,7 @@ import { Grid, Section } from '@/components/Section'
 import { toast } from '@/components/toast'
 import type { Severity } from '@/components/types'
 import { Button, Segmented, SeverityIcon } from '@/components/ui'
+import { useMinWidth } from '@/components/useNarrow'
 import { type AnalyticsContext, useAnalytics } from '@/data/context'
 import { TIER_LABEL } from '@/data/quality/tier'
 import type { ViewKey } from '@/data/schema'
@@ -60,6 +61,7 @@ import {
   itemsDrill,
   lensFor,
   listHeader,
+  listsLine,
   NEEDS_SHOWN,
   nothingWaiting,
   type OpenAction,
@@ -77,8 +79,10 @@ import {
   viewRows,
   type WaitingOn,
 } from '../engine'
+import { listSwitchOptions } from '../engine/listSwitch'
 import { M } from '../metrics'
 import { ByKind, DueTimeline, TopOwners } from './Charts'
+import { CloseDateNote, undatedByCycle } from './CloseDateNote'
 import { MarksName } from './MarksName'
 import { drillItems, ItemRow, OwnerSheet, type StatusFn } from './Sheets'
 import { type ListMode, listIn, useActionFilters, useActionMarks, useNow } from './store'
@@ -116,7 +120,8 @@ function useLists(state: RoleItemsState | null, status: StatusFn): Lists {
   // A role mode's parked list keeps to what its two lists would hold.
   // The parked list keeps to what the mode lists: its two lists, or its full list.
   const r = roleItems(marked, lensFor(ctx))
-  const parked = roles ? [...r.needs, ...r.waiting] : r.listed
+  // Roll-ups marked handled or snoozed park whole (their items stay open underneath).
+  const parked = roles ? [...r.needs, ...r.waiting, ...(state?.parked ?? [])] : r.listed
   const shownOpen = roles ? [...needs, ...waiting] : open
   const base = list === 'needs' ? needs : list === 'waiting' ? waiting : list === 'parked' ? parked : open
   return {
@@ -263,17 +268,21 @@ function Notices({
   stale,
   left,
   roles,
+  items,
 }: {
   collected: Collected
   stale: boolean
   left: number
   /** The mode shows the two lists: `left` is what other practices hold; else the items not listed at all. */
   roles: boolean
+  /** The list on screen (for the line about a merit cycle with no close date). */
+  items: readonly OpenAction[]
 }) {
   const ctx = useAnalytics()
   const { below, errors, smallScope } = collected
   const lines: ReactNode[] = []
   if (stale) lines.push(<span key="stale">Updating for the new filters.</span>)
+  if (undatedByCycle(items).length) lines.push(<CloseDateNote key="close" items={items} />)
   if (below.count > 0) {
     const reasons = below.reasons
       .slice(0, 3)
@@ -295,8 +304,8 @@ function Notices({
       <span key="left">
         {roles
           ? left === 1
-            ? '1 more item from the views this mode shows waits on another practice and is not listed here.'
-            : `${fmt(left, 'int')} more items from the views this mode shows wait on other practices and are not listed here.`
+            ? "1 more item in these views belongs to another practice's team, outside your area, so neither list shows it."
+            : `${fmt(left, 'int')} more items in these views belong to other practices' teams, outside your area, so neither list shows them.`
           : `${plural(left, 'overdue training item')}, one per manager's team, ${left === 1 ? 'is' : 'are'} listed for the managers; here training shows by course below target.`}
       </span>,
     )
@@ -618,19 +627,20 @@ const SECTION_TITLE: Record<ListMode, string> = {
 
 function ListSwitch({ lists }: { lists: Lists }) {
   const setList = useActionFilters((s) => s.setList)
-  const n = (x: readonly OpenAction[]) => fmt(x.length, 'int')
-  const options: { value: ListMode; label: string }[] = lists.roles
-    ? [
-        { value: 'needs', label: `Needs attention ${n(lists.needs)}` },
-        { value: 'waiting', label: `Waiting on others ${n(lists.waiting)}` },
-        { value: 'parked', label: `Handled and snoozed ${n(lists.parked)}` },
-      ]
-    : [
-        { value: 'open', label: `Open ${n(lists.open)}` },
-        { value: 'parked', label: `Handled and snoozed ${n(lists.parked)}` },
-      ]
+  // The three-part switch is wider than a phone's column; under 640px it uses the short words.
+  const wide = useMinWidth(640)
+  const options = listSwitchOptions(
+    {
+      roles: lists.roles,
+      needs: lists.needs.length,
+      waiting: lists.waiting.length,
+      open: lists.open.length,
+      parked: lists.parked.length,
+    },
+    wide,
+  )
   return (
-    <span data-tour="actions-list-switch">
+    <span data-tour="actions-list-switch" className="block max-w-full overflow-x-auto">
       <Segmented<ListMode> label="Show" value={lists.list} onChange={setList} options={options} />
     </span>
   )
@@ -701,7 +711,13 @@ function Body({ state, status }: { state: RoleItemsState; status: StatusFn }) {
         align="start"
         className="max-md:order-2 max-md:mt-10"
       >
-        <Notices collected={state.collected} stale={state.stale} left={lists.left} roles={lists.roles} />
+        <Notices
+          collected={state.collected}
+          stale={state.stale}
+          left={lists.left}
+          roles={lists.roles}
+          items={lists.base}
+        />
         <KpiStrip kpis={kpis} />
         <WhereItemsWait open={lists.counted} status={status} />
       </Section>
@@ -752,7 +768,7 @@ export function ActionCenter() {
             </h1>
             <p className="mt-1.5 max-w-[72ch] text-small text-ink-2">
               {lists.roles
-                ? `${listHeader(ctx)}. Needs attention is yours; Waiting on others is in your area, with someone else.`
+                ? `${listHeader(ctx)}. ${listsLine(ctx)}`
                 : leader
                   ? `${leader.name}'s items and their team's, from every view, grouped by who they wait on.`
                   : 'Open items from every view, grouped by who they wait on: decisions, tasks, deadlines and follow-ups to raise in each leader review.'}

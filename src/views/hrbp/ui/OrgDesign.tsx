@@ -39,6 +39,8 @@ export function OrgDesign({ m }: { m: HrbpModel }) {
   const p = m.prep
   const asOf = formatDate(ctx.asOf)
   const managers = org.managers.filter(filtersOf(org.flags)[filter])
+  // Manager mode hides regretted attrition (HR's call about named leavers): no regretted column.
+  const withRegretted = ctx.access.can(`metric:${ID.regretted}`)
   // A manager's total org sets their org as the filter; the business unit's layers set the unit.
   const managerCell = (cell: ManagerCell, count: (r: ManagerRow) => number) =>
     managerDrill(p, org, cell, count)
@@ -117,14 +119,22 @@ export function OrgDesign({ m }: { m: HrbpModel }) {
 
       <Section
         title="Managers"
-        dek="Every manager in scope with team size, total org, tenure and regretted exits."
+        dek={
+          withRegretted
+            ? 'Every manager in scope with team size, total org, tenure and regretted exits.'
+            : 'Every manager in scope with team size, total org and tenure.'
+        }
       >
         <Figure
           id="hrbp-managers"
           metric={ID.managerFlag}
           uses={p.uses(FIGURE.managers(p.set.regretted))}
           title="Manager table"
-          subtitle={`Managers on ${asOf}, regretted exits over the last 12 months`}
+          subtitle={
+            withRegretted
+              ? `Managers on ${asOf}, regretted exits over the last 12 months`
+              : `Managers on ${asOf}`
+          }
           data={managers}
           columns={[
             { key: 'managerId', label: 'ID', format: 'text' },
@@ -146,12 +156,16 @@ export function OrgDesign({ m }: { m: HrbpModel }) {
             },
             { key: 'tenureMonths', label: 'Tenure (mo)', format: 'int' },
             { key: 'managerSince', label: 'Managing since', format: 'date' },
-            {
-              key: 'regretted12',
-              label: 'Regretted exits, 12 mo',
-              format: 'int',
-              drill: managerCell('regretted12', (r) => r.regretted12),
-            },
+            ...(withRegretted
+              ? [
+                  {
+                    key: 'regretted12' as const,
+                    label: 'Regretted exits, 12 mo',
+                    format: 'int' as const,
+                    drill: managerCell('regretted12', (r) => r.regretted12),
+                  },
+                ]
+              : []),
             { key: 'flag', label: 'Flag', format: 'text' },
           ]}
           definitions={p.defs(ID.span, ID.totalOrg, ID.newManager, ID.managerFlag)}

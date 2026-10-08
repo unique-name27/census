@@ -210,7 +210,7 @@ const entries: MetricInput[] = [
   },
   {
     id: M.dayMinus3,
-    name: 'Day -3 tasks not done',
+    name: 'Day −3 tasks not done',
     definition:
       'Upcoming starts in the look-ahead with any onboarding task due three or more days before the start still open.',
     formula: 'starts in the look-ahead with an open task due on or before start − 3 days',
@@ -576,7 +576,7 @@ const entries: MetricInput[] = [
   },
   {
     id: M.newHireEntered,
-    name: 'New hires entered by day -3',
+    name: 'New hires entered by day −3',
     definition:
       'Share of New hire transactions completed in the HRIS by their due date, three business days before the start, by site. Atlas ON-03.',
     formula: 'completed on or before the due date ÷ new hire transactions due',
@@ -686,8 +686,15 @@ const entries: MetricInput[] = [
       share(
         'behindCritical',
         'Critical gap',
-        'A business unit or department behind plan is a critical Action center item when its full-year gap is at least this share of its full-year plan.',
+        'A business unit or department behind plan is a critical Action center item when its full-year gap is at least this share of its full-year plan, and at least the critical starts below.',
         0.25,
+      ),
+      count(
+        'behindCriticalMin',
+        'Critical gap, starts',
+        'A department behind plan is critical only when its full-year gap is at least this many starts; a smaller gap reads Watch, whatever its share.',
+        3,
+        100,
       ),
     ],
   },

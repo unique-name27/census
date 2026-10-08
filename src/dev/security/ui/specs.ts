@@ -137,14 +137,17 @@ export function paySpec(
         c.decision === builtInOf(c.surface) ? { surface: c.surface, decision: c.decision } : c,
       ),
     refuse: (value) => {
+      // The pay surfaces are weighed together: each change against the draft with all of them in.
+      const changes = payLines(value as PayLevel, builtInOf)
       let lines = [...draft]
-      for (const c of payLines(value as PayLevel, builtInOf)) {
-        const r = refusal(lines, { role, surface: c.surface, decision: c.decision })
-        if (r) return r.why
+      for (const c of changes)
         lines = [
           ...lines.filter((l) => !(l.role === role && l.surface === c.surface)),
           { role, ...c, reason: '', by: '', at: '' },
         ]
+      for (const c of changes) {
+        const r = refusal(lines, { role, surface: c.surface, decision: c.decision })
+        if (r) return r.why
       }
       return null
     },

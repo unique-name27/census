@@ -13,6 +13,21 @@ export const HOME_START = 'home-start'
 /** Where a welcome line sits: HR mode's Scorecard, Manager mode's My team, or a role's Home. */
 export type WelcomeVariant = 'hr' | 'manager' | 'home'
 
+/**
+ * The line a page shows, read against the live mode (the Mode button's): a page drawn in another
+ * mode than the live one (the Developer page's preview of a role's Home) shows none, so Developer
+ * mode never reads "New to Finance mode?". `pageMode` is the mode the page is drawn in (undefined
+ * outside the analytics provider: the live mode).
+ */
+export function welcomeFor(
+  variant: WelcomeVariant,
+  pageMode: Mode | undefined,
+  liveMode: Mode,
+): ReturnType<typeof welcomeCopy> {
+  if (pageMode && pageMode !== liveMode) return null
+  return welcomeCopy(variant, liveMode)
+}
+
 /** The line's words and tour for a mode, or null where that page has no welcome line. */
 export function welcomeCopy(
   variant: WelcomeVariant,

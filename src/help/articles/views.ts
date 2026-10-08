@@ -5,6 +5,7 @@
 import type { HelpArticle } from '../types'
 import {
   ALL_PRACTICES,
+  ALL_RECRUITERS,
   DATA_ROOM,
   DEVELOPER,
   EVERY_ITEM,
@@ -14,6 +15,7 @@ import {
   MANAGER,
   NO_DATA_ROOM,
   NO_PAY,
+  ONE_RECRUITER,
   PAY_SWITCH,
   PAY_TOTALS,
   RECRUITER,
@@ -139,7 +141,7 @@ export const VIEW_ARTICLES: readonly HelpArticle[] = [
       { h: 'HR ops', surface: 'figure:home-ops-sla' },
       {
         ul: [
-          'Resolution SLA met, over where every open case stands against its target, then the backlog, transactions on time, final pay on time, returns in the next 30 days, day -3 tasks and I-9 Section 2 on time.',
+          'Resolution SLA met, over where every open case stands against its target, then the backlog, transactions on time, final pay on time, returns in the next 30 days, day −3 tasks and I-9 Section 2 on time.',
           'The open backlog by age, resolution SLA by month, on time by transaction type and day-one readiness by owner.',
           'Needs attention: cases past target, transactions past due, returns from leave without systems ready, I-9 Section 2, work authorizations to reverify, export licenses and day-one tasks that are overdue, blocked or not started. Probation decisions and day-30 readiness are Waiting on others.',
           'My list: the open case queue, transactions in flight, or returns from leave in the next 30 days (never the leave reason). Employee relations cases are counted under the list, never listed.',
@@ -149,16 +151,43 @@ export const VIEW_ARTICLES: readonly HelpArticle[] = [
       {
         ul: [
           'Candidates lacking a next step, by what they wait on, then open reqs, active candidates, offers out, hires, and time to fill and offer acceptance against all reqs.',
-          'The pipeline today, waiting time by stage, open reqs by age and candidates past the screen, and the countdown to day one for your starts.',
-          "Needs attention: applications to review, offers to send, offers waiting on an answer, empty funnels, reqs past their time-to-fill target and interviews to schedule where the req has no coordinator. Interview decisions are the hiring manager's, under Waiting on others, with a note to copy. No item sits on a req on hold, cancelled, filled or closed.",
-          'My list: your open reqs with their pipeline, or your candidates in the queue.',
         ],
+        scoped: true,
+      },
+      {
+        ul: [
+          'Candidates lacking a next step, by what they wait on, then open reqs, active candidates, offers out, hires, time to fill and offer acceptance, over every req.',
+        ],
+        scoped: false,
+      },
+      {
+        ul: [
+          'The pipeline today, waiting time by stage, open reqs by age and candidates past the screen, and the countdown to day one for your starts.',
+        ],
+        scoped: true,
+      },
+      {
+        ul: [
+          'The pipeline today, waiting time by stage, open reqs by age and candidates past the screen, and the countdown to day one for every start.',
+        ],
+        scoped: false,
+      },
+      {
+        ul: [
+          "Needs attention: applications to review, offers to send, offers waiting on an answer, empty funnels, reqs past their time-to-fill target and interviews to schedule where the req has no coordinator. Interview decisions are the hiring manager's, under Waiting on others, with a note to copy. No item sits on a req on hold, cancelled, filled or closed.",
+        ],
+      },
+      { ul: ['My list: your open reqs with their pipeline, or your candidates in the queue.'], scoped: true },
+      {
+        ul: ["My list: every recruiter's open reqs with their pipeline, or the candidates in the queue."],
+        scoped: false,
       },
       { h: 'Finance', surface: 'figure:home-fin-vs-plan' },
       {
         ul: [
           'Headcount against the budget, by month and by business unit, with the monthly cost against budget. With no budget loaded, starts against the hiring plan instead.',
           "Net change, open reqs, open reqs not in the plan, contractors and interns, and target cash cost, then open reqs against the plan, the workforce mix and cost by cost center. Cost totals cover groups of 5 or more people; no number is one person's pay.",
+          'Every cost amount is rounded down to the nearest $0.1M ($12,345,678 reads "$12.3M"; a total under $100,000 reads "under $0.1M"), a total over several business units adds each unit’s rounded amount (plus $0.1M for every two units, for what rounding down takes off), and cost against budget is worked out from the rounded amounts, so comparing two totals never narrows one person’s pay to less than a $100,000 range.',
           'Needs attention: open reqs not in the plan, hiring behind plan by business unit and department, and planned roles with no open req. None of them is about one person.',
           'My list: the departments behind the hiring plan, or the cost centers.',
         ],
@@ -198,7 +227,7 @@ export const VIEW_ARTICLES: readonly HelpArticle[] = [
     metrics: [
       'hrbp.headcount.employees',
       'hrbp.attrition.voluntary',
-      'hrbp.attrition.regretted',
+      'hrbp.attrition.all',
       'hrbp.attrition.firstYear',
       'hrbp.workforce.tenure',
       'hrbp.org.span',
@@ -220,6 +249,17 @@ export const VIEW_ARTICLES: readonly HelpArticle[] = [
       {
         ul: [
           'Key figures: headcount, voluntary and regretted attrition against the company, open reqs, starts in the next 30 days, required training on time, and your open items. Each tile opens the tab that explains it.',
+        ],
+        surface: 'metric:hrbp.attrition.regretted',
+      },
+      {
+        ul: [
+          'Key figures: headcount, voluntary attrition and attrition (every exit) against the company, open reqs, starts in the next 30 days, required training on time, and your open items. Each tile opens the tab that explains it. Every exit counts the same here: how HR classifies an exit, and why someone left, stay with HR.',
+        ],
+        unless: 'metric:hrbp.attrition.regretted',
+      },
+      {
+        ul: [
           "Needs attention: your own open items (interview decisions, probation decisions, your team's training, stay conversations), the most pressing first, and one switch away the items in your org that someone else holds, such as day-one tasks with People operations.",
           'What the data shows: up to six findings from People stats, Recruiting, Onboarding and Talent for the org, critical first, each tagged with its view and "Open in" to go there.',
           'Headcount over time: employees at each month end for two years, the year before in gray.',
@@ -229,6 +269,17 @@ export const VIEW_ARTICLES: readonly HelpArticle[] = [
       {
         ul: [
           'Hires and exits by month, and attrition against the company: voluntary, regretted and first-year. Company bars are a comparison only and open no records.',
+        ],
+        surface: 'metric:hrbp.attrition.regretted',
+      },
+      {
+        ul: [
+          'Hires and exits by month, and attrition against the company: voluntary and first-year. Company bars are a comparison only and open no records.',
+        ],
+        unless: 'metric:hrbp.attrition.regretted',
+      },
+      {
+        ul: [
           'Tenure, people by level, and direct reports per manager, against the company median span. A glyph and a word mark an Overloaded, Heavy or Light span.',
         ],
       },
@@ -266,7 +317,7 @@ export const VIEW_ARTICLES: readonly HelpArticle[] = [
         ],
       },
       {
-        note: 'An org of fewer than 5 employees shows counts and lists, but rates are hidden to protect anonymity. My team shows no pay, survey results, HR cases, compliance details, exit reasons or flight-risk scores.',
+        note: 'An org of fewer than 5 employees shows counts and lists, but rates are hidden to protect anonymity. My team shows no pay, survey results, HR cases, compliance details or flight-risk scores, and no reason anyone gave for leaving.',
       },
     ],
   },
@@ -429,7 +480,11 @@ export const VIEW_ARTICLES: readonly HelpArticle[] = [
       },
       {
         p: 'In Recruiter mode every tab keeps to your reqs. Time to fill, offer acceptance and days waiting compare with all reqs ("vs all reqs"), as comparisons that open no records.',
-        ...RECRUITER,
+        ...ONE_RECRUITER,
+      },
+      {
+        p: 'In Recruiter mode with Every recruiter picked, every tab shows every req, as a talent acquisition lead reviews them.',
+        ...ALL_RECRUITERS,
       },
       {
         p: 'In Finance mode Recruiting shows the Requisitions tab: the open reqs, how old they are and how fast they fill.',
@@ -467,6 +522,13 @@ export const VIEW_ARTICLES: readonly HelpArticle[] = [
         p: 'Recruiter load shows your own open reqs and active candidates.',
         surface: ['figure:recruiting-recruiter-load', 'view:recruiting'],
         unless: 'view:hrbp',
+        scoped: true,
+      },
+      {
+        p: 'Recruiter load shows the open reqs and active candidates each recruiter holds.',
+        surface: ['figure:recruiting-recruiter-load', 'view:recruiting'],
+        unless: 'view:hrbp',
+        scoped: false,
       },
       { h: 'Sources & offers', surface: 'tab:recruiting.sources' },
       {
@@ -562,7 +624,7 @@ export const VIEW_ARTICLES: readonly HelpArticle[] = [
       },
       { h: 'Upcoming starts', surface: 'tab:onboarding.upcoming' },
       {
-        p: 'Starts in the next 30, 60 and 90 days, day -3 tasks not done, open contingencies (background check or export screening not done), median offer accepted to start and the renege rate. The start calendar shows weekly starts by business unit; the Upcoming starts table lists each person with their readiness ("7 of 9 done") and the item blocking it. Readiness by task and by owner show which teams are behind.',
+        p: 'Starts in the next 30, 60 and 90 days, day −3 tasks not done, open contingencies (background check or export screening not done), median offer accepted to start and the renege rate. The start calendar shows weekly starts by business unit; the Upcoming starts table lists each person with their readiness ("7 of 9 done") and the item blocking it. Readiness by task and by owner show which teams are behind.',
       },
       {
         p: 'Readiness status: Ready when every day-one task is done, On track when none is past due, Behind when any is past due, and Not ready when the person starts within 3 days with a task still open.',
@@ -669,7 +731,12 @@ export const VIEW_ARTICLES: readonly HelpArticle[] = [
       { h: 'Overview' },
       {
         p: "Key figures: headcount, hires, attrition, voluntary, regretted and first-year attrition, and promotion rate. With a leader or org filter on, the changes compare with the whole company. Headcount over time, hires and exits by month, the headcount bridge from 12 months ago to today, and the sub-org scorecard: one row per direct report's org (or per business unit) with cells shaded when they are materially off the company. Click a row to focus on that org.",
+        surface: ['metric:hrbp.scorecard.offCompany', 'metric:hrbp.attrition.regretted'],
+      },
+      {
+        p: "Key figures: headcount, hires, attrition, voluntary and first-year attrition, and promotion rate. With a leader or org filter on, the changes compare with the whole company. Headcount over time, hires and exits by month, the headcount bridge from 12 months ago to today, and the sub-org scorecard: one row per direct report's org (or per business unit) with cells shaded when they are materially off the company. Click a row to focus on that org.",
         surface: 'metric:hrbp.scorecard.offCompany',
+        unless: 'metric:hrbp.attrition.regretted',
       },
       {
         p: 'Key figures: headcount, hires, and attrition, voluntary, regretted and first-year. Headcount over time, hires and exits by month, and the headcount bridge from 12 months ago to today.',
@@ -685,13 +752,25 @@ export const VIEW_ARTICLES: readonly HelpArticle[] = [
         ul: [
           'Attrition: attrition by quarter, regretted attrition, why people left, exits by tenure, level and last rating, and the regretted leavers.',
         ],
+        surface: ['metric:hrbp.attrition.exitReasons', 'metric:hrbp.attrition.regretted'],
+      },
+      {
+        ul: ['Attrition: attrition by quarter, why people left, and exits by tenure, level and last rating.'],
         surface: 'metric:hrbp.attrition.exitReasons',
+        unless: 'metric:hrbp.attrition.regretted',
       },
       {
         ul: [
           'Attrition: attrition by quarter and regretted attrition, by tenure and level, as rates and counts.',
         ],
+        surface: 'metric:hrbp.attrition.regretted',
         unless: 'metric:hrbp.attrition.exitReasons',
+      },
+      {
+        ul: [
+          'Attrition: attrition by quarter, where it runs highest, and exits by tenure, level and last rating.',
+        ],
+        hidden: ['metric:hrbp.attrition.exitReasons', 'metric:hrbp.attrition.regretted'],
       },
       {
         ul: ['What leavers say in the exit survey, beside the exit reasons.'],
@@ -744,7 +823,11 @@ export const VIEW_ARTICLES: readonly HelpArticle[] = [
       { ul: ['Is voluntary attrition above the company, and where does it concentrate?'] },
       {
         ul: ['Are regretted exits clustering under one manager?'],
-        surface: ['filter:leader', 'metric:hrbp.attrition.exitReasons'],
+        surface: [
+          'filter:leader',
+          'metric:hrbp.attrition.exitReasons',
+          'metric:hrbp.findings.regrettedCluster',
+        ],
       },
       {
         ul: ['Which managers have very wide or very narrow spans, or are new with large teams?'],
@@ -1111,6 +1194,10 @@ export const VIEW_ARTICLES: readonly HelpArticle[] = [
       },
       {
         p: 'Finance mode shows the totals at all times. A total opens the people it counts, without amounts, and exports say that individual pay is left out.',
+        ...PAY_TOTALS,
+      },
+      {
+        p: 'In Finance mode every amount is rounded down to the nearest $0.1M: $12,345,678 reads "$12.3M", $456,000 reads "$0.4M", and a total under $100,000 reads "under $0.1M". A total over several business units adds each unit’s rounded amount, plus $0.1M for every two units, since rounding down takes about $0.05M off each. Shares, target cash per employee, merit spend against budget and cost against budget are worked out from the rounded amounts. So no comparison of breakdowns, business units, dates or exports narrows one person’s pay to less than a $100,000 range.',
         ...PAY_TOTALS,
       },
       { h: MEETING },

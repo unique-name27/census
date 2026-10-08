@@ -362,12 +362,16 @@ const sampleMeta = (data: Datasets): Record<DatasetKey, SourceMeta> =>
 
 /**
  * The route an address names (`#view.tab`), or null. The scope after a `?` is left for
- * `readScope` (src/data/urlScope.ts), so every view's own tab suffix parses as before.
+ * `readScope` (src/data/urlScope.ts), so every view's own tab suffix parses as before. The tab is
+ * everything after the first ".", so a sub-address that holds one (`#dev.security:role.finance`)
+ * survives a reload, as Help's `parseRouteTarget` reads it.
  */
 export function parseHash(hash: string): Route | null {
-  const [view, tab] = splitHash(hash).route.split('.')
+  const route = splitHash(hash).route
+  const dot = route.indexOf('.')
+  const view = dot < 0 ? route : route.slice(0, dot)
   if (!ROUTE_VIEWS.includes(view as RouteView)) return null
-  return { view: view as RouteView, tab: tab ?? '' }
+  return { view: view as RouteView, tab: dot < 0 ? '' : route.slice(dot + 1) }
 }
 
 /**

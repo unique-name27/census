@@ -327,7 +327,8 @@ export function InventoryTab({ sub }: { sub: string }) {
   const actions =
     list === 'figures' ? (
       <ScanControls mode={scanMode} onMode={setScanMode} />
-    ) : list === 'homes' ? (
+    ) : list === 'homes' && !preview ? (
+      // With a preview open, its own bar holds the role select.
       <RoleSelect
         label="Preview a role"
         value={preview}
@@ -348,9 +349,10 @@ export function InventoryTab({ sub }: { sub: string }) {
     views: 'Every view in the registry with its tabs, datasets and engine functions',
     tabs: 'Every tab of every view and its address',
     homes:
-      'The page each mode opens on, with its figures, pick, scope and pay. Pick a role to preview its home on this page',
+      'The page each mode opens on, with its figures, pick, scope and pay. Pick a role to preview its home on this page.',
+    // The scan's own line is the note under the chart above, said once.
     figures: scan
-      ? scanLine(scan)
+      ? `Every figure each view registers in ${MODE_LABEL[scan.mode]} mode, from the last scan`
       : 'Lays out every view’s tabs off screen in the mode picked and lists the figures each one registers',
     metrics: 'Every entry of the metric dictionary with the settings and fields in force',
     engines: 'Each view’s headline, summary and actions, with the last run',

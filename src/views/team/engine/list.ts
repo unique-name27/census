@@ -43,7 +43,9 @@ const isOpenTask = (t: OnboardingTask) => !t.completedDate && t.status !== 'Done
  * is in scope), direct reports first, then by name.
  */
 export function teamPeople(
-  ctx: Pick<AnalyticsContext, 'asOf' | 'data' | 'org'>,
+  ctx: Pick<AnalyticsContext, 'asOf' | 'data' | 'org'> & {
+    access?: Pick<AnalyticsContext['access'], 'mode'>
+  },
   s: Pick<TeamSources, 'onboarding' | 'talent' | 'recruiting'>,
   leaderId: string | null,
 ): TeamPersonRow[] {
@@ -78,7 +80,14 @@ export function teamPeople(
       name: e.name,
       title: e.jobTitle,
       direct,
-      reportsTo: direct ? 'Direct report' : e.managerId ? (ctx.org.byId.get(e.managerId)?.name ?? '—') : '—',
+      // A manager reads "You" for their own reports, never their own name or a relationship word.
+      reportsTo: direct
+        ? ctx.access?.mode === 'manager'
+          ? 'You'
+          : (ctx.org.byId.get(leaderId ?? '')?.name ?? '—')
+        : e.managerId
+          ? (ctx.org.byId.get(e.managerId)?.name ?? '—')
+          : '—',
       startDate: e.hireDate,
       firstNinety: e.hireDate >= since ? 'Yes' : 'No',
       probationDue: probation?.dueDate ?? null,

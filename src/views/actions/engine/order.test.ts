@@ -45,11 +45,22 @@ describe('the severity rubric', () => {
     const id = 'recruiting:review:APP-1'
     expect(r({ id, severity: 'critical', due: '2026-09-10' })).toBe('critical')
     expect(r({ id, severity: 'critical', due: '2026-09-20' })).toBe('warning')
-    expect(r({ id, severity: 'warning', due: '2026-10-05' })).toBe('warning')
-    expect(r({ id, severity: 'critical', due: '2026-10-05' })).toBe('warning')
+    // Not overdue yet: a Note (due soon), whatever the view's aging tier says.
+    expect(r({ id, severity: 'warning', due: '2026-10-05' })).toBe('info')
+    expect(r({ id, severity: 'critical', due: '2026-10-05' })).toBe('info')
+    expect(r({ id: 'recruiting:decision:APP-2', severity: 'warning', due: AS_OF })).toBe('info')
     expect(r({ id: 'onboarding:task:APP-1:Laptop', severity: 'info', due: '2026-09-01' })).toBe('critical')
     // The limit is a setting.
     expect(severityOf({ id, severity: 'warning', due: '2026-09-20' }, AS_OF, 5)).toBe('critical')
+  })
+  it('reads a blocked day-one task due within one business day as Watch before it is overdue', () => {
+    const task = 'onboarding:task:APP-1:Background check cleared'
+    const blocked = 'Background check cleared is blocked for Ana Ruiz, who starts on 5 Oct, due 1 Oct'
+    // 30 Sep 2026 is a Wednesday: 1 Oct is one business day on, 2 Oct two.
+    expect(r({ id: task, severity: 'warning', due: '2026-10-01', what: blocked })).toBe('warning')
+    expect(r({ id: task, severity: 'warning', due: '2026-10-02', what: blocked })).toBe('info')
+    const notStarted = 'Badge ready is not started for Ana Ruiz, who starts on 5 Oct, due 1 Oct'
+    expect(r({ id: task, severity: 'warning', due: '2026-10-01', what: notStarted })).toBe('info')
   })
   it('keeps the view thresholds for items about a group or a record, and never leaves an overdue item a Note', () => {
     expect(r({ id: 'talent:critical-role:SP-1', severity: 'critical', due: null })).toBe('critical')
@@ -70,8 +81,10 @@ describe('on the sample, in every mode', () => {
     for (const { mode, collected, lists } of modes) {
       const items = collected.items
       for (const a of items) {
-        // Export licenses not in force, late I-9s and final pay past due are legal exposure.
-        if (a.id.startsWith('compliance:license:')) expect(a.item.exposure, `${mode} ${a.id}`).toBe(true)
+        // Export licenses not in force, late I-9s and final pay past due are legal exposure; a
+        // start whose license is still pending is not a breach yet.
+        if (a.id.startsWith('compliance:license:'))
+          expect(!!a.item.exposure, `${mode} ${a.id}`).toBe(a.item.what.startsWith('Working since'))
         if (a.item.exposure) expect(a.item.severity, `${mode} ${a.id}`).toBe('critical')
       }
       const first = items.findIndex((a) => !a.item.exposure)

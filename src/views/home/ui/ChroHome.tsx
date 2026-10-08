@@ -7,7 +7,7 @@
  */
 import { useState } from 'react'
 import { type Column, Figure, HBars, useChartTheme } from '@/charts'
-import { Grid, goTo, KpiStrip, Pending, Readout, Section } from '@/components'
+import { goTo, KpiStrip, Pending, Readout, Section } from '@/components'
 import type { FindingSource } from '@/components/Readout'
 import type { Finding, Kpi } from '@/components/types'
 import { cx } from '@/components/ui'
@@ -42,9 +42,10 @@ import {
   STATUS_WORD,
   withCritical,
 } from '../engine/chro'
-import { pendingTile, tile } from '../engine/kpis'
+import { pendingTile, scorecardJudge, tile } from '../engine/kpis'
 import { AttentionSection } from './Attention'
 import { ListFigure } from './Frames'
+import { HomeTop } from './HomeTop'
 import { useHomeItems } from './useHomeItems'
 import { useIdleModel } from './useIdleModel'
 
@@ -70,7 +71,16 @@ function KeyFigures({ items }: { items: ReturnType<typeof useHomeItems> }) {
       link: { view: 'actions', label: 'Action center' },
     },
   ]
-  return <KpiStrip id="home-chro-kpis" title="Key figures" kpis={kpis} span={8} />
+  // Judged as the measures beside it are (the People scorecard's Watch margin).
+  return (
+    <KpiStrip
+      id="home-chro-kpis"
+      title="Key figures"
+      kpis={kpis}
+      span={8}
+      judge={scorecardJudge(ctx.metrics)}
+    />
+  )
 }
 
 /* ───────── measures by practice and status ───────── */
@@ -315,46 +325,59 @@ export function ChroHome() {
     : []
   return (
     <>
-      <Grid>
-        {model ? (
-          <>
+      <HomeTop
+        hero={
+          model ? (
             <Standing id="home-chro-standing" model={model} className={fade} />
-            <KeyFigures items={items} />
-            <Measures id="home-chro-measures" model={model} className={fade} />
-            <PracticesFigure model={model} className={cx(fade, 'lg:sticky lg:top-4 self-start')} />
-          </>
-        ) : (
-          <Pending message="Reading each practice's measures and findings." frames={BAND_FRAMES} />
-        )}
-      </Grid>
-      <AttentionSection
-        items={items}
-        escalations
-        shown={ESCALATIONS_ON_HOME}
-        title="Top risks"
-        dek="Escalations someone must act on first, each with its owner, then the risks the data shows across every practice."
-      >
-        {model ? (
-          <Readout
-            id="home-chro-risks"
-            title="Top risks in the data"
-            findings={risks.slice(0, 8).map((s) => s.finding)}
-            sourceOf={sourcesOf(risks)}
-            emptyText="No critical or watch findings in any practice."
-            span={12}
-            limit={8}
-            variant="compact"
-            className={fade}
-          />
-        ) : (
-          <Pending
-            title="Top risks in the data"
-            span={12}
-            height={320}
-            message="Reading each practice's findings."
-          />
-        )}
-      </AttentionSection>
+          ) : (
+            <Pending
+              message="Reading each practice's measures and findings."
+              frames={BAND_FRAMES.slice(0, 1)}
+            />
+          )
+        }
+        overview={
+          model ? (
+            <>
+              <KeyFigures items={items} />
+              <Measures id="home-chro-measures" model={model} className={fade} />
+              <PracticesFigure model={model} className={cx(fade, 'lg:sticky lg:top-4 self-start')} />
+            </>
+          ) : (
+            <Pending message="Reading each practice's measures and findings." frames={BAND_FRAMES.slice(1)} />
+          )
+        }
+        attention={
+          <AttentionSection
+            items={items}
+            escalations
+            shown={ESCALATIONS_ON_HOME}
+            title="Top risks"
+            dek="Escalations someone must act on first, each with its owner, then the risks the data shows across every practice."
+          >
+            {model ? (
+              <Readout
+                id="home-chro-risks"
+                title="Top risks in the data"
+                findings={risks.slice(0, 8).map((s) => s.finding)}
+                sourceOf={sourcesOf(risks)}
+                emptyText="No critical or watch findings in any practice."
+                span={12}
+                limit={8}
+                variant="compact"
+                className={fade}
+              />
+            ) : (
+              <Pending
+                title="Top risks in the data"
+                span={12}
+                height={320}
+                message="Reading each practice's findings."
+              />
+            )}
+          </AttentionSection>
+        }
+      />
       <Section
         title="My list"
         dek="The orgs of the leaders who report to the top of the company: the 1:1s of the month."

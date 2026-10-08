@@ -188,7 +188,7 @@ export function Publish() {
           </li>
           <li>
             Redeploy: <span className="font-mono text-meta text-ink">npm run deploy</span>. The one-file build
-            embeds the file when it is built.
+            embeds the file when it is built, and the site gets a copy beside its page.
           </li>
           <li>
             Census loads it for everyone when it starts. In force on this page shows which file is loaded.

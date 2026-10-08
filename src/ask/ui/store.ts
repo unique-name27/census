@@ -220,12 +220,35 @@ export const useAsk = create<AskState>((set, get) => ({
   },
 }))
 
-export const openAsk = (): void => useAsk.getState().openAsk()
+/**
+ * Ask on or off in the mode on screen (`S.ask()`, the Security center's "Ask: on or off"); the
+ * shell's `AskGate` sets it. Off, nothing opens the panel and nothing is asked.
+ */
+let allowed = true
+
+export const askAllowed = (): boolean => allowed
+
+/** Ask turned off: stop any answer, forget the chat and its pinned charts, and close the panel. */
+export function setAskAllowed(on: boolean): void {
+  if (on === allowed) return
+  allowed = on
+  if (on) return
+  const s = useAsk.getState()
+  abortAnswer()
+  s.reset()
+  useAsk.setState({ pinned: [], notice: null, draft: '' })
+  s.closeAsk()
+}
+
+export const openAsk = (): void => {
+  if (allowed) useAsk.getState().openAsk()
+}
 export const closeAsk = (): void => useAsk.getState().closeAsk()
 export const collapseAsk = (): void => useAsk.getState().collapseAsk()
 
 /** Open, or collapse when open (the masthead button). */
 export function toggleAsk(): void {
+  if (!allowed) return
   const s = useAsk.getState()
   if (s.panel === 'open') s.collapseAsk()
   else s.openAsk()

@@ -367,7 +367,9 @@ function ItemsFigure({ items }: { items: ScorecardItems }) {
   const ctx = useAnalytics()
   const theme = useChartTheme()
   const { dueSoonDays } = settingsOf(ctx.metrics)
-  const open = items.open
+  // A role mode counts its own two lists (what its masthead and Action center count), never the
+  // items it leaves to other practices; HR and the CHRO count every open item.
+  const open = items.lists ? [...items.needs, ...items.waiting] : items.open
   const groups = groupByOwner(open, ctx.asOf)
   const byLabel = new Map(groups.map((g) => [g.label, g]))
   const stacked = ownerDueRows(open, ctx)
@@ -414,7 +416,7 @@ function ItemsFigure({ items }: { items: ScorecardItems }) {
       metric={ACTIONS.open}
       uses={usesOf(open)}
       title="Where open items wait"
-      subtitle={`Open items by owner group and due date, as of ${formatDate(ctx.asOf)}`}
+      subtitle={`${items.lists ? 'Your open items and those waiting on others' : 'Open items'} by owner group and due date, as of ${formatDate(ctx.asOf)}`}
       data={table}
       columns={columns}
       note={`${plural(open.length, 'open item')} · due within ${dueSoonDays} d counts from the as-of date`}
@@ -449,7 +451,18 @@ function ItemsFigure({ items }: { items: ScorecardItems }) {
  * Recruiting's pipeline today: active candidates by stage and next step state, each segment
  * opening its candidates. The Scorecard's and the HRBP and Recruiter homes' (each with its own id).
  */
-export function PipelineToday({ id, span, link = true }: { id: string; span: FigureSpan; link?: boolean }) {
+export function PipelineToday({
+  id,
+  span,
+  link = true,
+  extraNote,
+}: {
+  id: string
+  span: FigureSpan
+  link?: boolean
+  /** One more part for the note (the Recruiter home: candidates on a req on hold). */
+  extraNote?: string
+}) {
   const ctx = useAnalytics()
   const r = computeRecruiting(ctx)
   const b = r.base
@@ -489,7 +502,9 @@ export function PipelineToday({ id, span, link = true }: { id: string; span: Fig
               : null,
         },
       ]}
-      note={`${plural(b.actives.length, 'active candidate')} · as of ${formatDate(b.asOf)}`}
+      note={[plural(b.actives.length, 'active candidate'), extraNote, `as of ${formatDate(b.asOf)}`]
+        .filter(Boolean)
+        .join(' · ')}
       span={span}
       actions={
         link ? (
@@ -511,12 +526,26 @@ export function PipelineToday({ id, span, link = true }: { id: string; span: Fig
   )
 }
 
+/** The dek names only what the mode draws: a role mode without Recruiting has no pipeline here. */
+const PRESSURE_DEK = {
+  both: 'Business units losing people faster than the company, and candidates waiting on a step.',
+  units: 'Business units losing people faster than the company.',
+  pipeline: 'Candidates waiting on a step, by stage.',
+} as const
+
 export function PressureSection() {
+  const ctx = useAnalytics()
+  const at = { view: 'scorecard' as const, tab: '' }
+  const shows = (id: string, metric: string) =>
+    ctx.access.can(`figure:${id}`, at) && ctx.access.can(`metric:${metric}`, at)
+  const units = shows('scorecard-attrition-bu', ID.voluntary)
+  const pipeline = shows('scorecard-pipeline', FIGURE_METRICS['recruiting-pipeline-today'])
+  if (!units && !pipeline) return null
   return (
     <Section
       title="Where the pressure is"
       align="start"
-      dek="Business units losing people faster than the company, and candidates waiting on a step."
+      dek={PRESSURE_DEK[units && pipeline ? 'both' : units ? 'units' : 'pipeline']}
     >
       <UnitAttrition id="scorecard-attrition-bu" span={6} />
       <PipelineToday id="scorecard-pipeline" span={6} />
@@ -539,7 +568,11 @@ export function AttentionSection({ items }: { items: ScorecardItems | null }) {
   return (
     <Section
       title="Needs attention"
-      dek="The open items each owner group holds, and the escalations across every practice: legal exposure, critical roles at high risk of loss, exit clusters and critical items long overdue."
+      dek={
+        !(items ? items.lists : ctx.access.can('ui:attention-lists'))
+          ? 'The open items each owner group holds, and the escalations across every practice: legal exposure, critical roles at high risk of loss, exit clusters and critical items long overdue.'
+          : 'Your open items and the ones in your area that others hold, by owner group, beside your own most urgent items.'
+      }
       actions={actions}
     >
       {items ? (

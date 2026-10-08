@@ -1,8 +1,8 @@
 /**
  * The mode lines every export carries outside HR and Developer (docs/ROLES-V2.md 4.11 and 3.2):
  * "Made in HRBP mode for APAC.", "Made in Recruiter mode for Maya Chen's reqs.", "Made in Finance
- * mode." plus Finance's cost line, "Cost totals cover groups of 5 or more people. Individual pay
- * is left out." Figure exports (`useExportMeta`) and view exports (`ExportMenu`) both take them
+ * mode." plus Finance's cost line, "Cost totals cover groups of 5 or more people and are rounded
+ * to $0.1M in each business unit. Individual pay is left out." Figure exports (`useExportMeta`) and view exports (`ExportMenu`) both take them
  * from here, so a sheet, a slide, a CSV and an image say the same. Pure.
  *
  *   const meta = { ...viewMeta, ...modeMeta(ctx.access) }

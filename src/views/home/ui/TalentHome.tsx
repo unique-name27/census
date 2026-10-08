@@ -7,7 +7,7 @@
  */
 import { useState } from 'react'
 import { BulletList, type Column, Columns, Figure, Heatmap } from '@/charts'
-import { Grid, KpiStrip, Section } from '@/components'
+import { KpiStrip, Section } from '@/components'
 import type { Kpi, Severity } from '@/components/types'
 import { useChartHeight } from '@/components/useNarrow'
 import { useAnalytics } from '@/data/context'
@@ -35,6 +35,7 @@ import { tile } from '../engine/kpis'
 import { coverageParts, type HipoRow, highPotentials } from '../engine/talent'
 import { AttentionSection } from './Attention'
 import { Hero, ListFigure, ListSwitch } from './Frames'
+import { HomeTop } from './HomeTop'
 import { useHomeItems } from './useHomeItems'
 
 /* ───────── succession coverage ───────── */
@@ -433,16 +434,22 @@ export function TalentHome() {
   ]
   return (
     <>
-      <Grid>
-        <Coverage m={m} />
-        <KpiStrip id="home-talent-kpis" title="Key figures" kpis={kpis} span={8} />
-        <Exposure m={m} />
-        <OverdueTrend m={m} />
-      </Grid>
-      <AttentionSection
-        items={items}
-        shown={HOME_SHOWN}
-        dek="Talent management's open items: critical roles without a ready successor, required courses below target, ratings missing and stay risk."
+      <HomeTop
+        hero={<Coverage m={m} />}
+        overview={
+          <>
+            <KpiStrip id="home-talent-kpis" title="Key figures" kpis={kpis} span={8} />
+            <Exposure m={m} />
+            <OverdueTrend m={m} />
+          </>
+        }
+        attention={
+          <AttentionSection
+            items={items}
+            shown={HOME_SHOWN}
+            dek="Talent management's open items: critical roles without a ready successor, required courses below target, ratings missing and stay risk."
+          />
+        }
       />
       <Section
         title="My list"

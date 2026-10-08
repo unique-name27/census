@@ -219,6 +219,7 @@ const ATTEMPTS: Readonly<Record<GuardId, PolicyLine>> = {
   switches: line('finance', 'pay:amounts', 'shown'),
   'developer-only': line('hr', 'tab:dev.security', 'shown'),
   scope: line('manager', 'person:outside-org', 'shown'),
+  'cost-totals': line('hr-ops', 'pay:totals', 'limited'),
 }
 
 describe('guard rails', () => {

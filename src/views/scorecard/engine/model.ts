@@ -3,7 +3,14 @@
  * view's `summary(ctx)`, judged against the target in force, gated on the data standard, and the
  * most serious findings across Census. Pure: the summaries come in already computed (see
  * `schedule.ts`, which runs them in idle time), so this is cheap and testable.
+ *
+ * It follows the mode (`ctx.access`): a mode never shows numbers from a practice it hides, so a
+ * practice whose view the mode hides is left out (`practiceShown`), and so is a measure or finding
+ * whose metric it hides (`metricShown`). A practice left with no measure by the mode is left out
+ * too. Ask's `view_summary` for the Scorecard reads this same model.
  */
+import type { AccessContext } from '@/access/context'
+import { S } from '@/access/surfaces'
 import { kpiValueText, SUPPRESSED_NOTE } from '@/components/kpiModel'
 import { gateFor, type TierGate } from '@/components/tier/tierModel'
 import type { Finding, Kpi, Severity } from '@/components/types'
@@ -30,6 +37,8 @@ export interface PracticeInput {
   error?: unknown
   /** How long the summary took, in ms. */
   ms?: number
+  /** Set by the scorecard when the mode hides every measure of the practice: it is left out. */
+  hidden?: boolean
 }
 
 /** Where a row or a finding opens. */
@@ -135,6 +144,17 @@ const SERIOUS: readonly Severity[] = ['critical', 'warning']
 const union = (lists: readonly (readonly FieldRef[] | undefined)[]): FieldRef[] => [
   ...new Set(lists.flatMap((l) => l ?? [])),
 ]
+
+/** What the scorecard asks of the mode: nothing outside an analytics context (tests, scripts). */
+type ModeAccess = Pick<AccessContext, 'can'> | undefined
+
+/** Whether the mode shows a practice: its view is not hidden (limited views still show). */
+export const practiceShown = (access: ModeAccess, view: ViewKey): boolean =>
+  !access || access.can(S.view(view))
+
+/** Whether the mode shows a measure or a finding: it names no metric, or one the mode shows. */
+export const metricShown = (access: ModeAccess, metricId: string | null | undefined): boolean =>
+  !access || !metricId || access.can(S.metric(metricId))
 
 /** The view at its first tab (or the tab given), as a destination. */
 export function viewDestination(view: PracticeView, tab?: string): Destination {
@@ -279,12 +299,31 @@ export function missedFinding(
  * summary are left out by the caller.
  */
 export function buildScorecard(
-  ctx: Pick<AnalyticsContext, 'metrics' | 'quality' | 'standard'>,
-  inputs: readonly PracticeInput[],
+  ctx: Pick<AnalyticsContext, 'metrics' | 'quality' | 'standard'> & { access?: ModeAccess },
+  given: readonly PracticeInput[],
 ): ScorecardModel {
   const margins = watchMargins(ctx.metrics)
   const limit = Math.max(1, Math.round(ctx.metrics.num(P.limit.metricId, P.limit.key)))
   const minPractices = ctx.metrics.num(P.minPractices.metricId, P.minPractices.key)
+  // The mode's practices, measures and findings only (see the module comment).
+  const { access } = ctx
+  const inputs = given
+    .filter((i) => practiceShown(access, i.view.key))
+    .map((i): PracticeInput => {
+      if (!access || !i.summary) return i
+      const kpis = i.summary.kpis.filter((k) => metricShown(access, k.metricId))
+      // Every measure was there and the mode hides them all: the practice is left out.
+      if (i.summary.kpis.length && !kpis.length) return { ...i, summary: null, hidden: true }
+      return {
+        ...i,
+        summary: {
+          ...i.summary,
+          kpis,
+          findings: i.summary.findings.filter((f) => metricShown(access, f.metricId)),
+        },
+      }
+    })
+    .filter((i) => !i.hidden)
 
   const practices: Practice[] = inputs.map(({ view, summary }) => {
     const rows = (summary?.kpis ?? []).map((k) => scoreRow(ctx, view, k, margins))

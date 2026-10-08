@@ -26,7 +26,16 @@ import {
   writeProgress,
 } from './wholeViewModel'
 
-export function ExportMenu({ view, tab }: { view: ViewDef; tab: string }) {
+/** `linkOnly`: the view draws no figures here, so the menu offers only Copy link. */
+export function ExportMenu({
+  view,
+  tab,
+  linkOnly = false,
+}: {
+  view: ViewDef
+  tab: string
+  linkOnly?: boolean
+}) {
   const registry = useFigureRegistry()
   const ctx = useAnalytics()
   const [busy, setBusy] = useState<ExportKind | null>(null)
@@ -137,22 +146,24 @@ export function ExportMenu({ view, tab }: { view: ViewDef; tab: string }) {
     }
   }
 
-  const items: MenuItem[] = [
-    { heading: view.tabs.length > 1 ? 'This tab' : 'This view' },
-    {
-      label: 'Excel workbook (all figures)',
-      icon: <IconTable />,
-      hint: '.xlsx',
-      onSelect: () => void runTab('workbook'),
-    },
-    {
-      label: 'PowerPoint slides (all figures)',
-      icon: <IconSlides />,
-      hint: '.pptx',
-      onSelect: () => void runTab('deck'),
-    },
-  ]
-  if (view.tabs.length > 1)
+  const items: MenuItem[] = linkOnly
+    ? []
+    : [
+        { heading: view.tabs.length > 1 ? 'This tab' : 'This view' },
+        {
+          label: 'Excel workbook (all figures)',
+          icon: <IconTable />,
+          hint: '.xlsx',
+          onSelect: () => void runTab('workbook'),
+        },
+        {
+          label: 'PowerPoint slides (all figures)',
+          icon: <IconSlides />,
+          hint: '.pptx',
+          onSelect: () => void runTab('deck'),
+        },
+      ]
+  if (view.tabs.length > 1 && !linkOnly)
     items.push(
       { separator: true },
       { heading: 'Whole view, all tabs' },
@@ -170,10 +181,11 @@ export function ExportMenu({ view, tab }: { view: ViewDef; tab: string }) {
       },
     )
   // The address with the scope spelled out, so the link opens this tab with these filters.
-  items.push(
-    { separator: true },
-    { label: 'Copy link to this view', icon: <IconCopy />, onSelect: () => void copyViewLink() },
-  )
+  items.push(...(linkOnly ? [] : [{ separator: true } as const]), {
+    label: 'Copy link to this view',
+    icon: <IconCopy />,
+    onSelect: () => void copyViewLink(),
+  })
 
   return (
     <Menu

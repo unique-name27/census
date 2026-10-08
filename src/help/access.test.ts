@@ -35,10 +35,10 @@ import { ARTICLES, articleById } from './articles'
 import { type DiagnosticState, diagnosticInput, modeLine } from './diagnosticInput'
 import { diagnosticText } from './diagnostics'
 import { articleLinks, blockTexts, plainText } from './markup'
-import { parsePrefs, welcomeDismissed, withCompleted, withDismissed } from './store'
+import { parsePrefs, welcomeDismissed, withCompleted, withDismissed, withTourDone } from './store'
 import { TOURS, tourById } from './tours'
 import type { Block, TourStep } from './types'
-import { welcomeCopy } from './welcome'
+import { welcomeCopy, welcomeFor } from './welcome'
 
 const hr = sampleCtx()
 const dev = sampleCtx({ access: { mode: 'developer' } })
@@ -89,6 +89,7 @@ const TABLE_48: Readonly<Record<string, string>> = {
   'help:article:faq': 'SSSSSSSSSSS',
   'help:article:whats-new': 'SSSSSSSSSSS',
   'help:article:developer-tools': 'SHHHHHHHHHH',
+  'help:article:security-center': 'SHHHHHHHHHH',
   'help:tour:own-data': 'SSSHHHHSHHH',
   'help:tour:quality-definitions': 'SSSHHHHSHHH',
   'help:tour:developer-tools': 'SHHHHHHHHHH',
@@ -475,14 +476,94 @@ describe('the welcome line, remembered per mode', () => {
     expect(welcomeDismissed(p, 'hr')).toBe(false)
     const back = parsePrefs(JSON.stringify(p))
     expect(back.homeWelcomeDismissed).toEqual(['compensation'])
-    // Finishing the home tour anywhere ends every Home line; HR's and Manager's keep their own tours.
-    const done = withCompleted(parsePrefs(null), 'home-start')
+    // Finishing the home tour ends the Home line of the mode it was taken in, and no other mode's;
+    // HR's and Manager's keep their own tours.
+    const done = withTourDone(parsePrefs(null), 'home-start', 'finance')
+    expect(done.completed).toEqual(['home-start'])
     expect(welcomeDismissed(done, { home: 'finance' })).toBe(true)
+    for (const m of EVERY_MODE.filter((x) => HOME_OF[x] === 'home' && x !== 'finance'))
+      expect(welcomeDismissed(done, { home: m }), m).toBe(false)
+    expect(welcomeDismissed(withCompleted(parsePrefs(null), 'home-start'), { home: 'chro' })).toBe(false)
+    expect(withTourDone(parsePrefs(null), 'view-comp', 'compensation').homeWelcomeDismissed).toBeUndefined()
     expect(welcomeDismissed(done, 'hr')).toBe(false)
     expect(welcomeDismissed(withDismissed(done, 'manager'), 'manager')).toBe(true)
     // Unreadable values fall back to nothing dismissed.
     expect(parsePrefs('{"homeWelcomeDismissed": [3, "chro", "chro"]}').homeWelcomeDismissed).toEqual(['chro'])
     expect(parsePrefs('nope').homeWelcomeDismissed).toBeUndefined()
+  })
+})
+
+describe('the welcome line follows the live mode', () => {
+  it('shows only where the page is drawn in the live mode', () => {
+    // The Developer page's preview of the Finance home: drawn in Finance, while Developer is live.
+    expect(welcomeFor('home', 'finance', 'developer')).toBeNull()
+    expect(welcomeFor('home', 'finance', 'finance')?.title).toBe('New to Finance mode?')
+    // An off-screen render in another mode, and Developer itself, have none.
+    expect(welcomeFor('hr', 'hr', 'compensation')).toBeNull()
+    expect(welcomeFor('home', 'developer', 'developer')).toBeNull()
+    // Outside the provider, the live mode decides.
+    expect(welcomeFor('hr', undefined, 'hr')?.line).toBe('hr')
+    expect(welcomeFor('hr', undefined, 'finance')).toBeNull()
+    expect(welcomeFor('manager', undefined, 'manager')?.line).toBe('manager')
+    expect(welcomeFor('home', undefined, 'chro')?.line).toEqual({ home: 'chro' })
+  })
+})
+
+describe('Recruiter text with "Every recruiter" picked', () => {
+  const who = recruiterOptions(sampleData(), hr.asOf)[0]
+  const one = sampleCtx({
+    access: { mode: 'recruiter', picks: { recruiter: { name: who.name, id: who.id } } },
+  })
+  const every = sampleCtx({ access: { mode: 'recruiter', picks: { recruiter: { name: '*', id: null } } } })
+  const textOf = (ctx: AnalyticsContext, id: string) =>
+    articleInMode(ctx.access, articleById(id)!)
+      .body.flatMap((b) => blockTexts(b))
+      .join(' ')
+  const stepsOf = (ctx: AnalyticsContext, id: string) =>
+    tourInMode(ctx.access, tourById(id))!
+      .steps.map((s) => s.body)
+      .join(' ')
+
+  it("holds a scope on one recruiter's reqs and none for every recruiter", () => {
+    expect(one.access.scope?.kind).toBe('reqs')
+    expect(every.access.scope).toBeNull()
+    expect(holds(one.access, { scoped: true })).toBe(true)
+    expect(holds(every.access, { scoped: true })).toBe(false)
+    expect(holds(every.access, { scoped: false })).toBe(true)
+    // An access that says nothing of its scope (a test's) counts as holding it.
+    expect(holds({ mode: 'hr', can: () => true }, { scoped: true })).toBe(true)
+  })
+
+  it('leaves out what is said of a scope when every recruiter is picked', () => {
+    const scoped = [
+      'Records outside your scope are not listed',
+      'Someone outside your scope opens on a short card',
+      'A link or saved view always opens inside the mode',
+      'It stays inside your scope',
+      'Every filter works inside your reqs',
+      'a link carries the filters but not your reqs',
+      'compare your reqs with all reqs',
+      'about to start on one of your reqs',
+    ]
+    const oneText = ['moving-around', 'clicking-down', 'ask-census', 'reading-a-number', 'exporting']
+      .map((id) => textOf(one, id))
+      .join(' ')
+    const everyText = ['moving-around', 'clicking-down', 'ask-census', 'reading-a-number', 'exporting']
+      .map((id) => textOf(every, id))
+      .join(' ')
+    for (const s of scoped) {
+      expect(oneText, s).toContain(s)
+      expect(everyText, s).not.toContain(s)
+    }
+    expect(everyText).toContain('With Every recruiter picked, the filters cover every req.')
+    expect(everyText).toContain('about to start on a req')
+    expect(textOf(one, 'view-recruiting')).toContain('every tab keeps to your reqs')
+    expect(textOf(every, 'view-recruiting')).not.toContain('your reqs')
+    expect(textOf(every, 'view-recruiting')).toContain('every tab shows every req')
+    expect(textOf(one, 'faq')).toContain('your reqs then keep')
+    expect(textOf(every, 'faq')).toContain('the reqs then keep')
+    expect(stepsOf(one, 'view-recruiting')).toContain('compare with all reqs')
+    expect(stepsOf(every, 'view-recruiting')).not.toContain('all reqs')
   })
 })
 

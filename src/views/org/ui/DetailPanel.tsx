@@ -11,11 +11,13 @@ import { outsideScope } from '@/access/copy'
 import { personInScope } from '@/access/scopes/records'
 import { S } from '@/access/surfaces'
 import { Button, goTo, IconButton, IconChevronRight, IconClose, IconExternal, StatusPill } from '@/components'
+import { useRouteShown } from '@/components/RouteLink'
 import { useAnalytics } from '@/data/context'
 import type { Employee, Requisition } from '@/data/schema'
 import { RATING_LABELS } from '@/data/schema'
 import { useCensus } from '@/data/store'
 import { Drill, type DrillSource, drillSpec, openPerson } from '@/drill'
+import { leaderFocusKept } from '@/drill/person'
 import { formatDate } from '@/lib/dates'
 import { DASH, fmt, plural } from '@/lib/format'
 import { tenureYears } from '@/lib/people'
@@ -36,7 +38,7 @@ import {
   scopeLine,
   teamStats,
 } from '../engine'
-import { ORG_METRIC } from '../metrics'
+import { ORG_METRIC, ORG_TEAM_METRICS } from '../metrics'
 
 export interface DetailPanelProps {
   model: OrgModel
@@ -77,11 +79,16 @@ function OutsidePanel({ e, scope, onClose }: { e: Employee; scope: string; onClo
 export function DetailPanel(p: DetailPanelProps) {
   const [allReports, setAllReports] = useState(false)
   const setFilters = useCensus((s) => s.setFilters)
-  const { metrics, access } = useAnalytics()
+  const { metrics, access, filters } = useAnalytics()
   // A scoped mode: names outside the scope read as plain text, and some modes have no exit what-if.
   const opens = (id: string) => personInScope(id, access)
   const canExit = access.can(S.org('simulate-exit'))
   const showRatings = access.can(S.person('ratings'))
+  // Each team figure only where the mode shows its metric (Finance shows no exits or tenure).
+  const shows = (metric: string) => access.can(S.metric(metric))
+  // "See this org elsewhere" only to views the mode shows.
+  const inHrbp = useRouteShown('hrbp')
+  const inTalent = useRouteShown('talent')
   const e = p.tree.people.get(p.id)
   if (!e) return null
   // HRBP mode keeps the whole chart for readability: a dimmed card outside the business unit or
@@ -107,6 +114,10 @@ export function DetailPanel(p: DetailPanelProps) {
     setFilters({ leaderId: p.id })
     goTo(view)
   }
+  // A leader filter (or focus) on this person that the mode keeps (Finance keeps none).
+  const leaderKept = leaderFocusKept(access, filters, p.id)
+  const toHrbp = leaderKept && inHrbp
+  const toTalent = leaderKept && inTalent
 
   const sc = p.scope
   const reqRows = (p.model.reqs.get(p.id) ?? [])
@@ -247,52 +258,64 @@ export function DetailPanel(p: DetailPanelProps) {
           </section>
         )}
 
-        {stats && drills && (
+        {stats && drills && teamShown(shows, stats.openReqs > 0 && p.model.gates.reqCards.ok) && (
           <section className="mt-4">
             <h4 className="eyebrow mb-1.5">Team</h4>
             <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-control bg-rule">
-              <Stat
-                label="Direct reports"
-                value={fmt(stats.directs, 'int')}
-                title={defText(metrics, ORG_METRIC.directReports)}
-                drill={drills.directs}
-              />
-              <Stat
-                label="Total org"
-                value={fmt(stats.totalOrg, 'int')}
-                title={defText(metrics, ORG_METRIC.totalOrg)}
-                drill={drills.org}
-              />
-              <Stat
-                label="Average tenure"
-                value={stats.avgTenure == null ? DASH : fmt(stats.avgTenure, 'years')}
-                title={
-                  stats.avgTenure == null
-                    ? `Hidden to protect anonymity (n < ${rules.minGroup})`
-                    : defText(metrics, ORG_METRIC.teamTenure)
-                }
-                drill={drills.tenure}
-              />
-              <Stat
-                label="Contractors, interns"
-                value={fmt(stats.contingentDirects, 'int')}
-                title={defText(metrics, ORG_METRIC.teamContingent)}
-                drill={stats.contingentDirects ? drills.contingent : null}
-              />
-              <Stat
-                label={`Exits, ${months}`}
-                value={fmt(stats.exits12, 'int')}
-                title={defText(metrics, ORG_METRIC.teamExits)}
-                drill={stats.exits12 ? drills.exits : null}
-              />
-              <Stat
-                label={`Regretted, ${months}`}
-                value={fmt(stats.regrettedExits12, 'int')}
-                title={defText(metrics, ORG_METRIC.teamRegretted)}
-                drill={stats.regrettedExits12 ? drills.regretted : null}
-              />
+              {shows(ORG_METRIC.directReports) && (
+                <Stat
+                  label="Direct reports"
+                  value={fmt(stats.directs, 'int')}
+                  title={defText(metrics, ORG_METRIC.directReports)}
+                  drill={drills.directs}
+                />
+              )}
+              {shows(ORG_METRIC.totalOrg) && (
+                <Stat
+                  label="Total org"
+                  value={fmt(stats.totalOrg, 'int')}
+                  title={defText(metrics, ORG_METRIC.totalOrg)}
+                  drill={drills.org}
+                />
+              )}
+              {shows(ORG_METRIC.teamTenure) && (
+                <Stat
+                  label="Average tenure"
+                  value={stats.avgTenure == null ? DASH : fmt(stats.avgTenure, 'years')}
+                  title={
+                    stats.avgTenure == null
+                      ? `Hidden to protect anonymity (n < ${rules.minGroup})`
+                      : defText(metrics, ORG_METRIC.teamTenure)
+                  }
+                  drill={drills.tenure}
+                />
+              )}
+              {shows(ORG_METRIC.teamContingent) && (
+                <Stat
+                  label="Contractors, interns"
+                  value={fmt(stats.contingentDirects, 'int')}
+                  title={defText(metrics, ORG_METRIC.teamContingent)}
+                  drill={stats.contingentDirects ? drills.contingent : null}
+                />
+              )}
+              {shows(ORG_METRIC.teamExits) && (
+                <Stat
+                  label={`Exits, ${months}`}
+                  value={fmt(stats.exits12, 'int')}
+                  title={defText(metrics, ORG_METRIC.teamExits)}
+                  drill={stats.exits12 ? drills.exits : null}
+                />
+              )}
+              {shows(ORG_METRIC.teamRegretted) && (
+                <Stat
+                  label={`Regretted, ${months}`}
+                  value={fmt(stats.regrettedExits12, 'int')}
+                  title={defText(metrics, ORG_METRIC.teamRegretted)}
+                  drill={stats.regrettedExits12 ? drills.regretted : null}
+                />
+              )}
               {/* Like the open-role cards, left out when Requisitions is below the data standard. */}
-              {stats.openReqs > 0 && p.model.gates.reqCards.ok && (
+              {stats.openReqs > 0 && p.model.gates.reqCards.ok && shows(ORG_METRIC.openRoles) && (
                 <Stat
                   label="Open roles"
                   value={fmt(stats.openReqs, 'int')}
@@ -353,7 +376,7 @@ export function DetailPanel(p: DetailPanelProps) {
               Move to…
             </Button>
           )}
-          {p.mode === 'chart' && isManager && p.onFocus && (
+          {p.mode === 'chart' && isManager && p.onFocus && leaderKept && (
             <Button size="sm" onClick={() => p.onFocus?.(p.id)}>
               Focus on this org
             </Button>
@@ -370,13 +393,13 @@ export function DetailPanel(p: DetailPanelProps) {
           )}
         </section>
 
-        {isManager && p.mode === 'chart' && (
+        {isManager && p.mode === 'chart' && (toHrbp || toTalent) && (
           <section className="mt-4 border-t border-rule pt-3">
             <h4 className="eyebrow mb-1">See this org elsewhere</h4>
             <p className="mb-1.5 text-meta text-muted">Sets the leader filter to {e.name} for every view.</p>
             <div className="flex flex-col items-start gap-0.5">
-              <LinkButton onClick={() => openIn('hrbp')}>Open in People stats</LinkButton>
-              <LinkButton onClick={() => openIn('talent')}>Open in Talent</LinkButton>
+              {toHrbp && <LinkButton onClick={() => openIn('hrbp')}>Open in People stats</LinkButton>}
+              {toTalent && <LinkButton onClick={() => openIn('talent')}>Open in Talent</LinkButton>}
             </div>
           </section>
         )}
@@ -387,6 +410,11 @@ export function DetailPanel(p: DetailPanelProps) {
       </div>
     </aside>
   )
+}
+
+/** Each team figure shows only with its metric; none shown, no Team section. */
+function teamShown(shows: (metric: string) => boolean, openRoles: boolean): boolean {
+  return ORG_TEAM_METRICS.some(shows) || (openRoles && shows(ORG_METRIC.openRoles))
 }
 
 function Fact({ term, value }: { term: string; value: string }) {

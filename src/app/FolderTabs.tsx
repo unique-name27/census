@@ -14,8 +14,9 @@
  * no practice is open, so the strip ends in one open tab for that page: the desk always hangs
  * from a tab.
  */
-import { type KeyboardEvent, type Ref, useEffect, useMemo, useRef } from 'react'
+import { type KeyboardEvent, type Ref, useEffect, useMemo, useRef, useState } from 'react'
 import { Sparkline } from '@/charts/Sparkline'
+import { IconChevronRight } from '@/components/icons'
 import { goTo } from '@/components/navigation'
 import { cx, Tip } from '@/components/ui'
 import { useAnalytics } from '@/data/context'
@@ -26,7 +27,7 @@ import { folderViews } from '@/views/registry'
 import type { Headline, ViewDef } from '@/views/types'
 import { folderHeadlines, type GatedHeadline } from './headlineGate'
 import { useHeadlineVersion } from './headlineRefresh'
-import { revealInStrip, rovingIndex } from './keyboard'
+import { revealInStrip, rovingIndex, stripEdges } from './keyboard'
 
 export const VIEW_PANEL_ID = 'census-view'
 
@@ -160,12 +161,38 @@ export function FolderTabs() {
   const activeIndex = VIEWS.findIndex((v) => v.key === current)
 
   const pageTab = useRef<HTMLDivElement>(null)
-  // Keep the open tab visible on narrow screens (horizontal only: the page itself never moves),
-  // the open masthead page's tab at the strip's right end too.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: a new masthead page (current) renders a new page tab to reveal
+  // Whether tabs sit past either edge of the strip: a button at that edge says so and scrolls.
+  const [edges, setEdges] = useState({ left: false, right: false })
+  const measure = () => {
+    const el = strip.current
+    if (!el) return
+    const next = stripEdges(el.scrollLeft, el.clientWidth, el.scrollWidth)
+    setEdges((e) => (e.left === next.left && e.right === next.right ? e : next))
+  }
+  // Keep the open tab visible whenever the strip is too narrow for every tab (horizontal only: the
+  // page itself never moves), the open masthead page's tab at the strip's right end too. Tabs
+  // widen when their headlines arrive and the strip narrows when Ask docks, so it runs again then.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a new masthead page (current) renders a new page tab to reveal; new headlines change the tabs' widths
   useEffect(() => {
-    revealInStrip(strip.current, activeIndex >= 0 ? tabs.current[activeIndex] : pageTab.current)
-  }, [activeIndex, current])
+    const el = strip.current
+    if (!el) return
+    const reveal = () => {
+      // Clear of the gutter, where the edge buttons sit, and 8px more.
+      const gutter = Number.parseFloat(getComputedStyle(el).paddingRight) || 16
+      revealInStrip(el, activeIndex >= 0 ? tabs.current[activeIndex] : pageTab.current, gutter + 8)
+      measure()
+    }
+    reveal()
+    if (typeof ResizeObserver !== 'function') return
+    const ro = new ResizeObserver(reveal)
+    ro.observe(el)
+    for (const child of Array.from(el.children)) ro.observe(child)
+    return () => ro.disconnect()
+  }, [activeIndex, current, headlines])
+  const scrollBy = (dir: -1 | 1) => {
+    const el = strip.current
+    el?.scrollBy({ left: dir * Math.round(el.clientWidth * 0.6), behavior: 'smooth' })
+  }
 
   const onKeyDown = (i: number) => (e: KeyboardEvent<HTMLButtonElement>) => {
     const next = rovingIndex(e.key, i, VIEWS.length)
@@ -176,29 +203,56 @@ export function FolderTabs() {
   }
 
   return (
-    <div
-      ref={strip}
-      role="tablist"
-      aria-label="Practices"
-      data-tour="folder-tabs"
-      className="-mx-(--gutter) flex items-end gap-1 overflow-x-auto px-(--gutter) pt-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-    >
-      {VIEWS.map((v, i) => (
-        <FolderTab
-          key={v.key}
-          view={v}
-          headline={headlines[i]}
-          active={i === activeIndex}
-          focusable={i === (activeIndex < 0 ? 0 : activeIndex)}
-          onKeyDown={onKeyDown(i)}
-          ref={(el) => {
-            tabs.current[i] = el
-          }}
-        />
-      ))}
-      {activeIndex < 0 && MASTHEAD_PAGES[current] && (
-        <PageTab ref={pageTab} label={MASTHEAD_PAGES[current]} />
-      )}
+    <div className="relative -mx-(--gutter)">
+      <div
+        ref={strip}
+        role="tablist"
+        aria-label="Practices"
+        data-tour="folder-tabs"
+        onScroll={measure}
+        className="flex items-end gap-1 overflow-x-auto px-(--gutter) pt-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      >
+        {VIEWS.map((v, i) => (
+          <FolderTab
+            key={v.key}
+            view={v}
+            headline={headlines[i]}
+            active={i === activeIndex}
+            focusable={i === (activeIndex < 0 ? 0 : activeIndex)}
+            onKeyDown={onKeyDown(i)}
+            ref={(el) => {
+              tabs.current[i] = el
+            }}
+          />
+        ))}
+        {activeIndex < 0 && MASTHEAD_PAGES[current] && (
+          <PageTab ref={pageTab} label={MASTHEAD_PAGES[current]} />
+        )}
+      </div>
+      {edges.left && <EdgeButton side="left" onClick={() => scrollBy(-1)} />}
+      {edges.right && <EdgeButton side="right" onClick={() => scrollBy(1)} />}
     </div>
+  )
+}
+
+/**
+ * The cue at an edge of the strip with tabs past it, in the gutter: a chevron that scrolls the
+ * strip. Pointer only; the keyboard moves through every tab with the arrow keys.
+ */
+function EdgeButton({ side, onClick }: { side: 'left' | 'right'; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      tabIndex={-1}
+      aria-hidden="true"
+      onClick={onClick}
+      title={side === 'left' ? 'Earlier tabs' : 'More tabs'}
+      className={cx(
+        'absolute top-1 bottom-0 z-20 flex w-(--gutter) min-w-4 cursor-pointer items-center justify-center bg-band text-ink-2 hover:text-ink',
+        side === 'left' ? 'left-0 border-r border-rule' : 'right-0 border-l border-rule',
+      )}
+    >
+      <IconChevronRight className={cx('size-3.5', side === 'left' && 'rotate-180')} />
+    </button>
   )
 }

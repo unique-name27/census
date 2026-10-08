@@ -4,11 +4,13 @@
  * detail panel through the address (#data.metrics/…), so Back returns to the previous metric.
  */
 import { type MouseEvent, useEffect, useRef } from 'react'
+import { routeShown } from '@/access/policy'
 import { Figure } from '@/charts'
 import { IconLock, IconSearch } from '@/components/icons'
 import { routeHash } from '@/components/navigation'
 import { MedalGlyph } from '@/components/tier/TierBadge'
 import { Button, cx } from '@/components/ui'
+import { useAnalyticsIfAny } from '@/data/context'
 import type { FieldRef } from '@/data/quality/fieldRef'
 import { TIER_LABEL, TIERS, type Tier } from '@/data/quality/tier'
 import { METRIC_VIEW_LABEL } from '@/metrics/registry'
@@ -140,7 +142,9 @@ export function MetricList({
 }) {
   const listRef = useRef<HTMLDivElement>(null)
   const groups = groupRows(shown)
-  const views = viewOptions(rows)
+  // The views the mode shows (Home is listed on the cost metrics, and HR mode has no Home).
+  const mode = useAnalyticsIfAny()?.access.mode
+  const views = viewOptions(rows).filter((v) => !mode || routeShown(mode, v))
   const filtered = isFiltered(filters)
   const viewFilter = filters.view === 'all' ? null : filters.view
 

@@ -165,7 +165,7 @@ export const PICKER_COPY: Readonly<Record<PickKind, PickerCopy>> = {
   region: {
     title: 'Choose a region',
     dek: 'HRBP mode shows Census for every employee in one region, across business units.',
-    foot: 'Regions come from the Region column of the Locations list in Settings, Official lists.',
+    foot: "Each location's region comes from the Locations list in Settings, Official lists; the Regions list names each region's HR business partner.",
     confirm: 'Show this region',
     change: 'Change region…',
     none: 'No region picked',
@@ -251,8 +251,9 @@ export function modeExportLine(mode: Mode, scope?: string | null): string | null
   if (mode === 'hr' || mode === 'developer') return null
   return scope ? `Made in ${modeName(mode)} for ${scope}.` : `Made in ${modeName(mode)}.`
 }
-/** Finance exports: in place of the "Pay amounts" line (3.2). */
-export const FINANCE_EXPORT_LINE = 'Cost totals cover groups of 5 or more people. Individual pay is left out.'
+/** Finance exports: in place of the "Pay amounts" line (3.2, rules 5 and 8). */
+export const FINANCE_EXPORT_LINE =
+  'Cost totals cover groups of 5 or more people and are rounded to $0.1M in each business unit. Individual pay is left out.'
 export const ARTICLE_NOT_SHOWN = 'That article is not shown in this mode.'
 export const TOUR_NOT_SHOWN = 'That tour is not shown in this mode.'
 

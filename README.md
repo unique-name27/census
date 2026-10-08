@@ -10,7 +10,7 @@ stay on your machine.
 - **Double-click `census.html`** (or `Launch Census.bat` on Windows for an app-style window). No
   install, server or internet needed. Build it with `npm run build:single`.
 - For development: `npm install`, then `npm run dev` and open http://localhost:8820.
-- To update the online version: `npm run deploy` (builds `census.html` and publishes it to GitHub Pages).
+- To update the online version: `npm run deploy` (builds `census.html` and publishes it to GitHub Pages, with `public/access-policy.json` beside it when the Security center has published one).
 
 It opens on a fictional sample company, Northgate Semiconductor (about 1,450 employees in 13
 locations, as of 30 Sep 2026), so every view works before you load anything.

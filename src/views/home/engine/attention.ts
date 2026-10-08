@@ -158,3 +158,43 @@ export function belowLine(items: readonly OpenAction[]): string | null {
     ? '1 item comes from data below your standard'
     : `${n} items come from data below your standard`
 }
+
+/* ───────── My list beside Needs attention ───────── */
+
+const RANK: Readonly<Record<OpenAction['item']['severity'], number>> = {
+  critical: 0,
+  warning: 1,
+  info: 2,
+  good: 3,
+}
+
+/**
+ * The severity the Action center gives each record, by `keyOf` (a case ID, a req ID), the worst
+ * when several items are about one record. My list colors a row with it, so a record reads the
+ * same in My list as in Needs attention beside it (a roll-up counts through its items).
+ */
+export function severityByRecord(
+  items: readonly OpenAction[],
+  keyOf: (a: OpenAction) => string | null,
+): Map<string, OpenAction['item']['severity']> {
+  const out = new Map<string, OpenAction['item']['severity']>()
+  for (const a of items.flatMap((x) => (x.members ? [...x.members] : [x]))) {
+    const k = keyOf(a)
+    if (!k) continue
+    const s = out.get(k)
+    if (!s || RANK[a.item.severity] < RANK[s]) out.set(k, a.item.severity)
+  }
+  return out
+}
+
+/** An HR case's ID, from its item ('services:case:HR-106594'); null for any other item. */
+export const caseOf = (a: OpenAction): string | null =>
+  a.id.startsWith('services:case:') && a.item.subject.kind === 'cases' ? (a.item.subject.id ?? null) : null
+
+/** The req an item is about: a candidate step's req, or the req itself. */
+export const reqOfItem = (a: OpenAction): string | null =>
+  a.item.batch?.key.startsWith('req:')
+    ? a.item.batch.key.slice(4)
+    : a.item.subject.kind === 'requisitions'
+      ? (a.item.subject.id ?? null)
+      : null

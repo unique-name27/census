@@ -20,7 +20,7 @@ import {
 } from '@/ask/engine'
 import { abortAnswer, beginAnswer, endAnswer } from './inflight'
 import { applyEvent, askedScope, failTurn, finishTurn, newTurn } from './model'
-import { useAsk } from './store'
+import { askAllowed, useAsk } from './store'
 
 export { stopAnswer } from './inflight'
 
@@ -57,7 +57,8 @@ export async function checkAskKey(key: string, model: ModelId) {
 export async function askQuestion(question: string, env: ToolEnv): Promise<void> {
   const store = useAsk.getState()
   const q = question.trim()
-  if (!q || store.busy) return
+  // Ask off in this mode: nothing is asked (the engine refuses too, `askOff`).
+  if (!q || store.busy || !askAllowed() || !env.ctx.access.can('ask')) return
   const chat = store.chat
   const conversation = store.conversation
   const model = readModelChoice()

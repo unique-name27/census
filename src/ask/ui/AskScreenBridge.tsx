@@ -11,6 +11,7 @@ import { useFigureRegistry } from '@/charts/registry'
 import { useCurrentView } from '@/components/currentView'
 import { useAnalytics, useAnalyticsPending } from '@/data/context'
 import { useCensus } from '@/data/store'
+import { useAskOn } from './askOn'
 
 export function AskScreenBridge() {
   const registry = useFigureRegistry()
@@ -20,6 +21,11 @@ export function AskScreenBridge() {
   const route = useCensus((s) => s.route)
   const view = here?.key ?? route.view
   const tab = here?.tab ?? route.tab
-  useEffect(() => connectScreen({ registry, ctx, view, tab, pending }), [registry, ctx, view, tab, pending])
+  // Ask off in this mode: nothing on screen is handed to it.
+  const on = useAskOn()
+  useEffect(
+    () => (on ? connectScreen({ registry, ctx, view, tab, pending }) : undefined),
+    [on, registry, ctx, view, tab, pending],
+  )
   return null
 }

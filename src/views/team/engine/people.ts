@@ -57,9 +57,14 @@ export function companyRate(m: HrbpModel, id: string): number | null {
 /**
  * Voluntary, regretted and first-year attrition: the org's value is People stats' tile (so it
  * opens the same leavers), the company's is the comparison the tile's change is measured against.
+ * A measure whose metric the mode hides is left out (`shown`: Manager leaves out regretted).
  */
-export function attritionCompare(m: HrbpModel): CompareRow[] {
+export function attritionCompare(
+  m: HrbpModel,
+  shown: (metricId: string) => boolean = () => true,
+): CompareRow[] {
   return MEASURES.flatMap(({ id, measure, metricId }) => {
+    if (!shown(metricId)) return []
     const k: Kpi | undefined = m.kpi.kpis.find((x) => x.id === id)
     if (!k) return []
     const own: CompareRow = {

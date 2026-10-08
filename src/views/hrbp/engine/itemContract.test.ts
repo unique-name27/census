@@ -117,8 +117,10 @@ describe('the item contract on the sample', () => {
 
   it('marks every legal breach as exposure and folds Onboarding into Compliance by matter', () => {
     for (const i of items) {
-      if (i.id.startsWith('compliance:i9:') || i.id.startsWith('compliance:license:'))
-        expect(i.exposure, i.id).toBe(true)
+      // A breach in force is exposure; a start whose license is still pending is not one yet.
+      if (i.id.startsWith('compliance:i9:')) expect(i.exposure, i.id).toBe(true)
+      if (i.id.startsWith('compliance:license:'))
+        expect(!!i.exposure, i.id).toBe(i.what.startsWith('Working since'))
       if (i.id.startsWith('services:tx:') && i.what.startsWith('Termination'))
         expect(i.exposure, i.id).toBe(true)
       if (i.id.startsWith('compliance:')) expect(i.matter, i.id).toBeTruthy()

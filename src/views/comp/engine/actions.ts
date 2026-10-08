@@ -17,15 +17,18 @@
  *      (`comp:guideline-exception:<unit>`), the people in its drill (audit 4.3).
  *
  * Every item is due on the cycle's close date (Settings > Compensation cycle); without one it has
- * no due date and says so. No item's `what` or `note` holds a money amount, in any mode: amounts
+ * no due date, says why in `closesWhen`, and the page says it once above the list. No item's `what` or `note` holds a money amount, in any mode: amounts
  * sit in `amount`, which the Action center shows only as a pay column. Roll-ups carry a
  * `fingerprint` (the people behind them), so a handled roll-up reopens when they change. Finance
- * (pay view 'totals') gets no item about one person, and its drills list employees, never comp rows.
+ * (pay view 'totals') gets no item about one person, and its drills list employees, never comp rows;
+ * its merit items read Workforce cost's rows (whole business units, amounts rounded down to $100,000,
+ * percentages from the rounded amounts), and every amount it carries is rounded.
  *
  * Wording: `what` states the facts with no closing full stop, `note` is a polite ask. Pure: no React.
  */
 import type { AnalyticsContext } from '@/data/context'
 import type { ISODate } from '@/data/schema'
+import { roundCost } from '@/lib/costRounding'
 import { dateWords } from '@/lib/dates'
 import { fmt } from '@/lib/format'
 import type { ActionItem, ViewSummary } from '../../types'
@@ -70,7 +73,7 @@ export const COMP_KIND = {
   noProposal: 'Merit proposals missing',
 } as const
 
-/** Said in `what` when the cycle has no close date, so an item with no due date says why. */
+/** The words for a cycle with no close date (said once above the list, never in an item's `what`). */
 export const NO_CLOSE_DATE = 'no cycle close date set'
 
 const pct = (v: number) => fmt(v, 'pct')
@@ -98,20 +101,30 @@ export function fingerprintOf(ids: readonly string[]): string {
   return `${sorted.length}:${h.toString(36)}`
 }
 
-/** What every item shares: the owner, the view and the cycle's close date as the due date. */
-function base(m: CompModel): Pick<ActionItem, 'ownerRole' | 'ownerId' | 'ownerName' | 'due' | 'view'> {
+/** Why an item has no due date when the cycle has none; the page says it once above the list. */
+export const NO_CLOSE_REASON = 'No due date until a cycle close date is set in Settings, Compensation cycle'
+
+/**
+ * What every item shares: the owner, the view and the cycle's close date as the due date. Without
+ * a close date an item has no due date and says why in `closesWhen`; the Action center and the
+ * Compensation home say it once above the list, never on every item.
+ */
+function base(
+  m: CompModel,
+): Pick<ActionItem, 'ownerRole' | 'ownerId' | 'ownerName' | 'due' | 'view' | 'closesWhen'> {
   return {
     ownerRole: 'total-rewards',
     ownerId: null,
     ownerName: TOTAL_REWARDS,
     due: m.cycle.calendar.close,
     view: 'comp',
+    ...(m.cycle.calendar.close ? {} : { closesWhen: NO_CLOSE_REASON }),
   }
 }
 
-/** A `what` with the reason it has no due date, when the cycle has no close date. */
-function whatOf(m: CompModel, text: string): string {
-  return m.cycle.calendar.close ? text : `${text}; ${NO_CLOSE_DATE}`
+/** An item's `what`: the facts (the missing close date is said once, above the list). */
+function whatOf(_m: CompModel, text: string): string {
+  return text
 }
 
 /** Group people by business unit, largest first. */
@@ -146,9 +159,12 @@ function belowItems(ctx: AnalyticsContext, m: CompModel): ActionItem[] {
     const people = rows.map((r) => r.person)
     const priced = rows.filter((r) => r.gapUsd != null)
     const usd = priced.reduce((a, r) => a + (r.gapUsd ?? 0), 0)
+    // Finance: a total, rounded to $100,000 like every cost amount it sees.
     const amount =
       amounts && priced.length >= m.rules.minGroup && usd > 0
-        ? { usd, label: 'Cost to bring to minimum, a year' }
+        ? m.cost.rounded
+          ? { usd: roundCost(usd), label: 'Cost to bring to minimum, a year', rounded: true }
+          : { usd, label: 'Cost to bring to minimum, a year' }
         : undefined
     const where = bu ? ` in ${bu}` : ''
     const title = bu ? `Below range minimum, ${bu}` : 'Below range minimum'
@@ -171,6 +187,7 @@ function belowItems(ctx: AnalyticsContext, m: CompModel): ActionItem[] {
       // The amount reads the FX rate only while it is shown.
       uses: refs(POSITION, amount && m.showPay ? FX : null),
       fingerprint: fingerprintOf(people.map((p) => p.id)),
+      size: people.length,
       ...(amount ? { amount } : {}),
       ...(bu ? { place: { businessUnit: bu } } : {}),
     }
@@ -181,7 +198,8 @@ function belowItems(ctx: AnalyticsContext, m: CompModel): ActionItem[] {
 
 function overBudgetItems(m: CompModel): ActionItem[] {
   const { flag } = m.rules.overBudget
-  const rows = m.cycle.byBu
+  // Finance reads Workforce cost's rows: whole business units, amounts rounded, percentages from them.
+  const rows = m.cost.rounded ? m.cost.merit.rows : m.cycle.byBu
   // The readout's rule: a business unit over by the flag gap, never Other, with units to compare.
   if (rows.length < 2) return []
   return rows
@@ -191,7 +209,9 @@ function overBudgetItems(m: CompModel): ActionItem[] {
     )
     .map((r) => {
       const amount =
-        r.overUsd != null && r.overUsd > 0 ? { usd: r.overUsd, label: 'Over merit budget' } : undefined
+        r.overUsd != null && r.overUsd > 0
+          ? { usd: r.overUsd, label: 'Over merit budget', ...(m.cost.rounded ? { rounded: true } : {}) }
+          : undefined
       return {
         ...base(m),
         id: `comp:over-budget:${r.group}`,
@@ -212,6 +232,7 @@ function overBudgetItems(m: CompModel): ActionItem[] {
         note: `Could we agree with the ${r.group} leaders where to bring proposals back to budget before the cycle closes?`,
         uses: refs(MERIT, FX, BY.businessUnit),
         fingerprint: `${r.n}:${Math.round((r.spendPct ?? 0) * 10_000)}`,
+        size: r.n,
         place: { businessUnit: r.group },
         ...(amount ? { amount } : {}),
       }
@@ -257,6 +278,7 @@ function highRatedLowItems(m: CompModel): ActionItem[] {
       note: 'Could we look at their pay position alongside the merit proposals before the cycle closes?',
       uses: refs(COMPA, annualRatingUses(cycle), BY.businessUnit),
       fingerprint: fingerprintOf(ps.map((p) => p.id)),
+      size: ps.length,
       place: { businessUnit: bu },
     }))
 }
@@ -268,7 +290,7 @@ function noProposalItems(m: CompModel): ActionItem[] {
   if (cal.state !== 'open') return []
   const min = m.rules.minGroup
   const soon = cal.daysToClose != null && cal.daysToClose <= cal.warnDays
-  const closes = cal.close ? `; the cycle closes ${dateWords(cal.close, m.asOf)}` : `; ${NO_CLOSE_DATE}`
+  const closes = cal.close ? `; the cycle closes ${dateWords(cal.close, m.asOf)}` : ''
   return m.cycle.progress.rows
     .filter((r): r is ProgressRow & { dim: 'businessUnit' } => !r.isOther && r.missing >= min)
     .map((r) => ({
@@ -292,6 +314,7 @@ function noProposalItems(m: CompModel): ActionItem[] {
       note: 'Could the managers enter these proposals before the cycle closes?',
       uses: refs(MERIT, BY.businessUnit),
       fingerprint: fingerprintOf(r.missingPeople.map((p) => p.id)),
+      size: r.missing,
       place: { businessUnit: r.group },
     }))
 }
@@ -340,6 +363,7 @@ function exceptionItems(m: CompModel, rows: readonly ExceptionRow[]): ActionItem
         note: 'Could we confirm these merit proposals with their managers before the cycle closes?',
         uses: refs(MERIT, RATING, BY.businessUnit),
         fingerprint: fingerprintOf(list.map((r) => r.id)),
+        size: list.length,
         place: { businessUnit: bu },
       }
     })

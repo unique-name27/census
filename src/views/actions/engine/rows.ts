@@ -54,6 +54,8 @@ export interface ExportRow {
   amount: number | null
   /** A total over a group (USD), for a cost column. */
   total: number | null
+  /** The total is rounded down to a whole $100,000 (Finance): it reads in millions. */
+  totalRounded: boolean
   /** What the amount or total is: "Cost to bring to minimum, a year". */
   amountLabel: string
   /** The tier of data below the standard ("Bronze"), else empty. */
@@ -79,7 +81,12 @@ export const EXPORT_COLUMNS: Column<ExportRow>[] = [
   { key: 'alsoFrom', label: 'Also raised in', width: 22 },
   { key: 'data', label: 'Data below your standard' },
   { key: 'amount', label: 'Amount (USD)', format: 'moneyFull', pay: true },
-  { key: 'total', label: 'Total (USD)', format: 'moneyFull', cost: true },
+  {
+    key: 'total',
+    label: 'Total (USD)',
+    format: (r) => (r.totalRounded ? 'moneyM' : 'moneyFull'),
+    cost: true,
+  },
   { key: 'amountLabel', label: 'Amount for', width: 30, cost: true },
 ]
 
@@ -104,6 +111,7 @@ export function exportRows(
     status: statusText(status(a)),
     amount: a.item.amount && !isGroup(a) ? a.item.amount.usd : null,
     total: a.item.amount && isGroup(a) ? a.item.amount.usd : null,
+    totalRounded: !!a.item.amount?.rounded,
     amountLabel: a.item.amount?.label ?? '',
     data: a.below ? TIER_LABEL[a.below.tier] : '',
     alsoFrom: a.alsoFrom.join(', '),

@@ -35,6 +35,14 @@ export const HELP_GROUPS: readonly { key: HelpGroup; label: string }[] = [
 export interface Condition {
   surface?: string | readonly string[]
   unless?: string | readonly string[]
+  /** Every one hidden in the mode (text for a mode that hides two things at once). */
+  hidden?: string | readonly string[]
+  /**
+   * Whether the mode holds a scope (true) or none (false), for text about the scope itself
+   * ("Records outside your scope are not listed"). A pick, not a policy decision: Recruiter mode
+   * with "Every recruiter" picked holds none, so nothing is outside it. Read from `access.scope`.
+   */
+  scoped?: boolean
 }
 
 /**

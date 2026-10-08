@@ -49,6 +49,9 @@ const PEOPLE = [
   'employees.costCenter',
 ] as const
 
+/** Where the three appear: Workforce cost, and Finance's home (`home-fin-*`). */
+const BUDGET_VIEWS: MetricDef['views'] = ['comp', 'home']
+
 const LINE_POPULATION =
   'Budget lines of the latest plan version in the scope. The budget is compared for whole business units and departments only, never for a location, level or leader filter.'
 
@@ -56,7 +59,7 @@ export const BUDGET_METRIC_DEFS: readonly MetricDef[] = [
   {
     id: BUDGET_METRICS.headcount,
     name: 'Headcount against budget',
-    views: ['comp'],
+    views: BUDGET_VIEWS,
     definition:
       'Employees at the end of each budget month against the headcount the budget sets for it. Contractors and interns are not headcount and are counted beside it.',
     formula:
@@ -73,7 +76,7 @@ export const BUDGET_METRIC_DEFS: readonly MetricDef[] = [
   {
     id: BUDGET_METRICS.cost,
     name: 'Workforce cost against budget',
-    views: ['comp'],
+    views: BUDGET_VIEWS,
     definition:
       'The monthly run rate of workforce cost at the as-of date against the month’s budget cost: employees’ target cash, plus contractors at the range midpoint of their level and location (an estimate). Totals only, over groups of 5 or more people; a group under 5 folds into Other.',
     formula:
@@ -104,7 +107,7 @@ export const BUDGET_METRIC_DEFS: readonly MetricDef[] = [
   {
     id: BUDGET_METRICS.contractors,
     name: 'Contractor cost (estimate)',
-    views: ['comp'],
+    views: BUDGET_VIEWS,
     definition:
       'Census has no contractor rates, so each active contractor is costed at the median range midpoint of employees at their level and location, or at their level company-wide when fewer than 5 are there. Contractors with no level, or with too few employees at it, are left out and counted in the note.',
     formula:

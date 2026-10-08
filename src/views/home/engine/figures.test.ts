@@ -119,10 +119,12 @@ const METRICS: Readonly<Record<HomeSlug, Readonly<Record<string, readonly string
     'home-fin-vs-plan': [COMP.headcountVsBudget, ONBOARDING.vsPlan],
     'home-fin-kpis': [
       HRBP.headcount,
-      HRBP.netChange,
+      HRBP.hires,
       RM.openReqs,
       ONBOARDING.notInPlan,
       HRBP.contingent,
+      // Monthly cost against budget with a budget loaded; a year's target cash without one.
+      COMP.costVsBudget,
       COMP.costTargetCash,
     ],
     'home-fin-plan': [COMP_FIGURE['comp-cost-budget-trend'], ONBOARDING.vsPlanByMonth],

@@ -170,6 +170,8 @@ function candidateItem(
     note,
     uses: QUEUE_USES,
     place: placeOf(ctx, a),
+    // A role's list may show a req's candidate steps as one line (the recruiter's, a manager's decisions).
+    batch: { key: `req:${a.reqId}`, label: a.title ? `${a.reqId} ${a.title}` : a.reqId },
   }
 }
 
