@@ -2,8 +2,8 @@
  * Every key Census keeps in this browser (docs/ROLES.md, 5.3 "Storage keys"): where it lives and
  * what it holds, so the Developer page can describe a scan of the three stores. A test scans the
  * source for `census:` literals and fails when one is neither listed here nor named as something
- * that is not storage (a User Timing measure, an event name). The Ask key's value is never shown or
- * copied ("set" or "not set"); the workspace ID is cut to `wrkspc_…`. Pure.
+ * that is not storage (a User Timing measure, an event name). The Ask key's and the team passcode's
+ * values are never shown or copied ("set" or "not set"); the workspace ID is cut to `wrkspc_…`. Pure.
  */
 
 export type StorageArea = 'localStorage' | 'sessionStorage' | 'IndexedDB'
@@ -106,6 +106,17 @@ export const STORAGE_KEYS: readonly StorageKeyDef[] = [
     secret: 'key',
   },
   {
+    key: 'census:ask-passcode',
+    where: ['sessionStorage', 'localStorage'],
+    holds: 'The team passcode for the Ask relay (this tab only unless kept on this device)',
+    secret: 'key',
+  },
+  {
+    key: 'census:ask-source',
+    where: ['localStorage'],
+    holds: 'Use my own key instead of the team relay; absent means the relay when one is set up',
+  },
+  {
     key: 'census:ask-workspace',
     where: ['localStorage'],
     holds: 'The Claude Console workspace ID',
@@ -197,7 +208,7 @@ export function describeKey(key: string): StorageKeyDef | null {
   return prefixed[0] ?? null
 }
 
-/** A value as the Developer page may show it: never the Ask key, the workspace ID cut. */
+/** A value as the Developer page may show it: never the Ask key or team passcode, the workspace ID cut. */
 export function safeValue(key: string, raw: string | null): string {
   const def = describeKey(key)
   if (def?.secret === 'key') return raw?.trim() ? 'set' : 'not set'
@@ -205,7 +216,16 @@ export function safeValue(key: string, raw: string | null): string {
   return raw ?? ''
 }
 
-/** Whether "Copy value" is offered for a key (never for the Ask key). */
+/**
+ * A value as the storage scan holds it: the Ask key and the team passcode as "set", so not even
+ * their length reaches the page (their size shows as that of "set"); any other value as it is, to
+ * size it.
+ */
+export function scannedValue(key: string, raw: string | null): string | null {
+  return describeKey(key)?.secret === 'key' && raw?.trim() ? 'set' : raw
+}
+
+/** Whether "Copy value" is offered for a key (never for the Ask key or the team passcode). */
 export const canCopyValue = (key: string): boolean => describeKey(key)?.secret !== 'key'
 
 /** One key found in this browser. */

@@ -29,7 +29,7 @@ export const PRIVACY_ARTICLES: readonly HelpArticle[] = [
         p: "Census runs entirely in your browser. Files you add are read on this device and stored in this browser's own storage. They are never sent anywhere.",
       },
       {
-        p: 'Ask Census is the one exception, and only once you add your own Claude API key: your question and the numbers Census calculates to answer it go to Anthropic. Names, IDs and pay amounts never do. [Ask Census](article:ask-census)',
+        p: 'Ask Census is the one exception, and only once you add your own Claude API key or your team’s passcode: your question and the numbers Census calculates to answer it go to Anthropic, directly or through your team’s relay. Names, IDs and pay amounts never do. [Ask Census](article:ask-census)',
       },
       { h: 'What is kept in this browser' },
       {

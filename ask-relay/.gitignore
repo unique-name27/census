@@ -1,0 +1,7 @@
+node_modules
+.wrangler
+# Local secrets for `wrangler dev`: never committed.
+.dev.vars
+.dev.vars.*
+.env
+.env.*

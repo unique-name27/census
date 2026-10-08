@@ -1,0 +1,67 @@
+# The Census Ask relay: a Cloudflare Worker that holds the team's Claude API key, so anyone with the
+# team passcode can use Ask Census without a key of their own. Setup: docs/ASK-RELAY.md.
+#
+# The two secrets are never in this file. Set them with:
+#   npx wrangler secret put ANTHROPIC_API_KEY
+#   npx wrangler secret put CENSUS_PASSCODE
+
+name = "census-ask-relay"
+main = "src/index.ts"
+compatibility_date = "2026-09-01"
+
+# Served at https://census-ask-relay.<your-subdomain>.workers.dev
+workers_dev = true
+# Only the deployed version answers. With this on, every version would also answer at its own
+# public version URL, and an old version might still take an old passcode.
+preview_urls = false
+
+# No request logs kept by Cloudflare. The relay logs only what happened, the status and the model, and
+# only `npx wrangler tail` shows those while it runs.
+[observability]
+enabled = false
+
+[vars]
+# Where Census runs: the published site. Comma-separated http or https origins, no path and no
+# trailing slash; "null", "*" and file addresses are never allowed. Every GitHub Pages site of the
+# account shares this origin (docs/ASK-RELAY.md, Security notes): once Census has an address of its
+# own, put that here instead. The dev server is allowed only by a relay run on this computer
+# ([env.local] below).
+ALLOWED_ORIGINS = "https://unique-name27.github.io"
+# The models Ask offers (src/ask/engine/models.ts). A test keeps these in step.
+ALLOWED_MODELS = "claude-opus-5-5,claude-sonnet-5-5,claude-haiku-4-5-20251001"
+# The betas Ask sends (server-side fallback when a model declines a request).
+ALLOWED_BETAS = "server-side-fallback-2026-07-01"
+# The largest answer Ask asks for (MAX_TOKENS in src/ask/engine/loop.ts).
+MAX_TOKENS = "4096"
+# The largest request, in bytes. A long chat sends its whole history each time.
+MAX_BODY_BYTES = "2000000"
+# Best-effort rate limits, counted in each running copy of the worker (src/limiter.ts).
+# Per passcode and client address:
+REQUESTS_PER_MINUTE = "60"
+# Per client address, right passcode or not (this also slows anyone guessing the passcode):
+ADDRESS_REQUESTS_PER_MINUTE = "120"
+
+# Optional: Cloudflare's rate limiting binding counts more reliably than the memory limits above
+# (still per Cloudflare location). Its documentation does not say whether the Free plan includes it.
+# To try it, remove the # from the lines below and run npx wrangler deploy. If the deploy is refused,
+# put the # back: the memory limits above apply. namespace_id is any number unique in your account.
+#
+# [[ratelimits]]
+# name = "TEAM_LIMITER"
+# namespace_id = "1001"
+#   [ratelimits.simple]
+#   limit = 60
+#   period = 60
+#
+# [[ratelimits]]
+# name = "ADDRESS_LIMITER"
+# namespace_id = "1002"
+#   [ratelimits.simple]
+#   limit = 120
+#   period = 60
+
+# For trying the relay on this computer only: npx wrangler dev --env local. The dev server's address
+# is allowed here and never in the deployed relay. Vars are not inherited by an environment, so any
+# setting left out here takes the relay's built-in default (the same values as above).
+[env.local.vars]
+ALLOWED_ORIGINS = "http://localhost:8820"

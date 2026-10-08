@@ -14,12 +14,34 @@ export const ASK_INTRO =
 export const PRIVACY_LINE =
   'Your questions and the numbers Census calculates go to Anthropic under your API key. Names, IDs and pay amounts never do.'
 
+/** The privacy line when Ask goes through the team relay (docs/ASK-RELAY.md). */
+export const PRIVACY_LINE_TEAM =
+  'Your questions and the numbers Census calculates go to Anthropic through your team’s relay. Names, IDs and pay amounts never do.'
+
+/** The privacy line for how Ask connects: the person's own key, or the team relay. */
+export const privacyLine = (via: 'own' | 'team'): string =>
+  via === 'team' ? PRIVACY_LINE_TEAM : PRIVACY_LINE
+
+const NEVER_SENT =
+  'Never sent: names, employee, candidate and application IDs, emails, pay amounts, survey answers of one person, or immigration details. People appear as tokens that only this browser can read.'
+
 /** Settings > Ask Census: what is sent and what never is. */
 export const WHAT_IS_SENT: readonly string[] = [
   'Sent: your question, and the counts, rates, definitions and org structure Census calculates to answer it.',
-  'Never sent: names, employee, candidate and application IDs, emails, pay amounts, survey answers of one person, or immigration details. People appear as tokens that only this browser can read.',
+  NEVER_SENT,
   'The conversation lasts until you choose New chat, reload the page or close the tab. Your key is kept for this tab unless you choose to keep it on this device.',
 ]
+
+/** The same, when Ask goes through the team relay. */
+export const WHAT_IS_SENT_TEAM: readonly string[] = [
+  'Sent, through your team’s relay to Anthropic: your question, and the counts, rates, definitions and org structure Census calculates to answer it. The relay passes them on and keeps no copy.',
+  NEVER_SENT,
+  'The conversation lasts until you choose New chat, reload the page or close the tab. The passcode is kept for this tab unless you choose to keep it on this device.',
+]
+
+/** What is sent, for how Ask connects. */
+export const whatIsSent = (via: 'own' | 'team'): readonly string[] =>
+  via === 'team' ? WHAT_IS_SENT_TEAM : WHAT_IS_SENT
 
 const SUGGESTIONS: Record<RouteView, readonly string[]> = {
   home: [

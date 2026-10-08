@@ -1,8 +1,8 @@
 /**
  * The Developer page's State tab (docs/ROLES.md, 5.6): the state behind the screen as sections of
  * label and value, each also as JSON for "Copy as JSON". Copied state holds employee IDs from the
- * filters; the Ask key and the workspace ID are never in it (only whether they are set). Pure: the
- * page passes a snapshot of the stores.
+ * filters; the Ask key, the team passcode and the workspace ID are never in it (only whether they
+ * are set). Pure: the page passes a snapshot of the stores.
  */
 import { MODE_LABEL, MODE_OF_PICK, type Mode, type ModePicks, type PayView, PICK_KINDS } from '@/access/modes'
 import type { Access } from '@/access/policy'
@@ -73,6 +73,10 @@ export interface StateInput {
     askKey: string
     model: string
     workspaceSet: boolean
+    /** Whether the team passcode is set (never its value); absent reads as not set. */
+    askPasscode?: string
+    /** How Ask connects: 'own key' or 'team relay'; absent reads as own key. */
+    askVia?: string
   }
   storage: { unavailable: boolean; rows: readonly StorageRow[] | null }
 }
@@ -289,6 +293,8 @@ export function stateSections(s: StateInput): StateSection[] {
         { label: 'Ask key', value: s.panels.askKey },
         { label: 'Ask model', value: s.panels.model },
         { label: 'Ask workspace ID', value: s.panels.workspaceSet ? 'set' : 'not set' },
+        { label: 'Ask connects with', value: s.panels.askVia ?? 'own key' },
+        { label: 'Ask team passcode', value: s.panels.askPasscode ?? 'not set' },
       ],
       json: s.panels,
     },

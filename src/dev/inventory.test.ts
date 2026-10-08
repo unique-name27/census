@@ -202,8 +202,9 @@ describe('inventory counts equal the registries', () => {
     // Every saved setting but the old compensation cycle mirror (now in the metric dictionary).
     const saved = Object.keys(DEFAULT_SETTINGS).filter((k) => k !== 'compCycle')
     expect([...SETTING_KEYS].sort()).toEqual(saved.sort())
-    // The saved settings, two session switches, the mode, its four picks, three overlays, four others.
-    expect(rows.length).toBe(SETTING_KEYS.length + 2 + 1 + 4 + 3 + 4)
+    // The saved settings, two session switches, the mode, its four picks, three overlays, six others
+    // (the quality lens and Ask's model, key, workspace ID, connection and team passcode).
+    expect(rows.length).toBe(SETTING_KEYS.length + 2 + 1 + 4 + 3 + 6)
     expect(rows.find((r) => r.setting === 'Mode')?.value).toBe('Developer')
     expect(rows.find((r) => r.setting === 'Mode pick: business unit')?.value).toBe('Silicon Engineering')
     expect(rows.find((r) => r.setting === 'Mode pick: recruiter')?.value).toBe('every recruiter')
@@ -219,6 +220,14 @@ describe('inventory counts equal the registries', () => {
     })
     expect(rows.find((r) => r.setting === 'Quality lens')?.manager).toBe('Hidden')
     expect(rows.find((r) => r.setting === 'Ask key')?.value).toBe('not set')
+    // The team passcode shows as set or not, never its value; with no relay Ask uses the own key.
+    expect(rows.find((r) => r.setting === 'Ask team passcode')?.value).toBe('not set')
+    expect(rows.find((r) => r.setting === 'Ask connects with')?.value).toBe('own key')
+    expect(
+      settingRows(
+        settingFacts({ ...snapshot, askPasscode: 'kept on this device', askVia: 'team relay' }),
+      ).rows.find((r) => r.setting === 'Ask team passcode')?.value,
+    ).toBe('kept on this device')
     // Each row's section is a real Settings section or the session.
     for (const f of facts) expect(['session', ...SETTINGS_SECTIONS], f.setting).toContain(f.section)
   })

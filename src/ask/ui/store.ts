@@ -3,8 +3,8 @@
  * sheet is at full height), the conversation and its turns (in memory for the browser session
  * only: never written to storage, kept when the panel closes, cleared by New chat), the
  * composer's draft, the actions undone, the charts pinned to My charts, and a counter that changes
- * when the API key or model changes so the panel and Settings read them again. The key itself is
- * never held here.
+ * when the API key, team passcode, model or team relay changes so the panel and Settings read
+ * them again. The key and the passcode themselves are never held here.
  *
  * The panel stays open across navigation (docs/ASK-ACTIONS.md, part 1): changing views, tabs or
  * filters, by hand or by Ask, keeps it and the conversation. Open or collapsed is remembered for
@@ -20,8 +20,10 @@ import {
   createConversation,
   KEY_STORAGE_KEY,
   MODEL_STORAGE_KEY,
+  PASSCODE_STORAGE_KEY,
   pickOfMode,
   SCREEN_ACTIONS_STORAGE_KEY,
+  SOURCE_STORAGE_KEY,
   WORKSPACE_STORAGE_KEY,
 } from '@/ask/engine'
 import {
@@ -283,13 +285,15 @@ useMode.subscribe((s, prev) => {
     useAsk.getState().modeChanged()
 })
 
-// A key kept on this device (or the model choice, workspace ID or "Let Ask change the screen")
-// changed in another tab: read them again.
+// A key or team passcode kept on this device (or the model choice, workspace ID, "Use my own key
+// instead" or "Let Ask change the screen") changed in another tab: read them again.
 if (typeof window !== 'undefined') {
   try {
     window.addEventListener('storage', (e) => {
       if (
         e.key === KEY_STORAGE_KEY ||
+        e.key === PASSCODE_STORAGE_KEY ||
+        e.key === SOURCE_STORAGE_KEY ||
         e.key === MODEL_STORAGE_KEY ||
         e.key === WORKSPACE_STORAGE_KEY ||
         e.key === SCREEN_ACTIONS_STORAGE_KEY ||

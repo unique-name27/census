@@ -5,6 +5,10 @@ Claude API with the user's own API key, Claude asks Census for numbers through t
 browser, and only counts, rates, definitions and org structure are sent. Names, IDs and pay amounts
 are never sent. Answers link to the records, which open locally in the drill panel.
 
+A team can also share one key without putting it in the public site or repo: a small relay on
+Cloudflare holds it, and people ask with a team passcode (docs/ASK-RELAY.md). With no relay
+configured, everything below works as it always has.
+
 ## What the user sees
 
 - **Ask** button in the masthead (beside Help), plus a keyboard shortcut that conflicts with
@@ -17,7 +21,9 @@ are never sent. Answers link to the records, which open locally in the drill pan
   four suggested questions for the view on screen (e.g. on People stats: "Where is voluntary
   attrition highest, and how has it changed?").
 - **No key yet:** the sheet explains that Ask uses your own Claude API key and links to
-  Settings > Ask Census. Nothing is sent without a key.
+  Settings > Ask Census. Nothing is sent without a key. With the team relay: "Ask uses your team's
+  passcode.", the same link, and nothing sent without the passcode; the privacy line says the
+  questions go "to Anthropic through your team's relay".
 - **An answer:**
   - streams in as it is written; a Stop button aborts it
   - shows plain progress lines while tools run ("Calculating People stats key figures for Bengaluru")
@@ -39,6 +45,16 @@ are never sent. Answers link to the records, which open locally in the drill pan
   region or a feature, which keep their own case), rate limited or
   overloaded (retried automatically twice, then "try again in a minute"), offline, request blocked
   by the browser or the page's host (e.g. when Census runs as a claude.ai artifact), stopped by you.
+- **Errors through the team relay** (`classifyError(err, { relay: true })`): the relay's own
+  refusals (types `relay_…`) read "The team passcode was not accepted." (Settings, landing on the
+  Team passcode field), "Too many requests through the team relay.", "The team relay could not be
+  reached.", "The team relay is not set up yet.", "The team relay does not accept requests from
+  this address.", "The team relay does not offer this model." or "The team relay turned down this
+  request.", with "The team relay said: …" and the status under them. Anthropic's answers about the
+  key, credits and limits name the team ("The team's API key was not accepted.", "The team has
+  reached its spend limit for now.", "The team's Anthropic account has no API credits left.",
+  "Claude is getting too many requests from the team."), since the person cannot fix those in
+  Settings. No workspace case applies (the relay sends no workspace ID).
 
 ## Settings > Ask Census (new section, after Privacy)
 
@@ -63,6 +79,19 @@ are never sent. Answers link to the records, which open locally in the drill pan
   neither is the workspace ID.
 - What is sent: the workspace ID goes to Anthropic as the `anthropic-workspace-id` request header,
   on every question and on Check key, and nowhere else. With no workspace ID, no header is sent.
+- **With the team relay** (`ask-relay.json` names one, docs/ASK-RELAY.md): **Use my own key
+  instead** comes first (off by default; kept in localStorage `census:ask-source`, not a secret).
+  Off, the key and workspace ID give way to **Team passcode**: kept like the key (sessionStorage
+  `census:ask-passcode` for this tab, localStorage with "Keep on this device"; never in the settings
+  file, Report a problem, exports, logs or the URL; the Developer page shows only set or not set),
+  12 to 256 visible characters, with **Check passcode** (the same tiny request, through the relay)
+  and **Forget passcode**. On, the section is as above and Ask goes straight to Anthropic. The
+  intro and "What is sent" say which way Ask connects.
+- **On a shared address** (`sharedHost`: `*.github.io` or `*.gitlab.io`, where every site of the
+  account shares the browser's storage with Census), "Keep on this device" is offered for the key
+  and the passcode with a warning that every site at that address can read what is kept (the lead
+  chose this over withholding it, so a demo laptop keeps its key across tabs). Off by default.
+  docs/ASK-RELAY.md, Security notes, has the fix: an address of Census's own.
 
 ## How it works
 
@@ -71,7 +100,21 @@ Code lives in `src/ask/` (`engine/` pure and tested, `ui/` React). The SDK is
 `dangerouslyAllowBrowser: true`. Requests go straight from the browser to the Anthropic API. The SDK
 has no workspace option, so a saved workspace ID goes through its `defaultHeaders` as
 `anthropic-workspace-id` (`createAnthropicClient(key, { workspaceId })`; `checkKey` takes the same).
-Anthropic allows that header in browser requests. A failed request goes to the browser console as
+Anthropic allows that header in browser requests.
+
+**The team relay** (`engine/relay.ts`, `ui/relayBoot.ts`, docs/ASK-RELAY.md): `ask-relay.json`
+(`{ "relayUrl": "https://…" }`) is loaded once at startup the way `access-policy.json` is: fetched
+beside the page, or embedded in the one-file build from `public/ask-relay.json`, which
+`npm run deploy` publishes (`scripts/pagesFiles.mjs`, `relayProblem`). A file that is not JSON, or
+whose address is not https (http only on this computer), carries a user name, query, fragment or
+`/v1`, is ignored with a console warning. `askVia()` is the relay unless "Use my own key instead";
+`readCredential(via)` gives the key or the passcode; `clientForCredential(cred)` makes the SDK
+client with the relay as `baseURL`, the passcode as the `x-census-passcode` header through
+`defaultHeaders`, a placeholder key (the relay drops it) and no workspace ID. The relay itself is
+in `ask-relay/` and checks every request before it adds the team's key (docs/ASK-RELAY.md, "The
+relay's request rules").
+
+A failed request goes to the browser console as
 a summary (`errorLog`: status, error type, request ID and message, any workspace ID cut to
 `wrkspc_…`), never as the SDK's error object, which keeps the response headers.
 
@@ -227,6 +270,19 @@ Ask button. Help content tests must pass.
   value is returned. Tokenizing the user's question replaces typed names and IDs.
 - Loop with a fake client: scripted tool calls then text; the 10-round cap; Stop; error mapping.
 - Answer rendering: links, refs, tokens, tables, unknown markers, no raw HTML.
+- Team relay (`engine/relay.test.ts`, `engine/relayClient.test.ts`, `ask-relay/test/handler.test.ts`):
+  reading and loading `ask-relay.json`, how Ask connects, passcode storage (tab, device, Forget,
+  never in the settings file or on the Developer page), the relay's rules (origins and preflight,
+  passcode right, wrong and missing, header stripping, body checks, model allowlist, `max_tokens`,
+  content blocks (no images, documents or files), the checked body sent rather than the text that
+  came (a key given twice), size cap, path and method, rate limits (IPv6 by /64, a full memory
+  limit that never lifts a block), streaming through with secrets hidden, organization IDs hidden in
+  errors, no secret in any answer or log line, never "null" or "*" as an origin), Ask end to end
+  through the real SDK and the relay's handler, every relay error in plain words, the relay's
+  settings kept in step with Census (models, `max_tokens`, betas, addresses, `preview_urls`), a
+  relay file with more than `relayUrl` ignored and refused by the deploy, "Keep on this device" not
+  offered on a shared address (`app/settings/askShared.test.ts`), and the dev server refusing
+  `.dev.vars` (`dev/security/devServer.test.ts`).
 - Key storage: session vs remembered, Forget, never in the settings file. Workspace ID: format,
   save, clear, kept when the key is forgotten, never in the settings file; the header on questions
   and Check key, and none when blank; the workspace errors with Anthropic's exact message, the

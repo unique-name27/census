@@ -27,9 +27,9 @@ import { IconWorking } from './icons'
 import {
   errorFacts,
   exportScope,
+  settingsFieldFor,
   statusLine,
   type Turn,
-  WORKSPACE_FIELD,
   withNames,
   withoutPartial,
 } from './model'
@@ -104,8 +104,8 @@ function ErrorNote({ turn, env, busy }: { turn: Turn; env: () => ToolEnv; busy: 
                 size="sm"
                 onClick={() => {
                   // Settings opens above the panel. A workspace error lands on the Workspace ID
-                  // field, where the fix is.
-                  openSettings('ask', e.kind === 'workspace' ? WORKSPACE_FIELD : undefined)
+                  // field, a passcode error on the Team passcode field, where the fix is.
+                  openSettings('ask', settingsFieldFor(e))
                 }}
               >
                 Open Settings, Ask Census

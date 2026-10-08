@@ -24,7 +24,7 @@ import { useHelp } from '@/help/store'
 import { useQualityLens } from '@/views/data/quality-overview/lens'
 import { VIEWS } from '@/views/registry'
 import { accessRows } from '../accessInventory'
-import { askKeyState } from '../live'
+import { askKeyState, askPasscodeState, askViaState } from '../live'
 import { bytesText, type StorageBar, storageBars } from '../overview'
 import { COPY_NOTE, stateSections } from '../state'
 import { useDev } from '../store'
@@ -78,6 +78,8 @@ export function StateTab() {
       askKey: askKeyState(),
       model: readModelChoice(),
       workspaceSet: !!readWorkspaceId(),
+      askPasscode: askPasscodeState(),
+      askVia: askViaState(),
     },
     storage: { unavailable, rows: storage.rows },
   })

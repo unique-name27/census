@@ -2,6 +2,8 @@
 
 export declare const POLICY_SOURCE: 'public/access-policy.json'
 export declare const POLICY_TARGET: 'access-policy.json'
+export declare const RELAY_SOURCE: 'public/ask-relay.json'
+export declare const RELAY_TARGET: 'ask-relay.json'
 export declare const POLICY_FORMAT: 'census-access-policy'
 export declare const POLICY_VERSION: number
 
@@ -18,3 +20,6 @@ export interface PagesFile {
 export declare function pagesFiles(exists: (path: string) => boolean): PagesFile[]
 
 export declare function policyProblem(policyText: string, html: string): string | null
+
+/** Why the relay file must not be published with this census.html, or null when it may. */
+export declare function relayProblem(relayText: string, html: string): string | null

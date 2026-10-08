@@ -28,6 +28,14 @@ import {
 const root = join(__dirname, '../../..')
 
 describe('the Pages deploy', () => {
+  it('puts public/ask-relay.json beside index.html when it exists (the team relay for Ask)', () => {
+    const files = pagesFiles((p) => p === 'public/ask-relay.json')
+    expect(files.map((f) => f.to)).toEqual(['index.html', 'census.html', '.nojekyll', 'ask-relay.json'])
+    expect(files.at(-1)).toEqual({ from: 'public/ask-relay.json', to: 'ask-relay.json' })
+    const both = pagesFiles(() => true).map((f) => f.to)
+    expect(both).toEqual(['index.html', 'census.html', '.nojekyll', 'access-policy.json', 'ask-relay.json'])
+  })
+
   it('publishes the one-file build as index.html and census.html, with no policy file when there is none', () => {
     expect(pagesFiles(() => false)).toEqual([
       { from: 'census.html', to: 'index.html' },
@@ -42,7 +50,7 @@ describe('the Pages deploy', () => {
       asked.push(p)
       return p === 'public/access-policy.json'
     })
-    expect(asked).toEqual(['public/access-policy.json'])
+    expect(asked).toEqual(['public/access-policy.json', 'public/ask-relay.json'])
     expect(files.map((f) => f.to)).toEqual(['index.html', 'census.html', '.nojekyll', 'access-policy.json'])
     expect(files.at(-1)).toEqual({ from: 'public/access-policy.json', to: 'access-policy.json' })
     // The name Census fetches beside the page, and the file the one-file build embeds.

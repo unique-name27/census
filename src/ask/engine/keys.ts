@@ -1,13 +1,15 @@
 /**
- * Where the Claude API key is kept (Settings > Ask Census), and the optional workspace ID below.
+ * Where the Claude API key is kept (Settings > Ask Census), the optional workspace ID below, and,
+ * when the team runs a relay (docs/ASK-RELAY.md), the team passcode and the "Use my own key
+ * instead" choice.
  *
  *  - By default in sessionStorage: this tab only, gone when the tab closes.
  *  - With "Keep on this device": in localStorage, until Forget key (or Clear all data, which
  *    removes every `census:` key).
  *
- * The key lives under its own storage key, so it is never part of the settings file, Report a
- * problem, exports, logs or the URL. Every read and write is wrapped: a blocked store only means
- * the key is not remembered.
+ * The key and the passcode each live under their own storage key, so neither is ever part of the
+ * settings file, Report a problem, exports, logs or the URL. Every read and write is wrapped: a
+ * blocked store only means the key or passcode is not remembered.
  */
 
 export const KEY_STORAGE_KEY = 'census:ask-key'
@@ -28,21 +30,70 @@ function store(kind: 'session' | 'local'): Storage | null {
 
 const browserStores = (): KeyStores => ({ session: store('session'), local: store('local') })
 
-function get(s: Storage | null): string | null {
+function get(s: Storage | null, name: string): string | null {
   try {
-    const v = s?.getItem(KEY_STORAGE_KEY)
+    const v = s?.getItem(name)
     return v?.trim() ? v.trim() : null
   } catch {
     return null
   }
 }
 
-function remove(s: Storage | null): void {
+function remove(s: Storage | null, name: string): void {
   try {
-    s?.removeItem(KEY_STORAGE_KEY)
+    s?.removeItem(name)
   } catch {
     /* blocked: nothing was kept there */
   }
+}
+
+/**
+ * Whether the page is served from a host whose storage other sites share: GitHub Pages serves every
+ * site of an account from `<account>.github.io` (GitLab Pages, every site of a group from
+ * `<group>.gitlab.io`), and a page at one address can read what a page at another kept in the
+ * browser, in localStorage, and in sessionStorage when the same tab moves between them. There,
+ * "Keep on this device" is not offered for the key or the passcode (docs/ASK-RELAY.md, Security
+ * notes). A custom domain set on Census's own repository gives it an address of its own.
+ */
+export function sharedHost(hostname: string = pageHost()): boolean {
+  return /\.(github|gitlab)\.io\.?$/i.test(hostname.trim())
+}
+
+/** This page's host name, or '' outside a browser. */
+export function pageHost(): string {
+  try {
+    return typeof location === 'undefined' ? '' : location.hostname
+  } catch {
+    return ''
+  }
+}
+
+/** A secret kept for this tab, else on this device. */
+function readSecret(name: string, stores: KeyStores): { value: string; kept: boolean } | null {
+  const session = get(stores.session, name)
+  if (session) return { value: session, kept: false }
+  const local = get(stores.local, name)
+  return local ? { value: local, kept: true } : null
+}
+
+/** Keep a secret for this tab, or on this device; the other store is cleared. */
+function saveSecret(name: string, value: string, keep: boolean, stores: KeyStores): boolean {
+  const v = value.trim()
+  if (!v) {
+    remove(stores.session, name)
+    remove(stores.local, name)
+    return true
+  }
+  const target = keep ? stores.local : stores.session
+  const other = keep ? stores.session : stores.local
+  try {
+    if (!target) return false
+    target.setItem(name, v)
+  } catch {
+    return false
+  }
+  remove(other, name)
+  return true
 }
 
 export interface StoredKey {
@@ -53,10 +104,8 @@ export interface StoredKey {
 
 /** The key in force: this tab's, else the one kept on this device. Null when there is none. */
 export function readKey(stores: KeyStores = browserStores()): StoredKey | null {
-  const session = get(stores.session)
-  if (session) return { key: session, kept: false }
-  const local = get(stores.local)
-  return local ? { key: local, kept: true } : null
+  const s = readSecret(KEY_STORAGE_KEY, stores)
+  return s ? { key: s.value, kept: s.kept } : null
 }
 
 /**
@@ -65,27 +114,13 @@ export function readKey(stores: KeyStores = browserStores()): StoredKey | null {
  * store it (the caller can still use the key for this page).
  */
 export function saveKey(key: string, keep: boolean, stores: KeyStores = browserStores()): boolean {
-  const k = key.trim()
-  if (!k) {
-    forgetKey(stores)
-    return true
-  }
-  const target = keep ? stores.local : stores.session
-  const other = keep ? stores.session : stores.local
-  try {
-    if (!target) return false
-    target.setItem(KEY_STORAGE_KEY, k)
-  } catch {
-    return false
-  }
-  remove(other)
-  return true
+  return saveSecret(KEY_STORAGE_KEY, key, keep, stores)
 }
 
 /** Forget the key everywhere it was kept. */
 export function forgetKey(stores: KeyStores = browserStores()): void {
-  remove(stores.session)
-  remove(stores.local)
+  remove(stores.session, KEY_STORAGE_KEY)
+  remove(stores.local, KEY_STORAGE_KEY)
 }
 
 /** Looks like an Anthropic API key ("sk-ant-..."); a quick check before sending anything. */
@@ -147,5 +182,71 @@ export function clearWorkspaceId(local: Storage | null = store('local')): void {
     local?.removeItem(WORKSPACE_STORAGE_KEY)
   } catch {
     /* blocked: nothing was kept there */
+  }
+}
+
+/* ───────────── the team passcode (a relay is configured) ───────────── */
+
+/**
+ * The team passcode, for a team that runs the Ask relay (docs/ASK-RELAY.md): kept exactly like the
+ * key (this tab by default, this device with "Keep on this device"), under its own storage key. It
+ * goes to the relay as the `x-census-passcode` request header and nowhere else.
+ */
+export const PASSCODE_STORAGE_KEY = 'census:ask-passcode'
+
+export interface StoredPasscode {
+  passcode: string
+  /** Kept on this device (localStorage) rather than for this tab only. */
+  kept: boolean
+}
+
+/** The passcode in force: this tab's, else the one kept on this device. Null when there is none. */
+export function readPasscode(stores: KeyStores = browserStores()): StoredPasscode | null {
+  const s = readSecret(PASSCODE_STORAGE_KEY, stores)
+  return s ? { passcode: s.value, kept: s.kept } : null
+}
+
+/** Keep the passcode, for this tab or on this device; false when the browser would not store it. */
+export function savePasscode(passcode: string, keep: boolean, stores: KeyStores = browserStores()): boolean {
+  return saveSecret(PASSCODE_STORAGE_KEY, passcode, keep, stores)
+}
+
+/** Forget the passcode everywhere it was kept. */
+export function forgetPasscode(stores: KeyStores = browserStores()): void {
+  remove(stores.session, PASSCODE_STORAGE_KEY)
+  remove(stores.local, PASSCODE_STORAGE_KEY)
+}
+
+/**
+ * Looks like a passcode the relay can be sent: 4 to 256 visible characters (letters, numbers,
+ * spaces and common symbols; a request header carries nothing else), the relay's own minimum.
+ */
+export const looksLikePasscode = (p: string): boolean => /^[ -~]{4,256}$/.test(p.trim())
+
+/**
+ * "Use my own key instead" (Settings > Ask Census, only when a relay is configured): on, Ask uses
+ * the person's own key straight to Anthropic, as with no relay. Not a secret, so it is kept on this
+ * device; absent means off (the team relay).
+ */
+export const SOURCE_STORAGE_KEY = 'census:ask-source'
+
+/** Whether "Use my own key instead" is on. Never throws. */
+export function readOwnKeyChoice(local: Storage | null = store('local')): boolean {
+  try {
+    return local?.getItem(SOURCE_STORAGE_KEY) === 'own'
+  } catch {
+    return false
+  }
+}
+
+/** Turn "Use my own key instead" on or off; false when the browser would not store it. */
+export function saveOwnKeyChoice(on: boolean, local: Storage | null = store('local')): boolean {
+  try {
+    if (!local) return false
+    if (on) local.setItem(SOURCE_STORAGE_KEY, 'own')
+    else local.removeItem(SOURCE_STORAGE_KEY)
+    return true
+  } catch {
+    return false
   }
 }

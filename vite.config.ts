@@ -4,6 +4,7 @@ import tailwindcss from '@tailwindcss/vite'
 import react, { reactCompilerPreset } from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
 import { viteSingleFile } from 'vite-plugin-singlefile'
+import { DEV_SERVER_DENY } from './scripts/devServer.mjs'
 
 // `npm run build:single` emits one self-contained census.html (double-click to open, no server).
 export default defineConfig(({ mode }) => ({
@@ -17,6 +18,8 @@ export default defineConfig(({ mode }) => ({
   resolve: {
     alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
   },
+  // Never serve a secret: Vite's own list plus the Ask relay's ask-relay/.dev.vars (scripts/devServer.mjs).
+  server: { fs: { deny: DEV_SERVER_DENY } },
   build: {
     outDir: mode === 'single' ? 'dist-single' : 'dist',
     chunkSizeWarningLimit: 4000,
@@ -33,7 +36,12 @@ export default defineConfig(({ mode }) => ({
     projects: [
       {
         extends: true,
-        test: { name: 'unit', include: ['src/**/*.test.ts'], exclude: ['src/**/*.perf.test.ts'] },
+        test: {
+          name: 'unit',
+          // The Ask relay (ask-relay/, docs/ASK-RELAY.md) is tested here too, with fakes.
+          include: ['src/**/*.test.ts', 'ask-relay/test/**/*.test.ts'],
+          exclude: ['src/**/*.perf.test.ts'],
+        },
       },
       {
         extends: true,

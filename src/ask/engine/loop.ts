@@ -45,6 +45,8 @@ export interface AskClient {
   isConnectionError?(err: unknown): boolean
   /** Requests carry a workspace ID (the `anthropic-workspace-id` header), so Anthropic can turn it down. */
   sendsWorkspaceId?: boolean
+  /** Requests go through the team relay (docs/ASK-RELAY.md), which can turn them down itself. */
+  viaRelay?: boolean
 }
 
 export const MAX_TOKENS = 4096
@@ -425,6 +427,7 @@ export async function ask(o: AskOptions): Promise<AskResult> {
       online: o.online?.(),
       connection: o.client.isConnectionError?.(err),
       workspaceSent: o.client.sendsWorkspaceId,
+      relay: o.client.viaRelay,
     })
     // A summary, never the error itself: it holds the response headers (docs/ASK.md, logs).
     if (error.kind !== 'stopped') console.warn('Ask Census: the request failed', errorLog(err))

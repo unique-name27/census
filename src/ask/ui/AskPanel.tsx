@@ -13,8 +13,9 @@
  * conversation stay through navigation: changing views, tabs or filters, by hand or by Ask.
  *
  * Empty, it says what Ask does, what is sent, and offers four questions about the page on screen;
- * without a key it says how to add one. A conversation lasts for the browser session (in memory
- * only); New chat clears it. Charts pinned from answers are listed under My charts.
+ * without a key (or, with the team relay, without the team passcode) it says how to add one. A
+ * conversation lasts for the browser session (in memory only); New chat clears it. Charts pinned
+ * from answers are listed under My charts.
  */
 import { type PointerEvent as ReactPointerEvent, type RefObject, useEffect, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
@@ -23,12 +24,14 @@ import {
   ASK_INTRO,
   answerText,
   askOffReason,
+  askVia,
   NO_KEY,
+  NO_PASSCODE,
   noKeyQuestions,
   onScreenEvent,
-  PRIVACY_LINE,
   parseAnswer,
-  readKey,
+  privacyLine,
+  readCredential,
   readScreenActions,
   suggestionsFor,
   type ToolEnv,
@@ -55,7 +58,7 @@ import {
   widthByKey,
 } from './dock'
 import { IconAsk, IconChevronUp, IconCollapse, IconNewChat, IconWorking } from './icons'
-import { announcement, finalText, statusLine, type Turn, withNames } from './model'
+import { announcement, finalText, settingsFieldFor, statusLine, type Turn, withNames } from './model'
 import { panelAskApp } from './panelApp'
 import { focusComposer, focusPage, PANEL_ID, panelEl } from './panelFocus'
 import { connectPointer } from './pointer'
@@ -66,8 +69,17 @@ import { pageWidth, panelArea, useDock, usePeek, useViewport } from './useDock'
 
 /* ───────────── empty states ───────────── */
 
-/** The key in force; `version` and `nonce` change when it may have changed, so it is read again. */
-const keyNow = (_version: number, _nonce: number) => readKey()
+/**
+ * The key or team passcode in force; `version` and `nonce` change when it may have changed, so it
+ * is read again.
+ */
+const credentialNow = (_version: number, _nonce: number) => readCredential()
+
+/** How Ask connects (the team relay, or the person's own key); read again when `version` changes. */
+const viaNow = (_version: number) => askVia().kind
+
+/** What to say when nothing is saved to ask with. */
+const missing = (via: 'own' | 'team') => (via === 'team' ? NO_PASSCODE : NO_KEY)
 
 const PAGE_LABEL: Partial<Record<RouteView, string>> = { data: 'the Data room', actions: 'the Action center' }
 
@@ -76,10 +88,11 @@ function pageLabel(view: RouteView): string {
 }
 
 function PrivacyNote() {
+  const via = viaNow(useAsk((s) => s.keyVersion))
   return (
     <p className="flex items-start gap-1.5 text-meta leading-snug text-muted">
       <IconLock className="mt-px size-3.5 shrink-0" />
-      <span>{PRIVACY_LINE}</span>
+      <span>{privacyLine(via)}</span>
     </p>
   )
 }
@@ -87,11 +100,15 @@ function PrivacyNote() {
 /** Settings opens above the panel and hands focus back to the button when it closes. */
 const goToSettings = () => openSettings('ask')
 
+/** Settings on the field to fill in: the Team passcode with a relay, else the section. */
+const goToMissing = (via: 'own' | 'team') => () => openSettings('ask', settingsFieldFor(missing(via)))
+
 /**
  * Before a key is added: what Ask does, said once, four questions it would answer (disabled
  * until there is a key), and the way to add one. One surface, divided by hairlines.
  */
 function NoKey({ buttonRef }: { buttonRef: RefObject<HTMLButtonElement | null> }) {
+  const via = viaNow(useAsk((s) => s.keyVersion))
   const view = useCensus((s) => s.route.view)
   const tab = useCensus((s) => s.route.tab)
   const access = useAnalytics().access
@@ -127,13 +144,14 @@ function NoKey({ buttonRef }: { buttonRef: RefObject<HTMLButtonElement | null> }
       </section>
       <section aria-labelledby="ask-no-key" className="border-t border-rule pt-4">
         <h3 id="ask-no-key" className="cut-head text-title font-semibold text-ink">
-          {NO_KEY.title}
+          {missing(via).title}
         </h3>
         <p className="mt-1 max-w-[60ch] text-small text-ink-2">
-          Add a key from the Claude Console in Settings, Ask Census, to ask these. Nothing is sent until you
-          do.
+          {via === 'team'
+            ? 'Add the team passcode in Settings, Ask Census, to ask these. Nothing is sent until you do.'
+            : 'Add a key from the Claude Console in Settings, Ask Census, to ask these. Nothing is sent until you do.'}
         </p>
-        <Button ref={buttonRef} data-ask-start variant="primary" className="mt-3" onClick={goToSettings}>
+        <Button ref={buttonRef} data-ask-start variant="primary" className="mt-3" onClick={goToMissing(via)}>
           Open Settings, Ask Census
         </Button>
       </section>
@@ -656,7 +674,8 @@ function OpenPanel({ dock }: { dock: Exclude<DockLayout, { kind: 'none' | 'rail'
   const ctx = useAnalytics()
   // A scoped mode under the anonymity minimum, or without its pick: Ask is off, and says why.
   const off = askOffReason(ctx)
-  const hasKey = keyNow(version, nonce) != null
+  const hasKey = credentialNow(version, nonce) != null
+  const via = viaNow(version)
   const inputRef = useRef<HTMLTextAreaElement | null>(null)
   const settingsButton = useRef<HTMLButtonElement | null>(null)
   const bodyRef = useRef<HTMLDivElement | null>(null)
@@ -792,8 +811,8 @@ function OpenPanel({ dock }: { dock: Exclude<DockLayout, { kind: 'none' | 'rail'
         ) : (
           (hasTurns || peek) && (
             <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-rule px-5 py-3 text-small text-ink-2">
-              <span className="min-w-0 flex-1">{NO_KEY.title} Add it to ask more.</span>
-              <Button ref={settingsButton} data-ask-start size="sm" onClick={goToSettings}>
+              <span className="min-w-0 flex-1">{missing(via).title} Add it to ask more.</span>
+              <Button ref={settingsButton} data-ask-start size="sm" onClick={goToMissing(via)}>
                 Open Settings, Ask Census
               </Button>
             </div>

@@ -1,8 +1,9 @@
 /**
  * Every setting Census has, with its current value, its default and where it is kept (docs/ROLES.md,
  * 5.3 "Settings"): the saved settings (`DEFAULT_SETTINGS`, `pickSettings`), the session switches,
- * the mode, the debug overlays, the quality lens and Ask's choices. The Ask key and the workspace ID
- * show as set or not set, never their values. Pure: the page passes a snapshot of the stores.
+ * the mode, the debug overlays, the quality lens and Ask's choices. The Ask key, the team passcode
+ * and the workspace ID show as set or not set, never their values. Pure: the page passes a snapshot
+ * of the stores.
  */
 import { MODE_LABEL, MODE_OF_PICK, type Mode, type ModePicks, PICK_KINDS } from '@/access/modes'
 import { STANDARD_LABEL } from '@/data/quality/tier'
@@ -27,6 +28,10 @@ export interface SettingsSnapshot {
   defaultAskModel: string
   askKey: 'not set' | 'set for this tab' | 'kept on this device'
   workspaceSet: boolean
+  /** The team passcode, when the team runs the Ask relay (docs/ASK-RELAY.md); absent reads as not set. */
+  askPasscode?: 'not set' | 'set for this tab' | 'kept on this device'
+  /** How Ask connects; absent reads as the person's own key. */
+  askVia?: 'own key' | 'team relay'
 }
 
 const onOff = (b: boolean) => (b ? 'On' : 'Off')
@@ -174,6 +179,22 @@ export function settingFacts(snap: SettingsSnapshot): SettingFact[] {
       value: snap.workspaceSet ? 'set' : 'not set',
       defaultValue: 'not set',
       where: 'localStorage census:ask-workspace',
+      inFile: false,
+    },
+    {
+      setting: 'Ask connects with',
+      section: 'ask',
+      value: snap.askVia ?? 'own key',
+      defaultValue: 'team relay when ask-relay.json names one, else own key',
+      where: 'ask-relay.json beside the page, and localStorage census:ask-source (Use my own key instead)',
+      inFile: false,
+    },
+    {
+      setting: 'Ask team passcode',
+      section: 'ask',
+      value: snap.askPasscode ?? 'not set',
+      defaultValue: 'not set',
+      where: 'sessionStorage census:ask-passcode, or localStorage when kept',
       inFile: false,
     },
   ]

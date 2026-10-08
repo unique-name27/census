@@ -540,10 +540,50 @@ export function composerKey(
  */
 export const WORKSPACE_FIELD = 'ask-workspace'
 
+/** The Team passcode field (a relay is configured): a passcode error's Settings button lands here. */
+export const PASSCODE_FIELD = 'ask-passcode'
+
+/** The field a Settings button should land on for an error, if any. */
+export function settingsFieldFor(e: Pick<AskError, 'kind'>): string | undefined {
+  if (e.kind === 'workspace') return WORKSPACE_FIELD
+  if (e.kind === 'passcode' || e.kind === 'no_passcode') return PASSCODE_FIELD
+  return undefined
+}
+
 /** Settings: where the key in force is kept, in words. */
 export function keyLine(stored: StoredKey | null, masked: (key: string) => string): string {
   if (!stored) return 'No key yet. Nothing is sent until you add one.'
   return `Using ${masked(stored.key)}, kept ${stored.kept ? 'on this device until you forget it' : 'for this tab only'}.`
+}
+
+/** Settings: whether the team passcode is saved and where, in words. The passcode itself never shows. */
+export function passcodeLine(stored: { kept: boolean } | null): string {
+  if (!stored) return 'No passcode yet. Nothing is sent until you add one.'
+  return `Using the team passcode, kept ${stored.kept ? 'on this device until you forget it' : 'for this tab only'}.`
+}
+
+/**
+ * Settings: "Keep on this device" on a host other sites share (`sharedHost`, such as
+ * `<account>.github.io`), where any of them could read what Census keeps in this browser. The switch
+ * is not offered there, unless the key or passcode is already kept, so it can be turned off. Null on
+ * an address of Census's own: the switch is offered as usual.
+ */
+export function sharedKeepNote(
+  host: string,
+  shared: boolean,
+  what: 'key' | 'passcode',
+  kept: boolean,
+): { offer: boolean; note: string } | null {
+  if (!shared) return null
+  const risk = `Every site published at ${host} can read what Census keeps in this browser.`
+  // Offered with the warning, not withheld: the other sites at that address are usually the same
+  // owner's, and a demo laptop needs the key to last beyond one tab.
+  return kept
+    ? { offer: true, note: `${risk} Turn this off to keep the ${what} for this tab only.` }
+    : {
+        offer: true,
+        note: `${risk} Turn this on only if you trust every site there; otherwise the ${what} is kept for this tab only.`,
+      }
 }
 
 /**
@@ -555,16 +595,23 @@ export function keyLine(stored: StoredKey | null, masked: (key: string) => strin
  * 'Anthropic said: "Your credit balance is too low …" (HTTP 400, request req_011…)'. Null when the
  * request never got an answer from Anthropic.
  */
-export function errorFacts(e: Pick<AskError, 'status' | 'apiMessage' | 'requestId'>): string | null {
+export function errorFacts(
+  e: Pick<AskError, 'status' | 'apiMessage' | 'requestId' | 'byRelay'> & { title?: string },
+): string | null {
   if (e.status == null && !e.apiMessage) return null
   const ref = [e.status != null ? `HTTP ${e.status}` : null, e.requestId ? `request ${e.requestId}` : null]
     .filter(Boolean)
     .join(', ')
+  // The team relay's own refusal: its words, unless they only repeat the title.
+  if (e.byRelay) {
+    if (!e.apiMessage || e.apiMessage === e.title) return `From the team relay (${ref}).`
+    return `The team relay said: “${e.apiMessage}”${ref ? ` (${ref})` : ''}`
+  }
   if (!e.apiMessage) return `Anthropic sent no reason (${ref}).`
   return `Anthropic said: “${e.apiMessage}”${ref ? ` (${ref})` : ''}`
 }
 
-export function settingsErrorDetail(e: Pick<AskError, 'kind' | 'detail'>): string {
+export function settingsErrorDetail(e: Pick<AskError, 'kind' | 'detail' | 'viaRelay'>): string {
   switch (e.kind) {
     case 'key':
       return 'Check the key, or create a new one in the Claude Console.'
@@ -575,9 +622,15 @@ export function settingsErrorDetail(e: Pick<AskError, 'kind' | 'detail'>): strin
     case 'model':
       return 'Pick another model below.'
     case 'permission':
-      return 'Pick another model below, or check the key’s permissions in the Claude Console.'
+      return e.viaRelay
+        ? 'Pick another model below, or tell whoever runs the team relay.'
+        : 'Pick another model below, or check the key’s permissions in the Claude Console.'
     case 'no_key':
       return 'Add a key above. Nothing is sent until you do.'
+    case 'no_passcode':
+      return 'Add the passcode above. Nothing is sent until you do.'
+    case 'passcode':
+      return 'Check the passcode above, or ask whoever runs the relay for the current one.'
   }
   return e.detail
 }

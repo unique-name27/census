@@ -608,6 +608,10 @@ export const START_ARTICLES: readonly HelpArticle[] = [
       'api key',
       'workspace',
       'workspace id',
+      'team passcode',
+      'passcode',
+      'relay',
+      'shared key',
       'conversation',
       'natural language',
       'chart',
@@ -701,7 +705,7 @@ export const START_ARTICLES: readonly HelpArticle[] = [
       { h: 'What is sent, and what never is' },
       {
         ul: [
-          'Sent to Anthropic under your API key: your question, and the counts, rates, definitions and org structure Census calculates to answer it.',
+          "Sent to Anthropic under your API key, or through your team's relay: your question, and the counts, rates, definitions and org structure Census calculates to answer it.",
           "Never sent: names, employee, candidate and application IDs, emails, pay amounts, cost totals, one person's survey answers, or immigration details. People go as tokens such as {{P12}} that only this browser can turn back into names.",
           'The rules on screen apply here too: small groups are hidden, employee relations cases are counted by category only, and numbers below the data standard are held back.',
         ],
@@ -718,7 +722,29 @@ export const START_ARTICLES: readonly HelpArticle[] = [
         ],
       },
       {
-        p: 'The key is never part of the settings file, Report a problem, exports or the page address. Forget key removes it.',
+        p: 'The key is never part of the settings file, Report a problem, exports or the page address. Forget key removes it. Where Census shares its address with other sites (a github.io address does), "Keep on this device" comes with a warning: those sites could read what Census keeps in the browser, so turn it on only if you trust them, for example on your own demo laptop.',
+      },
+      { h: 'If your team shares a key' },
+      {
+        p: "Your team may run a relay that holds one Claude API key for everyone, so you don't need your own. Settings, Ask Census then shows Team passcode instead of the key.",
+      },
+      {
+        ol: [
+          'Ask whoever set up Ask Census for the team passcode.',
+          'Open [Settings, Ask Census](settings:ask) and paste it under Team passcode. Like a key, it is kept for this tab only unless you turn on "Keep on this device", and it is never part of the settings file, Report a problem, exports or the page address.',
+          'Use Check passcode to try it: it sends one tiny request through the relay.',
+        ],
+      },
+      {
+        ul: [
+          'Questions go from this browser to the relay and on to Anthropic. The relay keeps no copy, and names, IDs and pay amounts never leave the browser.',
+          'Where Census shares its address with other sites, "Keep on this device" for the passcode carries the same warning.',
+          '"The team passcode was not accepted." means it is wrong or has been changed: ask for the current one.',
+          '"Too many requests through the team relay." means the relay\'s limit a minute was reached: wait a minute.',
+          '"The team relay could not be reached." means the relay is off or out of reach. Try again, then tell whoever runs it.',
+          'Problems with the team\'s key, credits or spend limit say "the team" and are for whoever runs the relay to fix.',
+          'To use a key of your own instead, turn on "Use my own key instead" in the same section.',
+        ],
       },
       { h: 'If Anthropic asks for a workspace ID' },
       {

@@ -11,6 +11,7 @@ import { connectAccessUi } from '@/access/ui/connectUi'
 import { ScopePicker } from '@/access/ui/ScopePicker'
 import { AskGate } from '@/ask/ui/AskGate'
 import { AskScreenBridge } from '@/ask/ui/AskScreenBridge'
+import { startAskRelay } from '@/ask/ui/relayBoot'
 import { useDock } from '@/ask/ui/useDock'
 import { FigureRegistryProvider } from '@/charts/registry'
 import { CurrentViewProvider } from '@/components/currentView'
@@ -47,6 +48,8 @@ const PAGE = 'mx-auto w-full max-w-[1440px] px-(--gutter)'
 // The policy file in force (docs/SECURITY-CENTER.md) loads while the data does; the analytics
 // context is built once it has (or once it is late), so the first screen already follows it.
 startAccessPolicy()
+// The team relay for Ask Census, when ask-relay.json names one (docs/ASK-RELAY.md).
+void startAskRelay()
 
 /** The Developer page loads with its own code, so HR and Manager mode load none of it. */
 const DevPage = lazy(() => import('@/dev/DevPage'))

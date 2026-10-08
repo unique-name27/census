@@ -8,6 +8,11 @@
  * Every error Anthropic sends back keeps its own message and request ID (`apiMessage`,
  * `requestId`), so the sheet can say exactly why a request was turned down; the plain-words title
  * alone hid reasons such as an account with no API credits behind "could not read this request".
+ *
+ * Through the team relay (docs/ASK-RELAY.md), the relay's own refusals (error types that start
+ * `relay_`: the passcode, its rate limit, its rules) get their own plain words, and Anthropic's
+ * answers about the key, credits and limits name the team's key, which the person cannot fix
+ * themselves, rather than "your key".
  */
 
 export type AskErrorKind =
@@ -26,6 +31,12 @@ export type AskErrorKind =
   | 'too_long'
   | 'bad_request'
   | 'unknown'
+  /** A relay is configured and no team passcode is saved. */
+  | 'no_passcode'
+  /** The relay did not accept the passcode. */
+  | 'passcode'
+  /** Something only whoever runs the relay can fix, or the relay could not be reached. */
+  | 'relay'
 
 export interface AskError {
   kind: AskErrorKind
@@ -41,6 +52,10 @@ export interface AskError {
   apiMessage?: string
   /** Anthropic's request ID, for its support team. */
   requestId?: string
+  /** The request went through the team relay. */
+  viaRelay?: boolean
+  /** The team relay answered this itself (`apiMessage` is the relay's), not Anthropic. */
+  byRelay?: boolean
 }
 
 const E = (
@@ -61,6 +76,13 @@ export const NO_KEY: AskError = E(
   'no_key',
   'Ask uses your own Claude API key.',
   'Add a key in Settings, Ask Census. Nothing is sent until you do.',
+  'settings',
+)
+
+export const NO_PASSCODE: AskError = E(
+  'no_passcode',
+  'Ask uses your team’s passcode.',
+  'Add the team passcode in Settings, Ask Census. Nothing is sent until you do.',
   'settings',
 )
 
@@ -216,13 +238,160 @@ export interface ClassifyOptions {
   connection?: boolean
   /** The request carried a workspace ID (the `anthropic-workspace-id` header). */
   workspaceSent?: boolean
+  /** The request went through the team relay. */
+  relay?: boolean
 }
 
 /** The plain-words case for an error thrown while asking. */
 export function classifyError(err: unknown, opts: ClassifyOptions = {}): AskError {
   if (opts.aborted || isAbort(err)) return STOPPED
-  const found = classify(err, opts)
-  return found.status != null ? { ...found, ...apiDetails(err) } : found
+  const found = opts.relay ? classifyRelay(err, opts) : classify(err, opts)
+  const full = found.status != null ? { ...found, ...apiDetails(err) } : found
+  if (!opts.relay) return full
+  return { ...full, viaRelay: true, ...(typeOf(err)?.startsWith('relay_') ? { byRelay: true } : {}) }
+}
+
+/** Anthropic's answer when a workspace's spend limit is reached. */
+const SPEND_LIMIT = /usage limits?|spend(?:ing)? limits?/i
+
+/**
+ * Through the team relay: the relay's own refusals first, then what Anthropic said about the team's
+ * key, credits and limits; anything else reads as it would without the relay.
+ */
+function classifyRelay(err: unknown, opts: ClassifyOptions): AskError {
+  const type = typeOf(err)
+  const http = statusOf(err)
+  const status = http ?? (type ? TYPE_STATUS[type] : undefined)
+  const later = http != null ? 'Census tried again twice. Try again in a minute.' : 'Try again in a minute.'
+  switch (type) {
+    case 'relay_passcode_error':
+      return E(
+        'passcode',
+        'The team passcode was not accepted.',
+        'Check the passcode in Settings, Ask Census, or ask whoever runs the relay for the current one.',
+        'settings',
+        status,
+      )
+    case 'relay_rate_limit_error':
+      return E(
+        'rate_limited',
+        'Too many requests through the team relay.',
+        'The relay takes a set number of requests a minute from each computer. Wait a minute, then ask again.',
+        'retry',
+        status,
+      )
+    case 'relay_origin_error':
+      return E(
+        'relay',
+        'The team relay does not accept requests from this address.',
+        'Open Census at its usual address, or ask whoever runs the relay to add this one.',
+        null,
+        status,
+      )
+    case 'relay_config_error':
+      return E(
+        'relay',
+        'The team relay is not set up yet.',
+        'Tell whoever runs it. Its reason is below.',
+        null,
+        status,
+      )
+    case 'relay_model_error':
+      return E(
+        'model',
+        'The team relay does not offer this model.',
+        'Pick another model in Settings, Ask Census.',
+        'settings',
+        status,
+      )
+    case 'relay_too_large_error':
+      return E(
+        'too_long',
+        'This conversation is too long to send through the team relay.',
+        'Start a new chat and ask again.',
+        null,
+        status,
+      )
+    case 'relay_not_found_error':
+    case 'relay_method_error':
+      return E(
+        'relay',
+        'The team relay’s address is not right.',
+        'Tell whoever looks after Census: ask-relay.json should hold the relay’s address only.',
+        null,
+        status,
+      )
+    case 'relay_request_error':
+      return E(
+        'bad_request',
+        'The team relay turned down this request.',
+        'Its reason is below. Start a new chat and ask again; if it keeps happening, use Report a problem.',
+        null,
+        status,
+      )
+    case 'relay_upstream_error':
+      return E('overloaded', 'The team relay could not reach Claude.', later, 'retry', status)
+  }
+  const message = apiDetails(err).apiMessage ?? ''
+  if ((status === 400 || status === 429) && SPEND_LIMIT.test(message))
+    return E(
+      'billing',
+      'The team has reached its spend limit for now.',
+      'Ask again when the limit resets, or ask whoever runs the relay to raise it in the Claude Console.',
+      null,
+      status,
+    )
+  if (status === 400 && (CREDITS.test(message) || BILLING.test(message)))
+    return E(
+      'billing',
+      'The team’s Anthropic account has no API credits left.',
+      'Tell whoever runs the team relay. They can add credits under Plans & Billing in the Claude Console.',
+      null,
+      status,
+    )
+  if (status === 401)
+    return E(
+      'relay',
+      'The team’s API key was not accepted.',
+      'Tell whoever runs the team relay. They can put a new key in it.',
+      null,
+      status,
+    )
+  if (status === 403)
+    return E(
+      'permission',
+      'The team’s key is not allowed to use this model or feature.',
+      'Pick another model in Settings, Ask Census, or tell whoever runs the team relay.',
+      'settings',
+      status,
+    )
+  if (status === 404)
+    return E(
+      'model',
+      'This model is not available to the team’s key.',
+      'Pick another model in Settings, Ask Census.',
+      'settings',
+      status,
+    )
+  if (status === 429)
+    return E('rate_limited', 'Claude is getting too many requests from the team.', later, 'retry', status)
+  if (status != null) return classify(err, opts)
+  // No status: the request never got an answer.
+  if (opts.online === false)
+    return E('offline', 'You are offline.', 'Ask again when this computer is back online.', 'retry')
+  if (!(opts.connection ?? err instanceof TypeError))
+    return E(
+      'unknown',
+      'Something went wrong asking Claude.',
+      'Try again. If it keeps happening, use Report a problem.',
+      'retry',
+    )
+  return E(
+    'relay',
+    'The team relay could not be reached.',
+    'Check your connection and try again. If it keeps happening, tell whoever runs the relay.',
+    'retry',
+  )
 }
 
 function classify(err: unknown, opts: ClassifyOptions): AskError {
@@ -235,7 +404,8 @@ function classify(err: unknown, opts: ClassifyOptions): AskError {
   // No credits left says so first; a request turned down over the workspace comes next, ahead of
   // a message that only mentions billing in passing.
   const credits = status === 400 && CREDITS.test(message)
-  const ws = status != null && !credits ? workspaceError(message, status, !!opts.workspaceSent) : null
+  const ws =
+    status != null && !credits && !opts.relay ? workspaceError(message, status, !!opts.workspaceSent) : null
   if (ws) return ws
   if (status === 400 && BILLING.test(message))
     return E(

@@ -6,6 +6,12 @@
  *
  *  1. Key. `readKey()` gives the key in force (sessionStorage by default, localStorage when kept);
  *     `saveKey(key, keep)` and `forgetKey()` change it. No key: show `NO_KEY` and send nothing.
+ *     Team relay (docs/ASK-RELAY.md): `relayInForce()` is the relay `ask-relay.json` names (loaded
+ *     at startup by `loadRelay`; `setRelayInForce`), `askVia()` says how Ask connects (the relay
+ *     unless "Use my own key instead", `readOwnKeyChoice()`), and `readCredential(via)` gives the
+ *     key or the team passcode in force (`readPasscode`, `savePasscode`, `forgetPasscode`,
+ *     `looksLikePasscode`). No passcode: show `NO_PASSCODE`. `clientForCredential(cred)` makes the
+ *     client; `checkPasscode(passcode, relayUrl, model)` is Check passcode.
  *     Workspace ID (optional, for a key that belongs to no workspace): `readWorkspaceId()`,
  *     `saveWorkspaceId(id)`, `clearWorkspaceId()`, `looksLikeWorkspaceId(id)`.
  *     Settings > Check key: `checkKey(key, model, { workspaceId })`, then
@@ -88,13 +94,26 @@ export {
 } from './chart'
 export {
   type AnthropicAskClient,
+  type CheckResult,
   type ClientOptions,
   checkKey,
+  checkPasscode,
+  clientForCredential,
   createAnthropicClient,
   loadSdk,
 } from './client'
 export { Conversation, createConversation } from './conversation'
-export { ASK_INTRO, noKeyQuestions, PRIVACY_LINE, suggestionsFor, WHAT_IS_SENT } from './copy'
+export {
+  ASK_INTRO,
+  noKeyQuestions,
+  PRIVACY_LINE,
+  PRIVACY_LINE_TEAM,
+  privacyLine,
+  suggestionsFor,
+  WHAT_IS_SENT,
+  WHAT_IS_SENT_TEAM,
+  whatIsSent,
+} from './copy'
 export {
   type AskError,
   type AskErrorKind,
@@ -103,6 +122,7 @@ export {
   DECLINED,
   EMPTY_QUESTION,
   NO_KEY,
+  NO_PASSCODE,
   STOPPED,
   WORKSPACE_NEEDED,
   WORKSPACE_REJECTED,
@@ -110,16 +130,27 @@ export {
 export {
   clearWorkspaceId,
   forgetKey,
+  forgetPasscode,
   KEY_STORAGE_KEY,
   type KeyStores,
   looksLikeKey,
+  looksLikePasscode,
   looksLikeWorkspaceId,
   maskKey,
+  PASSCODE_STORAGE_KEY,
+  pageHost,
   readKey,
+  readOwnKeyChoice,
+  readPasscode,
   readWorkspaceId,
+  SOURCE_STORAGE_KEY,
   type StoredKey,
+  type StoredPasscode,
   saveKey,
+  saveOwnKeyChoice,
+  savePasscode,
   saveWorkspaceId,
+  sharedHost,
   WORKSPACE_STORAGE_KEY,
 } from './keys'
 export {
@@ -181,6 +212,24 @@ export {
   systemBlocksFor,
 } from './prompt'
 export { type RefEntry, RefRegistry } from './refs'
+export {
+  type AskCredential,
+  type AskVia,
+  askVia,
+  loadRelay,
+  NO_RELAY,
+  PASSCODE_HEADER,
+  RELAY_FILE_NAME,
+  RELAY_PLACEHOLDER_KEY,
+  type RelayFetch,
+  type RelayInForce,
+  type RelayLoadEnv,
+  readCredential,
+  readRelayFile,
+  relayInForce,
+  relayUrlOf,
+  setRelayInForce,
+} from './relay'
 export { askNeedsPick, askOff, scopeText } from './roles'
 export {
   askOffReason,

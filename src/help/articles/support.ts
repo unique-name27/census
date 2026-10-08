@@ -260,7 +260,7 @@ export const SUPPORT_ARTICLES: readonly HelpArticle[] = [
           'Access: every surface and its decision in each of the eleven modes, the same rows the access matrix test checks. Pick one mode, or show only the surfaces where modes differ.',
           'Security center: what each role sees and can do, edited as a draft and published as a policy file. [Security center](article:security-center)',
           'Ask tools: run one Ask tool in this browser and see exactly what Claude would get. Nothing is sent to Anthropic.',
-          'State: the route, the mode with the scope it holds and the picks remembered, switches, quality index, saved views, panels and storage, each copyable as JSON. The Ask key and the workspace ID are never copied.',
+          'State: the route, the mode with the scope it holds and the picks remembered, switches, quality index, saved views, panels and storage, each copyable as JSON. The Ask key, the team passcode and the workspace ID are never copied.',
           'Timings: how long the engines, records lists, exports and Ask tools took. Timings record in Developer mode only.',
         ],
       },

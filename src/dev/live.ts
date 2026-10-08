@@ -1,13 +1,14 @@
 /**
  * Reads the live stores for the Developer page: the `census:` keys of the three browser stores
- * (values only to size them; the Ask key is never read into the page beyond "set"), a fresh
+ * (values only to size them; the Ask key and the team passcode never reach the page beyond "set"), a fresh
  * analytics context for cold engine runs, and the snapshot the Settings list and the State tab
  * describe. Every storage access is in try/catch.
  */
 import { get as idbGet, keys as idbKeys } from 'idb-keyval'
 import { picksOfState, useMode } from '@/access/store'
-import { readKey, readWorkspaceId } from '@/ask/engine/keys'
+import { readKey, readPasscode, readWorkspaceId } from '@/ask/engine/keys'
 import { DEFAULT_MODEL, readModelChoice } from '@/ask/engine/models'
+import { askVia } from '@/ask/engine/relay'
 import { type AnalyticsContext, buildContext } from '@/data/context'
 import { useLists } from '@/data/lists/store'
 import { pickSettings } from '@/data/settings'
@@ -15,7 +16,7 @@ import { useCensus } from '@/data/store'
 import { useQualityLens } from '@/views/data/quality-overview/lens'
 import type { SettingsSnapshot } from './settingsFacts'
 import type { StorageSnapshot } from './storageKeys'
-import { describeKey } from './storageKeys'
+import { describeKey, scannedValue } from './storageKeys'
 import { useDev } from './store'
 
 function webEntries(store: () => Storage | null): { key: string; value: string | null }[] {
@@ -26,9 +27,8 @@ function webEntries(store: () => Storage | null): { key: string; value: string |
     for (let i = 0; i < s.length; i++) {
       const key = s.key(i)
       if (!key?.startsWith('census:')) continue
-      // The Ask key's value never enters the page: its length is enough to size it.
-      const raw = s.getItem(key)
-      out.push({ key, value: describeKey(key)?.secret === 'key' && raw ? '*'.repeat(raw.length) : raw })
+      // The Ask key and the team passcode never enter the page, not even their length.
+      out.push({ key, value: scannedValue(key, s.getItem(key)) })
     }
   } catch {
     /* blocked: nothing to list */
@@ -134,6 +134,20 @@ function askKeyState(): SettingsSnapshot['askKey'] {
   }
 }
 
+/** Whether the team passcode is saved, and where; never its value. */
+function askPasscodeState(): NonNullable<SettingsSnapshot['askPasscode']> {
+  try {
+    const p = readPasscode()
+    return !p ? 'not set' : p.kept ? 'kept on this device' : 'set for this tab'
+  } catch {
+    return 'not set'
+  }
+}
+
+/** How Ask connects now: the team relay, or the person's own key. */
+const askViaState = (): NonNullable<SettingsSnapshot['askVia']> =>
+  askVia().kind === 'team' ? 'team relay' : 'own key'
+
 /** What the Settings list shows, read from the stores now. */
 export function settingsSnapshot(ctx: Pick<AnalyticsContext, 'org'>): SettingsSnapshot {
   const st = useCensus.getState()
@@ -151,7 +165,9 @@ export function settingsSnapshot(ctx: Pick<AnalyticsContext, 'org'>): SettingsSn
     defaultAskModel: DEFAULT_MODEL,
     askKey: askKeyState(),
     workspaceSet: !!readWorkspaceId(),
+    askPasscode: askPasscodeState(),
+    askVia: askViaState(),
   }
 }
 
-export { askKeyState }
+export { askKeyState, askPasscodeState, askViaState }
